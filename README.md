@@ -8,9 +8,11 @@
 - 🧠 **智能聚类算法** - 自动识别广告片段集群，减少误判
 - ⚡ **高性能解析** - 纯原生实现，无需外部依赖
 - 📦 **多种输入输出** - 支持本地文件、远程 URL，输出 m3u8 或 JSON 格式
+- 🌐 **Web API 服务** - 内置 HTTP 服务器，通过 URL 参数直接调用
 - 🖥️ **命令行工具** - 开箱即用的 CLI 界面
 - 🔧 **高度可配置** - 灵活的规则配置，支持自定义规则
 - 📊 **详细统计** - 展示移除的广告数量、时长、占比等信息
+- 🔓 **CORS 支持** - 支持跨域访问，可直接在前端调用
 
 ## 安装
 
@@ -24,6 +26,25 @@ node src/cli.js --help
 ```
 
 ## 快速开始
+
+### Web API 服务
+
+```bash
+# 启动服务（默认端口 3000）
+npm start
+# 或
+node src/server.js
+
+# 指定端口
+PORT=8080 node src/server.js
+```
+
+启动后访问：
+```
+http://localhost:3000/?url=https://example.com/playlist.m3u8
+```
+
+返回 JSON 格式的去广告结果。
 
 ### 命令行使用
 
@@ -289,6 +310,117 @@ skipper.process('playlist.m3u8').then(result => {
 });
 ```
 
+## Web API 文档
+
+### 基础信息
+
+- **基础 URL**: `http://your-domain:port`
+- **默认端口**: `3000`
+- **响应格式**: JSON
+- **跨域支持**: ✅ (CORS enabled)
+
+### 接口列表
+
+#### 1. 去广告接口
+
+**GET** `/?url=<m3u8地址>` 或 **GET** `/api/skip?url=<m3u8地址>`
+
+**请求参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `url` | string | 是 | M3U8 播放列表地址（URL 编码） |
+
+**响应示例：**
+
+```json
+{
+  "success": true,
+  "input": "https://example.com/playlist.m3u8",
+  "processTime": "123ms",
+  "stats": {
+    "totalSegments": 19,
+    "keptSegments": 10,
+    "removedSegments": 9,
+    "originalDuration": 124.4,
+    "filteredDuration": 86.4,
+    "savedDuration": 38,
+    "adPercentage": 30.55
+  },
+  "playlist": {
+    "m3u8": "#EXTM3U\n#EXT-X-VERSION:3\n...",
+    "format": "m3u8",
+    "segmentCount": 10
+  },
+  "removed": [
+    {
+      "uri": "ad_001.ts",
+      "duration": 5,
+      "title": "ad_pre_roll_01",
+      "matchedRules": ["keyword-match", "filename-pattern"]
+    }
+  ]
+}
+```
+
+**错误响应：**
+
+```json
+{
+  "success": false,
+  "error": "Bad Request",
+  "message": "缺少 url 参数",
+  "example": "/?url=https://example.com/playlist.m3u8"
+}
+```
+
+#### 2. 健康检查
+
+**GET** `/health` 或 **GET** `/api/health`
+
+**响应示例：**
+
+```json
+{
+  "status": "ok",
+  "service": "m3u8-ad-skipper",
+  "version": "1.0.0",
+  "timestamp": "2026-06-27T00:00:00.000Z"
+}
+```
+
+### 使用示例
+
+**浏览器直接访问：**
+```
+http://localhost:3000/?url=https%3A%2F%2Fexample.com%2Fplaylist.m3u8
+```
+
+**curl 请求：**
+```bash
+curl "http://localhost:3000/?url=https://example.com/playlist.m3u8"
+```
+
+**JavaScript fetch：**
+```javascript
+const m3u8Url = 'https://example.com/playlist.m3u8';
+const apiUrl = `http://localhost:3000/?url=${encodeURIComponent(m3u8Url)}`;
+
+fetch(apiUrl)
+  .then(res => res.json())
+  .then(data => {
+    console.log('广告占比:', data.stats.adPercentage + '%');
+    console.log('干净的播放列表:', data.playlist.m3u8);
+  });
+```
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | 3000 | 服务监听端口 |
+| `NODE_ENV` | - | 设为 development 时错误响应包含堆栈信息 |
+
 ## 注意事项
 
 1. **广告检测准确率** - 广告检测基于规则匹配，可能存在误判或漏判。建议根据实际使用场景调整规则参数。
@@ -301,6 +433,15 @@ skipper.process('playlist.m3u8').then(result => {
 MIT License
 
 ## 版本历史
+
+### v1.1.0 (2026-06-27)
+
+- 新增 Web API 服务，支持通过 URL 参数调用
+- 支持 `/?url=` 和 `/api/skip` 两个接口路径
+- 内置健康检查接口 `/health`
+- 完整的 CORS 跨域支持
+- 详细的 JSON 响应格式（统计信息、移除的广告列表等）
+- 支持环境变量配置端口
 
 ### v1.0.0 (2026-06-27)
 

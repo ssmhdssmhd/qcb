@@ -1,13 +1,15 @@
 {
   "name": "m3u8-ad-skipper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "M3U8 播放列表去广告工具 - 自动识别并移除插播广告片段，生成干净的播放链接",
   "main": "src/index.js",
   "bin": {
     "m3u8-ad-skipper": "src/cli.js"
   },
   "scripts": {
-    "start": "node src/cli.js",
+    "start": "node src/server.js",
+    "server": "node src/server.js",
+    "cli": "node src/cli.js",
     "test": "node test/test.js"
   },
   "keywords": [
