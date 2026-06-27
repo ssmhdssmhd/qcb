@@ -20,9 +20,20 @@
 # 克隆仓库
 git clone https://github.com/ssmhdssmhd/qcb.git
 cd qcb
+```
 
+**Node.js 版本**（src/ 目录）：
+```bash
 # 直接使用（无需安装依赖）
 node src/cli.js --help
+```
+
+**PHP 版本**（php/ 目录）：
+```bash
+# 将 php/ 目录部署到 PHP 网站即可使用
+# 本地测试：
+cd php
+php -S 0.0.0.0:8000 index.php
 ```
 
 ## 快速开始
@@ -433,6 +444,14 @@ fetch(apiUrl)
 MIT License
 
 ## 版本历史
+
+### v1.2.0 (2026-06-27)
+
+- 新增 PHP 版本（php/ 目录）
+- 完整移植所有核心功能
+- 支持通过 index.php 部署到任意 PHP 网站
+- 相同的 API 接口和 JSON 返回格式
+- PHP 版本独立测试套件（17 个测试用例）
 
 ### v1.1.0 (2026-06-27)
 
