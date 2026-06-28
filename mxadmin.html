@@ -324,6 +324,7 @@
         <div class="nav-item" data-page="rules">规则管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
+        <div class="nav-item" data-page="auth">授权管理</div>
     </div>
 
     <div class="container">
@@ -471,6 +472,117 @@
                 <div class="card-title">备份管理</div>
                 <div id="backupList">
                     <div class="empty">加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-auth">
+            <div class="card">
+                <div class="card-title">授权状态</div>
+                <div id="authStatus" class="stats-grid">
+                    <div class="loading">加载中...</div>
+                </div>
+                <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="refreshAuthStatus()">刷新状态</button>
+                    <button class="btn btn-secondary" onclick="testAuthServer()">测试服务器</button>
+                    <button class="btn btn-success" onclick="saveLocalAuth()">保存本地授权</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">本地授权文件</div>
+                <div class="form-group">
+                    <label>授权文件内容 (sq.txt)</label>
+                    <textarea id="localAuthContent" placeholder="输入授权码或加密授权内容..."></textarea>
+                </div>
+                <div style="display:flex;gap:12px">
+                    <button class="btn btn-secondary" onclick="generateAuth()">生成测试授权码</button>
+                    <button class="btn btn-secondary" onclick="encryptAuthContent()">加密当前内容</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">授权服务器配置</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label>启用授权验证</label>
+                        <select id="authEnabled">
+                            <option value="true">启用</option>
+                            <option value="false">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>本地授权文件名</label>
+                        <input type="text" id="authLocalFile" value="sq.txt">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label>服务器协议</label>
+                        <select id="authProtocol">
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>服务器 IP</label>
+                        <input type="text" id="authServerIp" value="114.134.184.91">
+                    </div>
+                    <div class="form-group">
+                        <label>服务器端口</label>
+                        <input type="number" id="authServerPort" value="9001">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label>主授权文件</label>
+                        <input type="text" id="authPrimaryFile" value="sq.txt">
+                    </div>
+                    <div class="form-group">
+                        <label>备用授权文件</label>
+                        <input type="text" id="authBackupFile" value="sqm.txt">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label>先检查本地</label>
+                        <select id="authCheckLocal">
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>检查远程</label>
+                        <select id="authCheckRemote">
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>检查时间戳</label>
+                        <select id="authCheckTimestamp">
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>时间差容忍(秒)</label>
+                        <input type="number" id="authTolerance" value="300">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label>联系 QQ</label>
+                        <input type="text" id="authContactQQ" value="2094332348">
+                    </div>
+                    <div class="form-group">
+                        <label>授权提示消息</label>
+                        <input type="text" id="authMessage" value="授权异常，请联系 QQ 2094332348 进行授权">
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px">
+                    <button class="btn btn-primary" onclick="saveAuthConfig()">保存配置</button>
+                    <button class="btn btn-secondary" onclick="loadAuthConfig()">重新加载</button>
                 </div>
             </div>
         </div>
@@ -1134,8 +1246,189 @@
                     loadVersion();
                     refreshBackupList();
                 }
+                if (page === 'auth') {
+                    refreshAuthStatus();
+                    loadAuthConfig();
+                }
             });
         });
+
+        async function refreshAuthStatus() {
+            try {
+                const res = await fetch(API_BASE + '?action=auth/status');
+                const data = await res.json();
+                renderAuthStatus(data);
+                if (data.local_content) {
+                    document.getElementById('localAuthContent').value = data.local_content;
+                }
+            } catch (e) {
+                showToast('获取授权状态失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderAuthStatus(data) {
+            const el = document.getElementById('authStatus');
+            if (data.authenticated) {
+                el.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value success">✓ 正常</div>
+                        <div class="stat-label">授权状态</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="font-size:18px">${data.config.server_ip}:${data.config.server_port}</div>
+                        <div class="stat-label">授权服务器</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="font-size:14px">${data.local_exists ? '已存在' : '不存在'}</div>
+                        <div class="stat-label">本地授权文件</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="font-size:16px;color:#667eea">QQ ${data.config.contact_qq}</div>
+                        <div class="stat-label">授权联系</div>
+                    </div>
+                `;
+            } else {
+                el.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value danger">✗ 异常</div>
+                        <div class="stat-label">授权状态</div>
+                    </div>
+                    <div class="stat-card" style="grid-column: span 3">
+                        <div class="stat-value danger" style="font-size:14px">${data.error || data.message}</div>
+                        <div class="stat-label">错误信息</div>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadAuthConfig() {
+            try {
+                const res = await fetch(API_BASE + '?action=auth/getconfig');
+                const data = await res.json();
+                if (data.success) {
+                    const c = data.config;
+                    document.getElementById('authEnabled').value = c.enabled ? 'true' : 'false';
+                    document.getElementById('authLocalFile').value = c.local_file || 'sq.txt';
+                    document.getElementById('authProtocol').value = c.server?.protocol || 'http';
+                    document.getElementById('authServerIp').value = c.server?.ip || '';
+                    document.getElementById('authServerPort').value = c.server?.port || 9001;
+                    document.getElementById('authPrimaryFile').value = c.server?.primary_file || 'sq.txt';
+                    document.getElementById('authBackupFile').value = c.server?.backup_file || 'sqm.txt';
+                    document.getElementById('authCheckLocal').value = c.validation?.check_local_first ? 'true' : 'false';
+                    document.getElementById('authCheckRemote').value = c.validation?.check_remote ? 'true' : 'false';
+                    document.getElementById('authCheckTimestamp').value = c.validation?.check_timestamp ? 'true' : 'false';
+                    document.getElementById('authTolerance').value = c.validation?.timestamp_tolerance || 300;
+                    document.getElementById('authContactQQ').value = c.contact?.qq || '';
+                    document.getElementById('authMessage').value = c.contact?.message || '';
+                }
+            } catch (e) {
+                showToast('加载配置失败: ' + e.message, 'error');
+            }
+        }
+
+        async function saveAuthConfig() {
+            const config = {
+                enabled: document.getElementById('authEnabled').value === 'true',
+                local_file: document.getElementById('authLocalFile').value,
+                server: {
+                    protocol: document.getElementById('authProtocol').value,
+                    ip: document.getElementById('authServerIp').value,
+                    port: parseInt(document.getElementById('authServerPort').value),
+                    primary_file: document.getElementById('authPrimaryFile').value,
+                    backup_file: document.getElementById('authBackupFile').value
+                },
+                validation: {
+                    check_local_first: document.getElementById('authCheckLocal').value === 'true',
+                    check_remote: document.getElementById('authCheckRemote').value === 'true',
+                    check_timestamp: document.getElementById('authCheckTimestamp').value === 'true',
+                    timestamp_tolerance: parseInt(document.getElementById('authTolerance').value)
+                },
+                contact: {
+                    qq: document.getElementById('authContactQQ').value,
+                    message: document.getElementById('authMessage').value
+                }
+            };
+            try {
+                const res = await fetch(API_BASE + '?action=auth/saveconfig', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: config })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('配置保存成功', 'success');
+                    refreshAuthStatus();
+                } else {
+                    showToast('保存失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function testAuthServer() {
+            const ip = document.getElementById('authServerIp').value;
+            const port = document.getElementById('authServerPort').value;
+            const file = document.getElementById('authPrimaryFile').value;
+            const protocol = document.getElementById('authProtocol').value;
+            showToast('正在测试连接...', 'info');
+            try {
+                const res = await fetch(API_BASE + '?action=auth/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip: ip, port: port, file: file, protocol: protocol })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`连接成功！返回 ${data.content_length} 字节`, 'success');
+                } else {
+                    showToast('连接失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('测试失败: ' + e.message, 'error');
+            }
+        }
+
+        async function saveLocalAuth() {
+            const content = document.getElementById('localAuthContent').value.trim();
+            if (!content) {
+                showToast('请输入授权内容', 'error');
+                return;
+            }
+            try {
+                const res = await fetch(API_BASE + '?action=auth/setlocal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: content })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('本地授权已保存', 'success');
+                    refreshAuthStatus();
+                } else {
+                    showToast('保存失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function generateAuth() {
+            try {
+                const res = await fetch(API_BASE + '?action=auth/generate');
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('localAuthContent').value = data.encrypted;
+                    showToast('测试授权码已生成（加密）', 'success');
+                }
+            } catch (e) {
+                showToast('生成失败: ' + e.message, 'error');
+            }
+        }
+
+        function encryptAuthContent() {
+            showToast('此功能需要后端加密，请使用生成授权码功能', 'info');
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             refreshRules();

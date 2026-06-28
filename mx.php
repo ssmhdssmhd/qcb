@@ -4,6 +4,7 @@ require_once __DIR__ . '/src/M3U8AdSkipper.php';
 require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
 require_once __DIR__ . '/gz/DomainRuleManager.php';
 require_once __DIR__ . '/src/UpdateManager.php';
+require_once __DIR__ . '/src/AuthValidator.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -12,6 +13,23 @@ header('Access-Control-Allow-Headers: Content-Type, Accept');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
+    exit;
+}
+
+$authValidator = new AuthValidator();
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
+
+$publicActions = ['auth/status', 'auth/test', 'auth/getconfig', 'auth/saveconfig', 'auth/setlocal', 'mxjx'];
+$needAuth = !in_array($action, $publicActions);
+
+if ($needAuth && !$authValidator->validate()) {
+    sendJson([
+        'success' => false,
+        'code' => 403,
+        'auth_error' => true,
+        'message' => $authValidator->getErrorMessage(),
+        'contact_qq' => '2094332348'
+    ], 403);
     exit;
 }
 
@@ -457,6 +475,144 @@ switch ($action) {
             $updateManager = new UpdateManager();
             $result = $updateManager->doUpdate();
             sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'auth/status':
+        try {
+            $validator = new AuthValidator();
+            $status = $validator->validate();
+            $authConfig = new AuthConfig();
+            $config = $authConfig->getConfig();
+            sendJson([
+                'success' => true,
+                'authenticated' => $status,
+                'error' => $status ? null : $validator->getLastError(),
+                'message' => $status ? '授权正常' : $validator->getErrorMessage(),
+                'config' => [
+                    'enabled' => $config['enabled'],
+                    'local_file' => $config['local_file'],
+                    'server_ip' => $config['server']['ip'],
+                    'server_port' => $config['server']['port'],
+                    'primary_file' => $config['server']['primary_file'],
+                    'backup_file' => $config['server']['backup_file'],
+                    'contact_qq' => $config['contact']['qq']
+                ],
+                'local_exists' => file_exists($authConfig->getLocalFilePath()),
+                'local_content' => $validator->getLocalAuthContent()
+            ]);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'auth/getconfig':
+        try {
+            $authConfig = new AuthConfig();
+            sendJson([
+                'success' => true,
+                'config' => $authConfig->getConfig()
+            ]);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'auth/saveconfig':
+        $input = getInputJson();
+        try {
+            $authConfig = new AuthConfig();
+            $config = $input['config'] ?? [];
+            if (isset($config['enabled'])) {
+                $authConfig->set('enabled', $config['enabled']);
+            }
+            if (isset($config['local_file'])) {
+                $authConfig->set('local_file', $config['local_file']);
+            }
+            if (isset($config['server'])) {
+                $server = $config['server'];
+                if (isset($server['ip'])) $authConfig->set('server.ip', $server['ip']);
+                if (isset($server['port'])) $authConfig->set('server.port', intval($server['port']));
+                if (isset($server['protocol'])) $authConfig->set('server.protocol', $server['protocol']);
+                if (isset($server['primary_file'])) $authConfig->set('server.primary_file', $server['primary_file']);
+                if (isset($server['backup_file'])) $authConfig->set('server.backup_file', $server['backup_file']);
+            }
+            if (isset($config['validation'])) {
+                $val = $config['validation'];
+                if (isset($val['check_local_first'])) $authConfig->set('validation.check_local_first', $val['check_local_first']);
+                if (isset($val['check_remote'])) $authConfig->set('validation.check_remote', $val['check_remote']);
+                if (isset($val['check_timestamp'])) $authConfig->set('validation.check_timestamp', $val['check_timestamp']);
+                if (isset($val['timestamp_tolerance'])) $authConfig->set('validation.timestamp_tolerance', intval($val['timestamp_tolerance']));
+            }
+            if (isset($config['contact'])) {
+                $contact = $config['contact'];
+                if (isset($contact['qq'])) $authConfig->set('contact.qq', $contact['qq']);
+                if (isset($contact['message'])) $authConfig->set('contact.message', $contact['message']);
+            }
+            sendJson(['success' => true, 'message' => '配置保存成功']);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'auth/setlocal':
+        $input = getInputJson();
+        $content = $input['content'] ?? '';
+        if (empty($content)) {
+            sendJson(['success' => false, 'message' => '授权内容不能为空'], 400);
+        }
+        try {
+            $validator = new AuthValidator();
+            $result = $validator->saveLocalAuth($content);
+            if ($result) {
+                sendJson(['success' => true, 'message' => '本地授权文件已更新']);
+            } else {
+                sendJson(['success' => false, 'message' => '写入失败'], 500);
+            }
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'auth/test':
+        $input = getInputJson();
+        $ip = $input['ip'] ?? '114.134.184.91';
+        $port = $input['port'] ?? 9001;
+        $file = $input['file'] ?? 'sq.txt';
+        $protocol = $input['protocol'] ?? 'http';
+        try {
+            $validator = new AuthValidator();
+            $result = $validator->testConnection($ip, $port, $file, $protocol);
+            if ($result === false) {
+                sendJson(['success' => false, 'message' => '连接失败']);
+            } else {
+                sendJson([
+                    'success' => true,
+                    'message' => '连接成功',
+                    'content' => $result,
+                    'content_length' => strlen($result)
+                ]);
+            }
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'auth/generate':
+        $domain = $_GET['domain'] ?? $_POST['domain'] ?? '';
+        try {
+            $validator = new AuthValidator();
+            $plain = $validator->generateAuthCode($domain);
+            $encrypted = $validator->generateEncryptedAuth($domain);
+            sendJson([
+                'success' => true,
+                'plain' => json_encode($plain, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                'encrypted' => $encrypted,
+                'code' => $plain['code'],
+                'timestamp' => $plain['timestamp']
+            ]);
         } catch (Exception $e) {
             sendJson(['success' => false, 'message' => $e->getMessage()], 500);
         }

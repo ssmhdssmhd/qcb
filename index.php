@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/src/M3U8AdSkipper.php';
+require_once __DIR__ . '/src/AuthValidator.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -10,6 +11,18 @@ header('X-Powered-By: m3u8-ad-skipper-php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
+    exit;
+}
+
+$authValidator = new AuthValidator();
+if (!$authValidator->validate()) {
+    echo json_encode([
+        'success' => false,
+        'code' => 403,
+        'auth_error' => true,
+        'message' => $authValidator->getErrorMessage(),
+        'contact_qq' => '2094332348'
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
 
