@@ -79,6 +79,7 @@ class M3U8Parser {
         ];
 
         $currentSegment = null;
+        $nextDiscontinuity = false;
         $i = 0;
 
         while ($i < count($lines)) {
@@ -133,9 +134,10 @@ class M3U8Parser {
                     'title' => $title,
                     'uri' => '',
                     'byteRange' => null,
-                    'discontinuity' => false,
+                    'discontinuity' => $nextDiscontinuity,
                     'tags' => []
                 ];
+                $nextDiscontinuity = false;
                 $i++;
                 continue;
             }
@@ -154,9 +156,7 @@ class M3U8Parser {
             }
 
             if ($line === '#EXT-X-DISCONTINUITY') {
-                if ($currentSegment) {
-                    $currentSegment['discontinuity'] = true;
-                }
+                $nextDiscontinuity = true;
                 $i++;
                 continue;
             }
