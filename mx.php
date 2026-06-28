@@ -18,7 +18,7 @@ $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $scriptName = basename($_SERVER['SCRIPT_NAME']);
 $basePath = '';
 
-if ($scriptName === 'admin_api.php') {
+if ($scriptName === 'mx.php') {
     $basePath = dirname($_SERVER['SCRIPT_NAME']);
     if ($basePath === '/' || $basePath === '\\') {
         $basePath = '';
@@ -266,7 +266,7 @@ switch ($action) {
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $selfUrl = $scheme . '://' . $host . $basePath;
-            $mxjxUrl = $selfUrl . '/admin_api.php?action=mxjx&url=' . urlencode($url);
+            $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
 
             sendJson([
                 'success' => true,
