@@ -3,6 +3,7 @@
 require_once __DIR__ . '/src/M3U8AdSkipper.php';
 require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
 require_once __DIR__ . '/gz/DomainRuleManager.php';
+require_once __DIR__ . '/src/UpdateManager.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -352,6 +353,115 @@ switch ($action) {
         }
         break;
 
+    case 'update/version':
+        try {
+            $updateManager = new UpdateManager();
+            $current = $updateManager->getCurrentVersion();
+            $localSha = $updateManager->getLocalSha();
+            sendJson([
+                'success' => true,
+                'current' => $current,
+                'local_sha' => $localSha,
+                'local_short_sha' => $localSha ? substr($localSha, 0, 7) : null
+            ]);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/check':
+        try {
+            $updateManager = new UpdateManager();
+            $result = $updateManager->checkUpdate();
+            sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/backup':
+        try {
+            $updateManager = new UpdateManager();
+            $result = $updateManager->createBackup();
+            sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/backuplist':
+        try {
+            $updateManager = new UpdateManager();
+            $list = $updateManager->getBackupList();
+            sendJson(['success' => true, 'backups' => $list]);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/deletebackup':
+        $filename = $_GET['filename'] ?? $_POST['filename'] ?? '';
+        if (empty($filename)) {
+            sendJson(['success' => false, 'message' => '缺少 filename 参数'], 400);
+        }
+        try {
+            $updateManager = new UpdateManager();
+            $result = $updateManager->deleteBackup($filename);
+            sendJson(['success' => $result, 'message' => $result ? '删除成功' : '删除失败']);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/restore':
+        $filename = $_GET['filename'] ?? $_POST['filename'] ?? '';
+        if (empty($filename)) {
+            sendJson(['success' => false, 'message' => '缺少 filename 参数'], 400);
+        }
+        try {
+            $updateManager = new UpdateManager();
+            $result = $updateManager->restoreBackup($filename);
+            sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/download':
+        try {
+            $updateManager = new UpdateManager();
+            $result = $updateManager->downloadUpdate();
+            sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/apply':
+        $filename = $_GET['filename'] ?? $_POST['filename'] ?? '';
+        if (empty($filename)) {
+            sendJson(['success' => false, 'message' => '缺少 filename 参数'], 400);
+        }
+        try {
+            $updateManager = new UpdateManager();
+            $zipFile = __DIR__ . '/backups/' . basename($filename);
+            $result = $updateManager->applyUpdate($zipFile);
+            sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'update/doupdate':
+        try {
+            $updateManager = new UpdateManager();
+            $result = $updateManager->doUpdate();
+            sendJson($result);
+        } catch (Exception $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        break;
+
     default:
         sendJson([
             'success' => false,
@@ -364,7 +474,16 @@ switch ($action) {
                 'rules/delete' => '删除域名规则',
                 'rules/generate' => '根据视频自动生成规则',
                 'skip' => '去广告接口',
-                'mxjx' => '去广告m3u8输出'
+                'mxjx' => '去广告m3u8输出',
+                'update/version' => '获取当前版本',
+                'update/check' => '检查更新',
+                'update/backup' => '创建备份',
+                'update/backuplist' => '备份列表',
+                'update/deletebackup' => '删除备份',
+                'update/restore' => '恢复备份',
+                'update/download' => '下载更新',
+                'update/apply' => '应用更新',
+                'update/doupdate' => '一键更新'
             ]
         ], 400);
         break;

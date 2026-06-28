@@ -323,6 +323,7 @@
         <div class="nav-item active" data-page="analyze">视频分析</div>
         <div class="nav-item" data-page="rules">规则管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
+        <div class="nav-item" data-page="update">系统更新</div>
     </div>
 
     <div class="container">
@@ -443,6 +444,33 @@
                 <div id="playerContainer" style="display:none;margin-top:20px">
                     <video id="videoPlayer" controls style="width:100%;max-height:500px;background:#000;border-radius:8px"></video>
                     <div style="margin-top:12px;font-size:13px;color:#606266" id="playInfo"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-update">
+            <div class="card">
+                <div class="card-title">版本信息</div>
+                <div class="stats-grid" id="versionInfo">
+                    <div class="loading">加载中...</div>
+                </div>
+                <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="checkUpdate()">检查更新</button>
+                    <button class="btn btn-secondary" onclick="createBackup()">创建备份</button>
+                    <button class="btn btn-success" onclick="doUpdate()">一键更新</button>
+                    <button class="btn btn-secondary" onclick="refreshBackupList()">刷新备份列表</button>
+                </div>
+            </div>
+
+            <div class="card" id="updateInfoCard" style="display:none">
+                <div class="card-title">更新信息</div>
+                <div id="updateInfo"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">备份管理</div>
+                <div id="backupList">
+                    <div class="empty">加载中...</div>
                 </div>
             </div>
         </div>
@@ -915,6 +943,199 @@
                 showToast('删除失败: ' + e.message, 'error');
             }
         }
+
+        let currentVersion = null;
+        let updateInfo = null;
+
+        async function loadVersion() {
+            try {
+                const res = await fetch(API_BASE + '?action=update/version');
+                const data = await res.json();
+                if (data.success) {
+                    currentVersion = data;
+                    renderVersionInfo(data);
+                }
+            } catch (e) {
+                showToast('加载版本信息失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderVersionInfo(data) {
+            const ver = data.current;
+            const el = document.getElementById('versionInfo');
+            el.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${ver.version}</div>
+                    <div class="stat-label">当前版本</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="font-size:18px">${data.local_short_sha || '-'}</div>
+                    <div class="stat-label">本地版本 (Git SHA)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="font-size:16px">${ver.build}</div>
+                    <div class="stat-label">构建日期</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="font-size:14px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${ver.github_repo}</div>
+                    <div class="stat-label">GitHub 仓库</div>
+                </div>
+            `;
+        }
+
+        async function checkUpdate() {
+            showToast('正在检查更新...', 'info');
+            try {
+                const res = await fetch(API_BASE + '?action=update/check');
+                const data = await res.json();
+                updateInfo = data;
+                const card = document.getElementById('updateInfoCard');
+                const info = document.getElementById('updateInfo');
+                card.style.display = 'block';
+                if (data.error) {
+                    info.innerHTML = `<div style="color:#f56c6c">检查失败: ${data.error}</div>`;
+                    showToast('检查更新失败: ' + data.error, 'error');
+                    return;
+                }
+                if (data.has_update) {
+                    info.innerHTML = `
+                        <div style="background:#fdf6ec;padding:16px;border-radius:6px;margin-bottom:16px">
+                            <h3 style="color:#e6a23c;margin-bottom:8px">发现新版本！</h3>
+                            <p style="margin:4px 0"><strong>最新版本:</strong> ${data.remote.short_sha}</p>
+                            <p style="margin:4px 0"><strong>发布时间:</strong> ${data.remote.date}</p>
+                            <p style="margin:4px 0"><strong>更新说明:</strong> ${data.remote.message}</p>
+                            <p style="margin:4px 0"><strong>作者:</strong> ${data.remote.author}</p>
+                        </div>
+                    `;
+                    showToast('发现新版本', 'info');
+                } else {
+                    info.innerHTML = `<div style="color:#67c23a"><strong>✓ 当前已是最新版本</strong></div>`;
+                    showToast('当前已是最新版本', 'success');
+                }
+            } catch (e) {
+                showToast('检查更新失败: ' + e.message, 'error');
+            }
+        }
+
+        async function createBackup() {
+            if (!confirm('确定要创建当前版本的备份吗？')) return;
+            showToast('正在创建备份...', 'info');
+            try {
+                const res = await fetch(API_BASE + '?action=update/backup');
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`备份创建成功 (${data.size_formatted}, ${data.file_count}个文件)`, 'success');
+                    refreshBackupList();
+                } else {
+                    showToast('备份创建失败: ' + data.error, 'error');
+                }
+            } catch (e) {
+                showToast('备份创建失败: ' + e.message, 'error');
+            }
+        }
+
+        async function refreshBackupList() {
+            try {
+                const res = await fetch(API_BASE + '?action=update/backuplist');
+                const data = await res.json();
+                if (data.success) {
+                    renderBackupList(data.backups);
+                }
+            } catch (e) {
+                document.getElementById('backupList').innerHTML = '<div class="empty">加载失败</div>';
+            }
+        }
+
+        function renderBackupList(backups) {
+            const el = document.getElementById('backupList');
+            if (backups.length === 0) {
+                el.innerHTML = '<div class="empty">暂无备份</div>';
+                return;
+            }
+            el.innerHTML = `<table class="rules-table"><thead><tr><th>备份文件</th><th>大小</th><th>创建时间</th><th>操作</th></tr></thead><tbody>` +
+                backups.map(b => `
+                    <tr>
+                        <td><code style="background:#f5f7fa;padding:2px 6px;border-radius:4px;font-size:12px">${b.filename}</code></td>
+                        <td>${b.size_formatted}</td>
+                        <td style="color:#909399;font-size:13px">${b.created_formatted}</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="restoreBackup('${b.filename}')">恢复</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteBackup('${b.filename}')">删除</button>
+                        </td>
+                    </tr>
+                `).join('') +
+                `</tbody></table>`;
+        }
+
+        async function deleteBackup(filename) {
+            if (!confirm('确定要删除这个备份吗？')) return;
+            try {
+                const res = await fetch(API_BASE + '?action=update/deletebackup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: filename })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('备份已删除', 'success');
+                    refreshBackupList();
+                } else {
+                    showToast('删除失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('删除失败: ' + e.message, 'error');
+            }
+        }
+
+        async function restoreBackup(filename) {
+            if (!confirm('确定要从这个备份恢复吗？当前文件将被覆盖！')) return;
+            showToast('正在恢复备份...', 'info');
+            try {
+                const res = await fetch(API_BASE + '?action=update/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: filename })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`恢复成功 (${data.restored_count}个文件)`, 'success');
+                    loadVersion();
+                } else {
+                    showToast('恢复失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('恢复失败: ' + e.message, 'error');
+            }
+        }
+
+        async function doUpdate() {
+            if (!confirm('确定要更新到最新版本吗？将自动备份当前版本。')) return;
+            showToast('正在下载并更新...', 'info');
+            try {
+                const res = await fetch(API_BASE + '?action=update/doupdate');
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`更新成功！已更新 ${data.updated_count} 个文件`, 'success');
+                    loadVersion();
+                    checkUpdate();
+                    refreshBackupList();
+                } else {
+                    showToast('更新失败: ' + (data.message || data.error), 'error');
+                }
+            } catch (e) {
+                showToast('更新失败: ' + e.message, 'error');
+            }
+        }
+
+        const origNavClick = document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const page = item.dataset.page;
+                if (page === 'update') {
+                    loadVersion();
+                    refreshBackupList();
+                }
+            });
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             refreshRules();
