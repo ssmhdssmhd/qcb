@@ -178,7 +178,8 @@ switch ($action) {
         break;
 
     case 'rules/delete':
-        $domain = $_GET['domain'] ?? $_POST['domain'] ?? '';
+        $input = getInputJson();
+        $domain = $input['domain'] ?? '';
         if (empty($domain)) {
             sendJson(['success' => false, 'message' => '缺少 domain 参数'], 400);
         }

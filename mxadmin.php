@@ -227,6 +227,11 @@
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
             border-color: #667eea;
         }
+        .form-group input:disabled, .form-group textarea:disabled {
+            background: #f5f7fa;
+            color: #909399;
+            cursor: not-allowed;
+        }
         .rule-section {
             border: 1px solid #ebeef5;
             border-radius: 6px;
@@ -598,6 +603,12 @@
         let editingRules = null;
         let dp = null;
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
             toast.className = 'toast ' + type;
@@ -613,7 +624,10 @@
                 item.classList.add('active');
                 const pageId = 'page-' + item.dataset.page;
                 document.getElementById(pageId).classList.add('active');
-                if (item.dataset.page === 'rules') refreshRules();
+                const page = item.dataset.page;
+                if (page === 'rules') refreshRules();
+                if (page === 'auth') refreshAuthInfo();
+                if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
             });
         });
 
@@ -837,8 +851,8 @@
             let html = '<table class="rules-table"><thead><tr><th>资源名称</th><th>域名</th><th>时长规则</th><th>DISCON规则</th><th>序列号跳跃</th><th>更新时间</th><th>备注</th><th>操作</th></tr></thead><tbody>';
             for (const domain of domains) {
                 const r = rules[domain];
-                const name = r.name || domain;
-                const note = r.note || '-';
+                const name = escapeHtml(r.name || domain);
+                const note = escapeHtml(r.note || '-');
                 const durCount = (r.duration_rules || []).filter(x => x.enabled).length;
                 const disCount = (r.discontinuity_rules || []).filter(x => x.enabled).length;
                 const seqCount = (r.sequence_jump_rules || []).filter(x => x.enabled).length;
@@ -846,15 +860,15 @@
                 html += `
                     <tr>
                         <td><span style="color:#606266">${name}</span></td>
-                        <td><strong>${domain}</strong></td>
+                        <td><strong>${escapeHtml(domain)}</strong></td>
                         <td><span class="tag tag-blue">${durCount}条</span></td>
                         <td>${disCount > 0 ? '<span class="tag tag-orange">启用</span>' : '<span style="color:#c0c4cc">未启用</span>'}</td>
-                        <td><span class="tag tag-red">${seqCount}条</span></td>
+                        <td>${seqCount > 0 ? '<span class="tag tag-red">' + seqCount + '条</span>' : '<span style="color:#c0c4cc">无</span>'}</td>
                         <td style="color:#909399;font-size:12px">${mtime}</td>
-                        <td style="color:#909399;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">${note}</td>
+                        <td style="color:#909399;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${note}">${note}</td>
                         <td>
-                            <button class="btn btn-sm btn-secondary" onclick="editRule('${domain}')">编辑</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteRule('${domain}')">删除</button>
+                            <button class="btn btn-sm btn-secondary" onclick="editRule('${escapeHtml(domain)}')">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteRule('${escapeHtml(domain)}')">删除</button>
                         </td>
                     </tr>
                 `;
@@ -893,6 +907,7 @@
             document.getElementById('ruleEditorTitle').textContent = isNew ? '新增规则' : '编辑规则';
             document.getElementById('ruleName').value = rules.name || '';
             document.getElementById('ruleDomain').value = rules.domain || '';
+            document.getElementById('ruleDomain').disabled = !isNew;
             document.getElementById('ruleNote').value = rules.note || '';
 
             const disRules = rules.discontinuity_rules || [];
