@@ -410,6 +410,7 @@ header('Expires: 0');
     <div class="nav">
         <div class="nav-item active" data-page="analyze">视频分析</div>
         <div class="nav-item" data-page="rules">规则管理</div>
+        <div class="nav-item" data-page="sites">资源站管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
         <div class="nav-item" data-page="auth">授权管理</div>
@@ -573,6 +574,134 @@ header('Expires: 0');
                     <button class="btn btn-primary" onclick="saveRule()">保存规则</button>
                     <button class="btn btn-secondary" onclick="cancelRuleEdit()">取消</button>
                 </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-sites">
+            <div class="card">
+                <div class="card-title">自动学习配置</div>
+                <div class="stats-grid" id="autoLearnStats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalSites">-</div>
+                        <div class="stat-label">资源站总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="activeSites">-</div>
+                        <div class="stat-label">活跃资源站</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="lastLearnTime">-</div>
+                        <div class="stat-label">上次学习时间</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="autoLearnStatus">-</div>
+                        <div class="stat-label">自动学习状态</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>启用自动学习</label>
+                        <select id="autoLearnEnabled">
+                            <option value="true">启用</option>
+                            <option value="false">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>更新间隔 (天)</label>
+                        <input type="number" id="intervalDays" min="1" max="30" value="3">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>每站视频数</label>
+                        <input type="number" id="videosPerSite" min="1" max="20" value="5">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>每次最大站点数</label>
+                        <input type="number" id="maxSitesPerRun" min="1" max="20" value="5">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>最小片段数</label>
+                        <input type="number" id="minSegments" min="10" max="500" value="50">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>最大广告占比 (%)</label>
+                        <input type="number" id="maxAdPercentage" min="10" max="100" value="90">
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="saveAutoLearnConfig()">保存配置</button>
+                    <button class="btn btn-success" onclick="runAutoLearn()">立即执行学习</button>
+                    <button class="btn btn-secondary" onclick="refreshSites()">刷新</button>
+                </div>
+                <div id="autoLearnResult" style="margin-top:16px;display:none"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    资源站列表
+                    <span style="margin-left:12px;font-size:12px;color:#909399;font-weight:normal">共 <span id="sitesCount">0</span> 个资源站</span>
+                </div>
+                <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="showAddSite()">+ 新增资源站</button>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" id="showPaused" onchange="refreshSites()"> 显示已暂停
+                    </label>
+                    <input type="text" id="siteSearch" placeholder="搜索资源站名称..." style="flex:1;min-width:200px;padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px" oninput="filterSites()">
+                </div>
+                <div id="sitesTable"></div>
+            </div>
+
+            <div class="card" id="siteEditor" style="display:none">
+                <div class="card-title" id="siteEditorTitle">新增资源站</div>
+                <div class="form-group">
+                    <label>资源站名称</label>
+                    <input type="text" id="siteName" placeholder="例如：墨子">
+                </div>
+                <div class="form-group">
+                    <label>官网地址</label>
+                    <input type="text" id="siteUrl" placeholder="例如：https://example.com">
+                </div>
+                <div class="form-group">
+                    <label>采集接口</label>
+                    <input type="text" id="siteApiUrl" placeholder="例如：https://example.com/api.php/provide/vod/">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label>类型</label>
+                        <select id="siteType">
+                            <option value="maccms">MacCMS</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>状态</label>
+                        <select id="siteStatus">
+                            <option value="active">正常</option>
+                            <option value="paused">暂停</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>优先级</label>
+                        <input type="number" id="sitePriority" min="1" max="99" value="50">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>扩展备注</label>
+                    <textarea id="siteNote" placeholder="备注信息，如：推荐、卡、停更等"></textarea>
+                </div>
+                <div style="display:flex;gap:12px">
+                    <button class="btn btn-primary" onclick="saveSite()">保存</button>
+                    <button class="btn btn-secondary" onclick="cancelSiteEdit()">取消</button>
+                </div>
+            </div>
+
+            <div class="card" id="siteVideos" style="display:none">
+                <div class="card-title">
+                    <span id="siteVideosTitle">视频列表</span>
+                    <button class="btn btn-sm btn-secondary" style="float:right" onclick="closeSiteVideos()">关闭</button>
+                </div>
+                <div id="siteVideosList"></div>
             </div>
         </div>
 
@@ -1928,15 +2057,333 @@ header('Expires: 0');
             }
         }
 
+        let currentSites = [];
+        let editingSite = null;
+
+        async function refreshSites() {
+            try {
+                const includePaused = document.getElementById('showPaused')?.checked ? '1' : '0';
+                const res = await fetch(API_BASE + '?action=sites/list&include_paused=' + includePaused + '&_t=' + Date.now(), {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                currentSites = data.sites || [];
+                renderSitesTable(currentSites);
+                renderAutoLearnStats(data);
+                document.getElementById('sitesCount').textContent = currentSites.length;
+            } catch (e) {
+                console.error('获取资源站列表错误:', e);
+                showToast('获取资源站列表失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderAutoLearnStats(data) {
+            const allSites = currentSites.length;
+            const activeCount = currentSites.filter(s => s.status === 'active').length;
+            document.getElementById('totalSites').textContent = allSites;
+            document.getElementById('activeSites').textContent = activeCount;
+            document.getElementById('lastLearnTime').textContent = data.last_learn_time || '从未学习';
+
+            const statusEl = document.getElementById('autoLearnStatus');
+            const config = data.auto_learn_config || {};
+            if (config.enabled) {
+                if (data.should_auto_learn) {
+                    statusEl.textContent = '待执行';
+                    statusEl.className = 'stat-value warning';
+                } else {
+                    statusEl.textContent = '运行中';
+                    statusEl.className = 'stat-value success';
+                }
+            } else {
+                statusEl.textContent = '已禁用';
+                statusEl.className = 'stat-value danger';
+            }
+
+            document.getElementById('autoLearnEnabled').value = config.enabled ? 'true' : 'false';
+            document.getElementById('intervalDays').value = config.interval_days ?? 3;
+            document.getElementById('videosPerSite').value = config.videos_per_site ?? 5;
+            document.getElementById('maxSitesPerRun').value = config.max_sites_per_run ?? 5;
+            document.getElementById('minSegments').value = config.min_segments ?? 50;
+            document.getElementById('maxAdPercentage').value = config.max_ad_percentage ?? 90;
+        }
+
+        function filterSites() {
+            const keyword = document.getElementById('siteSearch').value.trim().toLowerCase();
+            if (!keyword) {
+                renderSitesTable(currentSites);
+                return;
+            }
+            const filtered = currentSites.filter(s =>
+                s.name.toLowerCase().includes(keyword) ||
+                (s.note || '').toLowerCase().includes(keyword)
+            );
+            renderSitesTable(filtered);
+        }
+
+        function renderSitesTable(sites) {
+            const container = document.getElementById('sitesTable');
+            if (sites.length === 0) {
+                container.innerHTML = '<div class="empty">暂无资源站</div>';
+                return;
+            }
+            let html = '<table class="rules-table"><thead><tr><th>优先级</th><th>名称</th><th>官网</th><th>采集接口</th><th>状态</th><th>扩展备注</th><th>操作</th></tr></thead><tbody>';
+            for (const site of sites) {
+                const priority = site.priority || 99;
+                const statusTag = site.status === 'active'
+                    ? '<span class="tag tag-green">正常</span>'
+                    : '<span class="tag tag-orange">暂停</span>';
+                const siteUrl = site.site_url || '#';
+                const apiUrl = site.api_url || '';
+                const note = escapeHtml(site.note || '');
+                html += `
+                    <tr>
+                        <td><span class="tag tag-blue">${priority}</span></td>
+                        <td><strong>${escapeHtml(site.name)}</strong></td>
+                        <td>
+                            ${site.site_url ? `<a href="${escapeHtml(siteUrl)}" target="_blank" style="color:#409eff;text-decoration:none;font-size:12px">访问官网 ↗</a>` : '-'}
+                        </td>
+                        <td style="font-size:12px;color:#909399;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(apiUrl)}">
+                            ${escapeHtml(apiUrl)}
+                        </td>
+                        <td>${statusTag}</td>
+                        <td style="font-size:12px;color:#606266;max-width:150px">${note || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="fetchSiteVideos('${escapeHtml(site.name)}')">视频</button>
+                            <button class="btn btn-sm btn-secondary" onclick="editSite('${escapeHtml(site.name)}')">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteSite('${escapeHtml(site.name)}')">删除</button>
+                        </td>
+                    </tr>
+                `;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function showAddSite() {
+            editingSite = null;
+            document.getElementById('siteEditorTitle').textContent = '新增资源站';
+            document.getElementById('siteName').value = '';
+            document.getElementById('siteUrl').value = '';
+            document.getElementById('siteApiUrl').value = '';
+            document.getElementById('siteType').value = 'maccms';
+            document.getElementById('siteStatus').value = 'active';
+            document.getElementById('sitePriority').value = 50;
+            document.getElementById('siteNote').value = '';
+            document.getElementById('siteName').disabled = false;
+            document.getElementById('siteEditor').style.display = 'block';
+            document.getElementById('siteEditor').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function editSite(name) {
+            try {
+                const res = await fetch(API_BASE + '?action=sites/get&name=' + encodeURIComponent(name));
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                editingSite = data.site;
+                document.getElementById('siteEditorTitle').textContent = '编辑资源站';
+                document.getElementById('siteName').value = data.site.name || '';
+                document.getElementById('siteUrl').value = data.site.site_url || '';
+                document.getElementById('siteApiUrl').value = data.site.api_url || '';
+                document.getElementById('siteType').value = data.site.type || 'maccms';
+                document.getElementById('siteStatus').value = data.site.status || 'active';
+                document.getElementById('sitePriority').value = data.site.priority || 50;
+                document.getElementById('siteNote').value = data.site.note || '';
+                document.getElementById('siteName').disabled = true;
+                document.getElementById('siteEditor').style.display = 'block';
+                document.getElementById('siteEditor').scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {
+                showToast('获取资源站失败: ' + e.message, 'error');
+            }
+        }
+
+        function cancelSiteEdit() {
+            document.getElementById('siteEditor').style.display = 'none';
+            editingSite = null;
+        }
+
+        async function saveSite() {
+            const name = document.getElementById('siteName').value.trim();
+            const siteUrl = document.getElementById('siteUrl').value.trim();
+            const apiUrl = document.getElementById('siteApiUrl').value.trim();
+            const type = document.getElementById('siteType').value;
+            const status = document.getElementById('siteStatus').value;
+            const priority = parseInt(document.getElementById('sitePriority').value) || 50;
+            const note = document.getElementById('siteNote').value.trim();
+
+            if (!name) { showToast('请输入资源站名称', 'error'); return; }
+            if (!apiUrl) { showToast('请输入采集接口地址', 'error'); return; }
+
+            const siteData = {
+                name: name,
+                site_url: siteUrl,
+                api_url: apiUrl,
+                type: type,
+                status: status,
+                priority: priority,
+                note: note
+            };
+
+            try {
+                const action = editingSite ? 'sites/update' : 'sites/add';
+                const res = await fetch(API_BASE + '?action=' + action, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(siteData)
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast(data.message || '保存成功', 'success');
+                cancelSiteEdit();
+                refreshSites();
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteSite(name) {
+            if (!confirm('确定要删除该资源站吗？')) return;
+            try {
+                const res = await fetch(API_BASE + '?action=sites/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast('删除成功', 'success');
+                refreshSites();
+            } catch (e) {
+                showToast('删除失败: ' + e.message, 'error');
+            }
+        }
+
+        async function fetchSiteVideos(name) {
+            document.getElementById('siteVideosTitle').textContent = name + ' - 视频列表';
+            document.getElementById('siteVideos').style.display = 'block';
+            document.getElementById('siteVideosList').innerHTML = '<div class="loading">正在获取视频列表...</div>';
+            document.getElementById('siteVideos').scrollIntoView({ behavior: 'smooth' });
+            try {
+                const res = await fetch(API_BASE + '?action=sites/fetch_videos&name=' + encodeURIComponent(name) + '&limit=10');
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                renderSiteVideos(data.videos || []);
+            } catch (e) {
+                document.getElementById('siteVideosList').innerHTML = '<div class="empty">获取失败: ' + escapeHtml(e.message) + '</div>';
+                showToast('获取视频失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderSiteVideos(videos) {
+            const container = document.getElementById('siteVideosList');
+            if (videos.length === 0) {
+                container.innerHTML = '<div class="empty">暂无视频数据</div>';
+                return;
+            }
+            let html = '<div style="max-height:400px;overflow-y:auto">';
+            videos.forEach((v, i) => {
+                html += `
+                    <div class="segment-item" style="border-bottom:1px solid #ebeef5">
+                        <div style="flex:1">
+                            <div style="font-weight:500;color:#303133">${i + 1}. ${escapeHtml(v.name || '未知')}</div>
+                            <div style="font-size:12px;color:#909399;margin-top:4px;word-break:break-all;font-family:monospace">${escapeHtml(v.url || '')}</div>
+                        </div>
+                        <div style="display:flex;gap:6px;flex-shrink:0">
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(v.url || '')}')">复制</button>
+                            <button class="btn btn-sm btn-primary" onclick="analyzeFromSite('${escapeHtml(v.url || '')}')">分析</button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function closeSiteVideos() {
+            document.getElementById('siteVideos').style.display = 'none';
+        }
+
+        function analyzeFromSite(url) {
+            document.getElementById('analyzeUrl').value = url;
+            document.querySelector('.nav-item[data-page="analyze"]').click();
+            setTimeout(() => analyzeVideo(), 300);
+        }
+
+        async function saveAutoLearnConfig() {
+            const config = {
+                enabled: document.getElementById('autoLearnEnabled').value === 'true',
+                interval_days: parseInt(document.getElementById('intervalDays').value) || 3,
+                videos_per_site: parseInt(document.getElementById('videosPerSite').value) || 5,
+                max_sites_per_run: parseInt(document.getElementById('maxSitesPerRun').value) || 5,
+                min_segments: parseInt(document.getElementById('minSegments').value) || 50,
+                max_ad_percentage: parseInt(document.getElementById('maxAdPercentage').value) || 90
+            };
+            try {
+                const res = await fetch(API_BASE + '?action=sites/auto_learn/config/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast('配置保存成功', 'success');
+                refreshSites();
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function runAutoLearn() {
+            if (!confirm('确定要立即执行自动学习吗？这可能需要一些时间。')) return;
+            const resultEl = document.getElementById('autoLearnResult');
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<div class="loading">正在执行自动学习，请稍候...</div>';
+            try {
+                const res = await fetch(API_BASE + '?action=sites/auto_learn/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
+                html += '<div style="font-weight:600;color:#67c23a;margin-bottom:8px">✅ ' + escapeHtml(data.message || '自动学习完成') + '</div>';
+                html += '<div style="font-size:13px;color:#606266">';
+                html += '处理站点: ' + data.sites_processed + ' 个 | ';
+                html += '学习成功: <span style="color:#67c23a">' + data.total_learned + '</span> 个 | ';
+                html += '失败: <span style="color:#f56c6c">' + data.total_failed + '</span> 个';
+                html += '</div>';
+                if (data.details && data.details.length > 0) {
+                    html += '<div style="margin-top:12px">';
+                    data.details.forEach(d => {
+                        html += '<div style="padding:8px;background:white;border-radius:4px;margin-bottom:6px;font-size:12px">';
+                        html += '<strong>' + escapeHtml(d.site) + '</strong>: ';
+                        html += '检查 ' + d.videos_checked + ' 个, 学习 ' + d.videos_learned + ' 个, 失败 ' + d.videos_failed + ' 个';
+                        if (d.error) {
+                            html += ' <span style="color:#f56c6c">(' + escapeHtml(d.error) + ')</span>';
+                        }
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+                resultEl.innerHTML = html;
+                showToast('自动学习完成', 'success');
+                refreshSites();
+            } catch (e) {
+                resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">学习失败: ' + escapeHtml(e.message) + '</div>';
+                showToast('学习失败: ' + e.message, 'error');
+            }
+        }
+
         document.querySelectorAll('.nav-item').forEach(item => {
-            const origHandler = item.onclick;
             item.addEventListener('click', () => {
-                if (item.dataset.page === 'update') {
-                    loadVersion();
-                }
-                if (item.dataset.page === 'auth') {
-                    refreshAuthInfo();
-                }
+                const page = item.dataset.page;
+                if (page === 'rules') refreshRules();
+                if (page === 'sites') refreshSites();
+                if (page === 'auth') refreshAuthInfo();
+                if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
             });
         });
 

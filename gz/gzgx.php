@@ -16,11 +16,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/DomainRuleManager.php';
 require_once __DIR__ . '/EnhancedAdRuleEngine.php';
+require_once __DIR__ . '/ResourceSiteManager.php';
 require_once __DIR__ . '/../src/M3U8Parser.php';
 require_once __DIR__ . '/../src/M3U8AdSkipper.php';
 require_once __DIR__ . '/../src/CacheManager.php';
 
 $ruleManager = new DomainRuleManager();
+$siteManager = new ResourceSiteManager();
 
 function sendJson($data, $code = 200) {
     http_response_code($code);
@@ -203,6 +205,120 @@ switch ($action) {
         } else {
             sendJson(['success' => false, 'message' => '规则删除失败或不存在'], 404);
         }
+        break;
+
+    case 'sites/list':
+        $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
+        $sites = $siteManager->getAllSites($includePaused);
+        $config = $siteManager->getAutoLearnConfig();
+        $lastLearn = $siteManager->getLastLearnTime();
+        sendJson([
+            'success' => true,
+            'sites' => $sites,
+            'total' => count($sites),
+            'auto_learn_config' => $config,
+            'last_learn_time' => $lastLearn
+        ]);
+        break;
+
+    case 'sites/get':
+        $name = $_GET['name'] ?? '';
+        if (empty($name)) {
+            sendJson(['success' => false, 'message' => '缺少 name 参数'], 400);
+        }
+        $site = $siteManager->getSiteByName($name);
+        if ($site === null) {
+            sendJson(['success' => false, 'message' => '资源站不存在'], 404);
+        }
+        sendJson(['success' => true, 'site' => $site]);
+        break;
+
+    case 'sites/add':
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input)) {
+            $input = $_POST;
+        }
+        $result = $siteManager->addSite($input);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
+    case 'sites/update':
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input)) {
+            $input = $_POST;
+        }
+        $name = $input['name'] ?? '';
+        if (empty($name)) {
+            sendJson(['success' => false, 'message' => '缺少 name 参数'], 400);
+        }
+        $result = $siteManager->updateSite($name, $input);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
+    case 'sites/delete':
+        $name = $_GET['name'] ?? $_POST['name'] ?? '';
+        if (empty($name)) {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $name = $input['name'] ?? '';
+        }
+        if (empty($name)) {
+            sendJson(['success' => false, 'message' => '缺少 name 参数'], 400);
+        }
+        $result = $siteManager->deleteSite($name);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
+    case 'sites/fetch_videos':
+        $name = $_GET['name'] ?? '';
+        $apiUrl = $_GET['api_url'] ?? '';
+        $page = intval($_GET['page'] ?? 1);
+        $limit = intval($_GET['limit'] ?? 20);
+
+        if (!empty($name)) {
+            $site = $siteManager->getSiteByName($name);
+            if ($site) {
+                $apiUrl = $site['api_url'];
+            }
+        }
+
+        if (empty($apiUrl)) {
+            sendJson(['success' => false, 'message' => '请指定资源站名称或采集接口地址'], 400);
+        }
+
+        $result = $siteManager->fetchVideos($apiUrl, $page, $limit);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
+    case 'sites/auto_learn/config':
+        $config = $siteManager->getAutoLearnConfig();
+        $lastLearn = $siteManager->getLastLearnTime();
+        sendJson([
+            'success' => true,
+            'config' => $config,
+            'last_learn_time' => $lastLearn
+        ]);
+        break;
+
+    case 'sites/auto_learn/config/save':
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input)) {
+            $input = $_POST;
+        }
+        $result = $siteManager->setAutoLearnConfig($input);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
+    case 'sites/auto_learn/run':
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input)) {
+            $input = $_POST;
+        }
+        $options = [
+            'max_sites' => $input['max_sites'] ?? null,
+            'videos_per_site' => $input['videos_per_site'] ?? null
+        ];
+        $result = $siteManager->runAutoLearn($ruleManager, $options);
+        sendJson($result, $result['success'] ? 200 : 400);
         break;
 
     default:

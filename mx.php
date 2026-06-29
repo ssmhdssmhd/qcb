@@ -81,6 +81,7 @@ try {
         $rootDir . '/src/CacheManager.php',
         $rootDir . '/gz/EnhancedAdRuleEngine.php',
         $rootDir . '/gz/DomainRuleManager.php',
+        $rootDir . '/gz/ResourceSiteManager.php',
     ];
 
     foreach ($requiredFiles as $file) {
@@ -110,6 +111,7 @@ try {
     $ruleManager = new DomainRuleManager();
     $updateManager = new UpdateManager();
     $authValidator = new AuthValidator();
+    $siteManager = new ResourceSiteManager();
 } catch (Throwable $e) {
     sendJsonResponse([
         'success' => false,
@@ -819,6 +821,121 @@ try {
             ]);
             break;
 
+        case 'sites/list':
+            $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
+            $sites = $siteManager->getAllSites($includePaused);
+            $config = $siteManager->getAutoLearnConfig();
+            $lastLearn = $siteManager->getLastLearnTime();
+            $shouldLearn = $siteManager->shouldAutoLearn();
+            sendJsonResponse([
+                'success' => true,
+                'sites' => $sites,
+                'total' => count($sites),
+                'auto_learn_config' => $config,
+                'last_learn_time' => $lastLearn,
+                'should_auto_learn' => $shouldLearn
+            ]);
+            break;
+
+        case 'sites/get':
+            $name = $_GET['name'] ?? '';
+            if (empty($name)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 name 参数'], 400);
+            }
+            $site = $siteManager->getSiteByName($name);
+            if ($site === null) {
+                sendJsonResponse(['success' => false, 'message' => '资源站不存在'], 404);
+            }
+            sendJsonResponse(['success' => true, 'site' => $site]);
+            break;
+
+        case 'sites/add':
+            $input = getInputJson();
+            $result = $siteManager->addSite($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/update':
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            if (empty($name)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 name 参数'], 400);
+            }
+            $result = $siteManager->updateSite($name, $input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/delete':
+            $input = getInputJson();
+            $name = $input['name'] ?? $_GET['name'] ?? '';
+            if (empty($name)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 name 参数'], 400);
+            }
+            $result = $siteManager->deleteSite($name);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/fetch_videos':
+            $name = $_GET['name'] ?? '';
+            $apiUrl = $_GET['api_url'] ?? '';
+            $page = intval($_GET['page'] ?? 1);
+            $limit = intval($_GET['limit'] ?? 20);
+
+            if (!empty($name)) {
+                $site = $siteManager->getSiteByName($name);
+                if ($site) {
+                    $apiUrl = $site['api_url'];
+                }
+            }
+
+            if (empty($apiUrl)) {
+                sendJsonResponse(['success' => false, 'message' => '请指定资源站名称或采集接口地址'], 400);
+            }
+
+            $result = $siteManager->fetchVideos($apiUrl, $page, $limit);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/auto_learn/config':
+            $config = $siteManager->getAutoLearnConfig();
+            $lastLearn = $siteManager->getLastLearnTime();
+            $shouldLearn = $siteManager->shouldAutoLearn();
+            sendJsonResponse([
+                'success' => true,
+                'config' => $config,
+                'last_learn_time' => $lastLearn,
+                'should_auto_learn' => $shouldLearn
+            ]);
+            break;
+
+        case 'sites/auto_learn/config/save':
+            $input = getInputJson();
+            $result = $siteManager->setAutoLearnConfig($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/auto_learn/run':
+            $input = getInputJson();
+            $options = [
+                'max_sites' => $input['max_sites'] ?? null,
+                'videos_per_site' => $input['videos_per_site'] ?? null
+            ];
+            $result = $siteManager->runAutoLearn($ruleManager, $options);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/auto_learn/status':
+            $lastLearn = $siteManager->getLastLearnTime();
+            $shouldLearn = $siteManager->shouldAutoLearn();
+            $config = $siteManager->getAutoLearnConfig();
+            sendJsonResponse([
+                'success' => true,
+                'last_learn_time' => $lastLearn,
+                'should_auto_learn' => $shouldLearn,
+                'config' => $config
+            ]);
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
@@ -830,6 +947,16 @@ try {
                     'rules/save' => '保存域名规则',
                     'rules/delete' => '删除域名规则',
                     'rules/generate' => '根据视频自动生成规则',
+                    'sites/list' => '获取资源站列表',
+                    'sites/get' => '获取单个资源站',
+                    'sites/add' => '添加资源站',
+                    'sites/update' => '更新资源站',
+                    'sites/delete' => '删除资源站',
+                    'sites/fetch_videos' => '从资源站获取视频列表',
+                    'sites/auto_learn/config' => '获取自动学习配置',
+                    'sites/auto_learn/config/save' => '保存自动学习配置',
+                    'sites/auto_learn/run' => '执行自动学习',
+                    'sites/auto_learn/status' => '自动学习状态',
                     'skip' => '去广告接口',
                     'mxjx' => '去广告m3u8输出',
                     'update/version' => '获取当前版本',

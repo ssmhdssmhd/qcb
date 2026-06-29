@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '1.7.1';
+    private $currentVersion = '1.9.0';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
@@ -23,8 +23,12 @@ class UpdateManager
         'src/AuthConfig.php',
         'src/CryptoUtil.php',
         'src/UpdateManager.php',
+        'src/CacheManager.php',
         'gz/DomainRuleManager.php',
-        'gz/EnhancedAdRuleEngine.php'
+        'gz/EnhancedAdRuleEngine.php',
+        'gz/ResourceSiteManager.php',
+        'gz/sites_config.php',
+        'gz/gzgx.php'
     ];
     private $skipPhpCheckFiles = [
         'mxadmin.php'
