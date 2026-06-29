@@ -536,8 +536,18 @@ try {
 
             $result = $skipper->process($url);
 
+            $stats = $result['stats'] ?? [];
+            $adPercentage = $stats['adPercentage'] ?? 0;
+            if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
+                $newM3U8Content = file_get_contents($url);
+                if ($newM3U8Content === false) {
+                    $newM3U8Content = $result['output'];
+                }
+            } else {
+                $newM3U8Content = $result['output'];
+            }
+
             $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
-            $newM3U8Content = $result['output'];
 
             if ($isRemote) {
                 $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
@@ -615,8 +625,18 @@ try {
 
             $result = $skipper->process($url);
 
+            $stats = $result['stats'] ?? [];
+            $adPercentage = $stats['adPercentage'] ?? 0;
+            if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
+                $newM3U8Content = file_get_contents($url);
+                if ($newM3U8Content === false) {
+                    $newM3U8Content = $result['output'];
+                }
+            } else {
+                $newM3U8Content = $result['output'];
+            }
+
             $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
-            $newM3U8Content = $result['output'];
 
             if ($isRemote) {
                 $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];

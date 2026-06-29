@@ -1072,22 +1072,65 @@ header('Expires: 0');
                     container: document.getElementById('dplayer'),
                     video: {
                         url: mxjxUrl,
-                        type: 'hls',
-                        preload: 'auto'
-                    },
-                    hls: {
-                        xhrSetup: function(xhr, url) {
-                            xhr.withCredentials = false;
+                        type: 'customHls',
+                        customType: {
+                            customHls: function(video, player) {
+                                if (Hls.isSupported()) {
+                                    const hls = new Hls({
+                                        xhrSetup: function(xhr, url) {
+                                            xhr.withCredentials = false;
+                                        },
+                                        startLevel: -1,
+                                        preloadFile: 3,
+                                        lowLatencyMode: false,
+                                        backBufferLength: 30,
+                                        maxBufferLength: 60,
+                                        maxMaxBufferLength: 120,
+                                        enableWorker: true,
+                                        fragLoadingTimeOut: 20000,
+                                        manifestLoadingTimeOut: 10000
+                                    });
+                                    hls.loadSource(video.src);
+                                    hls.attachMedia(video);
+                                    player.hls = hls;
+
+                                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频解析完成，正在加载...</span>';
+                                        if (player.video && player.video.paused) {
+                                            player.video.play().catch(function() {
+                                                document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
+                                            });
+                                        }
+                                    });
+
+                                    hls.on(Hls.Events.ERROR, function(event, data) {
+                                        if (data.fatal) {
+                                            let errMsg = '视频加载失败';
+                                            switch (data.type) {
+                                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                                    errMsg = '网络错误: ' + (data.details || '无法加载视频资源');
+                                                    break;
+                                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                                    errMsg = '媒体错误: ' + (data.details || '视频解码失败');
+                                                    try {
+                                                        hls.recoverMediaError();
+                                                        errMsg += '，正在尝试恢复...';
+                                                    } catch(e) {}
+                                                    break;
+                                                default:
+                                                    errMsg = '播放错误: ' + (data.details || data.type);
+                                            }
+                                            statusUpdated = true;
+                                            document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">' + errMsg + '</span>';
+                                            showToast(errMsg, 'error');
+                                        }
+                                    });
+                                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                                    video.src = mxjxUrl;
+                                }
+                            }
                         },
-                        startLevel: -1,
-                        preloadFile: 3,
-                        lowLatencyMode: false,
-                        backBufferLength: 30,
-                        maxBufferLength: 60,
-                        maxMaxBufferLength: 120,
-                        enableWorker: true,
-                        fragLoadingTimeOut: 20000,
-                        manifestLoadingTimeOut: 10000
+                        preload: 'auto'
                     },
                     autoplay: true,
                     muted: false,
@@ -1150,31 +1193,6 @@ header('Expires: 0');
                     if (!statusUpdated) {
                         document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器错误，请检查视频链接</span>';
                         showToast('播放器错误，请检查视频链接', 'error');
-                    }
-                });
-
-                dp.on('hls_error', function(event, data) {
-                    if (data && data.fatal) {
-                        let errMsg = '视频加载失败';
-                        switch (data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                errMsg = '网络错误: ' + (data.details || '无法加载视频资源');
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                errMsg = '媒体错误: ' + (data.details || '视频解码失败');
-                                try {
-                                    if (dp && dp.hls) {
-                                        dp.hls.recoverMediaError();
-                                        errMsg += '，正在尝试恢复...';
-                                    }
-                                } catch(e) {}
-                                break;
-                            default:
-                                errMsg = '播放错误: ' + (data.details || data.type);
-                        }
-                        statusUpdated = true;
-                        document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">' + errMsg + '</span>';
-                        showToast(errMsg, 'error');
                     }
                 });
 

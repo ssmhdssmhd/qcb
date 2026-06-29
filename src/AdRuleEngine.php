@@ -107,9 +107,9 @@ class AdRuleEngine {
         if ($this->options['checkRepetitiveDuration']) {
             $this->rules[] = [
                 'name' => 'repetitive-duration',
-                'description' => '重复出现相近时长的片段，可能是广告',
+                'description' => '重复出现相近时长的短片段，可能是广告',
                 'check' => function($segment, $index, $segments) {
-                    if (count($segments) < 10) return false;
+                    if (count($segments) < 20) return false;
                     
                     $duration = $segment['duration'];
                     $tolerance = $this->options['durationTolerance'];
@@ -130,12 +130,28 @@ class AdRuleEngine {
                     $bucketStats = $stats[$durationKey];
                     $similarCount = $bucketStats['count'];
                     $maxConsecutive = $bucketStats['maxConsecutive'];
+                    $totalCount = count($segments);
                     
-                    $isShortAd = $duration >= 1.5 && $duration <= 8;
-                    $similarRatio = $similarCount / count($segments);
+                    $isShort = $duration >= 1 && $duration <= 6;
+                    $similarRatio = $similarCount / $totalCount;
                     
-                    return ($similarCount >= 3 && $similarRatio > 0.3 && $isShortAd)
-                        || ($maxConsecutive >= 3 && $isShortAd);
+                    $isVeryShortCluster = $duration <= 4 && $similarRatio >= 0.15 && $similarRatio <= 0.5;
+                    $isShortConsecutiveAd = $isShort && $maxConsecutive >= 5 && $similarRatio <= 0.6;
+                    
+                    $hasOtherDurationClusters = false;
+                    foreach ($stats as $key => $bStats) {
+                        if ($key !== $durationKey && $bStats['count'] / $totalCount >= 0.15) {
+                            $hasOtherDurationClusters = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!$hasOtherDurationClusters && $similarRatio > 0.7) {
+                        return false;
+                    }
+                    
+                    return ($isVeryShortCluster && $hasOtherDurationClusters)
+                        || ($isShortConsecutiveAd && $hasOtherDurationClusters);
                 }
             ];
         }
