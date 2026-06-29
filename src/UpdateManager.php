@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '1.3.0';
+    private $currentVersion = '1.4.0';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';

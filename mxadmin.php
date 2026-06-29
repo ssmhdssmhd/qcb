@@ -87,6 +87,10 @@ header('Expires: 0');
             font-size: 14px;
             transition: all 0.3s;
         }
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 12px;
+        }
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -297,6 +301,40 @@ header('Expires: 0');
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            color: white;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+        .copy-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+        .access-item {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .access-item code {
+            cursor: pointer;
+            user-select: all;
+            word-break: break-all;
+        }
+        .access-item code:hover {
+            text-decoration: underline;
+        }
         .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 10px 0; }
         .bar {
             flex: 1;
@@ -342,21 +380,33 @@ header('Expires: 0');
 
     <div id="accessPreview" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px 30px;font-size:13px">
         <div style="display:flex;flex-wrap:wrap;gap:20px">
-            <div>
+            <div style="flex:1;min-width:200px">
                 <div style="opacity:0.8;font-size:11px;margin-bottom:4px">后台管理</div>
-                <code id="preview-admin"></code>
+                <div class="access-item">
+                    <code id="preview-admin" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-admin').textContent)">复制</button>
+                </div>
             </div>
-            <div>
+            <div style="flex:1;min-width:200px">
                 <div style="opacity:0.8;font-size:11px;margin-bottom:4px">API接口</div>
-                <code id="preview-api"></code>
+                <div class="access-item">
+                    <code id="preview-api" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-api').textContent)">复制</button>
+                </div>
             </div>
-            <div>
+            <div style="flex:1;min-width:200px">
                 <div style="opacity:0.8;font-size:11px;margin-bottom:4px">直接解析</div>
-                <code id="preview-parse"></code>
+                <div class="access-item">
+                    <code id="preview-parse" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-parse').textContent)">复制</button>
+                </div>
             </div>
-            <div>
+            <div style="flex:1;min-width:200px">
                 <div style="opacity:0.8;font-size:11px;margin-bottom:4px">播放地址</div>
-                <code id="preview-player"></code>
+                <div class="access-item">
+                    <code id="preview-player" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-player').textContent)">复制</button>
+                </div>
             </div>
         </div>
     </div>
@@ -404,11 +454,20 @@ header('Expires: 0');
                 </div>
 
                 <div class="card">
+                    <div class="card-title">无广告播放链接</div>
+                    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+                        <code id="analyzeMxjxUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;flex:1;min-width:200px;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                        <button class="btn btn-sm btn-secondary" onclick="copyText(document.getElementById('analyzeMxjxUrl').textContent)">复制链接</button>
+                        <button class="btn btn-sm btn-primary" onclick="window.open(document.getElementById('analyzeMxjxUrl').textContent, '_blank')">新窗口播放</button>
+                        <button class="btn btn-sm btn-success" onclick="playVideo()">内置播放器播放</button>
+                    </div>
+                </div>
+
+                <div class="card">
                     <div class="card-title">操作</div>
                     <div style="display:flex;gap:12px;flex-wrap:wrap">
                         <button class="btn btn-secondary" onclick="generateRules()">自动生成规则</button>
                         <button class="btn btn-success" onclick="goToRules()">查看规则管理</button>
-                        <button class="btn btn-primary" onclick="playVideo()">无广告播放</button>
                     </div>
                 </div>
             </div>
@@ -672,6 +731,13 @@ header('Expires: 0');
         }
 
         function renderAnalysis(data) {
+            const url = document.getElementById('analyzeUrl').value.trim();
+            const mxjxUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
+            const analyzeMxjxEl = document.getElementById('analyzeMxjxUrl');
+            if (analyzeMxjxEl) {
+                analyzeMxjxEl.textContent = mxjxUrl;
+            }
+
             const stats = data.stats;
             const pct = stats.totalSegments > 0 ? (stats.adSegments / stats.totalSegments * 100).toFixed(1) : 0;
             document.getElementById('statsGrid').innerHTML = `
@@ -834,7 +900,12 @@ header('Expires: 0');
             const mxjxUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
             document.getElementById('playerContainer').style.display = 'block';
             document.getElementById('playInfo').innerHTML = `
-                无广告链接: <code style="background:#f5f7fa;padding:2px 6px;border-radius:4px;word-break:break-all">${mxjxUrl}</code>
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+                    <span style="color:#606266">无广告链接:</span>
+                    <code id="playMxjxUrl" style="background:#f5f7fa;padding:4px 8px;border-radius:4px;word-break:break-all;flex:1;min-width:200px;cursor:pointer" onclick="copyText('${mxjxUrl}')" title="点击复制">${mxjxUrl}</code>
+                    <button class="btn btn-sm btn-secondary" onclick="copyText('${mxjxUrl}')">复制链接</button>
+                    <button class="btn btn-sm btn-primary" onclick="window.open('${mxjxUrl}', '_blank')">新窗口打开</button>
+                </div>
                 <div id="playStatus" style="margin-top:8px;color:#909399;font-size:12px">正在加载视频...</div>
             `;
 
@@ -1366,6 +1437,18 @@ header('Expires: 0');
             resultEl.innerHTML = '<span style="color:#409eff">正在清理所有缓存...</span>';
             const logs = [];
             try {
+                try {
+                    const res = await fetch(API_BASE + '?action=update/clear_cache');
+                    const data = await res.json();
+                    if (data.success) {
+                        logs.push('服务器 PHP 缓存: 已清理');
+                    } else {
+                        logs.push('服务器 PHP 缓存: 清理失败 - ' + (data.message || '未知错误'));
+                    }
+                } catch (e) {
+                    logs.push('服务器 PHP 缓存: 清理失败 - ' + e.message);
+                }
+
                 if ('caches' in window) {
                     const cacheNames = await caches.keys();
                     await Promise.all(cacheNames.map(name => caches.delete(name)));
@@ -1584,10 +1667,42 @@ header('Expires: 0');
             });
         });
 
+        function copyText(text) {
+            if (!text) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast('复制成功', 'success');
+                }).catch(() => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-1000px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast('复制成功', 'success');
+            } catch (e) {
+                showToast('复制失败，请手动复制', 'error');
+            }
+            document.body.removeChild(textarea);
+        }
+
         function initAccessPreview() {
             const protocol = window.location.protocol;
             const host = window.location.host;
-            const base = protocol + '//' + host;
+            const path = window.location.pathname;
+            const baseDir = path.substring(0, path.lastIndexOf('/'));
+            const base = protocol + '//' + host + baseDir;
 
             document.getElementById('preview-admin').textContent = base + '/mxadmin.php';
             document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=xxx';
