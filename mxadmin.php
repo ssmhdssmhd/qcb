@@ -433,7 +433,7 @@ header('Expires: 0');
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">去广告接口</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">网页播放器已去插播去广告接口</div>
                 <div class="access-item">
                     <code id="preview-parse" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-parse').textContent)">复制</button>
