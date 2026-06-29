@@ -315,6 +315,15 @@ class UpdateManager
         $versionFile = $this->rootDir . '/version.txt';
         file_put_contents($versionFile, $checkResult['latest_commit']);
 
+        if (function_exists('opcache_reset')) {
+            opcache_reset();
+        }
+        if (function_exists('apc_clear_cache')) {
+            apc_clear_cache();
+        }
+
+        clearstatcache(true);
+
         unlink($tempFile);
         $this->rrmdir($extractDir);
 
