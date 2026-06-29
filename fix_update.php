@@ -41,6 +41,15 @@ $excludeFromOverwrite = [
     'auth_config.php',
 ];
 
+$oldFilesToDelete = [
+    'sq.txt',
+    'version.txt',
+    'auth_config.json',
+    'admin.html',
+    'mxadmin.html',
+    'admin_api.php',
+];
+
 echo "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 echo "<title>M3U8 去广告工具 - 一键修复</title>";
 echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#f5f7fa}h2{color:#667eea}.success{color:#67c23a}.error{color:#f56c6c}.info{color:#409eff}.warn{color:#e6a23c}.card{background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.1);margin-bottom:15px}</style>";
@@ -99,6 +108,18 @@ foreach ($filesToUpdate as $file) {
     echo "<p class='success'>✓ $file <span style='color:#909399'>- {$size} 字节</span></p>";
 }
 
+echo "</div><div class='card'>";
+echo "<h3>清理旧文件</h3>";
+foreach ($oldFilesToDelete as $file) {
+    $path = $rootDir . '/' . $file;
+    if (file_exists($path)) {
+        if (@unlink($path)) {
+            echo "<p class='success'>✓ 删除旧文件: $file</p>";
+        } else {
+            echo "<p class='warn'>⚠ 删除失败: $file (权限不足)</p>";
+        }
+    }
+}
 echo "</div><div class='card'>";
 echo "<h3>修复结果</h3>";
 echo "<p class='success'>成功: $successCount 个文件</p>";
