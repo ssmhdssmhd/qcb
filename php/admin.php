@@ -1342,10 +1342,15 @@
             const host = window.location.host;
             const base = protocol + '//' + host;
 
-            document.getElementById('preview-admin').textContent = base + '/mxadmin.html';
+            document.getElementById('preview-admin').textContent = base + '/admin.php';
             document.getElementById('preview-api').textContent = base + '/admin_api.php?action=analyze&url=xxx';
             document.getElementById('preview-parse').textContent = base + '/?url=xxx';
             document.getElementById('preview-player').textContent = base + '/mxjx?url=xxx';
+            
+            // 显示备用后台入口
+            const previewAdminAlt = document.createElement('div');
+            previewAdminAlt.innerHTML = '<div style="opacity:0.8;font-size:11px;margin-bottom:4px">备用后台</div><code>' + base + '/mxadmin.html</code>';
+            document.getElementById('accessPreview').querySelector('div').appendChild(previewAdminAlt);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
