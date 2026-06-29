@@ -417,6 +417,10 @@
             <div class="card" id="ruleEditor" style="display:none">
                 <div class="card-title" id="ruleEditorTitle">编辑规则</div>
                 <div class="form-group">
+                    <label>资源名称</label>
+                    <input type="text" id="ruleName" placeholder="例如：芒果TV">
+                </div>
+                <div class="form-group">
                     <label>域名</label>
                     <input type="text" id="ruleDomain" placeholder="例如：v.lfthirtytwo.com">
                 </div>
@@ -819,20 +823,24 @@
                 document.getElementById('rulesTable').innerHTML = '<div class="empty">暂无域名规则</div>';
                 return;
             }
-            let html = '<table class="rules-table"><thead><tr><th>域名</th><th>时长规则</th><th>DISCON规则</th><th>序列号跳跃</th><th>更新时间</th><th>操作</th></tr></thead><tbody>';
+            let html = '<table class="rules-table"><thead><tr><th>资源名称</th><th>域名</th><th>时长规则</th><th>DISCON规则</th><th>序列号跳跃</th><th>更新时间</th><th>备注</th><th>操作</th></tr></thead><tbody>';
             for (const domain of domains) {
                 const r = rules[domain];
+                const name = r.name || domain;
+                const note = r.note || '-';
                 const durCount = (r.duration_rules || []).filter(x => x.enabled).length;
                 const disCount = (r.discontinuity_rules || []).filter(x => x.enabled).length;
                 const seqCount = (r.sequence_jump_rules || []).filter(x => x.enabled).length;
                 const mtime = r._filemtime ? new Date(r._filemtime * 1000).toLocaleString() : '-';
                 html += `
                     <tr>
+                        <td><span style="color:#606266">${name}</span></td>
                         <td><strong>${domain}</strong></td>
                         <td><span class="tag tag-blue">${durCount}条</span></td>
                         <td>${disCount > 0 ? '<span class="tag tag-orange">启用</span>' : '<span style="color:#c0c4cc">未启用</span>'}</td>
                         <td><span class="tag tag-red">${seqCount}条</span></td>
                         <td style="color:#909399;font-size:12px">${mtime}</td>
+                        <td style="color:#909399;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">${note}</td>
                         <td>
                             <button class="btn btn-sm btn-secondary" onclick="editRule('${domain}')">编辑</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteRule('${domain}')">删除</button>
@@ -847,6 +855,7 @@
         function showAddRule() {
             editingRules = {
                 domain: '',
+                name: '',
                 duration_rules: [{ name: 'short_segment', enabled: true, type: 'duration', operator: '<', threshold: 2, reason: '极短片段 (<2秒) 可能是广告', weight: 30 }],
                 discontinuity_rules: [{ name: 'discontinuity', enabled: false, type: 'discontinuity', reason: 'DISCONTINUITY 标记表示插播切换', weight: 80 }],
                 sequence_jump_rules: [],
@@ -871,6 +880,7 @@
         function showRuleEditor(rules, isNew) {
             document.getElementById('ruleEditor').style.display = 'block';
             document.getElementById('ruleEditorTitle').textContent = isNew ? '新增规则' : '编辑规则';
+            document.getElementById('ruleName').value = rules.name || '';
             document.getElementById('ruleDomain').value = rules.domain || '';
             document.getElementById('ruleNote').value = rules.note || '';
 
@@ -1010,6 +1020,7 @@
             if (!domain) { showToast('请输入域名', 'error'); return; }
             if (!editingRules) editingRules = {};
             editingRules.domain = domain;
+            editingRules.name = document.getElementById('ruleName').value.trim();
             editingRules.note = document.getElementById('ruleNote').value;
             const disEnabled = document.getElementById('discontinuityEnabled').checked;
             if (!editingRules.discontinuity_rules || editingRules.discontinuity_rules.length === 0) {
@@ -1314,17 +1325,6 @@
             }
         }
 
-        function initAccessPreview() {
-            const protocol = window.location.protocol;
-            const host = window.location.host;
-            const base = protocol + '//' + host;
-
-            document.getElementById('preview-admin').textContent = base + '/admin.html';
-            document.getElementById('preview-api').textContent = base + '/admin_api.php?action=analyze&url=xxx';
-            document.getElementById('preview-parse').textContent = base + '/?url=xxx';
-            document.getElementById('preview-player').textContent = base + '/index.php/mxjx?url=xxx';
-        }
-
         document.querySelectorAll('.nav-item').forEach(item => {
             const origHandler = item.onclick;
             item.addEventListener('click', () => {
@@ -1336,6 +1336,17 @@
                 }
             });
         });
+
+        function initAccessPreview() {
+            const protocol = window.location.protocol;
+            const host = window.location.host;
+            const base = protocol + '//' + host;
+
+            document.getElementById('preview-admin').textContent = base + '/mxadmin.html';
+            document.getElementById('preview-api').textContent = base + '/admin_api.php?action=analyze&url=xxx';
+            document.getElementById('preview-parse').textContent = base + '/?url=xxx';
+            document.getElementById('preview-player').textContent = base + '/mxjx?url=xxx';
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             refreshRules();
