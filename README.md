@@ -1,161 +1,180 @@
-# m3u8-ad-skipper (PHP 版本)
+# M3U8 广告分析与去广告系统
 
-> M3U8 播放列表去广告工具 - 自动识别并移除插播广告片段，生成干净的播放链接
+> M3U8 播放列表广告分析与去广告工具 - 自动识别并移除插播广告片段，支持域名规则管理、自动学习、动态规则更新
 
 ## 功能特性
 
-- 🎯 **多维度广告检测** - 支持关键词、文件名模式、时长范围、不连续标记等多种检测规则
+- 🎯 **多维度广告检测** - 支持关键词、文件名模式、时长范围、不连续标记、序列号跳跃等多种检测规则
 - 🧠 **智能聚类算法** - 自动识别广告片段集群，减少误判
-- ⚡ **高性能解析** - 纯 PHP 实现，无需外部依赖
-- 📦 **多种输入输出** - 支持本地文件、远程 URL，输出 m3u8 或 JSON 格式
-- 🌐 **Web API 服务** - 支持通过 URL 参数直接调用，返回 JSON
-- 🔧 **高度可配置** - 灵活的规则配置，支持自定义规则
-- 📊 **详细统计** - 展示移除的广告数量、时长、占比等信息
+- ⚡ **高性能解析** - 纯 PHP 实现，无需外部依赖，优化 CURL 请求和缓存机制
+- 📊 **视频广告分析** - 详细的广告分析报告，支持可视化展示
+- 🎬 **内置播放器** - 集成 DPlayer + hls.js，支持无广告在线播放
+- 🔧 **域名规则管理** - 按域名管理广告规则，支持快速模式去广告
+- 📚 **自动学习机制** - 每次分析自动学习优化规则，支持重复学习迭代
+- 📦 **规则导入导出** - 支持 JSON 格式的规则导入导出，方便备份和分享
+- 🔄 **动态规则更新** - 提供 gzgx.php 接口，支持远程动态更新规则
+- 🌐 **Web API 服务** - 支持通过 URL 参数直接调用，返回 JSON 或 M3U8
 - 🔓 **CORS 支持** - 支持跨域访问，可直接在前端调用
+- 📱 **响应式界面** - 美观的后台管理界面，支持移动端访问
 
 ## 快速开始
 
 ### 部署方式
 
-将 `php/` 目录下的所有文件上传到你的 PHP 网站根目录或任意子目录即可使用。
+将项目所有文件上传到你的 PHP 网站根目录或任意子目录即可使用。
 
 ### 目录结构
 
 ```
-php/
-├── index.php              # Web 接口入口
+├── mx.php                 # API 接口入口
+├── mxadmin.php            # 后台管理页面
+├── index.php              # 首页路由
+├── router.php             # 路由配置
+├── gz/
+│   ├── DomainRuleManager.php   # 域名规则管理器
+│   ├── EnhancedAdRuleEngine.php # 增强版广告规则引擎
+│   ├── gzgx.php                # 动态规则更新接口
+│   └── rules_*.php             # 各域名规则文件
 ├── src/
-│   ├── M3U8AdSkipper.php  # 主类
+│   ├── M3U8AdSkipper.php  # 主类 - M3U8 去广告
 │   ├── M3U8Parser.php     # M3U8 解析器
 │   ├── AdRuleEngine.php   # 广告规则引擎
 │   ├── AdFilter.php       # 广告过滤器
-│   └── OutputGenerator.php# 输出生成器
-└── test/
-    ├── test.php           # 测试套件
-    └── sample_*.m3u8      # 示例文件
+│   ├── CacheManager.php   # 缓存管理器
+│   ├── UpdateManager.php  # 系统更新管理器
+│   ├── CryptoUtil.php     # 加密工具
+│   ├── AuthConfig.php     # 授权配置
+│   └── AuthValidator.php  # 授权验证器
+├── cache/                 # 缓存目录
+└── README.md              # 项目说明
 ```
+
+## 后台管理
+
+访问 `mxadmin.php` 进入后台管理页面，包含以下功能模块：
+
+### 1. 视频分析
+
+- 输入 M3U8 视频链接进行广告分析
+- 详细的广告片段统计和可视化展示
+- **快速模式**：已有域名规则时直接使用规则快速去广告
+- **自动学习**：分析时自动学习并更新规则
+- 支持无广告播放链接生成和复制
+- 内置播放器测试
+
+### 2. 规则管理
+
+- 按域名管理广告规则
+- 支持时长规则、DISCONTINUITY 规则、序列号跳跃规则、文件名模式
+- 规则学习次数统计
+- 单条规则导出
+- 全部规则导出/导入
+
+### 3. 无广告播放
+
+- 输入视频链接直接无广告播放
+- 支持复制无广告链接
+- 内置 DPlayer 播放器
+
+### 4. 系统更新
+
+- 在线检查更新
+- 一键系统更新
+- 缓存清理功能
+- PHP 缓存自动清理
 
 ## Web API 使用
 
 ### 接口地址
 
-直接部署到网站后访问：
 ```
-http://你的域名/?url=<m3u8地址>
-```
-
-如果部署在子目录（如 `m3u8/`）：
-```
-http://你的域名/m3u8/?url=<m3u8地址>
+http://你的域名/mx.php?action=<action>&...
 ```
 
 ### 接口列表
 
-#### 1. 去广告接口
+#### 1. 视频分析接口
 
-**GET** `/?url=<m3u8地址>` 或 **GET** `/api/skip?url=<m3u8地址>`
+**GET** `/mx.php?action=analyze&url=<m3u8地址>`
 
 **请求参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `url` | string | 是 | M3U8 播放列表地址（URL 编码） |
+| `url` | string | 是 | M3U8 播放列表地址 |
+| `auto_learn` | bool | 否 | 是否自动学习，默认 true |
 
-**响应示例：**
-
+**响应示例（快速模式）：**
 ```json
 {
   "success": true,
-  "input": "https://example.com/playlist.m3u8",
-  "processTime": "123ms",
+  "fastMode": true,
+  "hasDomainRules": true,
+  "learn_count": 5,
+  "message": "检测到已有域名规则，使用规则快速去广告",
+  "domain": "v.example.com",
   "stats": {
-    "totalSegments": 19,
-    "keptSegments": 10,
-    "removedSegments": 9,
-    "originalDuration": 124.4,
-    "filteredDuration": 86.4,
-    "savedDuration": 38,
-    "adPercentage": 30.55
-  },
-  "playlist": {
-    "m3u8": "#EXTM3U\n#EXT-X-VERSION:3\n...",
-    "format": "m3u8",
-    "segmentCount": 10
-  },
-  "removed": [
-    {
-      "uri": "ad_001.ts",
-      "duration": 5,
-      "title": "ad_pre_roll_01",
-      "matchedRules": ["keyword-match", "filename-pattern"]
-    }
-  ]
+    "totalSegments": 695,
+    "adSegments": 482,
+    "keptSegments": 213,
+    "adPercentage": 68.73
+  }
 }
 ```
 
-**错误响应：**
+#### 2. 去广告接口（M3U8输出）
 
-```json
-{
-  "success": false,
-  "error": "Bad Request",
-  "message": "缺少 url 参数",
-  "example": "/?url=https://example.com/playlist.m3u8"
-}
-```
+**GET** `/mx.php?action=mxjx&url=<m3u8地址>`
 
-#### 2. 健康检查
+直接返回去广告后的 M3U8 播放列表，可用于播放器直接播放。
 
-**GET** `/health` 或 **GET** `/api/health`
+#### 3. 去广告信息接口（JSON输出）
 
-**响应示例：**
+**GET** `/mx.php?action=mxjx/info&url=<m3u8地址>`
 
-```json
-{
-  "status": "ok",
-  "service": "m3u8-ad-skipper",
-  "version": "1.1.0-php",
-  "language": "PHP",
-  "timestamp": "2026-06-27T00:00:00+00:00"
-}
-```
+返回去广告结果的 JSON 格式信息。
 
-### 使用示例
+#### 4. 规则列表
 
-**浏览器直接访问：**
-```
-http://你的域名/?url=https%3A%2F%2Fexample.com%2Fplaylist.m3u8
-```
+**GET** `/mx.php?action=rules/list`
 
-**JavaScript fetch：**
-```javascript
-const m3u8Url = 'https://example.com/playlist.m3u8';
-const apiUrl = `http://你的域名/?url=${encodeURIComponent(m3u8Url)}`;
+#### 5. 获取单条规则
 
-fetch(apiUrl)
-  .then(res => res.json())
-  .then(data => {
-    console.log('广告占比:', data.stats.adPercentage + '%');
-    console.log('干净的播放列表:', data.playlist.m3u8);
-  });
-```
+**GET** `/mx.php?action=rules/get&domain=<域名>`
 
-## PHP 代码中使用
+#### 6. 保存规则
 
-```php
-<?php
-require_once 'src/M3U8AdSkipper.php';
+**POST** `/mx.php?action=rules/save`
 
-$skipper = new M3U8AdSkipper();
-$result = $skipper->process('https://example.com/playlist.m3u8');
+#### 7. 自动生成规则
 
-echo '原始片段数: ' . $result['stats']['totalSegments'] . "\n";
-echo '保留片段数: ' . $result['stats']['keptSegments'] . "\n";
-echo '移除片段数: ' . $result['stats']['removedSegments'] . "\n";
-echo '广告占比: ' . $result['stats']['adPercentage'] . "%\n";
-echo "\n过滤后的播放列表:\n";
-echo $result['output'];
-```
+**GET** `/mx.php?action=rules/generate&url=<视频地址>`
+
+#### 8. 规则学习
+
+**GET** `/mx.php?action=rules/learn&url=<视频地址>`
+
+#### 9. 规则导出
+
+**GET** `/mx.php?action=rules/export[&domain=<域名>][&download=1]`
+
+#### 10. 规则导入
+
+**POST** `/mx.php?action=rules/import`
+
+## 动态规则更新接口（gzgx.php）
+
+访问 `/gz/gzgx.php` 进行动态规则管理：
+
+| 接口 | 说明 |
+|------|------|
+| `?action=info` | 获取规则概览信息 |
+| `?action=get&domain=xxx` | 获取指定域名规则 |
+| `?action=update&domain=xxx` | 更新指定域名规则（POST） |
+| `?action=learn&url=xxx` | 从视频链接学习更新规则 |
+| `?action=export&domain=xxx` | 导出规则 |
+| `?action=import` | 导入规则 |
+| `?action=delete&domain=xxx` | 删除规则 |
 
 ## 广告检测规则
 
@@ -163,96 +182,55 @@ echo $result['output'];
 
 | 规则名称 | 说明 | 默认状态 |
 |---------|------|---------|
-| `short-duration` | 片段时长过短（< minSegmentDuration） | ✅ 启用 |
-| `long-duration` | 片段时长过长（> maxSegmentDuration） | ❌ 禁用 |
+| `short-duration` | 片段时长过短 | ✅ 启用 |
+| `long-duration` | 片段时长过长 | ❌ 禁用 |
 | `keyword-match` | 标题或文件名包含广告关键词 | ✅ 启用 |
 | `filename-pattern` | 文件名匹配广告命名正则模式 | ✅ 启用 |
-| `discontinuity` | 存在 EXT-X-DISCONTINUITY 标记 | ❌ 禁用 |
-| `repetitive-duration` | 重复出现相同时长的短片段 | ❌ 禁用 |
+| `discontinuity` | 存在 EXT-X-DISCONTINUITY 标记 | 可配置 |
+| `repetitive-duration` | 重复出现相同时长的短片段 | 可配置 |
+| `sequence-jump` | 序列号跳跃检测 | 可配置 |
 
-### 默认广告关键词
+### 域名规则
 
-```
-ad, ads, advert, advertisement,
-pre-roll, mid-roll, post-roll,
-preroll, midroll, postroll,
-commercial, promo, sponsor,
-广告, 插播, 贴片, 片头, 片尾
-```
+按域名自定义规则，支持：
 
-### 默认文件名模式
+- **时长规则**：基于片段时长判断广告
+- **DISCONTINUITY 规则**：基于不连续标记判断插播
+- **序列号跳跃规则**：基于序列号跳跃判断广告段
+- **文件名模式**：基于文件名正则匹配
 
-```
-/ad[s]?[-_]?\d+/i
-/advert/i
-/commercial/i
-/pre[-_]?roll/i
-/mid[-_]?roll/i
-/post[-_]?roll/i
-/sponsor/i
-/^ad\//i
-```
+### 自动学习机制
 
-### 自定义配置
+每次分析视频时自动学习优化规则：
 
-```php
-<?php
-$skipper = new M3U8AdSkipper([
-    'minSegmentDuration' => 3,
-    'maxSegmentDuration' => 20,
-    'adKeywords' => ['自定义广告关键词'],
-    'checkDiscontinuity' => true
-]);
-```
+- 统计广告片段时长分布，优化时长阈值
+- 根据广告占比动态调整广告判定阈值
+- 提取广告文件名前缀，生成文件名模式
+- 记录学习次数和历史统计数据
+- 最多保留最近 10 次学习历史
 
-### 自定义规则
+## 缓存机制
 
-```php
-<?php
-$skipper = new M3U8AdSkipper();
-$engine = $skipper->getRuleEngine();
-
-$engine->addRule([
-    'name' => 'custom-rule',
-    'description' => '自定义广告检测规则',
-    'check' => function($segment, $index, $segments) {
-        return strpos($segment['uri'], 'my-ad-prefix') !== false;
-    }
-]);
-```
-
-## 本地开发测试
-
-使用 PHP 内置服务器：
-
-```bash
-cd php
-php -S 0.0.0.0:8000 index.php
-```
-
-然后访问：
-- http://localhost:8000/health
-- http://localhost:8000/?url=test/sample_with_ads.m3u8
-
-运行测试套件：
-
-```bash
-php test/test.php
-```
+- M3U8 解析结果缓存 2 分钟
+- 去广告结果缓存 2 分钟
+- 支持 OPcache / APC 缓存
+- 更新时自动清理所有缓存
 
 ## 环境要求
 
-- PHP 5.6 或更高版本
+- PHP 7.0 或更高版本
 - 启用 cURL 扩展（用于远程 URL 请求）
 - 启用 mbstring 扩展（用于多字节字符串处理）
+- 启用 json 扩展
+- cache/ 目录有写入权限
 
 ## 注意事项
 
 1. **广告检测准确率** - 广告检测基于规则匹配，可能存在误判或漏判。建议根据实际使用场景调整规则参数。
 2. **加密流** - 当前版本不处理 DRM 加密的流。
-3. **主播放列表** - 对于 master playlist，仅传递清晰度信息，需要分别处理每个媒体播放列表。
+3. **主播放列表** - 自动追踪 Master Playlist 到实际媒体播放列表。
 4. **网络请求** - 处理远程 URL 时需要网络连接，支持 HTTP 和 HTTPS。
-5. **文件权限** - 确保 PHP 有读取本地文件的权限。
+5. **规则学习** - 自动学习功能会根据分析结果优化规则，建议定期检查规则准确性。
 
 ## 许可证
 
@@ -260,11 +238,46 @@ MIT License
 
 ## 版本历史
 
+### v1.8.0 (2026-06-29)
+
+- ✨ 新增自动学习机制，每次分析自动优化规则
+- ✨ 新增规则导入导出功能（JSON格式）
+- ✨ 新增动态规则更新接口 gzgx.php
+- ✨ 新增域名规则学习次数统计
+- ✨ 视频分析页面新增学习状态显示
+- ✨ 规则管理页面新增导入导出按钮
+- ⚡ 优化快速模式，已有规则时直接去广告
+- ⚡ 优化广告规则匹配算法
+
+### v1.7.1 (2026-06-28)
+
+- 🔧 修复播放地址404问题
+- 🔧 优化接口地址展示，支持一键复制
+- 🎨 改进后台界面用户体验
+
+### v1.7.0 (2026-06-28)
+
+- ⚡ 全面优化解析和播放速度
+- 📦 新增缓存管理（CacheManager）
+- 🔧 优化 CURL 请求参数
+- 🚀 优化广告规则匹配算法（O(N²)→O(N)）
+
+### v1.6.0 (2026-06-27)
+
+- 🔧 修复播放黑屏问题
+- ✨ 完善接口功能
+- 📊 新增详细统计信息
+
+### v1.5.0 (2026-06-27)
+
+- ✨ 域名规则管理功能
+- ✨ 后台管理界面
+- ✨ 内置播放器
+
 ### v1.1.0 (2026-06-27)
 
 - 移植到 PHP 版本
 - 完整的 Web API 支持
-- 保持与 Node.js 版本相同的功能和接口
 
 ### v1.0.0 (2026-06-27)
 
