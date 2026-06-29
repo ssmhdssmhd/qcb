@@ -164,6 +164,32 @@ if (file_exists($testUpdate)) {
 }
 
 echo "<hr>";
+echo "<h3>API 测试</h3>";
+
+$_GET['action'] = 'rules/list';
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/mx.php?action=rules/list';
+$_SERVER['SCRIPT_NAME'] = '/mx.php';
+$_SERVER['HTTP_HOST'] = 'localhost';
+$_SERVER['HTTPS'] = 'off';
+
+ob_start();
+try {
+    require $rootDir . '/mx.php';
+} catch (Throwable $e) {
+    echo "<p class='error'>✗ API 测试异常: " . $e->getMessage() . "</p>";
+}
+$apiOutput = ob_get_clean();
+
+$json = json_decode($apiOutput, true);
+if ($json !== null && $json['success']) {
+    echo "<p class='success'>✓ API 测试成功！规则数量: " . count($json['rules']) . "</p>";
+} else {
+    echo "<p class='error'>✗ API 测试失败</p>";
+    echo "<p>输出: " . htmlspecialchars(substr($apiOutput, 0, 500)) . "</p>";
+}
+
+echo "<hr>";
 echo "<p><strong>修复完成！请删除此文件 fix_update.php，然后刷新后台页面。</strong></p>";
 echo "<p><a href='mxadmin.php' style='display:inline-block;padding:8px 20px;background:#667eea;color:#fff;text-decoration:none;border-radius:4px'>前往后台管理</a></p>";
 echo "</div></body></html>";
