@@ -1705,9 +1705,9 @@ header('Expires: 0');
             const base = protocol + '//' + host + baseDir;
 
             document.getElementById('preview-admin').textContent = base + '/mxadmin.php';
-            document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=xxx';
-            document.getElementById('preview-parse').textContent = base + '/?url=xxx';
-            document.getElementById('preview-player').textContent = base + '/mxjx?url=xxx';
+            document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=';
+            document.getElementById('preview-parse').textContent = base + '/?url=';
+            document.getElementById('preview-player').textContent = base + '/mxjx?url=';
         }
 
         document.addEventListener('DOMContentLoaded', () => {
