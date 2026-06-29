@@ -341,9 +341,7 @@ class UpdateManager
             if (is_dir($srcPath)) {
                 $this->copyDirectory($srcPath, $dstPath);
             } else {
-                if (!file_exists($dstPath)) {
-                    copy($srcPath, $dstPath);
-                }
+                copy($srcPath, $dstPath);
             }
         }
         closedir($dir);
