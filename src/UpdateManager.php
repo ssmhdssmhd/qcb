@@ -14,6 +14,8 @@ class UpdateManager
         'index.php',
         'mx.php',
         'router.php',
+        'cron_autolearn.php',
+        'cron_logs.php',
         'src/M3U8AdSkipper.php',
         'src/M3U8Parser.php',
         'src/AdFilter.php',
