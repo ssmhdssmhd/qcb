@@ -192,7 +192,7 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
         sort($durations);
         $buckets = [];
         foreach ($durations as $d) {
-            $bucket = floor($d * 10) / 10;
+            $bucket = (string)(floor($d * 10) / 10);
             if (!isset($buckets[$bucket])) $buckets[$bucket] = 0;
             $buckets[$bucket]++;
         }
