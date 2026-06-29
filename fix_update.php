@@ -6,6 +6,10 @@
  * 运行后请删除此文件
  */
 
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+set_time_limit(0);
+
 $githubRepo = 'ssmhdssmhd/qcb';
 $branch = 'main';
 $rootDir = __DIR__;

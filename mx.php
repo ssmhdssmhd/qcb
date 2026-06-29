@@ -1,5 +1,40 @@
 <?php
 
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
+function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
+    if (!(error_reporting() & $errno)) return;
+    $errors = [
+        'error' => true,
+        'type' => $errno,
+        'message' => $errstr,
+        'file' => basename($errfile),
+        'line' => $errline
+    ];
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    echo json_encode(['success' => false, 'message' => $errstr . ' (' . basename($errfile) . ':' . $errline . ')', 'error_detail' => $errors]);
+    exit;
+}
+set_error_handler('jsonErrorHandler');
+
+function jsonFatalHandler() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode([
+            'success' => false,
+            'message' => $error['message'] . ' (' . basename($error['file']) . ':' . $error['line'] . ')',
+            'fatal_error' => true
+        ]);
+    }
+}
+register_shutdown_function('jsonFatalHandler');
+
 require_once __DIR__ . '/src/M3U8AdSkipper.php';
 require_once __DIR__ . '/src/UpdateManager.php';
 require_once __DIR__ . '/src/CryptoUtil.php';
