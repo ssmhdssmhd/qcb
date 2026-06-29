@@ -193,12 +193,19 @@ class UpdateManager
             ];
         }
 
-        $zip->extractTo($this->rootDir);
+        $excludeFiles = ['sq.txt', 'auth_config.json'];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $filename = $zip->getNameIndex($i);
+            if (in_array(basename($filename), $excludeFiles)) {
+                continue;
+            }
+            $zip->extractTo($this->rootDir, $filename);
+        }
         $zip->close();
 
         return [
             'success' => true,
-            'message' => '备份恢复成功'
+            'message' => '备份恢复成功（已保留授权文件）'
         ];
     }
 
@@ -325,14 +332,18 @@ class UpdateManager
         if (!is_dir($dst)) {
             mkdir($dst, 0755, true);
         }
+        $excludeFiles = ['sq.txt', 'auth_config.json'];
         while (($file = readdir($dir)) !== false) {
             if ($file === '.' || $file === '..') continue;
+            if (in_array($file, $excludeFiles)) continue;
             $srcPath = $src . '/' . $file;
             $dstPath = $dst . '/' . $file;
             if (is_dir($srcPath)) {
                 $this->copyDirectory($srcPath, $dstPath);
             } else {
-                copy($srcPath, $dstPath);
+                if (!file_exists($dstPath)) {
+                    copy($srcPath, $dstPath);
+                }
             }
         }
         closedir($dir);
