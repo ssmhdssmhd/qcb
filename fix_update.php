@@ -19,7 +19,9 @@ $filesToUpdate = [
     'mx.php',
     'mxadmin.php',
     'router.php',
-    'version.txt',
+    'version.php',
+    'sq.php',
+    'auth_config.php',
     'src/M3U8AdSkipper.php',
     'src/M3U8Parser.php',
     'src/AdFilter.php',
@@ -35,8 +37,8 @@ $filesToUpdate = [
 ];
 
 $excludeFromOverwrite = [
-    'sq.txt',
-    'auth_config.json',
+    'sq.php',
+    'auth_config.php',
 ];
 
 echo "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";

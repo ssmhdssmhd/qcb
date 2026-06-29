@@ -7,23 +7,42 @@ class AuthConfig
 
     public function __construct()
     {
-        $this->configFile = dirname(__DIR__) . '/auth_config.json';
+        $this->configFile = dirname(__DIR__) . '/auth_config.php';
         $this->loadConfig();
     }
 
     private function loadConfig()
     {
+        $loaded = false;
         if (file_exists($this->configFile)) {
-            $content = file_get_contents($this->configFile);
-            $this->config = json_decode($content, true) ?: [];
+            $config = @include $this->configFile;
+            if (is_array($config)) {
+                $this->config = $config;
+                $loaded = true;
+            }
+        }
+
+        if (!$loaded) {
+            $jsonFile = dirname(__DIR__) . '/auth_config.json';
+            if (file_exists($jsonFile)) {
+                $content = file_get_contents($jsonFile);
+                $jsonConfig = json_decode($content, true);
+                if (is_array($jsonConfig)) {
+                    $this->config = $jsonConfig;
+                    $this->config['auth_file'] = 'sq.php';
+                    $this->config['auth_file_compare'] = 'sqm.php';
+                    $this->saveConfig();
+                    $loaded = true;
+                }
+            }
         }
         
         if (empty($this->config)) {
             $this->config = [
                 'auth_server_ip' => '114.134.184.91',
                 'auth_server_port' => '9001',
-                'auth_file' => 'sq.txt',
-                'auth_file_compare' => 'sqm.txt',
+                'auth_file' => 'sq.php',
+                'auth_file_compare' => 'sqm.php',
                 'enable_remote_verify' => true,
                 'enable_timestamp_check' => true,
                 'timestamp_tolerance' => 86400
@@ -56,7 +75,8 @@ class AuthConfig
 
     public function saveConfig()
     {
-        $result = file_put_contents($this->configFile, json_encode($this->config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $content = "<?php\nreturn " . var_export($this->config, true) . ";\n";
+        $result = file_put_contents($this->configFile, $content);
         return $result !== false;
     }
 
@@ -64,7 +84,7 @@ class AuthConfig
     {
         $ip = $this->get('auth_server_ip', '114.134.184.91');
         $port = $this->get('auth_server_port', '9001');
-        $file = $this->get('auth_file', 'sq.txt');
+        $file = $this->get('auth_file', 'sq.php');
         return 'http://' . $ip . ':' . $port . '/' . $file;
     }
 
@@ -72,7 +92,7 @@ class AuthConfig
     {
         $ip = $this->get('auth_server_ip', '114.134.184.91');
         $port = $this->get('auth_server_port', '9001');
-        $file = $this->get('auth_file_compare', 'sqm.txt');
+        $file = $this->get('auth_file_compare', 'sqm.php');
         return 'http://' . $ip . ':' . $port . '/' . $file;
     }
 }

@@ -11,7 +11,7 @@ class AuthValidator
 
     public function __construct()
     {
-        $this->sqFile = dirname(__DIR__) . '/sq.txt';
+        $this->sqFile = dirname(__DIR__) . '/sq.php';
         $this->authConfig = new AuthConfig();
     }
 
@@ -34,6 +34,10 @@ class AuthValidator
     {
         if (!$this->checkSqFileExists()) {
             return null;
+        }
+        $code = @include $this->sqFile;
+        if (is_string($code)) {
+            return trim($code);
         }
         return trim(file_get_contents($this->sqFile));
     }
@@ -131,7 +135,8 @@ class AuthValidator
 
     public function setAuthCode($authCode)
     {
-        $result = file_put_contents($this->sqFile, $authCode);
+        $content = "<?php\nreturn '" . addslashes($authCode) . "';\n";
+        $result = file_put_contents($this->sqFile, $content);
         return $result !== false;
     }
 

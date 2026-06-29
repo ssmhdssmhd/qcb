@@ -405,7 +405,7 @@ switch ($action) {
         sendJson([
             'success' => true,
             'current_version' => $updateManager->getCurrentVersion(),
-            'version_file' => file_exists(__DIR__ . '/version.txt') ? trim(file_get_contents(__DIR__ . '/version.txt')) : ''
+            'version_file' => file_exists(__DIR__ . '/version.php') ? trim(include __DIR__ . '/version.php') : ''
         ]);
         break;
 

@@ -81,16 +81,16 @@ class UpdateManager
 
     public function checkIntegrity()
     {
-        $sqFile = $this->rootDir . '/sq.txt';
-        $authConfig = $this->rootDir . '/auth_config.json';
+        $sqFile = $this->rootDir . '/sq.php';
+        $authConfig = $this->rootDir . '/auth_config.php';
         $issues = [];
 
         if (!file_exists($sqFile)) {
-            $issues[] = '授权文件 sq.txt 不存在';
+            $issues[] = '授权文件 sq.php 不存在';
         } else {
-            $sqContent = trim(file_get_contents($sqFile));
-            if (empty($sqContent)) {
-                $issues[] = '授权文件 sq.txt 内容为空';
+            $sqCode = @include $sqFile;
+            if (!is_string($sqCode) || empty(trim($sqCode))) {
+                $issues[] = '授权文件 sq.php 内容为空';
             }
             if (!$this->authValidator->validateLocal()) {
                 $issues[] = '授权验证失败: ' . $this->authValidator->getLastError();
@@ -98,7 +98,7 @@ class UpdateManager
         }
 
         if (!file_exists($authConfig)) {
-            $issues[] = '授权配置文件 auth_config.json 不存在';
+            $issues[] = '授权配置文件 auth_config.php 不存在';
         }
 
         $coreCheck = $this->verifyCoreFiles();
@@ -189,10 +189,15 @@ class UpdateManager
         $commitMessage = $data['commit']['message'] ?? '无描述';
         $commitDate = $data['commit']['committer']['date'] ?? '';
 
-        $versionFile = $this->rootDir . '/version.txt';
+        $versionFile = $this->rootDir . '/version.php';
         $currentCommit = '';
         if (file_exists($versionFile)) {
-            $currentCommit = trim(file_get_contents($versionFile));
+            $ver = @include $versionFile;
+            if (is_string($ver)) {
+                $currentCommit = trim($ver);
+            } else {
+                $currentCommit = trim(file_get_contents($versionFile));
+            }
         }
 
         $hasUpdate = $latestCommit !== $currentCommit;
@@ -230,7 +235,7 @@ class UpdateManager
         }
 
         $excludeDirs = ['backups', 'test', '.git'];
-        $excludeFiles = ['sq.txt'];
+        $excludeFiles = ['sq.php'];
 
         $files = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($this->rootDir, RecursiveDirectoryIterator::SKIP_DOTS),
@@ -296,7 +301,7 @@ class UpdateManager
             ];
         }
 
-        $excludeFiles = ['sq.txt', 'auth_config.json'];
+        $excludeFiles = ['sq.php', 'auth_config.php'];
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $filename = $zip->getNameIndex($i);
             if (in_array(basename($filename), $excludeFiles)) {
@@ -421,8 +426,9 @@ class UpdateManager
         $cleanedFiles = $this->cleanOrphanedFiles($sourceDir);
         $this->copyDirectory($sourceDir, $this->rootDir);
 
-        $versionFile = $this->rootDir . '/version.txt';
-        file_put_contents($versionFile, $checkResult['latest_commit']);
+        $versionFile = $this->rootDir . '/version.php';
+        $versionContent = "<?php\nreturn '" . $checkResult['latest_commit'] . "';\n";
+        file_put_contents($versionFile, $versionContent);
 
         if (function_exists('opcache_reset')) {
             opcache_reset();
@@ -453,7 +459,7 @@ class UpdateManager
         $cleanedFiles = [];
         $skippedFiles = [];
         $excludeDirs = ['backups', '.git'];
-        $excludeFiles = ['sq.txt', 'auth_config.json', 'fix_update.php'];
+        $excludeFiles = ['sq.php', 'auth_config.php', 'fix_update.php'];
         $systemFiles = [
             '.user.ini',
             '.htaccess',
@@ -570,7 +576,7 @@ class UpdateManager
         if (!is_dir($dst)) {
             mkdir($dst, 0755, true);
         }
-        $excludeFiles = ['sq.txt', 'auth_config.json'];
+        $excludeFiles = ['sq.php', 'auth_config.php'];
         while (($file = readdir($dir)) !== false) {
             if ($file === '.' || $file === '..') continue;
             if (in_array($file, $excludeFiles)) continue;

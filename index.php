@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $authValidator = new AuthValidator();
-$sqFile = __DIR__ . '/sq.txt';
+$sqFile = __DIR__ . '/sq.php';
 
 if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
     http_response_code(403);

@@ -567,11 +567,11 @@
                 </div>
                 <div class="form-group">
                     <label>授权文件名</label>
-                    <input type="text" id="authFile" placeholder="例如：sq.txt">
+                    <input type="text" id="authFile" placeholder="例如：sq.php">
                 </div>
                 <div class="form-group">
                     <label>对比文件名</label>
-                    <input type="text" id="authFileCompare" placeholder="例如：sqm.txt">
+                    <input type="text" id="authFileCompare" placeholder="例如：sqm.php">
                 </div>
                 <div class="form-group">
                     <label style="display:flex;align-items:center;gap:8px">
