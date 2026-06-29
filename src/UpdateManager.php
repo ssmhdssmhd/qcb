@@ -451,8 +451,20 @@ class UpdateManager
     private function cleanOrphanedFiles($sourceDir)
     {
         $cleanedFiles = [];
+        $skippedFiles = [];
         $excludeDirs = ['backups', '.git'];
         $excludeFiles = ['sq.txt', 'auth_config.json', 'fix_update.php'];
+        $systemFiles = [
+            '.user.ini',
+            '.htaccess',
+            '.htpasswd',
+            '.well-known',
+            'robots.txt',
+            'favicon.ico',
+            '404.html',
+            'index.html',
+        ];
+        $systemPrefixes = ['.', 'nginx.', 'apache.'];
 
         $currentFiles = $this->scanDirectory($this->rootDir, $excludeDirs, $excludeFiles);
         $newFiles = $this->scanDirectory($sourceDir, $excludeDirs, $excludeFiles);
@@ -460,19 +472,66 @@ class UpdateManager
         $orphanedFiles = array_diff($currentFiles, $newFiles);
 
         foreach ($orphanedFiles as $file) {
+            $baseName = basename($file);
+            $firstPart = explode('/', $file)[0] ?? '';
+
+            $isSystemFile = false;
+            foreach ($systemFiles as $sf) {
+                if (strcasecmp($baseName, $sf) === 0 || strcasecmp($firstPart, $sf) === 0) {
+                    $isSystemFile = true;
+                    break;
+                }
+            }
+            if (!$isSystemFile) {
+                foreach ($systemPrefixes as $prefix) {
+                    if (stripos($baseName, $prefix) === 0 || stripos($firstPart, $prefix) === 0) {
+                        $isSystemFile = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($isSystemFile) {
+                $skippedFiles[] = '跳过系统文件: ' . $file;
+                continue;
+            }
+
             $filePath = $this->rootDir . '/' . $file;
             if (file_exists($filePath)) {
                 if (is_dir($filePath)) {
-                    $this->rrmdir($filePath);
-                    $cleanedFiles[] = '删除目录: ' . $file;
+                    if ($this->safeRemoveDir($filePath)) {
+                        $cleanedFiles[] = '删除目录: ' . $file;
+                    } else {
+                        $skippedFiles[] = '删除目录失败(权限不足): ' . $file;
+                    }
                 } else {
-                    unlink($filePath);
-                    $cleanedFiles[] = '删除文件: ' . $file;
+                    if (@unlink($filePath)) {
+                        $cleanedFiles[] = '删除文件: ' . $file;
+                    } else {
+                        $skippedFiles[] = '删除文件失败(权限不足): ' . $file;
+                    }
                 }
             }
         }
 
-        return $cleanedFiles;
+        return array_merge($cleanedFiles, $skippedFiles);
+    }
+
+    private function safeRemoveDir($dir)
+    {
+        if (!is_dir($dir)) return false;
+        $items = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($items as $item) {
+            if ($item->isDir()) {
+                if (!@rmdir($item->getRealPath())) return false;
+            } else {
+                if (!@unlink($item->getRealPath())) return false;
+            }
+        }
+        return @rmdir($dir);
     }
 
     private function scanDirectory($dir, $excludeDirs = [], $excludeFiles = [])
