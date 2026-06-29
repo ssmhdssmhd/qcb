@@ -518,6 +518,18 @@
             </div>
 
             <div class="card">
+                <div class="card-title">完整性检查</div>
+                <p style="color:#606266;font-size:13px;margin-bottom:12px">检查授权文件、核心文件完整性和系统状态。</p>
+                <button class="btn btn-primary" onclick="checkIntegrity()">检查系统完整性</button>
+                <div id="integrityResult" style="margin-top:12px;font-size:12px;color:#606266"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">更新结果</div>
+                <div id="updateResult" style="font-size:12px;color:#606266"></div>
+            </div>
+
+            <div class="card">
                 <div class="card-title">备份管理</div>
                 <div id="backupList"></div>
             </div>
@@ -1341,22 +1353,70 @@
         }
 
         async function doUpdate() {
-            if (!confirm('确定要更新系统吗？更新前会自动创建备份。')) return;
+            if (!confirm('确定要更新系统吗？更新前会自动创建备份，并自动清理差异文件。')) return;
             const btn = document.getElementById('updateBtn');
             btn.disabled = true;
             btn.textContent = '更新中...';
+            const statusEl = document.getElementById('updateResult') || document.createElement('div');
             try {
+                statusEl.innerHTML = '<div style="color:#409eff">正在验证授权...</div>';
+                const authRes = await fetch(API_BASE + '?action=update/integrity');
+                const authData = await authRes.json();
+                if (!authData.auth_valid) {
+                    throw new Error('授权验证失败: ' + (authData.issues?.join(', ') || '未知错误'));
+                }
+                statusEl.innerHTML += '<div style="color:#67c23a">授权验证通过</div>';
+                statusEl.innerHTML += '<div style="color:#409eff">正在下载更新...</div>';
                 const res = await fetch(API_BASE + '?action=update/download');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
-                showToast('更新成功！备份文件: ' + data.backup_file, 'success');
-                showToast('正在清理缓存...', 'info');
+                statusEl.innerHTML += '<div style="color:#67c23a">更新完成</div>';
+                if (data.cleaned_files && data.cleaned_files.length > 0) {
+                    statusEl.innerHTML += '<div style="color:#e6a23c">清理了 ' + data.cleaned_files.length + ' 个差异文件:</div>';
+                    data.cleaned_files.forEach(f => {
+                        statusEl.innerHTML += '<div style="color:#909399;font-size:11px">' + escapeHtml(f) + '</div>';
+                    });
+                }
+                if (data.integrity_check) {
+                    if (data.integrity_check.success) {
+                        statusEl.innerHTML += '<div style="color:#67c23a">完整性检查通过</div>';
+                    } else {
+                        statusEl.innerHTML += '<div style="color:#f56c6c">完整性检查发现问题:</div>';
+                        data.integrity_check.issues.forEach(i => {
+                            statusEl.innerHTML += '<div style="color:#f56c6c;font-size:11px">' + escapeHtml(i) + '</div>';
+                        });
+                    }
+                }
+                showToast('更新成功！备份: ' + data.backup_file, 'success');
+                statusEl.innerHTML += '<div style="color:#409eff">正在清理缓存...</div>';
                 await clearAllCaches();
+                statusEl.innerHTML += '<div style="color:#67c23a">缓存已清理，2秒后刷新页面...</div>';
                 setTimeout(() => location.reload(true), 2000);
             } catch (e) {
+                statusEl.innerHTML = '<div style="color:#f56c6c">更新失败: ' + escapeHtml(e.message) + '</div>';
                 showToast('更新失败: ' + e.message, 'error');
                 btn.disabled = false;
                 btn.textContent = '立即更新';
+            }
+        }
+
+        async function checkIntegrity() {
+            const statusEl = document.getElementById('integrityResult');
+            statusEl.innerHTML = '<span style="color:#409eff">正在检查...</span>';
+            try {
+                const res = await fetch(API_BASE + '?action=update/integrity');
+                const data = await res.json();
+                if (data.success) {
+                    statusEl.innerHTML = '<span style="color:#67c23a">完整性检查通过</span>';
+                    showToast('系统完整性正常', 'success');
+                } else {
+                    const issues = data.issues || [];
+                    statusEl.innerHTML = '<div style="color:#f56c6c">发现 ' + issues.length + ' 个问题:<br>' +
+                        issues.map(i => '<div style="font-size:12px">' + escapeHtml(i) + '</div>').join('') + '</div>';
+                    showToast('完整性检查发现问题', 'error');
+                }
+            } catch (e) {
+                statusEl.innerHTML = '<span style="color:#f56c6c">检查失败: ' + escapeHtml(e.message) + '</span>';
             }
         }
 

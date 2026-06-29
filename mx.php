@@ -379,6 +379,11 @@ switch ($action) {
         sendJson($result);
         break;
 
+    case 'update/integrity':
+        $result = $updateManager->checkIntegrity();
+        sendJson($result);
+        break;
+
     case 'update/backup/list':
         $backups = $updateManager->getBackupList();
         sendJson([
@@ -495,6 +500,7 @@ switch ($action) {
                 'mxjx' => '去广告m3u8输出',
                 'update/version' => '获取当前版本',
                 'update/check' => '检查更新',
+                'update/integrity' => '完整性检查（授权验证+文件验证）',
                 'update/backup/list' => '备份列表',
                 'update/backup/create' => '创建备份',
                 'update/backup/restore' => '恢复备份',

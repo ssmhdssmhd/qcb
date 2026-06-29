@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/AuthValidator.php';
+
 class UpdateManager
 {
     private $currentVersion = '1.2.0';
@@ -7,14 +9,112 @@ class UpdateManager
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
     private $githubBranch = 'main';
+    private $authValidator;
+    private $coreFiles = [
+        'index.php',
+        'mx.php',
+        'mxadmin.php',
+        'router.php',
+        'src/M3U8AdSkipper.php',
+        'src/M3U8Parser.php',
+        'src/AdFilter.php',
+        'src/AdRuleEngine.php',
+        'src/OutputGenerator.php',
+        'src/AuthValidator.php',
+        'src/AuthConfig.php',
+        'src/CryptoUtil.php',
+        'src/UpdateManager.php',
+        'gz/DomainRuleManager.php',
+        'gz/EnhancedAdRuleEngine.php'
+    ];
 
     public function __construct()
     {
         $this->rootDir = dirname(__DIR__);
         $this->backupDir = $this->rootDir . '/backups';
+        $this->authValidator = new AuthValidator();
         if (!is_dir($this->backupDir)) {
             mkdir($this->backupDir, 0755, true);
         }
+    }
+
+    public function validateAuthBeforeUpdate()
+    {
+        if (!$this->authValidator->validateLocal()) {
+            return [
+                'success' => false,
+                'message' => '授权验证失败: ' . $this->authValidator->getLastError()
+            ];
+        }
+        return ['success' => true];
+    }
+
+    public function verifyCoreFiles()
+    {
+        $missingFiles = [];
+        $invalidFiles = [];
+        foreach ($this->coreFiles as $file) {
+            $filePath = $this->rootDir . '/' . $file;
+            if (!file_exists($filePath)) {
+                $missingFiles[] = $file;
+                continue;
+            }
+            $content = file_get_contents($filePath);
+            if (strpos($content, '<?php') === false) {
+                $invalidFiles[] = $file;
+            }
+            if (strpos($content, 'require_once') !== false && strpos($content, 'AuthValidator') !== false) {
+                if (strpos($content, 'AuthValidator') === false && strpos($content, 'validateLocal') === false) {
+                }
+            }
+        }
+        return [
+            'success' => empty($missingFiles) && empty($invalidFiles),
+            'missing_files' => $missingFiles,
+            'invalid_files' => $invalidFiles,
+            'total_checked' => count($this->coreFiles)
+        ];
+    }
+
+    public function checkIntegrity()
+    {
+        $sqFile = $this->rootDir . '/sq.txt';
+        $authConfig = $this->rootDir . '/auth_config.json';
+        $issues = [];
+
+        if (!file_exists($sqFile)) {
+            $issues[] = '授权文件 sq.txt 不存在';
+        } else {
+            $sqContent = trim(file_get_contents($sqFile));
+            if (empty($sqContent)) {
+                $issues[] = '授权文件 sq.txt 内容为空';
+            }
+            if (!$this->authValidator->validateLocal()) {
+                $issues[] = '授权验证失败: ' . $this->authValidator->getLastError();
+            }
+        }
+
+        if (!file_exists($authConfig)) {
+            $issues[] = '授权配置文件 auth_config.json 不存在';
+        }
+
+        $coreCheck = $this->verifyCoreFiles();
+        if (!$coreCheck['success']) {
+            foreach ($coreCheck['missing_files'] as $f) {
+                $issues[] = '核心文件缺失: ' . $f;
+            }
+            foreach ($coreCheck['invalid_files'] as $f) {
+                $issues[] = '核心文件损坏: ' . $f;
+            }
+        }
+
+        return [
+            'success' => empty($issues),
+            'issues' => $issues,
+            'sq_exists' => file_exists($sqFile),
+            'auth_valid' => $this->authValidator->validateLocal(),
+            'core_files_ok' => $coreCheck['success']
+        ];
     }
 
     public function getCurrentVersion()
@@ -235,6 +335,11 @@ class UpdateManager
 
     public function downloadUpdate()
     {
+        $authCheck = $this->validateAuthBeforeUpdate();
+        if (!$authCheck['success']) {
+            return $authCheck;
+        }
+
         $checkResult = $this->checkUpdate();
         if (!$checkResult['success']) {
             return $checkResult;
@@ -310,6 +415,7 @@ class UpdateManager
         }
 
         $sourceDir = $dirs[0];
+        $cleanedFiles = $this->cleanOrphanedFiles($sourceDir);
         $this->copyDirectory($sourceDir, $this->rootDir);
 
         $versionFile = $this->rootDir . '/version.txt';
@@ -327,12 +433,73 @@ class UpdateManager
         unlink($tempFile);
         $this->rrmdir($extractDir);
 
+        $integrityCheck = $this->checkIntegrity();
+
         return [
             'success' => true,
             'message' => '更新成功',
             'backup_file' => $backupResult['filename'],
-            'new_version' => $checkResult['latest_commit']
+            'new_version' => $checkResult['latest_commit'],
+            'cleaned_files' => $cleanedFiles,
+            'integrity_check' => $integrityCheck
         ];
+    }
+
+    private function cleanOrphanedFiles($sourceDir)
+    {
+        $cleanedFiles = [];
+        $excludeDirs = ['backups', '.git'];
+        $excludeFiles = ['sq.txt', 'auth_config.json', 'fix_update.php'];
+
+        $currentFiles = $this->scanDirectory($this->rootDir, $excludeDirs, $excludeFiles);
+        $newFiles = $this->scanDirectory($sourceDir, $excludeDirs, $excludeFiles);
+
+        $orphanedFiles = array_diff($currentFiles, $newFiles);
+
+        foreach ($orphanedFiles as $file) {
+            $filePath = $this->rootDir . '/' . $file;
+            if (file_exists($filePath)) {
+                if (is_dir($filePath)) {
+                    $this->rrmdir($filePath);
+                    $cleanedFiles[] = '删除目录: ' . $file;
+                } else {
+                    unlink($filePath);
+                    $cleanedFiles[] = '删除文件: ' . $file;
+                }
+            }
+        }
+
+        return $cleanedFiles;
+    }
+
+    private function scanDirectory($dir, $excludeDirs = [], $excludeFiles = [])
+    {
+        $files = [];
+        if (!is_dir($dir)) {
+            return $files;
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        $rootLen = strlen($dir);
+        foreach ($iterator as $item) {
+            $relativePath = substr($item->getRealPath(), $rootLen + 1);
+            $relativePath = str_replace('\\', '/', $relativePath);
+
+            $parts = explode('/', $relativePath);
+            $firstPart = $parts[0] ?? '';
+
+            if (in_array($firstPart, $excludeDirs) || in_array(basename($relativePath), $excludeFiles)) {
+                continue;
+            }
+
+            $files[] = $relativePath;
+        }
+
+        return $files;
     }
 
     private function copyDirectory($src, $dst)
