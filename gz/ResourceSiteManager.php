@@ -171,6 +171,101 @@ class ResourceSiteManager {
         ];
     }
 
+    public function searchVideos($apiUrl, $keyword, $page = 1, $limit = 20) {
+        $url = $apiUrl;
+        if (strpos($url, '?') === false) {
+            $url .= '?';
+        } else {
+            $url .= '&';
+        }
+        $url .= 'ac=list&wd=' . urlencode($keyword) . '&pg=' . intval($page) . '&limit=' . intval($limit);
+
+        $response = $this->httpGet($url);
+        if ($response === false) {
+            return ['success' => false, 'message' => '请求失败'];
+        }
+
+        $data = json_decode($response, true);
+        if (!$data) {
+            return ['success' => false, 'message' => '解析JSON失败'];
+        }
+
+        $videos = [];
+        $list = $data['list'] ?? $data['data'] ?? [];
+        foreach ($list as $item) {
+            $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
+            $vodName = $item['vod_name'] ?? $item['name'] ?? '';
+            $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
+
+            if (empty($vodPlayUrl)) continue;
+
+            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
+            if (!empty($allM3u8Urls)) {
+                $videos[] = [
+                    'id' => $vodId,
+                    'name' => $vodName,
+                    'pic' => $vodPic,
+                    'remarks' => $vodRemarks,
+                    'urls' => $allM3u8Urls,
+                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
+                    'raw_play_url' => $vodPlayUrl
+                ];
+            }
+        }
+
+        return [
+            'success' => true,
+            'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
+            'page' => $page,
+            'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
+            'videos' => $videos
+        ];
+    }
+
+    public function searchAllSites($keyword, $maxSites = 5, $limitPerSite = 10) {
+        $sites = $this->getAllSites(false);
+        $sites = array_slice($sites, 0, $maxSites);
+
+        $results = [];
+        $totalVideos = 0;
+
+        foreach ($sites as $site) {
+            $searchResult = $this->searchVideos($site['api_url'], $keyword, 1, $limitPerSite);
+            if ($searchResult['success']) {
+                foreach ($searchResult['videos'] as &$video) {
+                    $video['site_name'] = $site['name'];
+                    $video['site_url'] = $site['site_url'] ?? '';
+                }
+                unset($video);
+                $results[] = [
+                    'site' => $site['name'],
+                    'site_url' => $site['site_url'] ?? '',
+                    'count' => count($searchResult['videos']),
+                    'videos' => $searchResult['videos']
+                ];
+                $totalVideos += count($searchResult['videos']);
+            } else {
+                $results[] = [
+                    'site' => $site['name'],
+                    'site_url' => $site['site_url'] ?? '',
+                    'count' => 0,
+                    'videos' => [],
+                    'error' => $searchResult['message']
+                ];
+            }
+        }
+
+        return [
+            'success' => true,
+            'keyword' => $keyword,
+            'sites_searched' => count($sites),
+            'total_videos' => $totalVideos,
+            'results' => $results
+        ];
+    }
+
     private function extractM3u8Url($playUrl) {
         if (empty($playUrl)) return null;
 
@@ -197,6 +292,58 @@ class ResourceSiteManager {
         }
 
         return null;
+    }
+
+    private function extractAllM3u8Urls($playUrl) {
+        if (empty($playUrl)) return [];
+
+        $urls = [];
+        $seen = [];
+
+        if (strpos($playUrl, '$') !== false) {
+            $lines = [];
+            if (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
+                $lines = preg_split('/\r\n|\n/', $playUrl);
+            } else {
+                $lines = [$playUrl];
+            }
+
+            foreach ($lines as $line) {
+                $parts = explode('$', $line);
+                for ($i = 0; $i < count($parts) - 1; $i += 2) {
+                    $name = trim($parts[$i] ?? '');
+                    $url = trim($parts[$i + 1] ?? '');
+                    if ($name && $url && preg_match('/\.m3u8/i', $url) && !isset($seen[$url])) {
+                        $seen[$url] = true;
+                        $urls[] = ['name' => $name, 'url' => $url];
+                    }
+                }
+            }
+        }
+
+        if (preg_match_all('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
+            foreach ($matches[0] as $url) {
+                if (!isset($seen[$url])) {
+                    $seen[$url] = true;
+                    $urls[] = ['name' => '自动提取', 'url' => $url];
+                }
+            }
+        }
+
+        if (empty($urls) && (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false)) {
+            $lines = preg_split('/\r\n|\n/', $playUrl);
+            foreach ($lines as $idx => $line) {
+                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $line, $matches)) {
+                    $url = $matches[0];
+                    if (!isset($seen[$url])) {
+                        $seen[$url] = true;
+                        $urls[] = ['name' => '第' . ($idx + 1) . '行', 'url' => $url];
+                    }
+                }
+            }
+        }
+
+        return $urls;
     }
 
     public function getAutoLearnConfig() {
@@ -228,6 +375,7 @@ class ResourceSiteManager {
         $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
         $minSegments = $config['min_segments'] ?? 50;
         $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
+        $keyword = $options['keyword'] ?? '';
 
         $sites = $this->getAllSites(false);
         $sites = array_slice($sites, 0, $maxSites);
@@ -245,7 +393,12 @@ class ResourceSiteManager {
                 'domains' => []
             ];
 
-            $fetchResult = $this->fetchVideos($site['api_url'], 1, $videosPerSite * 3);
+            if (!empty($keyword)) {
+                $fetchResult = $this->searchVideos($site['api_url'], $keyword, 1, $videosPerSite * 3);
+            } else {
+                $fetchResult = $this->fetchVideos($site['api_url'], 1, $videosPerSite * 3);
+            }
+
             if (!$fetchResult['success']) {
                 $siteResult['error'] = $fetchResult['message'];
                 $results[] = $siteResult;
@@ -260,49 +413,26 @@ class ResourceSiteManager {
 
                 $siteResult['videos_checked']++;
 
-                try {
-                    $parsedUrl = parse_url($video['url']);
-                    $videoDomain = $parsedUrl['host'] ?? '';
-                    if (empty($videoDomain)) continue;
+                $videoUrl = $video['url'] ?? $video['first_url'] ?? '';
+                if (empty($videoUrl)) continue;
 
-                    if (!isset($siteResult['domains'][$videoDomain])) {
-                        $siteResult['domains'][$videoDomain] = 0;
-                    }
+                $learnResult = $this->learnFromVideoUrl($videoUrl, $domainRuleManager, [
+                    'min_segments' => $minSegments,
+                    'max_ad_percentage' => $maxAdPercentage
+                ]);
 
-                    $mediaUrl = $this->resolveMasterPlaylist($video['url']);
-                    $parser = new M3U8Parser();
-                    $playlist = $parser->parse($mediaUrl);
-
-                    if (empty($playlist['segments']) || count($playlist['segments']) < $minSegments) {
-                        continue;
-                    }
-
-                    $engine = new EnhancedAdRuleEngine([
-                        'checkDiscontinuity' => true,
-                        'checkRepetitiveDuration' => true
-                    ]);
-                    $engine->setDomain($videoDomain);
-                    $analysis = $engine->analyzeAllSegments($playlist['segments']);
-
-                    $adPercentage = $analysis['totalCount'] > 0
-                        ? ($analysis['adCount'] / $analysis['totalCount'] * 100)
-                        : 0;
-
-                    if ($adPercentage >= $maxAdPercentage) {
-                        continue;
-                    }
-
-                    $domainResult = $domainRuleManager->learnFromAnalysis($videoDomain, $analysis);
-                    if ($domainResult) {
-                        $siteResult['videos_learned']++;
+                if ($learnResult['success']) {
+                    $videoDomain = $learnResult['domain'] ?? '';
+                    if ($videoDomain) {
+                        if (!isset($siteResult['domains'][$videoDomain])) {
+                            $siteResult['domains'][$videoDomain] = 0;
+                        }
                         $siteResult['domains'][$videoDomain]++;
-                        $totalLearned++;
-                        $learnedCount++;
-                    } else {
-                        $siteResult['videos_failed']++;
-                        $totalFailed++;
                     }
-                } catch (Exception $e) {
+                    $siteResult['videos_learned']++;
+                    $totalLearned++;
+                    $learnedCount++;
+                } else {
                     $siteResult['videos_failed']++;
                     $totalFailed++;
                 }
@@ -316,11 +446,72 @@ class ResourceSiteManager {
         return [
             'success' => true,
             'message' => '自动学习完成',
+            'keyword' => $keyword,
             'sites_processed' => count($sites),
             'total_learned' => $totalLearned,
             'total_failed' => $totalFailed,
             'details' => $results
         ];
+    }
+
+    public function learnFromVideoUrl($videoUrl, $domainRuleManager, $options = []) {
+        $minSegments = $options['min_segments'] ?? 50;
+        $maxAdPercentage = $options['max_ad_percentage'] ?? 90;
+
+        try {
+            $parsedUrl = parse_url($videoUrl);
+            $videoDomain = $parsedUrl['host'] ?? '';
+            if (empty($videoDomain)) {
+                return ['success' => false, 'message' => '无法解析域名'];
+            }
+
+            $mediaUrl = $this->resolveMasterPlaylist($videoUrl);
+
+            if (!class_exists('M3U8Parser')) {
+                require_once __DIR__ . '/../src/M3U8Parser.php';
+            }
+            $parser = new M3U8Parser();
+            $playlist = $parser->parse($mediaUrl);
+
+            if (empty($playlist['segments']) || count($playlist['segments']) < $minSegments) {
+                return ['success' => false, 'message' => '片段数不足', 'domain' => $videoDomain];
+            }
+
+            if (!class_exists('EnhancedAdRuleEngine')) {
+                require_once __DIR__ . '/EnhancedAdRuleEngine.php';
+            }
+            $engine = new EnhancedAdRuleEngine([
+                'checkDiscontinuity' => true,
+                'checkRepetitiveDuration' => true
+            ]);
+            $engine->setDomain($videoDomain);
+            $analysis = $engine->analyzeAllSegments($playlist['segments']);
+
+            $adPercentage = $analysis['totalCount'] > 0
+                ? ($analysis['adCount'] / $analysis['totalCount'] * 100)
+                : 0;
+
+            if ($adPercentage >= $maxAdPercentage) {
+                return ['success' => false, 'message' => '广告占比过高', 'domain' => $videoDomain, 'ad_percentage' => $adPercentage];
+            }
+
+            $domainResult = $domainRuleManager->learnFromAnalysis($videoDomain, $analysis);
+
+            if ($domainResult) {
+                return [
+                    'success' => true,
+                    'domain' => $videoDomain,
+                    'segments_count' => count($playlist['segments']),
+                    'ad_count' => $analysis['adCount'] ?? 0,
+                    'ad_percentage' => $adPercentage,
+                    'rule_updated' => $domainResult
+                ];
+            } else {
+                return ['success' => false, 'message' => '规则学习失败', 'domain' => $videoDomain];
+            }
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     private function resolveMasterPlaylist($url) {

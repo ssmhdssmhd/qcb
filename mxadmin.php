@@ -638,6 +638,27 @@ header('Expires: 0');
             </div>
 
             <div class="card">
+                <div class="card-title">搜索影视学习</div>
+                <p style="color:#606266;font-size:13px;margin-bottom:12px">搜索指定或热门影视名称，查看返回的M3U8视频链接，用对应的视频链接进行学习，用M3U8的域名进行学习更新规则。</p>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+                    <input type="text" id="searchKeyword" placeholder="输入影视名称，如：流浪地球、庆余年..." style="flex:1;min-width:250px;padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px">
+                    <select id="searchSiteSelect" style="padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px;min-width:150px">
+                        <option value="all">全部资源站</option>
+                    </select>
+                    <input type="number" id="searchMaxSites" value="5" min="1" max="20" placeholder="最大站点数" style="width:120px;padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px">
+                    <button class="btn btn-primary" onclick="searchVideos()">🔍 搜索</button>
+                    <button class="btn btn-secondary" onclick="clearSearchResults()">清空</button>
+                </div>
+                <div id="searchResults" style="display:none">
+                    <div id="searchSummary" style="padding:10px 12px;background:#ecf5ff;border:1px solid #d9ecff;border-radius:6px;margin-bottom:12px;font-size:13px;color:#409eff"></div>
+                    <div id="searchVideoList"></div>
+                </div>
+                <div id="searchLoading" style="display:none;text-align:center;padding:20px;color:#909399">
+                    <div class="loading" style="display:inline-block">正在搜索中，请稍候...</div>
+                </div>
+            </div>
+
+            <div class="card">
                 <div class="card-title">
                     资源站列表
                     <span style="margin-left:12px;font-size:12px;color:#909399;font-weight:normal">共 <span id="sitesCount">0</span> 个资源站</span>
@@ -2072,6 +2093,7 @@ header('Expires: 0');
                 currentSites = data.sites || [];
                 renderSitesTable(currentSites);
                 renderAutoLearnStats(data);
+                populateSearchSiteSelect();
                 document.getElementById('sitesCount').textContent = currentSites.length;
             } catch (e) {
                 console.error('获取资源站列表错误:', e);
@@ -2375,6 +2397,196 @@ header('Expires: 0');
                 resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">学习失败: ' + escapeHtml(e.message) + '</div>';
                 showToast('学习失败: ' + e.message, 'error');
             }
+        }
+
+        function populateSearchSiteSelect() {
+            const select = document.getElementById('searchSiteSelect');
+            if (!select || currentSites.length === 0) return;
+            const currentValue = select.value;
+            let html = '<option value="all">全部资源站</option>';
+            currentSites.forEach(site => {
+                if (site.status === 'active') {
+                    html += '<option value="' + escapeHtml(site.name) + '">' + escapeHtml(site.name) + '</option>';
+                }
+            });
+            select.innerHTML = html;
+            if (currentValue) select.value = currentValue;
+        }
+
+        async function searchVideos() {
+            const keyword = document.getElementById('searchKeyword').value.trim();
+            if (!keyword) {
+                showToast('请输入搜索关键词', 'warning');
+                return;
+            }
+
+            const siteName = document.getElementById('searchSiteSelect').value;
+            const maxSites = parseInt(document.getElementById('searchMaxSites').value) || 5;
+
+            document.getElementById('searchLoading').style.display = 'block';
+            document.getElementById('searchResults').style.display = 'none';
+
+            try {
+                let url;
+                if (siteName === 'all') {
+                    url = API_BASE + '?action=sites/search_all&keyword=' + encodeURIComponent(keyword) + '&max_sites=' + maxSites + '&limit_per_site=10&_t=' + Date.now();
+                } else {
+                    url = API_BASE + '?action=sites/search&name=' + encodeURIComponent(siteName) + '&keyword=' + encodeURIComponent(keyword) + '&limit=20&_t=' + Date.now();
+                }
+
+                const res = await fetch(url, {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+
+                renderSearchResults(data, siteName);
+                document.getElementById('searchLoading').style.display = 'none';
+                document.getElementById('searchResults').style.display = 'block';
+            } catch (e) {
+                document.getElementById('searchLoading').style.display = 'none';
+                showToast('搜索失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderSearchResults(data, siteName) {
+            const summaryEl = document.getElementById('searchSummary');
+            const listEl = document.getElementById('searchVideoList');
+
+            let totalVideos = 0;
+            let sitesCount = 0;
+
+            if (siteName === 'all') {
+                totalVideos = data.total_videos || 0;
+                sitesCount = data.sites_searched || 0;
+                summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 共搜索 ${sitesCount} 个站点，找到 ${totalVideos} 个视频`;
+            } else {
+                totalVideos = (data.videos || []).length;
+                sitesCount = 1;
+                summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 找到 ${totalVideos} 个视频`;
+            }
+
+            let html = '';
+
+            if (siteName === 'all') {
+                const results = data.results || [];
+                results.forEach(siteResult => {
+                    const videos = siteResult.videos || [];
+                    if (videos.length === 0 && !siteResult.error) return;
+
+                    html += `<div style="margin-bottom:16px">
+                        <div style="padding:8px 12px;background:#f5f7fa;border-radius:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+                            <strong>${escapeHtml(siteResult.site || '')}</strong>
+                            <span style="font-size:12px;color:#909399">
+                                ${siteResult.error ? '<span style="color:#f56c6c">失败: ' + escapeHtml(siteResult.error) + '</span>' : videos.length + ' 个视频'}
+                            </span>
+                        </div>`;
+
+                    if (videos.length > 0) {
+                        html += '<div style="max-height:300px;overflow-y:auto;border:1px solid #ebeef5;border-radius:6px">';
+                        videos.forEach((v, i) => {
+                            html += renderSearchVideoItem(v, siteResult.site);
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+            } else {
+                const videos = data.videos || [];
+                if (videos.length > 0) {
+                    html += '<div style="max-height:500px;overflow-y:auto;border:1px solid #ebeef5;border-radius:6px">';
+                    videos.forEach((v, i) => {
+                        html += renderSearchVideoItem(v, siteName);
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<div class="empty">未找到相关视频</div>';
+                }
+            }
+
+            listEl.innerHTML = html;
+        }
+
+        function renderSearchVideoItem(video, siteName) {
+            const videoName = video.name || '未知';
+            const firstUrl = video.first_url || video.url || '';
+            const urls = video.urls || (firstUrl ? [{name: '默认', url: firstUrl}] : []);
+            const domain = firstUrl ? (new URL(firstUrl).hostname) : '';
+
+            let html = `<div class="segment-item" style="border-bottom:1px solid #ebeef5;flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                    <div style="font-weight:500;color:#303133">${escapeHtml(videoName)}</div>
+                    <div style="font-size:12px;color:#909399;margin-top:4px">
+                        <span style="background:#ecf5ff;color:#409eff;padding:2px 8px;border-radius:4px;margin-right:8px">${escapeHtml(siteName || '')}</span>
+                        ${domain ? '<span style="background:#f0f9eb;color:#67c23a;padding:2px 8px;border-radius:4px">' + escapeHtml(domain) + '</span>' : ''}
+                        ${video.remarks ? '<span style="margin-left:8px">' + escapeHtml(video.remarks) + '</span>' : ''}
+                    </div>`;
+
+            if (urls.length > 0) {
+                html += '<div style="margin-top:8px;font-size:12px">';
+                urls.slice(0, 5).forEach((u, idx) => {
+                    html += `<div style="padding:4px 0;display:flex;align-items:center;gap:8px">
+                        <span style="color:#909399;white-space:nowrap">${escapeHtml(u.name || '剧集' + (idx + 1))}:</span>
+                        <code style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#f5f7fa;padding:2px 6px;border-radius:4px;font-size:11px" title="${escapeHtml(u.url)}">${escapeHtml(u.url)}</code>
+                        <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(u.url)}')">复制</button>
+                        <button class="btn btn-sm btn-primary" onclick="learnFromVideoUrl('${escapeHtml(u.url)}', '${escapeHtml(videoName)}')">学习</button>
+                    </div>`;
+                });
+                if (urls.length > 5) {
+                    html += `<div style="color:#909399;padding:4px 0">... 还有 ${urls.length - 5} 个播放源</div>`;
+                }
+                html += '</div>';
+            }
+
+            html += `</div>
+                <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
+                    <button class="btn btn-sm btn-secondary" onclick="analyzeFromSite('${escapeHtml(firstUrl)}')">分析</button>
+                </div>
+            </div>`;
+
+            return html;
+        }
+
+        async function learnFromVideoUrl(url, videoName) {
+            if (!url) {
+                showToast('视频URL为空', 'error');
+                return;
+            }
+
+            if (!confirm('确定要学习该视频的广告规则吗？\n\n视频: ' + (videoName || '未知') + '\n域名: ' + (new URL(url).hostname))) return;
+
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '学习中...';
+
+            try {
+                const res = await fetch(API_BASE + '?action=sites/learn_video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast('学习成功！域名: ' + (data.domain || ''), 'success');
+                    console.log('学习结果:', data);
+                } else {
+                    showToast('学习失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('学习请求失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        function clearSearchResults() {
+            document.getElementById('searchKeyword').value = '';
+            document.getElementById('searchResults').style.display = 'none';
+            document.getElementById('searchLoading').style.display = 'none';
         }
 
         document.querySelectorAll('.nav-item').forEach(item => {

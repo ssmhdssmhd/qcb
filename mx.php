@@ -896,6 +896,64 @@ try {
             sendJsonResponse($result, $result['success'] ? 200 : 400);
             break;
 
+        case 'sites/search':
+            $name = $_GET['name'] ?? '';
+            $apiUrl = $_GET['api_url'] ?? '';
+            $keyword = $_GET['keyword'] ?? '';
+            $page = intval($_GET['page'] ?? 1);
+            $limit = intval($_GET['limit'] ?? 20);
+
+            if (empty($keyword)) {
+                sendJsonResponse(['success' => false, 'message' => '请输入搜索关键词'], 400);
+            }
+
+            if (!empty($name)) {
+                $site = $siteManager->getSiteByName($name);
+                if ($site) {
+                    $apiUrl = $site['api_url'];
+                }
+            }
+
+            if (empty($apiUrl)) {
+                sendJsonResponse(['success' => false, 'message' => '请指定资源站名称或采集接口地址'], 400);
+            }
+
+            $result = $siteManager->searchVideos($apiUrl, $keyword, $page, $limit);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/search_all':
+            $keyword = $_GET['keyword'] ?? '';
+            $maxSites = intval($_GET['max_sites'] ?? 5);
+            $limitPerSite = intval($_GET['limit_per_site'] ?? 10);
+
+            if (empty($keyword)) {
+                sendJsonResponse(['success' => false, 'message' => '请输入搜索关键词'], 400);
+            }
+
+            $result = $siteManager->searchAllSites($keyword, $maxSites, $limitPerSite);
+            sendJsonResponse($result, 200);
+            break;
+
+        case 'sites/learn_video':
+            $input = getInputJson();
+            $videoUrl = $input['url'] ?? $_GET['url'] ?? '';
+
+            if (empty($videoUrl)) {
+                sendJsonResponse(['success' => false, 'message' => '请提供视频URL'], 400);
+            }
+
+            $minSegments = isset($input['min_segments']) ? intval($input['min_segments']) : null;
+            $maxAdPercentage = isset($input['max_ad_percentage']) ? intval($input['max_ad_percentage']) : null;
+
+            $options = [];
+            if ($minSegments !== null) $options['min_segments'] = $minSegments;
+            if ($maxAdPercentage !== null) $options['max_ad_percentage'] = $maxAdPercentage;
+
+            $result = $siteManager->learnFromVideoUrl($videoUrl, $ruleManager, $options);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
         case 'sites/auto_learn/config':
             $config = $siteManager->getAutoLearnConfig();
             $lastLearn = $siteManager->getLastLearnTime();
@@ -918,7 +976,8 @@ try {
             $input = getInputJson();
             $options = [
                 'max_sites' => $input['max_sites'] ?? null,
-                'videos_per_site' => $input['videos_per_site'] ?? null
+                'videos_per_site' => $input['videos_per_site'] ?? null,
+                'keyword' => $input['keyword'] ?? ''
             ];
             $result = $siteManager->runAutoLearn($ruleManager, $options);
             sendJsonResponse($result, $result['success'] ? 200 : 400);
@@ -953,6 +1012,9 @@ try {
                     'sites/update' => '更新资源站',
                     'sites/delete' => '删除资源站',
                     'sites/fetch_videos' => '从资源站获取视频列表',
+                    'sites/search' => '搜索指定资源站视频',
+                    'sites/search_all' => '搜索所有资源站视频',
+                    'sites/learn_video' => '从指定视频URL学习规则',
                     'sites/auto_learn/config' => '获取自动学习配置',
                     'sites/auto_learn/config/save' => '保存自动学习配置',
                     'sites/auto_learn/run' => '执行自动学习',

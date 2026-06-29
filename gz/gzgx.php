@@ -289,6 +289,64 @@ switch ($action) {
         sendJson($result, $result['success'] ? 200 : 400);
         break;
 
+    case 'sites/search':
+        $name = $_GET['name'] ?? '';
+        $apiUrl = $_GET['api_url'] ?? '';
+        $keyword = $_GET['keyword'] ?? '';
+        $page = intval($_GET['page'] ?? 1);
+        $limit = intval($_GET['limit'] ?? 20);
+
+        if (empty($keyword)) {
+            sendJson(['success' => false, 'message' => '请输入搜索关键词'], 400);
+        }
+
+        if (!empty($name)) {
+            $site = $siteManager->getSiteByName($name);
+            if ($site) {
+                $apiUrl = $site['api_url'];
+            }
+        }
+
+        if (empty($apiUrl)) {
+            sendJson(['success' => false, 'message' => '请指定资源站名称或采集接口地址'], 400);
+        }
+
+        $result = $siteManager->searchVideos($apiUrl, $keyword, $page, $limit);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
+    case 'sites/search_all':
+        $keyword = $_GET['keyword'] ?? '';
+        $maxSites = intval($_GET['max_sites'] ?? 5);
+        $limitPerSite = intval($_GET['limit_per_site'] ?? 10);
+
+        if (empty($keyword)) {
+            sendJson(['success' => false, 'message' => '请输入搜索关键词'], 400);
+        }
+
+        $result = $siteManager->searchAllSites($keyword, $maxSites, $limitPerSite);
+        sendJson($result, 200);
+        break;
+
+    case 'sites/learn_video':
+        $input = json_decode(file_get_contents('php://input'), true) ?: [];
+        $videoUrl = $input['url'] ?? $_GET['url'] ?? '';
+
+        if (empty($videoUrl)) {
+            sendJson(['success' => false, 'message' => '请提供视频URL'], 400);
+        }
+
+        $minSegments = isset($input['min_segments']) ? intval($input['min_segments']) : null;
+        $maxAdPercentage = isset($input['max_ad_percentage']) ? intval($input['max_ad_percentage']) : null;
+
+        $options = [];
+        if ($minSegments !== null) $options['min_segments'] = $minSegments;
+        if ($maxAdPercentage !== null) $options['max_ad_percentage'] = $maxAdPercentage;
+
+        $result = $siteManager->learnFromVideoUrl($videoUrl, $ruleManager, $options);
+        sendJson($result, $result['success'] ? 200 : 400);
+        break;
+
     case 'sites/auto_learn/config':
         $config = $siteManager->getAutoLearnConfig();
         $lastLearn = $siteManager->getLastLearnTime();
@@ -315,7 +373,8 @@ switch ($action) {
         }
         $options = [
             'max_sites' => $input['max_sites'] ?? null,
-            'videos_per_site' => $input['videos_per_site'] ?? null
+            'videos_per_site' => $input['videos_per_site'] ?? null,
+            'keyword' => $input['keyword'] ?? ''
         ];
         $result = $siteManager->runAutoLearn($ruleManager, $options);
         sendJson($result, $result['success'] ? 200 : 400);
