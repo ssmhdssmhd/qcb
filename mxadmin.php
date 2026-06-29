@@ -502,6 +502,17 @@
             </div>
 
             <div class="card">
+                <div class="card-title">缓存清理</div>
+                <p style="color:#606266;font-size:13px;margin-bottom:12px">清理浏览器缓存、Service Worker、localStorage 等，解决更新后页面不生效问题。</p>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-warning" onclick="clearAllCaches()">立即清理缓存</button>
+                    <button class="btn btn-secondary" onclick="clearBrowserCache()">清理浏览器缓存</button>
+                    <button class="btn btn-secondary" onclick="clearServiceWorker()">清理 Service Worker</button>
+                </div>
+                <div id="cacheClearResult" style="margin-top:12px;font-size:12px;color:#606266"></div>
+            </div>
+
+            <div class="card">
                 <div class="card-title">备份管理</div>
                 <div id="backupList"></div>
             </div>
@@ -1197,6 +1208,71 @@
             }
         }
 
+        async function clearBrowserCache() {
+            const resultEl = document.getElementById('cacheClearResult');
+            resultEl.innerHTML = '<span style="color:#409eff">正在清理浏览器缓存...</span>';
+            try {
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(cacheNames.map(name => caches.delete(name)));
+                }
+                resultEl.innerHTML = '<span style="color:#67c23a">浏览器缓存已清理</span>';
+                showToast('浏览器缓存已清理', 'success');
+            } catch (e) {
+                resultEl.innerHTML = '<span style="color:#f56c6c">清理失败: ' + e.message + '</span>';
+                showToast('清理失败: ' + e.message, 'error');
+            }
+        }
+
+        async function clearServiceWorker() {
+            const resultEl = document.getElementById('cacheClearResult');
+            resultEl.innerHTML = '<span style="color:#409eff">正在清理 Service Worker...</span>';
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map(reg => reg.unregister()));
+                }
+                resultEl.innerHTML = '<span style="color:#67c23a">Service Worker 已清理</span>';
+                showToast('Service Worker 已清理', 'success');
+            } catch (e) {
+                resultEl.innerHTML = '<span style="color:#f56c6c">清理失败: ' + e.message + '</span>';
+                showToast('清理失败: ' + e.message, 'error');
+            }
+        }
+
+        async function clearAllCaches() {
+            const resultEl = document.getElementById('cacheClearResult');
+            resultEl.innerHTML = '<span style="color:#409eff">正在清理所有缓存...</span>';
+            const logs = [];
+            try {
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(cacheNames.map(name => caches.delete(name)));
+                    logs.push('浏览器缓存: 已清理');
+                }
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map(reg => reg.unregister()));
+                    logs.push('Service Worker: 已清理');
+                }
+                localStorage.removeItem('m3u8_rules_cache');
+                sessionStorage.clear();
+                logs.push('localStorage/sessionStorage: 已清理');
+
+                const meta = document.createElement('meta');
+                meta.httpEquiv = 'Cache-Control';
+                meta.content = 'no-cache, no-store, must-revalidate';
+                document.head.appendChild(meta);
+                logs.push('页面缓存策略: 已禁用');
+
+                resultEl.innerHTML = logs.map(l => '<div style="color:#67c23a">' + l + '</div>').join('');
+                showToast('所有缓存已清理完成', 'success');
+            } catch (e) {
+                resultEl.innerHTML = '<span style="color:#f56c6c">清理失败: ' + e.message + '</span>';
+                showToast('清理失败: ' + e.message, 'error');
+            }
+        }
+
         async function doUpdate() {
             if (!confirm('确定要更新系统吗？更新前会自动创建备份。')) return;
             const btn = document.getElementById('updateBtn');
@@ -1207,7 +1283,9 @@
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 showToast('更新成功！备份文件: ' + data.backup_file, 'success');
-                setTimeout(() => location.reload(), 1500);
+                showToast('正在清理缓存...', 'info');
+                await clearAllCaches();
+                setTimeout(() => location.reload(true), 2000);
             } catch (e) {
                 showToast('更新失败: ' + e.message, 'error');
                 btn.disabled = false;
