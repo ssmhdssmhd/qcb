@@ -1,7 +1,8 @@
 <?php
 /**
- * 一键修复更新器脚本
+ * 一键全量修复脚本
  * 上传到网站根目录，浏览器访问 fix_update.php 运行一次即可
+ * 自动从 GitHub 拉取所有最新文件，覆盖旧版本
  * 运行后请删除此文件
  */
 
@@ -9,57 +10,133 @@ $githubRepo = 'ssmhdssmhd/qcb';
 $branch = 'main';
 $rootDir = __DIR__;
 
-echo "<h2>M3U8 去广告工具 - 一键修复更新器</h2>";
-echo "<p>正在从 GitHub 拉取最新的 UpdateManager.php...</p>";
+$filesToUpdate = [
+    'index.php',
+    'mx.php',
+    'mxadmin.php',
+    'router.php',
+    'version.txt',
+    'src/M3U8AdSkipper.php',
+    'src/M3U8Parser.php',
+    'src/AdFilter.php',
+    'src/AdRuleEngine.php',
+    'src/OutputGenerator.php',
+    'src/AuthValidator.php',
+    'src/AuthConfig.php',
+    'src/CryptoUtil.php',
+    'src/UpdateManager.php',
+    'gz/DomainRuleManager.php',
+    'gz/EnhancedAdRuleEngine.php',
+    'gz/rules_v.lfthirtytwo.com.php',
+];
 
-$rawUrl = "https://raw.githubusercontent.com/$githubRepo/$branch/src/UpdateManager.php";
+$excludeFromOverwrite = [
+    'sq.txt',
+    'auth_config.json',
+];
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $rawUrl);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Fix-Tool');
-curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-$content = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$error = curl_error($ch);
-curl_close($ch);
+echo "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+echo "<title>M3U8 去广告工具 - 一键修复</title>";
+echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#f5f7fa}h2{color:#667eea}.success{color:#67c23a}.error{color:#f56c6c}.info{color:#409eff}.warn{color:#e6a23c}.card{background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.1);margin-bottom:15px}</style>";
+echo "</head><body><div class='card'>";
+echo "<h2>M3U8 去广告工具 - 一键全量修复</h2>";
+echo "<p class='info'>正在从 GitHub 拉取最新版本（共 " . count($filesToUpdate) . " 个文件）...</p>";
+echo "</div><div class='card'>";
 
-if ($error) {
-    echo "<p style='color:red'>下载失败: $error</p>";
-    exit;
+$successCount = 0;
+$failCount = 0;
+$failFiles = [];
+
+foreach ($filesToUpdate as $file) {
+    if (in_array(basename($file), $excludeFromOverwrite)) {
+        echo "<p class='warn'>跳过授权文件: $file</p>";
+        continue;
+    }
+
+    $rawUrl = "https://raw.githubusercontent.com/$githubRepo/$branch/" . $file;
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $rawUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Fix-Tool');
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $content = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($error || $httpCode !== 200 || !$content) {
+        $failCount++;
+        $failFiles[] = $file . ' (' . ($error ?: "HTTP $httpCode") . ')';
+        echo "<p class='error'>✗ $file <span style='color:#909399'>- " . ($error ?: "HTTP $httpCode") . "</span></p>";
+        continue;
+    }
+
+    $targetFile = $rootDir . '/' . $file;
+    $targetDir = dirname($targetFile);
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0755, true);
+    }
+
+    $result = file_put_contents($targetFile, $content);
+    if ($result === false) {
+        $failCount++;
+        $failFiles[] = $file . ' (写入失败)';
+        echo "<p class='error'>✗ $file - 写入失败</p>";
+        continue;
+    }
+
+    $successCount++;
+    $size = strlen($content);
+    echo "<p class='success'>✓ $file <span style='color:#909399'>- {$size} 字节</span></p>";
 }
 
-if ($httpCode !== 200 || !$content) {
-    echo "<p style='color:red'>下载失败，HTTP 状态码: $httpCode</p>";
-    exit;
+echo "</div><div class='card'>";
+echo "<h3>修复结果</h3>";
+echo "<p class='success'>成功: $successCount 个文件</p>";
+if ($failCount > 0) {
+    echo "<p class='error'>失败: $failCount 个文件</p>";
+    foreach ($failFiles as $f) {
+        echo "<p class='error' style='font-size:12px;margin:2px 0'>- $f</p>";
+    }
 }
-
-if (strpos($content, 'class UpdateManager') === false) {
-    echo "<p style='color:red'>下载的文件内容不正确</p>";
-    exit;
-}
-
-$targetFile = $rootDir . '/src/UpdateManager.php';
-if (!is_dir($rootDir . '/src')) {
-    mkdir($rootDir . '/src', 0755, true);
-}
-
-$result = file_put_contents($targetFile, $content);
-if ($result === false) {
-    echo "<p style='color:red'>写入文件失败，请检查目录权限</p>";
-    exit;
-}
-
-echo "<p style='color:green'>✓ UpdateManager.php 修复成功！</p>";
-echo "<p>文件大小: " . strlen($content) . " 字节</p>";
 
 if (function_exists('opcache_reset')) {
     opcache_reset();
-    echo "<p style='color:green'>✓ OPcache 已清除</p>";
+    echo "<p class='success'>✓ OPcache 已清除</p>";
+}
+if (function_exists('apc_clear_cache')) {
+    apc_clear_cache();
+    echo "<p class='success'>✓ APC 缓存已清除</p>";
+}
+clearstatcache(true);
+
+echo "<hr>";
+
+$testFile = $rootDir . '/gz/DomainRuleManager.php';
+if (file_exists($testFile)) {
+    require_once $testFile;
+    $dm = new DomainRuleManager();
+    $rules = $dm->getAllRules();
+    echo "<p class='" . (count($rules) > 0 ? 'success' : 'warn') . "'>规则加载测试: " . count($rules) . " 个规则</p>";
+}
+
+$testUpdate = $rootDir . '/src/UpdateManager.php';
+if (file_exists($testUpdate)) {
+    require_once $testUpdate;
+    $um = new UpdateManager();
+    $integrity = $um->checkIntegrity();
+    echo "<p class='" . ($integrity['success'] ? 'success' : 'error') . "'>完整性检查: " . ($integrity['success'] ? '通过' : '失败') . "</p>";
+    if (!$integrity['success']) {
+        foreach ($integrity['issues'] as $issue) {
+            echo "<p class='error' style='font-size:12px;margin:2px 0'>- $issue</p>";
+        }
+    }
 }
 
 echo "<hr>";
-echo "<p><strong>现在可以删除此文件，然后去后台点击更新即可正常工作。</strong></p>";
-echo "<p><a href='mxadmin.php'>前往后台管理</a></p>";
+echo "<p><strong>修复完成！请删除此文件 fix_update.php，然后刷新后台页面。</strong></p>";
+echo "<p><a href='mxadmin.php' style='display:inline-block;padding:8px 20px;background:#667eea;color:#fff;text-decoration:none;border-radius:4px'>前往后台管理</a></p>";
+echo "</div></body></html>";
