@@ -67,3 +67,7 @@ htmlcov/
 
 # ===== Backups =====
 backups/
+
+# ===== Cache =====
+cache/
+cache/*/

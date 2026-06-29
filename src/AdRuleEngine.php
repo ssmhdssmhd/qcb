@@ -3,6 +3,8 @@
 class AdRuleEngine {
     private $options = [];
     private $rules = [];
+    private $durationCache = null;
+    private $durationCacheKey = null;
 
     public function __construct($options = []) {
         $this->options = array_merge([
@@ -112,21 +114,22 @@ class AdRuleEngine {
                     $duration = $segment['duration'];
                     $tolerance = $this->options['durationTolerance'];
                     
-                    $similarCount = 0;
-                    $consecutiveCount = 0;
-                    $maxConsecutive = 0;
-                    
-                    foreach ($segments as $i => $s) {
-                        if (abs($s['duration'] - $duration) <= $tolerance) {
-                            $similarCount++;
-                            $consecutiveCount++;
-                            if ($consecutiveCount > $maxConsecutive) {
-                                $maxConsecutive = $consecutiveCount;
-                            }
-                        } else {
-                            $consecutiveCount = 0;
-                        }
+                    $cacheKey = md5(serialize(array_column($segments, 'duration')));
+                    if ($this->durationCacheKey !== $cacheKey || $this->durationCache === null) {
+                        $this->durationCacheKey = $cacheKey;
+                        $this->durationCache = $this->computeDurationStats($segments, $tolerance);
                     }
+                    
+                    $stats = $this->durationCache;
+                    $durationKey = $this->getDurationBucketKey($duration, $tolerance);
+                    
+                    if (!isset($stats[$durationKey])) {
+                        return false;
+                    }
+                    
+                    $bucketStats = $stats[$durationKey];
+                    $similarCount = $bucketStats['count'];
+                    $maxConsecutive = $bucketStats['maxConsecutive'];
                     
                     $isShortAd = $duration >= 1.5 && $duration <= 8;
                     $similarRatio = $similarCount / count($segments);
@@ -192,5 +195,59 @@ class AdRuleEngine {
                 'description' => $r['description']
             ];
         }, $this->rules);
+    }
+
+    private function getDurationBucketKey($duration, $tolerance) {
+        return (string)(round($duration / ($tolerance * 2)) * ($tolerance * 2));
+    }
+
+    private function computeDurationStats($segments, $tolerance) {
+        $stats = [];
+        $count = count($segments);
+
+        $buckets = [];
+        foreach ($segments as $s) {
+            $key = $this->getDurationBucketKey($s['duration'], $tolerance);
+            if (!isset($buckets[$key])) {
+                $buckets[$key] = ['count' => 0, 'consecutive' => 0, 'maxConsecutive' => 0];
+            }
+        }
+
+        $prevKey = null;
+        $consecutiveCounts = [];
+        foreach ($segments as $s) {
+            $key = $this->getDurationBucketKey($s['duration'], $tolerance);
+            if (!isset($consecutiveCounts[$key])) {
+                $consecutiveCounts[$key] = ['current' => 0, 'max' => 0];
+            }
+            if ($key === $prevKey) {
+                $consecutiveCounts[$key]['current']++;
+            } else {
+                $consecutiveCounts[$key]['current'] = 1;
+            }
+            if ($consecutiveCounts[$key]['current'] > $consecutiveCounts[$key]['max']) {
+                $consecutiveCounts[$key]['max'] = $consecutiveCounts[$key]['current'];
+            }
+            $prevKey = $key;
+        }
+
+        $counts = [];
+        foreach ($segments as $s) {
+            $key = $this->getDurationBucketKey($s['duration'], $tolerance);
+            if (!isset($counts[$key])) {
+                $counts[$key] = 0;
+            }
+            $counts[$key]++;
+        }
+
+        $result = [];
+        foreach ($counts as $key => $cnt) {
+            $result[$key] = [
+                'count' => $cnt,
+                'maxConsecutive' => $consecutiveCounts[$key]['max'] ?? 0
+            ];
+        }
+
+        return $result;
     }
 }

@@ -90,7 +90,7 @@ if ($relativePath === '/health' || $relativePath === '/api/health') {
     sendIndexJson([
         'status' => 'ok',
         'service' => 'm3u8-ad-skipper',
-        'version' => '1.6.0-php',
+        'version' => '1.7.0-php',
         'language' => 'PHP',
         'timestamp' => date('c')
     ]);

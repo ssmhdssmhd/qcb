@@ -943,7 +943,15 @@ header('Expires: 0');
                         xhrSetup: function(xhr, url) {
                             xhr.withCredentials = false;
                         },
-                        startLevel: -1
+                        startLevel: -1,
+                        preloadFile: 3,
+                        lowLatencyMode: false,
+                        backBufferLength: 30,
+                        maxBufferLength: 60,
+                        maxMaxBufferLength: 120,
+                        enableWorker: true,
+                        fragLoadingTimeOut: 20000,
+                        manifestLoadingTimeOut: 10000
                     },
                     autoplay: true,
                     muted: false,

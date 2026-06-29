@@ -78,6 +78,7 @@ try {
         $rootDir . '/src/CryptoUtil.php',
         $rootDir . '/src/AuthConfig.php',
         $rootDir . '/src/AuthValidator.php',
+        $rootDir . '/src/CacheManager.php',
         $rootDir . '/gz/EnhancedAdRuleEngine.php',
         $rootDir . '/gz/DomainRuleManager.php',
     ];
@@ -347,8 +348,23 @@ try {
             if (empty($url)) {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
+
+            $cacheManager = new CacheManager($rootDir . '/cache');
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
+
+            $cacheKey = 'mxjx_' . md5($url . '_' . $domain);
+            $cachedContent = $cacheManager->get($cacheKey);
+
+            if ($cachedContent !== null && is_string($cachedContent)) {
+                header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
+                header('Content-Disposition: inline; filename="playlist.m3u8"');
+                header('X-Cache: HIT');
+                ob_clean();
+                echo $cachedContent;
+                exit;
+            }
+
             $mediaUrl = resolveMasterPlaylist($url);
             if ($mediaUrl !== $url) {
                 $parsedUrl = parse_url($mediaUrl);
@@ -408,8 +424,11 @@ try {
                 $newM3U8Content = implode("\n", $newLines);
             }
 
+            $cacheManager->set($cacheKey, $newM3U8Content, 120);
+
             header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
             header('Content-Disposition: inline; filename="playlist.m3u8"');
+            header('X-Cache: MISS');
             ob_clean();
             echo $newM3U8Content;
             exit;
