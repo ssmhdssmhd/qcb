@@ -297,6 +297,13 @@ switch ($action) {
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
 
+            $mediaUrl = resolveMasterPlaylist($url);
+            if ($mediaUrl !== $url) {
+                $parsedUrl = parse_url($mediaUrl);
+                $domain = $parsedUrl['host'] ?? '';
+            }
+            $url = $mediaUrl;
+
             $skipper = new M3U8AdSkipper();
 
             $reflection = new ReflectionClass($skipper);

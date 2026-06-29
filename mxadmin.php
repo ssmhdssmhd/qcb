@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M3U8 广告分析后台</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dplayer@1.27.1/dist/DPlayer.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dplayer@1.27.1/dist/DPlayer.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/dplayer/1.27.1/DPlayer.min.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/hls.js/1.5.15/hls.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/dplayer/1.27.1/DPlayer.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -811,24 +811,76 @@
             const mxjxUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
             document.getElementById('playerContainer').style.display = 'block';
             document.getElementById('playInfo').innerHTML = `
-                无广告链接: <code style="background:#f5f7fa;padding:2px 6px;border-radius:4px">${mxjxUrl}</code>
+                无广告链接: <code style="background:#f5f7fa;padding:2px 6px;border-radius:4px;word-break:break-all">${mxjxUrl}</code>
+                <div id="playStatus" style="margin-top:8px;color:#909399;font-size:12px">正在加载视频...</div>
             `;
 
             if (dp) {
-                dp.destroy();
+                try { dp.destroy(); } catch(e) {}
+                dp = null;
             }
 
-            dp = new DPlayer({
-                container: document.getElementById('dplayer'),
-                video: {
-                    url: mxjxUrl,
-                    type: 'hls'
-                },
-                hls: Hls,
-                autoplay: true,
-                theme: '#667eea',
-                lang: 'zh-cn'
-            });
+            if (typeof Hls === 'undefined') {
+                document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">错误: hls.js 加载失败，请检查网络或刷新页面</span>';
+                showToast('hls.js 加载失败', 'error');
+                return;
+            }
+            if (typeof DPlayer === 'undefined') {
+                document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">错误: DPlayer 加载失败，请检查网络或刷新页面</span>';
+                showToast('DPlayer 加载失败', 'error');
+                return;
+            }
+
+            try {
+                dp = new DPlayer({
+                    container: document.getElementById('dplayer'),
+                    video: {
+                        url: mxjxUrl,
+                        type: 'customHls'
+                    },
+                    customType: {
+                        customHls: function (video, player) {
+                            const hls = new Hls({
+                                xhrSetup: function(xhr, url) {
+                                    xhr.withCredentials = false;
+                                }
+                            });
+                            hls.loadSource(video.src);
+                            hls.attachMedia(video);
+                            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
+                            });
+                            hls.on(Hls.Events.ERROR, function(event, data) {
+                                if (data.fatal) {
+                                    let errMsg = '视频加载失败';
+                                    switch (data.type) {
+                                        case Hls.ErrorTypes.NETWORK_ERROR:
+                                            errMsg = '网络错误: ' + (data.details || '无法加载视频资源');
+                                            break;
+                                        case Hls.ErrorTypes.MEDIA_ERROR:
+                                            errMsg = '媒体错误: ' + (data.details || '视频解码失败');
+                                            break;
+                                        default:
+                                            errMsg = '播放错误: ' + (data.details || data.type);
+                                    }
+                                    document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">' + errMsg + '</span>';
+                                    showToast(errMsg, 'error');
+                                }
+                            });
+                        }
+                    },
+                    autoplay: true,
+                    theme: '#667eea',
+                    lang: 'zh-cn'
+                });
+
+                dp.on('error', function() {
+                    document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器错误，请检查视频链接</span>';
+                });
+            } catch (e) {
+                document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
+                showToast('播放失败: ' + e.message, 'error');
+            }
         }
 
         async function refreshRules() {
