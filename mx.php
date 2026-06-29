@@ -1,87 +1,119 @@
 <?php
+@ini_set('display_errors', 0);
+@ini_set('html_errors', 0);
+error_reporting(0);
+
+if (ob_get_level()) {
+    ob_end_clean();
+}
 ob_start();
 
-ini_set('display_errors', 0);
-error_reporting(E_ALL);
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Accept');
+header('X-Content-Type-Options: nosniff');
 
-function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
-    if (!(error_reporting() & $errno)) return;
-    ob_clean();
-    $errors = [
-        'error' => true,
-        'type' => $errno,
-        'message' => $errstr,
-        'file' => basename($errfile),
-        'line' => $errline
-    ];
-    echo json_encode(['success' => false, 'message' => $errstr . ' (' . basename($errfile) . ':' . $errline . ')', 'error_detail' => $errors]);
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(204);
     ob_end_flush();
     exit;
+}
+
+function sendJsonResponse($data, $code = 200) {
+    http_response_code($code);
+    $output = ob_get_clean();
+    if (!empty(trim($output))) {
+        $data['debug_output'] = base64_encode($output);
+    }
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
+    sendJsonResponse([
+        'success' => false,
+        'message' => $errstr,
+        'error_detail' => [
+            'type' => $errno,
+            'file' => basename($errfile),
+            'line' => $errline
+        ]
+    ], 500);
 }
 set_error_handler('jsonErrorHandler');
 
 function jsonFatalHandler() {
     $error = error_get_last();
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        ob_clean();
+        @ob_clean();
         echo json_encode([
             'success' => false,
-            'message' => $error['message'] . ' (' . basename($error['file']) . ':' . $error['line'] . ')',
+            'message' => $error['message'],
+            'error_detail' => [
+                'file' => basename($error['file']),
+                'line' => $error['line']
+            ],
             'fatal_error' => true
-        ]);
-        ob_end_flush();
+        ], JSON_UNESCAPED_UNICODE);
+        @ob_end_flush();
     }
 }
 register_shutdown_function('jsonFatalHandler');
 
-require_once __DIR__ . '/src/M3U8AdSkipper.php';
-require_once __DIR__ . '/src/UpdateManager.php';
-require_once __DIR__ . '/src/CryptoUtil.php';
-require_once __DIR__ . '/src/AuthConfig.php';
-require_once __DIR__ . '/src/AuthValidator.php';
-require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
-require_once __DIR__ . '/gz/DomainRuleManager.php';
+try {
+    $rootDir = __DIR__;
 
-ob_clean();
+    $requiredFiles = [
+        $rootDir . '/src/M3U8AdSkipper.php',
+        $rootDir . '/src/M3U8Parser.php',
+        $rootDir . '/src/UpdateManager.php',
+        $rootDir . '/src/CryptoUtil.php',
+        $rootDir . '/src/AuthConfig.php',
+        $rootDir . '/src/AuthValidator.php',
+        $rootDir . '/gz/EnhancedAdRuleEngine.php',
+        $rootDir . '/gz/DomainRuleManager.php',
+    ];
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
-
-$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$scriptName = basename($_SERVER['SCRIPT_NAME']);
-$basePath = '';
-
-if ($scriptName === 'mx.php') {
-    $basePath = dirname($_SERVER['SCRIPT_NAME']);
-    if ($basePath === '/' || $basePath === '\\') {
-        $basePath = '';
+    foreach ($requiredFiles as $file) {
+        if (!file_exists($file)) {
+            sendJsonResponse([
+                'success' => false,
+                'message' => '文件缺失: ' . basename($file)
+            ], 500);
+        }
+        require_once $file;
     }
+
+    ob_clean();
+
+} catch (Throwable $e) {
+    sendJsonResponse([
+        'success' => false,
+        'message' => '初始化失败: ' . $e->getMessage(),
+        'error_detail' => [
+            'file' => basename($e->getFile()),
+            'line' => $e->getLine()
+        ]
+    ], 500);
 }
 
-$relativePath = substr($requestUri, strlen($basePath));
-if ($relativePath === false) {
-    $relativePath = $requestUri;
+try {
+    $ruleManager = new DomainRuleManager();
+    $updateManager = new UpdateManager();
+    $authValidator = new AuthValidator();
+} catch (Throwable $e) {
+    sendJsonResponse([
+        'success' => false,
+        'message' => '类初始化失败: ' . $e->getMessage(),
+        'error_detail' => [
+            'file' => basename($e->getFile()),
+            'line' => $e->getLine()
+        ]
+    ], 500);
 }
-$relativePath = '/' . ltrim($relativePath, '/');
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-
-$ruleManager = new DomainRuleManager();
-$updateManager = new UpdateManager();
-$authValidator = new AuthValidator();
-
-function sendJson($data, $code = 200) {
-    http_response_code($code);
-    echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    ob_end_flush();
-    exit;
-}
 
 function getInputJson() {
     $input = file_get_contents('php://input');
@@ -114,17 +146,16 @@ function resolveMasterPlaylist($url) {
     return $url;
 }
 
-switch ($action) {
-    case 'analyze':
-        $url = $_GET['url'] ?? $_POST['url'] ?? '';
-        if (empty($url)) {
-            sendJson(['success' => false, 'message' => '缺少 url 参数'], 400);
-        }
+try {
+    switch ($action) {
+        case 'analyze':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
 
-        try {
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
-
             $mediaUrl = resolveMasterPlaylist($url);
 
             $engine = new EnhancedAdRuleEngine([
@@ -137,15 +168,14 @@ switch ($action) {
             $playlist = $parser->parse($mediaUrl);
 
             if (empty($playlist['segments'])) {
-                sendJson(['success' => false, 'message' => '无法解析视频片段'], 400);
+                sendJsonResponse(['success' => false, 'message' => '无法解析视频片段'], 400);
             }
 
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
-
             $domainRules = $ruleManager->getRules($domain);
             $hasDomainRules = $domainRules !== null;
 
-            sendJson([
+            sendJsonResponse([
                 'success' => true,
                 'url' => $url,
                 'mediaUrl' => $mediaUrl,
@@ -173,89 +203,78 @@ switch ($action) {
                 })),
                 'allSegments' => $analysis['segments']
             ]);
+            break;
 
-        } catch (Exception $e) {
-            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-        break;
+        case 'rules/list':
+            $rules = $ruleManager->getAllRules();
+            sendJsonResponse(['success' => true, 'rules' => $rules]);
+            break;
 
-    case 'rules/list':
-        $rules = $ruleManager->getAllRules();
-        sendJson(['success' => true, 'rules' => $rules]);
-        break;
+        case 'rules/get':
+            $domain = $_GET['domain'] ?? '';
+            if (empty($domain)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain 参数'], 400);
+            }
+            $rules = $ruleManager->getRules($domain);
+            if ($rules === null) {
+                sendJsonResponse(['success' => false, 'message' => '规则不存在'], 404);
+            }
+            sendJsonResponse(['success' => true, 'domain' => $domain, 'rules' => $rules]);
+            break;
 
-    case 'rules/get':
-        $domain = $_GET['domain'] ?? '';
-        if (empty($domain)) {
-            sendJson(['success' => false, 'message' => '缺少 domain 参数'], 400);
-        }
-        $rules = $ruleManager->getRules($domain);
-        if ($rules === null) {
-            sendJson(['success' => false, 'message' => '规则不存在'], 404);
-        }
-        sendJson(['success' => true, 'domain' => $domain, 'rules' => $rules]);
-        break;
+        case 'rules/save':
+            $input = getInputJson();
+            $domain = $input['domain'] ?? '';
+            if (empty($domain)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain 参数'], 400);
+            }
+            $ruleData = $input['rules'] ?? [];
+            $result = $ruleManager->saveRules($domain, $ruleData);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '规则保存成功' : '规则保存失败',
+                'domain' => $domain
+            ]);
+            break;
 
-    case 'rules/save':
-        $input = getInputJson();
-        $domain = $input['domain'] ?? '';
-        if (empty($domain)) {
-            sendJson(['success' => false, 'message' => '缺少 domain 参数'], 400);
-        }
+        case 'rules/delete':
+            $input = getInputJson();
+            $domain = $input['domain'] ?? '';
+            if (empty($domain)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain 参数'], 400);
+            }
+            $result = $ruleManager->deleteRules($domain);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '规则删除成功' : '规则删除失败或不存在'
+            ]);
+            break;
 
-        $ruleData = $input['rules'] ?? [];
-        $result = $ruleManager->saveRules($domain, $ruleData);
-
-        if ($result) {
-            sendJson(['success' => true, 'message' => '规则保存成功', 'domain' => $domain]);
-        } else {
-            sendJson(['success' => false, 'message' => '规则保存失败'], 500);
-        }
-        break;
-
-    case 'rules/delete':
-        $input = getInputJson();
-        $domain = $input['domain'] ?? '';
-        if (empty($domain)) {
-            sendJson(['success' => false, 'message' => '缺少 domain 参数'], 400);
-        }
-        $result = $ruleManager->deleteRules($domain);
-        if ($result) {
-            sendJson(['success' => true, 'message' => '规则删除成功']);
-        } else {
-            sendJson(['success' => false, 'message' => '规则删除失败或不存在'], 400);
-        }
-        break;
-
-    case 'rules/generate':
-        $url = $_GET['url'] ?? $_POST['url'] ?? '';
-        if (empty($url)) {
-            sendJson(['success' => false, 'message' => '缺少 url 参数'], 400);
-        }
-
-        try {
+        case 'rules/generate':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
-
             $mediaUrl = resolveMasterPlaylist($url);
 
             $engine = new EnhancedAdRuleEngine([
                 'checkDiscontinuity' => true,
                 'checkRepetitiveDuration' => true
             ]);
-
             $parser = new M3U8Parser();
             $playlist = $parser->parse($mediaUrl);
 
             if (empty($playlist['segments'])) {
-                sendJson(['success' => false, 'message' => '无法解析视频片段'], 400);
+                sendJsonResponse(['success' => false, 'message' => '无法解析视频片段'], 400);
             }
 
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
             $generatedRules = $ruleManager->createFromAnalysis($domain, $analysis);
             $generatedRules['sample_url'] = $url;
 
-            sendJson([
+            sendJsonResponse([
                 'success' => true,
                 'domain' => $domain,
                 'rules' => $generatedRules,
@@ -267,31 +286,22 @@ switch ($action) {
                     'adClusterCount' => count($analysis['adClusters'])
                 ]
             ]);
+            break;
 
-        } catch (Exception $e) {
-            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-        break;
-
-    case 'skip':
-        $url = $_GET['url'] ?? '';
-        if (empty($url)) {
-            sendJson(['success' => false, 'message' => '缺少 url 参数'], 400);
-        }
-
-        try {
+        case 'skip':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
 
             $skipper = new M3U8AdSkipper();
-
             $reflection = new ReflectionClass($skipper);
             $ruleEngineProp = $reflection->getProperty('ruleEngine');
             $ruleEngineProp->setAccessible(true);
 
-            $enhancedEngine = new EnhancedAdRuleEngine([
-                'checkDiscontinuity' => true
-            ]);
+            $enhancedEngine = new EnhancedAdRuleEngine(['checkDiscontinuity' => true]);
             $enhancedEngine->setDomain($domain);
             $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
@@ -308,31 +318,27 @@ switch ($action) {
 
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
             $selfUrl = $scheme . '://' . $host . $basePath;
             $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
 
-            sendJson([
+            sendJsonResponse([
                 'success' => true,
                 'url' => $url,
                 'mxjx' => $mxjxUrl,
                 'stats' => $result['stats']
             ]);
+            break;
 
-        } catch (Exception $e) {
-            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-        break;
-
-    case 'mxjx':
-        $url = $_GET['url'] ?? '';
-        if (empty($url)) {
-            sendJson(['success' => false, 'message' => '缺少 url 参数'], 400);
-        }
-
-        try {
+        case 'mxjx':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
-
             $mediaUrl = resolveMasterPlaylist($url);
             if ($mediaUrl !== $url) {
                 $parsedUrl = parse_url($mediaUrl);
@@ -341,14 +347,11 @@ switch ($action) {
             $url = $mediaUrl;
 
             $skipper = new M3U8AdSkipper();
-
             $reflection = new ReflectionClass($skipper);
             $ruleEngineProp = $reflection->getProperty('ruleEngine');
             $ruleEngineProp->setAccessible(true);
 
-            $enhancedEngine = new EnhancedAdRuleEngine([
-                'checkDiscontinuity' => true
-            ]);
+            $enhancedEngine = new EnhancedAdRuleEngine(['checkDiscontinuity' => true]);
             $enhancedEngine->setDomain($domain);
             $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
@@ -394,161 +397,157 @@ switch ($action) {
 
             header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
             header('Content-Disposition: inline; filename="playlist.m3u8"');
+            ob_clean();
             echo $newM3U8Content;
             exit;
 
-        } catch (Exception $e) {
-            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-        break;
+        case 'update/version':
+            sendJsonResponse([
+                'success' => true,
+                'current_version' => $updateManager->getCurrentVersion(),
+                'version_file' => file_exists(__DIR__ . '/version.php') ? trim(include __DIR__ . '/version.php') : ''
+            ]);
+            break;
 
-    case 'update/version':
-        sendJson([
-            'success' => true,
-            'current_version' => $updateManager->getCurrentVersion(),
-            'version_file' => file_exists(__DIR__ . '/version.php') ? trim(include __DIR__ . '/version.php') : ''
-        ]);
-        break;
+        case 'update/check':
+            $result = $updateManager->checkUpdate();
+            sendJsonResponse($result);
+            break;
 
-    case 'update/check':
-        $result = $updateManager->checkUpdate();
-        sendJson($result);
-        break;
+        case 'update/integrity':
+            $result = $updateManager->checkIntegrity();
+            sendJsonResponse($result);
+            break;
 
-    case 'update/integrity':
-        $result = $updateManager->checkIntegrity();
-        sendJson($result);
-        break;
+        case 'update/backup/list':
+            $backups = $updateManager->getBackupList();
+            sendJsonResponse(['success' => true, 'backups' => $backups]);
+            break;
 
-    case 'update/backup/list':
-        $backups = $updateManager->getBackupList();
-        sendJson([
-            'success' => true,
-            'backups' => $backups
-        ]);
-        break;
+        case 'update/backup/create':
+            $result = $updateManager->createBackup();
+            sendJsonResponse($result);
+            break;
 
-    case 'update/backup/create':
-        $result = $updateManager->createBackup();
-        sendJson($result);
-        break;
+        case 'update/backup/restore':
+            $input = getInputJson();
+            $filename = $input['filename'] ?? $_GET['filename'] ?? '';
+            if (empty($filename)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 filename 参数'], 400);
+            }
+            $result = $updateManager->restoreBackup($filename);
+            sendJsonResponse($result);
+            break;
 
-    case 'update/backup/restore':
-        $input = getInputJson();
-        $filename = $input['filename'] ?? $_GET['filename'] ?? '';
-        if (empty($filename)) {
-            sendJson(['success' => false, 'message' => '缺少 filename 参数'], 400);
-        }
-        $result = $updateManager->restoreBackup($filename);
-        sendJson($result);
-        break;
+        case 'update/backup/delete':
+            $input = getInputJson();
+            $filename = $input['filename'] ?? $_GET['filename'] ?? '';
+            if (empty($filename)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 filename 参数'], 400);
+            }
+            $result = $updateManager->deleteBackup($filename);
+            sendJsonResponse($result);
+            break;
 
-    case 'update/backup/delete':
-        $input = getInputJson();
-        $filename = $input['filename'] ?? $_GET['filename'] ?? '';
-        if (empty($filename)) {
-            sendJson(['success' => false, 'message' => '缺少 filename 参数'], 400);
-        }
-        $result = $updateManager->deleteBackup($filename);
-        sendJson($result);
-        break;
+        case 'update/download':
+            $result = $updateManager->downloadUpdate();
+            sendJsonResponse($result);
+            break;
 
-    case 'update/download':
-        $result = $updateManager->downloadUpdate();
-        sendJson($result);
-        break;
+        case 'auth/info':
+            $info = $authValidator->getAuthInfo();
+            $info['success'] = true;
+            $info['contact'] = 'QQ2094332348';
+            sendJsonResponse($info);
+            break;
 
-    case 'auth/info':
-        $info = $authValidator->getAuthInfo();
-        $info['success'] = true;
-        $info['contact'] = 'QQ2094332348';
-        sendJson($info);
-        break;
+        case 'auth/validate':
+            $localValid = $authValidator->validateLocal();
+            $remoteValid = $authValidator->validateRemote();
+            sendJsonResponse([
+                'success' => true,
+                'local_valid' => $localValid,
+                'remote_valid' => $remoteValid,
+                'all_valid' => $localValid && $remoteValid,
+                'error' => $authValidator->getLastError()
+            ]);
+            break;
 
-    case 'auth/validate':
-        $localValid = $authValidator->validateLocal();
-        $remoteValid = $authValidator->validateRemote();
-        sendJson([
-            'success' => true,
-            'local_valid' => $localValid,
-            'remote_valid' => $remoteValid,
-            'all_valid' => $localValid && $remoteValid,
-            'error' => $authValidator->getLastError()
-        ]);
-        break;
+        case 'auth/config/get':
+            $config = $authValidator->getAuthConfig()->getConfig();
+            sendJsonResponse(['success' => true, 'config' => $config]);
+            break;
 
-    case 'auth/config/get':
-        $config = $authValidator->getAuthConfig()->getConfig();
-        sendJson([
-            'success' => true,
-            'config' => $config
-        ]);
-        break;
+        case 'auth/config/save':
+            $input = getInputJson();
+            $config = $input['config'] ?? [];
+            $result = $authValidator->getAuthConfig()->setConfig($config);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '配置保存成功' : '配置保存失败'
+            ]);
+            break;
 
-    case 'auth/config/save':
-        $input = getInputJson();
-        $config = $input['config'] ?? [];
-        $result = $authValidator->getAuthConfig()->setConfig($config);
-        sendJson([
-            'success' => $result,
-            'message' => $result ? '配置保存成功' : '配置保存失败'
-        ]);
-        break;
+        case 'auth/set':
+            $input = getInputJson();
+            $authCode = $input['auth_code'] ?? '';
+            if (empty($authCode)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 auth_code 参数'], 400);
+            }
+            $result = $authValidator->setAuthCode($authCode);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '授权码设置成功' : '授权码设置失败'
+            ]);
+            break;
 
-    case 'auth/set':
-        $input = getInputJson();
-        $authCode = $input['auth_code'] ?? '';
-        if (empty($authCode)) {
-            sendJson(['success' => false, 'message' => '缺少 auth_code 参数'], 400);
-        }
-        $result = $authValidator->setAuthCode($authCode);
-        sendJson([
-            'success' => $result,
-            'message' => $result ? '授权码设置成功' : '授权码设置失败'
-        ]);
-        break;
+        case 'auth/generate':
+            $domain = $_GET['domain'] ?? $_POST['domain'] ?? '';
+            if (empty($domain)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain 参数'], 400);
+            }
+            $authCode = $authValidator->generateAuthCode($domain);
+            sendJsonResponse([
+                'success' => true,
+                'domain' => $domain,
+                'auth_code' => $authCode
+            ]);
+            break;
 
-    case 'auth/generate':
-        $domain = $_GET['domain'] ?? $_POST['domain'] ?? '';
-        if (empty($domain)) {
-            sendJson(['success' => false, 'message' => '缺少 domain 参数'], 400);
-        }
-        $authCode = $authValidator->generateAuthCode($domain);
-        sendJson([
-            'success' => true,
-            'domain' => $domain,
-            'auth_code' => $authCode
-        ]);
-        break;
-
-    default:
-        sendJson([
-            'success' => false,
-            'message' => '未知操作',
-            'available_actions' => [
-                'analyze' => '分析视频广告',
-                'rules/list' => '获取所有域名规则',
-                'rules/get' => '获取指定域名规则',
-                'rules/save' => '保存域名规则',
-                'rules/delete' => '删除域名规则',
-                'rules/generate' => '根据视频自动生成规则',
-                'skip' => '去广告接口',
-                'mxjx' => '去广告m3u8输出',
-                'update/version' => '获取当前版本',
-                'update/check' => '检查更新',
-                'update/integrity' => '完整性检查（授权验证+文件验证）',
-                'update/backup/list' => '备份列表',
-                'update/backup/create' => '创建备份',
-                'update/backup/restore' => '恢复备份',
-                'update/backup/delete' => '删除备份',
-                'update/download' => '下载更新',
-                'auth/info' => '授权信息',
-                'auth/validate' => '验证授权',
-                'auth/config/get' => '获取授权配置',
-                'auth/config/save' => '保存授权配置',
-                'auth/set' => '设置授权码',
-                'auth/generate' => '生成授权码'
-            ]
-        ], 400);
-        break;
+        default:
+            sendJsonResponse([
+                'success' => false,
+                'message' => '未知操作',
+                'available_actions' => [
+                    'analyze' => '分析视频广告',
+                    'rules/list' => '获取所有域名规则',
+                    'rules/get' => '获取指定域名规则',
+                    'rules/save' => '保存域名规则',
+                    'rules/delete' => '删除域名规则',
+                    'rules/generate' => '根据视频自动生成规则',
+                    'skip' => '去广告接口',
+                    'mxjx' => '去广告m3u8输出',
+                    'update/version' => '获取当前版本',
+                    'update/check' => '检查更新',
+                    'update/integrity' => '完整性检查',
+                    'auth/info' => '授权信息',
+                    'auth/validate' => '验证授权',
+                    'auth/config/get' => '获取授权配置',
+                    'auth/config/save' => '保存授权配置',
+                    'auth/set' => '设置授权码',
+                    'auth/generate' => '生成授权码'
+                ]
+            ], 400);
+            break;
+    }
+} catch (Throwable $e) {
+    sendJsonResponse([
+        'success' => false,
+        'message' => $e->getMessage(),
+        'error_detail' => [
+            'file' => basename($e->getFile()),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]
+    ], 500);
 }

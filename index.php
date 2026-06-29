@@ -1,18 +1,18 @@
 <?php
-ob_start();
+@ini_set('display_errors', 0);
+@ini_set('html_errors', 0);
+error_reporting(0);
 
-require_once __DIR__ . '/src/M3U8AdSkipper.php';
-require_once __DIR__ . '/src/M3U8Parser.php';
-require_once __DIR__ . '/src/CryptoUtil.php';
-require_once __DIR__ . '/src/AuthConfig.php';
-require_once __DIR__ . '/src/AuthValidator.php';
-require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
+if (ob_get_level()) {
+    ob_end_clean();
+}
+ob_start();
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Accept');
-header('X-Powered-By: m3u8-ad-skipper-php');
+header('X-Content-Type-Options: nosniff');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -20,35 +20,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-ob_clean();
-
-$authValidator = new AuthValidator();
-$sqFile = __DIR__ . '/sq.php';
-
-if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
-    http_response_code(403);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Forbidden',
-        'message' => '授权异常，请联系 QQ2094332348 进行授权（' . $authValidator->getLastError() . '）',
-        'contact_qq' => '2094332348'
-    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    ob_end_flush();
+function sendIndexJson($data, $code = 200) {
+    http_response_code($code);
+    ob_clean();
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+try {
+    $rootDir = __DIR__;
+    $requiredFiles = [
+        $rootDir . '/src/M3U8AdSkipper.php',
+        $rootDir . '/src/M3U8Parser.php',
+        $rootDir . '/src/CryptoUtil.php',
+        $rootDir . '/src/AuthConfig.php',
+        $rootDir . '/src/AuthValidator.php',
+        $rootDir . '/gz/EnhancedAdRuleEngine.php',
+    ];
+    foreach ($requiredFiles as $file) {
+        if (!file_exists($file)) {
+            sendIndexJson(['success' => false, 'error' => '文件缺失: ' . basename($file)], 500);
+        }
+        require_once $file;
+    }
+} catch (Throwable $e) {
+    sendIndexJson([
+        'success' => false,
+        'error' => '初始化失败',
+        'message' => $e->getMessage()
+    ], 500);
+}
 
+try {
+    $authValidator = new AuthValidator();
+    $sqFile = __DIR__ . '/sq.php';
+
+    if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
+        sendIndexJson([
+            'success' => false,
+            'error' => 'Forbidden',
+            'message' => '授权异常，请联系 QQ2094332348 进行授权',
+            'contact_qq' => '2094332348'
+        ], 403);
+    }
+} catch (Throwable $e) {
+    sendIndexJson([
+        'success' => false,
+        'error' => '授权验证失败',
+        'message' => $e->getMessage()
+    ], 500);
+}
+
+$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $scriptName = basename($_SERVER['SCRIPT_NAME']);
+$basePath = '';
 if ($scriptName === 'index.php') {
     $basePath = dirname($_SERVER['SCRIPT_NAME']);
     if ($basePath === '/' || $basePath === '\\') {
         $basePath = '';
     }
-} else {
-    $basePath = '';
 }
-
 $relativePath = substr($requestUri, strlen($basePath));
 if ($relativePath === false) {
     $relativePath = $requestUri;
@@ -56,28 +87,19 @@ if ($relativePath === false) {
 $relativePath = '/' . ltrim($relativePath, '/');
 
 if ($relativePath === '/health' || $relativePath === '/api/health') {
-    echo json_encode([
+    sendIndexJson([
         'status' => 'ok',
         'service' => 'm3u8-ad-skipper',
         'version' => '1.2.0-php',
         'language' => 'PHP',
         'timestamp' => date('c')
-    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    ob_end_flush();
-    exit;
+    ]);
 }
 
 if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
     $url = $_GET['url'] ?? '';
     if (empty($url)) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Bad Request',
-            'message' => '缺少 url 参数'
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        ob_end_flush();
-        exit;
+        sendIndexJson(['success' => false, 'error' => 'Bad Request', 'message' => '缺少 url 参数'], 400);
     }
 
     try {
@@ -112,9 +134,7 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
         $ruleEngineProp = $reflection->getProperty('ruleEngine');
         $ruleEngineProp->setAccessible(true);
 
-        $enhancedEngine = new EnhancedAdRuleEngine([
-            'checkDiscontinuity' => true
-        ]);
+        $enhancedEngine = new EnhancedAdRuleEngine(['checkDiscontinuity' => true]);
         $enhancedEngine->setDomain($domain);
         $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
@@ -160,28 +180,24 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
 
         header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
         header('Content-Disposition: inline; filename="playlist.m3u8"');
+        ob_clean();
         echo $newM3U8Content;
-        ob_end_flush();
         exit;
 
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode([
+    } catch (Throwable $e) {
+        sendIndexJson([
             'success' => false,
             'error' => 'Internal Server Error',
             'message' => $e->getMessage()
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        ob_end_flush();
+        ], 500);
     }
-    exit;
 }
 
 if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === '/index.php') {
     $url = $_GET['url'] ?? '';
 
     if (empty($url)) {
-        http_response_code(400);
-        echo json_encode([
+        sendIndexJson([
             'success' => false,
             'error' => 'Bad Request',
             'message' => '缺少 url 参数',
@@ -189,10 +205,10 @@ if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === 
             'endpoints' => [
                 ['path' => '/', 'method' => 'GET', 'description' => '去广告接口'],
                 ['path' => '/api/skip', 'method' => 'GET', 'description' => '去广告接口'],
+                ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
                 ['path' => '/health', 'method' => 'GET', 'description' => '健康检查']
             ]
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        exit;
+        ], 400);
     }
 
     try {
@@ -215,7 +231,7 @@ if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === 
             ];
         }
 
-        echo json_encode([
+        sendIndexJson([
             'success' => true,
             'input' => $url,
             'processTime' => $processTime . 'ms',
@@ -226,23 +242,18 @@ if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === 
                 'segmentCount' => count($result['filtered']['segments'] ?? [])
             ],
             'removed' => $removed
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        ob_end_flush();
+        ]);
 
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode([
+    } catch (Throwable $e) {
+        sendIndexJson([
             'success' => false,
             'error' => 'Internal Server Error',
             'message' => $e->getMessage()
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        ob_end_flush();
+        ], 500);
     }
-    exit;
 }
 
-http_response_code(404);
-echo json_encode([
+sendIndexJson([
     'error' => 'Not Found',
     'message' => '接口不存在',
     'path' => $relativePath,
@@ -252,5 +263,4 @@ echo json_encode([
         ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
         ['path' => '/health', 'method' => 'GET', 'description' => '健康检查']
     ]
-], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-ob_end_flush();
+], 404);
