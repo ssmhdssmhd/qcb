@@ -247,6 +247,43 @@ header('Expires: 0');
             padding: 16px;
             margin-bottom: 16px;
         }
+        .fast-mode-banner {
+            background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
+            border: 1px solid #c2e7b0;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .fast-mode-banner .icon {
+            font-size: 24px;
+        }
+        .fast-mode-banner .content {
+            flex: 1;
+        }
+        .fast-mode-banner .title {
+            font-weight: 600;
+            color: #67c23a;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        .fast-mode-banner .desc {
+            color: #606266;
+            font-size: 13px;
+        }
+        .fast-mode-banner .domain-tag {
+            display: inline-block;
+            background: white;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #67c23a;
+            margin-left: 8px;
+            border: 1px solid #c2e7b0;
+        }
         .rule-section-title {
             font-weight: 600;
             margin-bottom: 12px;
@@ -426,9 +463,11 @@ header('Expires: 0');
             </div>
 
             <div id="analyzeResult" style="display:none">
+                <div id="fastModeBanner" style="display:none"></div>
+
                 <div class="stats-grid" id="statsGrid"></div>
 
-                <div class="detail-grid">
+                <div class="detail-grid" id="detailGrid">
                     <div class="card">
                         <div class="card-title">序列号跳跃检测</div>
                         <div id="jumpList"></div>
@@ -744,30 +783,81 @@ header('Expires: 0');
                 analyzeMxjxEl.textContent = mxjxUrl;
             }
 
+            const bannerEl = document.getElementById('fastModeBanner');
+            const detailGrid = document.getElementById('detailGrid');
+            const segmentCard = document.querySelector('#page-analyze .card:nth-of-type(4)');
+            const actionCard = document.querySelector('#page-analyze .card:nth-of-type(5)');
+
+            if (data.fastMode) {
+                bannerEl.style.display = 'flex';
+                bannerEl.innerHTML = `
+                    <div class="icon">⚡</div>
+                    <div class="content">
+                        <div class="title">快速模式 - 已有域名规则<span class="domain-tag">${data.domain}</span></div>
+                        <div class="desc">${data.message || '检测到已有域名规则，使用规则快速去广告，无需重复分析'}</div>
+                    </div>
+                    <button class="btn btn-sm btn-secondary" onclick="goToRules()">查看规则</button>
+                `;
+                if (detailGrid) detailGrid.style.display = 'none';
+                if (segmentCard) segmentCard.style.display = 'none';
+            } else {
+                bannerEl.style.display = 'none';
+                if (detailGrid) detailGrid.style.display = 'grid';
+                if (segmentCard) segmentCard.style.display = 'block';
+            }
+
             const stats = data.stats;
             const pct = stats.totalSegments > 0 ? (stats.adSegments / stats.totalSegments * 100).toFixed(1) : 0;
-            document.getElementById('statsGrid').innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-value">${stats.totalSegments}</div>
-                    <div class="stat-label">总片段数</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value danger">${stats.adSegments}</div>
-                    <div class="stat-label">广告片段数 (${pct}%)</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value warning">${stats.discontinuityCount}</div>
-                    <div class="stat-label">DISCONTINUITY 标记</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">${stats.sequenceJumpCount}</div>
-                    <div class="stat-label">序列号跳跃</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value success">${stats.adClusterCount}</div>
-                    <div class="stat-label">广告聚类</div>
-                </div>
-            `;
+
+            if (data.fastMode) {
+                document.getElementById('statsGrid').innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.totalSegments}</div>
+                        <div class="stat-label">总片段数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value danger">${stats.adSegments}</div>
+                        <div class="stat-label">广告片段数 (${pct}%)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value success">${stats.keptSegments}</div>
+                        <div class="stat-label">保留片段数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value warning">${(stats.savedDuration / 60).toFixed(1)}分钟</div>
+                        <div class="stat-label">节省时长</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value success">${stats.adPercentage}%</div>
+                        <div class="stat-label">广告占比</div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('statsGrid').innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.totalSegments}</div>
+                        <div class="stat-label">总片段数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value danger">${stats.adSegments}</div>
+                        <div class="stat-label">广告片段数 (${pct}%)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value warning">${stats.discontinuityCount}</div>
+                        <div class="stat-label">DISCONTINUITY 标记</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.sequenceJumpCount}</div>
+                        <div class="stat-label">序列号跳跃</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value success">${stats.adClusterCount}</div>
+                        <div class="stat-label">广告聚类</div>
+                    </div>
+                `;
+            }
+
+            if (data.fastMode) return;
 
             const jumps = data.sequenceJumps;
             const jumpHtml = jumps.length === 0

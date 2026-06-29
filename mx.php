@@ -164,6 +164,72 @@ try {
 
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
+            $domainRules = $ruleManager->getRules($domain);
+            $hasDomainRules = $domainRules !== null;
+
+            if ($hasDomainRules) {
+                $mediaUrl = resolveMasterPlaylist($url);
+                $engine = new EnhancedAdRuleEngine([
+                    'checkDiscontinuity' => true,
+                    'checkRepetitiveDuration' => true
+                ]);
+                $engine->setDomain($domain);
+
+                $skipper = new M3U8AdSkipper();
+                $reflection = new ReflectionClass($skipper);
+                $ruleEngineProp = $reflection->getProperty('ruleEngine');
+                $ruleEngineProp->setAccessible(true);
+                $ruleEngineProp->setValue($skipper, $engine);
+
+                $filterProp = $reflection->getProperty('filter');
+                $filterProp->setAccessible(true);
+                $filter = $filterProp->getValue($skipper);
+
+                $filterReflection = new ReflectionClass($filter);
+                $filterEngineProp = $filterReflection->getProperty('ruleEngine');
+                $filterEngineProp->setAccessible(true);
+                $filterEngineProp->setValue($filter, $engine);
+
+                $result = $skipper->process($mediaUrl);
+                $stats = $result['stats'] ?? [];
+
+                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                $basePath = dirname($requestUri);
+                $basePath = $basePath === '/' ? '' : $basePath;
+                $selfUrl = $scheme . '://' . $host . $basePath;
+                $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($mediaUrl);
+
+                sendJsonResponse([
+                    'success' => true,
+                    'url' => $url,
+                    'mediaUrl' => $mediaUrl,
+                    'domain' => $domain,
+                    'hasDomainRules' => true,
+                    'fastMode' => true,
+                    'message' => '检测到已有域名规则，使用规则快速去广告',
+                    'mxjxUrl' => $mxjxUrl,
+                    'playlist' => [
+                        'isMaster' => false,
+                        'version' => $result['original']['version'] ?? 3,
+                        'targetDuration' => $result['original']['targetDuration'] ?? 0,
+                        'endlist' => !empty($result['original']['endlist'])
+                    ],
+                    'stats' => [
+                        'totalSegments' => $stats['totalSegments'] ?? 0,
+                        'adSegments' => $stats['removedSegments'] ?? 0,
+                        'keptSegments' => $stats['keptSegments'] ?? 0,
+                        'originalDuration' => $stats['originalDuration'] ?? 0,
+                        'filteredDuration' => $stats['filteredDuration'] ?? 0,
+                        'savedDuration' => $stats['savedDuration'] ?? 0,
+                        'adPercentage' => $stats['adPercentage'] ?? 0
+                    ],
+                    'domainRules' => $domainRules
+                ]);
+                break;
+            }
+
             $mediaUrl = resolveMasterPlaylist($url);
 
             $engine = new EnhancedAdRuleEngine([
@@ -180,15 +246,14 @@ try {
             }
 
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
-            $domainRules = $ruleManager->getRules($domain);
-            $hasDomainRules = $domainRules !== null;
 
             sendJsonResponse([
                 'success' => true,
                 'url' => $url,
                 'mediaUrl' => $mediaUrl,
                 'domain' => $domain,
-                'hasDomainRules' => $hasDomainRules,
+                'hasDomainRules' => false,
+                'fastMode' => false,
                 'playlist' => [
                     'isMaster' => !empty($playlist['isMaster']),
                     'version' => $playlist['version'] ?? 3,
