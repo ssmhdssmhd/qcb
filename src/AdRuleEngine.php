@@ -105,21 +105,34 @@ class AdRuleEngine {
         if ($this->options['checkRepetitiveDuration']) {
             $this->rules[] = [
                 'name' => 'repetitive-duration',
-                'description' => '重复出现完全相同时长的片段，可能是广告',
+                'description' => '重复出现相近时长的片段，可能是广告',
                 'check' => function($segment, $index, $segments) {
                     if (count($segments) < 10) return false;
                     
                     $duration = $segment['duration'];
-                    $exactCount = 0;
-                    foreach ($segments as $s) {
-                        if (abs($s['duration'] - $duration) < 0.001) {
-                            $exactCount++;
+                    $tolerance = $this->options['durationTolerance'];
+                    
+                    $similarCount = 0;
+                    $consecutiveCount = 0;
+                    $maxConsecutive = 0;
+                    
+                    foreach ($segments as $i => $s) {
+                        if (abs($s['duration'] - $duration) <= $tolerance) {
+                            $similarCount++;
+                            $consecutiveCount++;
+                            if ($consecutiveCount > $maxConsecutive) {
+                                $maxConsecutive = $consecutiveCount;
+                            }
+                        } else {
+                            $consecutiveCount = 0;
                         }
                     }
                     
-                    $isShortAd = $duration >= 2 && $duration <= 6;
+                    $isShortAd = $duration >= 1.5 && $duration <= 8;
+                    $similarRatio = $similarCount / count($segments);
                     
-                    return $exactCount >= 4 && $exactCount > count($segments) * 0.5 && $isShortAd;
+                    return ($similarCount >= 3 && $similarRatio > 0.3 && $isShortAd)
+                        || ($maxConsecutive >= 3 && $isShortAd);
                 }
             ];
         }

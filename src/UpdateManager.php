@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '1.2.0';
+    private $currentVersion = '1.3.0';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
@@ -428,14 +428,7 @@ class UpdateManager
         $versionContent = "<?php\nreturn '" . $checkResult['latest_commit'] . "';\n";
         file_put_contents($versionFile, $versionContent);
 
-        if (function_exists('opcache_reset')) {
-            opcache_reset();
-        }
-        if (function_exists('apc_clear_cache')) {
-            apc_clear_cache();
-        }
-
-        clearstatcache(true);
+        $this->clearAllCaches();
 
         unlink($tempFile);
         $this->rrmdir($extractDir);
@@ -587,6 +580,47 @@ class UpdateManager
             }
         }
         closedir($dir);
+    }
+
+    public function clearAllCaches()
+    {
+        $results = [];
+
+        if (function_exists('opcache_reset')) {
+            $results['opcache_reset'] = opcache_reset();
+        }
+
+        if (function_exists('opcache_invalidate')) {
+            $phpFiles = $this->scanDirectory($this->rootDir, ['.git', 'backups'], []);
+            $invalidated = 0;
+            foreach ($phpFiles as $file) {
+                $fullPath = $this->rootDir . '/' . $file;
+                if (pathinfo($fullPath, PATHINFO_EXTENSION) === 'php') {
+                    if (opcache_invalidate($fullPath, true)) {
+                        $invalidated++;
+                    }
+                }
+            }
+            $results['opcache_invalidate'] = $invalidated . ' files';
+        }
+
+        if (function_exists('apc_clear_cache')) {
+            $results['apc_clear_cache'] = apc_clear_cache();
+        }
+
+        if (function_exists('apcu_clear_cache')) {
+            $results['apcu_clear_cache'] = apcu_clear_cache();
+        }
+
+        clearstatcache(true);
+
+        if (function_exists('realpath_cache_size')) {
+            $results['realpath_cache_before'] = realpath_cache_size();
+        }
+
+        $results['clearstatcache'] = true;
+
+        return $results;
     }
 
     private function rrmdir($dir)

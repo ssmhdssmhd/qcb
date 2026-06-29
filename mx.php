@@ -467,6 +467,15 @@ try {
             sendJsonResponse($result);
             break;
 
+        case 'update/clear_cache':
+            $result = $updateManager->clearAllCaches();
+            sendJsonResponse([
+                'success' => true,
+                'message' => '缓存清理成功',
+                'cache_info' => $result
+            ]);
+            break;
+
         case 'auth/info':
             $info = $authValidator->getAuthInfo();
             $info['success'] = true;
