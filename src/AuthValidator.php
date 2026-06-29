@@ -86,7 +86,6 @@ class AuthValidator
         curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Auth-Checker');
         $remoteCode = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         if ($httpCode !== 200 || $remoteCode === false) {
             $compareUrl = $this->authConfig->getCompareUrl();
@@ -97,7 +96,6 @@ class AuthValidator
             curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Auth-Checker');
             $compareContent = curl_exec($ch);
             $httpCode2 = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
 
             if ($httpCode2 === 200 && $compareContent !== false) {
                 $compareContent = trim($compareContent);

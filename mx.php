@@ -31,15 +31,22 @@ function sendJsonResponse($data, $code = 200) {
 }
 
 function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
-    sendJsonResponse([
-        'success' => false,
-        'message' => $errstr,
-        'error_detail' => [
-            'type' => $errno,
-            'file' => basename($errfile),
-            'line' => $errline
-        ]
-    ], 500);
+    if (!(error_reporting() & $errno)) {
+        return;
+    }
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (in_array($errno, $fatalTypes)) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => $errstr,
+            'error_detail' => [
+                'type' => $errno,
+                'file' => basename($errfile),
+                'line' => $errline
+            ]
+        ], 500);
+    }
+    return true;
 }
 set_error_handler('jsonErrorHandler');
 
@@ -301,7 +308,10 @@ try {
             $ruleEngineProp = $reflection->getProperty('ruleEngine');
             $ruleEngineProp->setAccessible(true);
 
-            $enhancedEngine = new EnhancedAdRuleEngine(['checkDiscontinuity' => true]);
+            $enhancedEngine = new EnhancedAdRuleEngine([
+                'checkDiscontinuity' => true,
+                'checkRepetitiveDuration' => true
+            ]);
             $enhancedEngine->setDomain($domain);
             $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
@@ -351,7 +361,10 @@ try {
             $ruleEngineProp = $reflection->getProperty('ruleEngine');
             $ruleEngineProp->setAccessible(true);
 
-            $enhancedEngine = new EnhancedAdRuleEngine(['checkDiscontinuity' => true]);
+            $enhancedEngine = new EnhancedAdRuleEngine([
+                'checkDiscontinuity' => true,
+                'checkRepetitiveDuration' => true
+            ]);
             $enhancedEngine->setDomain($domain);
             $ruleEngineProp->setValue($skipper, $enhancedEngine);
 

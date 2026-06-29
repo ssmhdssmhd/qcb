@@ -134,7 +134,10 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
         $ruleEngineProp = $reflection->getProperty('ruleEngine');
         $ruleEngineProp->setAccessible(true);
 
-        $enhancedEngine = new EnhancedAdRuleEngine(['checkDiscontinuity' => true]);
+        $enhancedEngine = new EnhancedAdRuleEngine([
+            'checkDiscontinuity' => true,
+            'checkRepetitiveDuration' => true
+        ]);
         $enhancedEngine->setDomain($domain);
         $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
