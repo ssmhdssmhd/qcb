@@ -1,118 +1,106 @@
 <?php
 
-class CryptoUtil {
+class CryptoUtil
+{
+    private static $defaultKey = 'm3u8_ad_skipper_secret_key_2024';
+    private static $defaultIv = 'm3u8_ad_skipper_iv';
 
-    private static $key = 'm3u8_ad_skipper_2026_secret_key!@#';
-    private static $iv = 'm3u8_iv_20260628';
-
-    public static function encrypt($data) {
-        if (is_array($data)) {
-            $data = json_encode($data, JSON_UNESCAPED_UNICODE);
-        }
-        $method = 'AES-256-CBC';
-        $key = hash('sha256', self::$key, true);
-        $iv = substr(hash('sha256', self::$iv, true), 0, 16);
-        $encrypted = openssl_encrypt($data, $method, $key, OPENSSL_RAW_DATA, $iv);
-        return base64_encode($encrypted);
+    public static function encrypt($data, $key = null, $iv = null)
+    {
+        $key = $key ?: self::$defaultKey;
+        $iv = $iv ?: substr(self::$defaultIv, 0, 16);
+        
+        $key = substr(hash('sha256', $key), 0, 32);
+        $iv = substr(hash('sha256', $iv), 0, 16);
+        
+        $encrypted = openssl_encrypt(
+            $data,
+            'AES-256-CBC',
+            $key,
+            0,
+            $iv
+        );
+        
+        return self::base64UrlEncode($encrypted);
     }
 
-    public static function decrypt($data) {
-        $method = 'AES-256-CBC';
-        $key = hash('sha256', self::$key, true);
-        $iv = substr(hash('sha256', self::$iv, true), 0, 16);
-        $decrypted = openssl_decrypt(base64_decode($data), $method, $key, OPENSSL_RAW_DATA, $iv);
-        $json = json_decode($decrypted, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            return $json;
-        }
+    public static function decrypt($data, $key = null, $iv = null)
+    {
+        $key = $key ?: self::$defaultKey;
+        $iv = $iv ?: substr(self::$defaultIv, 0, 16);
+        
+        $key = substr(hash('sha256', $key), 0, 32);
+        $iv = substr(hash('sha256', $iv), 0, 16);
+        
+        $decrypted = openssl_decrypt(
+            self::base64UrlDecode($data),
+            'AES-256-CBC',
+            $key,
+            0,
+            $iv
+        );
+        
         return $decrypted;
     }
 
-    public static function encodeUrl($url) {
-        return self::base64UrlEncode($url);
-    }
-
-    public static function decodeUrl($encoded) {
-        return self::base64UrlDecode($encoded);
-    }
-
-    public static function base64UrlEncode($data) {
+    public static function base64UrlEncode($data)
+    {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 
-    public static function base64UrlDecode($data) {
-        return base64_decode(strtr($data, '-_', '+/'));
+    public static function base64UrlDecode($data)
+    {
+        return base64_decode(strtr($data, '-_', '+/') . str_repeat('=', 3 - (3 + strlen($data)) % 4));
     }
 
-    public static function sign($data, $secret = '') {
-        if (is_array($data)) {
-            ksort($data);
-            $data = http_build_query($data);
-        }
-        $secret = $secret ?: self::$key;
-        return md5($data . $secret);
+    public static function generateSignature($data, $key = null)
+    {
+        $key = $key ?: self::$defaultKey;
+        return hash_hmac('sha256', $data, $key);
     }
 
-    public static function verifySign($data, $sign, $secret = '') {
-        $calculated = self::sign($data, $secret);
-        return hash_equals($calculated, $sign);
+    public static function verifySignature($data, $signature, $key = null)
+    {
+        $key = $key ?: self::$defaultKey;
+        $expected = hash_hmac('sha256', $data, $key);
+        return hash_equals($expected, $signature);
     }
 
-    public static function generateToken($payload, $expire = 3600) {
-        $payload['iat'] = time();
-        $payload['exp'] = time() + $expire;
-        $payload['sign'] = self::sign($payload);
-        return self::base64UrlEncode(json_encode($payload));
+    public static function generateAuthCode($domain, $timestamp = null)
+    {
+        $timestamp = $timestamp ?: time();
+        $data = $domain . '|' . $timestamp;
+        $encrypted = self::encrypt($data);
+        $signature = self::generateSignature($encrypted);
+        return $encrypted . '.' . $signature;
     }
 
-    public static function verifyToken($token) {
-        try {
-            $payload = json_decode(self::base64UrlDecode($token), true);
-            if (!$payload || !isset($payload['sign'])) {
-                return false;
-            }
-            $sign = $payload['sign'];
-            unset($payload['sign']);
-            if (!self::verifySign($payload, $sign)) {
-                return false;
-            }
-            if (isset($payload['exp']) && $payload['exp'] < time()) {
-                return false;
-            }
-            return $payload;
-        } catch (Exception $e) {
+    public static function verifyAuthCode($authCode, &$domain = null, &$timestamp = null)
+    {
+        $parts = explode('.', $authCode);
+        if (count($parts) !== 2) {
             return false;
         }
-    }
-
-    public static function simpleObfuscate($str) {
-        $result = '';
-        $len = strlen($str);
-        for ($i = 0; $i < $len; $i++) {
-            $result .= chr(ord($str[$i]) ^ ord(self::$key[$i % strlen(self::$key)]));
+        
+        list($encrypted, $signature) = $parts;
+        
+        if (!self::verifySignature($encrypted, $signature)) {
+            return false;
         }
-        return base64_encode($result);
-    }
-
-    public static function simpleDeobfuscate($str) {
-        $str = base64_decode($str);
-        $result = '';
-        $len = strlen($str);
-        for ($i = 0; $i < $len; $i++) {
-            $result .= chr(ord($str[$i]) ^ ord(self::$key[$i % strlen(self::$key)]));
+        
+        $data = self::decrypt($encrypted);
+        if (!$data) {
+            return false;
         }
-        return $result;
-    }
-
-    public static function hash256($data) {
-        return hash('sha256', $data);
-    }
-
-    public static function hashMd5($data) {
-        return md5($data);
-    }
-
-    public static function randomString($length = 32) {
-        return bin2hex(random_bytes($length / 2));
+        
+        $parts = explode('|', $data);
+        if (count($parts) !== 2) {
+            return false;
+        }
+        
+        $domain = $parts[0];
+        $timestamp = intval($parts[1]);
+        
+        return true;
     }
 }

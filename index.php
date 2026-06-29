@@ -1,7 +1,10 @@
 <?php
 
 require_once __DIR__ . '/src/M3U8AdSkipper.php';
+require_once __DIR__ . '/src/CryptoUtil.php';
+require_once __DIR__ . '/src/AuthConfig.php';
 require_once __DIR__ . '/src/AuthValidator.php';
+require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -15,14 +18,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $authValidator = new AuthValidator();
-if (!$authValidator->validate()) {
+$sqFile = __DIR__ . '/sq.txt';
+
+if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
+    http_response_code(403);
     echo json_encode([
         'success' => false,
-        'code' => 403,
-        'auth_error' => true,
-        'message' => $authValidator->getErrorMessage(),
+        'error' => 'Forbidden',
+        'message' => '授权异常，请联系 QQ2094332348 进行授权（' . $authValidator->getLastError() . '）',
         'contact_qq' => '2094332348'
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -48,10 +53,116 @@ if ($relativePath === '/health' || $relativePath === '/api/health') {
     echo json_encode([
         'status' => 'ok',
         'service' => 'm3u8-ad-skipper',
-        'version' => '1.1.0-php',
+        'version' => '1.2.0-php',
         'language' => 'PHP',
         'timestamp' => date('c')
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
+    $url = $_GET['url'] ?? '';
+    if (empty($url)) {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Bad Request',
+            'message' => '缺少 url 参数'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        $parsedUrl = parse_url($url);
+        $domain = $parsedUrl['host'] ?? '';
+
+        $parser = new M3U8Parser();
+        $playlist = $parser->parse($url);
+
+        if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
+            $firstVariant = $playlist['variants'][0]['uri'] ?? '';
+            if ($firstVariant) {
+                $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                if (isset($parsedUrl['port'])) {
+                    $baseUrl .= ':' . $parsedUrl['port'];
+                }
+                $pathDir = dirname($parsedUrl['path'] ?? '');
+                $pathDir = $pathDir === '.' ? '' : $pathDir;
+                if (strpos($firstVariant, '/') === 0) {
+                    $url = $baseUrl . $firstVariant;
+                } else {
+                    $url = $baseUrl . $pathDir . '/' . $firstVariant;
+                }
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+            }
+        }
+
+        $skipper = new M3U8AdSkipper();
+
+        $reflection = new ReflectionClass($skipper);
+        $ruleEngineProp = $reflection->getProperty('ruleEngine');
+        $ruleEngineProp->setAccessible(true);
+
+        $enhancedEngine = new EnhancedAdRuleEngine([
+            'checkDiscontinuity' => true
+        ]);
+        $enhancedEngine->setDomain($domain);
+        $ruleEngineProp->setValue($skipper, $enhancedEngine);
+
+        $filterProp = $reflection->getProperty('filter');
+        $filterProp->setAccessible(true);
+        $filter = $filterProp->getValue($skipper);
+
+        $filterReflection = new ReflectionClass($filter);
+        $filterEngineProp = $filterReflection->getProperty('ruleEngine');
+        $filterEngineProp->setAccessible(true);
+        $filterEngineProp->setValue($filter, $enhancedEngine);
+
+        $result = $skipper->process($url);
+
+        $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
+        $newM3U8Content = $result['output'];
+
+        if ($isRemote) {
+            $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+            if (isset($parsedUrl['port'])) {
+                $baseUrl .= ':' . $parsedUrl['port'];
+            }
+            $pathDir = dirname($parsedUrl['path'] ?? '');
+            $pathDir = $pathDir === '.' ? '' : $pathDir;
+
+            $lines = explode("\n", $newM3U8Content);
+            $newLines = [];
+            foreach ($lines as $line) {
+                if (!empty(trim($line)) &&
+                    strpos($line, '#') !== 0 &&
+                    strpos($line, 'http://') !== 0 &&
+                    strpos($line, 'https://') !== 0) {
+                    if ($pathDir === '' || $pathDir === '/') {
+                        $line = $baseUrl . '/' . ltrim($line, '/');
+                    } else {
+                        $line = $baseUrl . $pathDir . '/' . ltrim($line, '/');
+                    }
+                }
+                $newLines[] = $line;
+            }
+            $newM3U8Content = implode("\n", $newLines);
+        }
+
+        header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
+        header('Content-Disposition: inline; filename="playlist.m3u8"');
+        echo $newM3U8Content;
+        exit;
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Internal Server Error',
+            'message' => $e->getMessage()
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    }
     exit;
 }
 
@@ -126,6 +237,7 @@ echo json_encode([
     'availableEndpoints' => [
         ['path' => '/', 'method' => 'GET', 'description' => '去广告接口'],
         ['path' => '/api/skip', 'method' => 'GET', 'description' => '去广告接口'],
+        ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
         ['path' => '/health', 'method' => 'GET', 'description' => '健康检查']
     ]
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);

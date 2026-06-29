@@ -22,7 +22,7 @@ $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $scriptName = basename($_SERVER['SCRIPT_NAME']);
 $basePath = '';
 
-if ($scriptName === 'mx.php') {
+if ($scriptName === 'admin_api.php') {
     $basePath = dirname($_SERVER['SCRIPT_NAME']);
     if ($basePath === '/' || $basePath === '\\') {
         $basePath = '';

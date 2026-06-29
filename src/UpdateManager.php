@@ -1,307 +1,50 @@
 <?php
 
-class UpdateManager {
-
-    private $versionFile;
+class UpdateManager
+{
+    private $currentVersion = '1.2.0';
     private $backupDir;
     private $rootDir;
-    private $versionConfig;
-    private $githubRepo;
-    private $githubBranch;
-    private $githubToken = null;
+    private $githubRepo = 'ssmhdssmhd/qcb';
+    private $githubBranch = 'main';
 
-    public function __construct() {
-        $this->rootDir = realpath(__DIR__ . '/..');
-        $this->versionFile = $this->rootDir . '/version.php';
+    public function __construct()
+    {
+        $this->rootDir = dirname(__DIR__);
         $this->backupDir = $this->rootDir . '/backups';
-        $this->versionConfig = require $this->versionFile;
-        $this->githubRepo = $this->versionConfig['github_repo'] ?? 'ssmhdssmhd/qcb';
-        $this->githubBranch = $this->versionConfig['github_branch'] ?? 'main';
         if (!is_dir($this->backupDir)) {
             mkdir($this->backupDir, 0755, true);
         }
     }
 
-    public function getCurrentVersion() {
-        return $this->versionConfig;
+    public function getCurrentVersion()
+    {
+        return $this->currentVersion;
     }
 
-    public function getRemoteVersion() {
-        $url = 'https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
-        $response = $this->githubRequest($url);
-        if (!$response) return false;
-        $commit = json_decode($response, true);
-        if (!$commit || !isset($commit['sha'])) return false;
-        return [
-            'sha' => $commit['sha'],
-            'short_sha' => substr($commit['sha'], 0, 7),
-            'date' => $commit['commit']['committer']['date'] ?? '',
-            'message' => $commit['commit']['message'] ?? '',
-            'author' => $commit['commit']['author']['name'] ?? ''
-        ];
-    }
-
-    public function checkUpdate() {
-        $current = $this->getCurrentVersion();
-        $remote = $this->getRemoteVersion();
-        if (!$remote) {
-            return ['has_update' => false, 'error' => '无法获取远程版本信息'];
-        }
-        $localSha = $this->getLocalSha();
-        $hasUpdate = ($localSha !== $remote['sha']);
-        return [
-            'has_update' => $hasUpdate,
-            'current' => $current,
-            'remote' => $remote,
-            'local_sha' => $localSha
-        ];
-    }
-
-    public function getLocalSha() {
-        static $sha = null;
-        if ($sha !== null) return $sha;
-        $gitDir = $this->rootDir . '/.git';
-        if (is_dir($gitDir)) {
-            $headFile = $gitDir . '/refs/heads/' . $this->githubBranch;
-            if (file_exists($headFile)) {
-                $sha = trim(file_get_contents($headFile));
-                return $sha;
-            }
-            $head = trim(file_get_contents($gitDir . '/HEAD'));
-            if (strpos($head, 'ref:') === 0) {
-                $ref = trim(substr($head, 4));
-                $refFile = $gitDir . '/' . $ref;
-                if (file_exists($refFile)) {
-                    $sha = trim(file_get_contents($refFile));
-                    return $sha;
-                }
-            }
-        }
-        $shaFile = $this->rootDir . '/.version_sha';
-        if (file_exists($shaFile)) {
-            $sha = trim(file_get_contents($shaFile));
-            return $sha;
-        }
-        return null;
-    }
-
-    public function createBackup() {
-        $version = $this->getCurrentVersion();
-        $timestamp = date('Ymd_His');
-        $sha = $this->getLocalSha() ?: 'unknown';
-        $shortSha = substr($sha, 0, 7);
-        $backupFile = $this->backupDir . '/backup_' . $version['version'] . '_' . $shortSha . '_' . $timestamp . '.zip';
-        $zip = new ZipArchive();
-        if ($zip->open($backupFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return ['success' => false, 'error' => '无法创建压缩包'];
-        }
-        $exclude = ['.git', 'backups', '.gitkeep', '.DS_Store'];
-        $files = $this->scanDir($this->rootDir, $exclude);
-        $totalFiles = 0;
-        foreach ($files as $file) {
-            $relativePath = substr($file, strlen($this->rootDir) + 1);
-            $zip->addFile($file, $relativePath);
-            $totalFiles++;
-        }
-        $zip->close();
-        $size = filesize($backupFile);
-        return [
-            'success' => true,
-            'file' => $backupFile,
-            'filename' => basename($backupFile),
-            'size' => $size,
-            'size_formatted' => $this->formatSize($size),
-            'file_count' => $totalFiles
-        ];
-    }
-
-    private function scanDir($dir, $exclude = []) {
-        $files = [];
-        $items = scandir($dir);
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') continue;
-            if (in_array($item, $exclude)) continue;
-            $fullPath = $dir . '/' . $item;
-            if (is_dir($fullPath)) {
-                $subFiles = $this->scanDir($fullPath, $exclude);
-                $files = array_merge($files, $subFiles);
-            } else {
-                $files[] = $fullPath;
-            }
-        }
-        return $files;
-    }
-
-    public function downloadUpdate() {
-        $remote = $this->getRemoteVersion();
-        if (!$remote) return ['success' => false, 'error' => '无法获取远程版本'];
-        $downloadUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/zipball/' . $this->githubBranch;
-        $tmpFile = $this->backupDir . '/update_' . $remote['short_sha'] . '_' . time() . '.zip';
-        $response = $this->githubRequest($downloadUrl, $tmpFile);
-        if (!$response) {
-            @unlink($tmpFile);
-            return ['success' => false, 'error' => '下载更新包失败'];
-        }
-        $size = filesize($tmpFile);
-        if ($size < 1000) {
-            @unlink($tmpFile);
-            return ['success' => false, 'error' => '更新包过小，下载可能失败'];
-        }
-        return [
-            'success' => true,
-            'file' => $tmpFile,
-            'filename' => basename($tmpFile),
-            'size' => $size,
-            'size_formatted' => $this->formatSize($size),
-            'sha' => $remote['sha'],
-            'short_sha' => $remote['short_sha']
-        ];
-    }
-
-    public function applyUpdate($zipFile) {
-        if (!file_exists($zipFile)) {
-            return ['success' => false, 'error' => '更新包不存在'];
-        }
-        $zip = new ZipArchive();
-        if ($zip->open($zipFile) !== true) {
-            return ['success' => false, 'error' => '无法打开更新包'];
-        }
-        $tmpExtractDir = $this->backupDir . '/update_tmp_' . time();
-        mkdir($tmpExtractDir, 0755, true);
-        $zip->extractTo($tmpExtractDir);
-        $zip->close();
-        $dirs = scandir($tmpExtractDir);
-        $sourceDir = null;
-        foreach ($dirs as $d) {
-            if ($d !== '.' && $d !== '..' && is_dir($tmpExtractDir . '/' . $d)) {
-                $sourceDir = $tmpExtractDir . '/' . $d;
-                break;
-            }
-        }
-        if (!$sourceDir) {
-            $this->rmdirRecursive($tmpExtractDir);
-            return ['success' => false, 'error' => '更新包格式错误'];
-        }
-        $backupResult = $this->createBackup();
-        $updatedCount = 0;
-        $items = $this->scanDir($sourceDir, ['backups', '.git']);
-        foreach ($items as $srcFile) {
-            $relativePath = substr($srcFile, strlen($sourceDir) + 1);
-            if (strpos($relativePath, 'backups/') === 0) continue;
-            if (strpos($relativePath, '.git/') === 0) continue;
-            if ($relativePath === '.git') continue;
-            $destFile = $this->rootDir . '/' . $relativePath;
-            $destDir = dirname($destFile);
-            if (!is_dir($destDir)) {
-                mkdir($destDir, 0755, true);
-            }
-            copy($srcFile, $destFile);
-            $updatedCount++;
-        }
-        $remote = $this->getRemoteVersion();
-        if ($remote) {
-            file_put_contents($this->rootDir . '/.version_sha', $remote['sha']);
-        }
-        $this->rmdirRecursive($tmpExtractDir);
-        @unlink($zipFile);
-        return [
-            'success' => true,
-            'updated_count' => $updatedCount,
-            'backup' => $backupResult,
-            'new_version' => $remote ? $remote['short_sha'] : 'unknown'
-        ];
-    }
-
-    public function doUpdate() {
-        $check = $this->checkUpdate();
-        if (!$check['has_update']) {
-            return ['success' => false, 'error' => '当前已是最新版本，无需更新'];
-        }
-        $download = $this->downloadUpdate();
-        if (!$download['success']) {
-            return $download;
-        }
-        return $this->applyUpdate($download['file']);
-    }
-
-    public function getBackupList() {
-        $files = glob($this->backupDir . '/*.zip');
+    public function getBackupList()
+    {
         $backups = [];
-        foreach ($files as $file) {
-            $backups[] = [
-                'filename' => basename($file),
-                'path' => $file,
-                'size' => filesize($file),
-                'size_formatted' => $this->formatSize(filesize($file)),
-                'created' => filemtime($file),
-                'created_formatted' => date('Y-m-d H:i:s', filemtime($file))
-            ];
+        if (is_dir($this->backupDir)) {
+            $files = glob($this->backupDir . '/backup_*.zip');
+            foreach ($files as $file) {
+                $backups[] = [
+                    'filename' => basename($file),
+                    'size' => filesize($file),
+                    'size_formatted' => $this->formatSize(filesize($file)),
+                    'created' => filemtime($file),
+                    'created_formatted' => date('Y-m-d H:i:s', filemtime($file))
+                ];
+            }
+            usort($backups, function($a, $b) {
+                return $b['created'] - $a['created'];
+            });
         }
-        usort($backups, function($a, $b) {
-            return $b['created'] - $a['created'];
-        });
         return $backups;
     }
 
-    public function deleteBackup($filename) {
-        $file = $this->backupDir . '/' . basename($filename);
-        if (file_exists($file) && pathinfo($file, PATHINFO_EXTENSION) === 'zip') {
-            return unlink($file);
-        }
-        return false;
-    }
-
-    public function restoreBackup($filename) {
-        $file = $this->backupDir . '/' . basename($filename);
-        if (!file_exists($file)) {
-            return ['success' => false, 'error' => '备份文件不存在'];
-        }
-        $zip = new ZipArchive();
-        if ($zip->open($file) !== true) {
-            return ['success' => false, 'error' => '无法打开备份文件'];
-        }
-        $tmpDir = $this->backupDir . '/restore_tmp_' . time();
-        mkdir($tmpDir, 0755, true);
-        $zip->extractTo($tmpDir);
-        $zip->close();
-        $items = $this->scanDir($tmpDir, ['backups', '.git']);
-        $restoredCount = 0;
-        foreach ($items as $srcFile) {
-            $relativePath = substr($srcFile, strlen($tmpDir) + 1);
-            if (strpos($relativePath, 'backups/') === 0) continue;
-            if (strpos($relativePath, '.git/') === 0) continue;
-            $destFile = $this->rootDir . '/' . $relativePath;
-            $destDir = dirname($destFile);
-            if (!is_dir($destDir)) {
-                mkdir($destDir, 0755, true);
-            }
-            copy($srcFile, $destFile);
-            $restoredCount++;
-        }
-        $this->rmdirRecursive($tmpDir);
-        return [
-            'success' => true,
-            'restored_count' => $restoredCount,
-            'backup_file' => $filename
-        ];
-    }
-
-    private function rmdirRecursive($dir) {
-        if (!is_dir($dir)) return;
-        $items = scandir($dir);
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') continue;
-            $path = $dir . '/' . $item;
-            if (is_dir($path)) {
-                $this->rmdirRecursive($path);
-            } else {
-                unlink($path);
-            }
-        }
-        rmdir($dir);
-    }
-
-    private function formatSize($bytes) {
+    private function formatSize($bytes)
+    {
         $units = ['B', 'KB', 'MB', 'GB'];
         $i = 0;
         while ($bytes >= 1024 && $i < 3) {
@@ -311,32 +54,315 @@ class UpdateManager {
         return round($bytes, 2) . ' ' . $units[$i];
     }
 
-    private function githubRequest($url, $outputFile = null) {
+    public function checkUpdate()
+    {
+        $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
+        
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_URL, $apiUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-AdSkipper-Update');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        if ($this->githubToken) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Authorization: token ' . $this->githubToken
-            ]);
-        }
-        if ($outputFile) {
-            $fp = fopen($outputFile, 'w');
-            curl_setopt($ch, CURLOPT_FILE, $fp);
-        }
-        $result = curl_exec($ch);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
-        if ($outputFile) {
-            fclose($fp);
-            return $httpCode === 200;
+
+        if ($httpCode !== 200 || !$response) {
+            return [
+                'success' => false,
+                'message' => '无法连接到 GitHub 服务器'
+            ];
         }
-        if ($httpCode !== 200) return false;
-        return $result;
+
+        $data = json_decode($response, true);
+        if (!$data) {
+            return [
+                'success' => false,
+                'message' => '解析版本信息失败'
+            ];
+        }
+
+        $latestCommit = $data['sha'] ?? '';
+        $commitMessage = $data['commit']['message'] ?? '无描述';
+        $commitDate = $data['commit']['committer']['date'] ?? '';
+
+        $versionFile = $this->rootDir . '/version.txt';
+        $currentCommit = '';
+        if (file_exists($versionFile)) {
+            $currentCommit = trim(file_get_contents($versionFile));
+        }
+
+        $hasUpdate = $latestCommit !== $currentCommit;
+
+        return [
+            'success' => true,
+            'current_version' => $this->currentVersion,
+            'current_commit' => $currentCommit,
+            'latest_commit' => $latestCommit,
+            'latest_message' => $commitMessage,
+            'latest_date' => $commitDate,
+            'has_update' => $hasUpdate,
+            'repo_url' => 'https://github.com/' . $this->githubRepo
+        ];
+    }
+
+    public function createBackup()
+    {
+        $timestamp = date('Ymd_His');
+        $backupFile = $this->backupDir . '/backup_' . $timestamp . '.zip';
+
+        if (!extension_loaded('zip')) {
+            return [
+                'success' => false,
+                'message' => 'PHP Zip 扩展未安装'
+            ];
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($backupFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return [
+                'success' => false,
+                'message' => '无法创建备份文件'
+            ];
+        }
+
+        $excludeDirs = ['backups', 'test', '.git'];
+        $excludeFiles = ['sq.txt'];
+
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->rootDir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($files as $file) {
+            $filePath = $file->getRealPath();
+            $relativePath = substr($filePath, strlen($this->rootDir) + 1);
+
+            $relativePath = str_replace('\\', '/', $relativePath);
+            $parts = explode('/', $relativePath);
+            $firstPart = $parts[0] ?? '';
+
+            if (in_array($firstPart, $excludeDirs)) {
+                continue;
+            }
+            if (in_array(basename($filePath), $excludeFiles)) {
+                continue;
+            }
+
+            if ($file->isDir()) {
+                $zip->addEmptyDir($relativePath);
+            } else {
+                $zip->addFile($filePath, $relativePath);
+            }
+        }
+
+        $zip->close();
+
+        return [
+            'success' => true,
+            'backup_file' => $backupFile,
+            'filename' => basename($backupFile),
+            'size' => filesize($backupFile),
+            'size_formatted' => $this->formatSize(filesize($backupFile))
+        ];
+    }
+
+    public function restoreBackup($filename)
+    {
+        $backupFile = $this->backupDir . '/' . basename($filename);
+
+        if (!file_exists($backupFile)) {
+            return [
+                'success' => false,
+                'message' => '备份文件不存在'
+            ];
+        }
+
+        if (!extension_loaded('zip')) {
+            return [
+                'success' => false,
+                'message' => 'PHP Zip 扩展未安装'
+            ];
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($backupFile) !== true) {
+            return [
+                'success' => false,
+                'message' => '无法打开备份文件'
+            ];
+        }
+
+        $excludeFiles = ['sq.txt', 'auth_config.json'];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $filename = $zip->getNameIndex($i);
+            if (in_array(basename($filename), $excludeFiles)) {
+                continue;
+            }
+            $zip->extractTo($this->rootDir, $filename);
+        }
+        $zip->close();
+
+        return [
+            'success' => true,
+            'message' => '备份恢复成功（已保留授权文件）'
+        ];
+    }
+
+    public function deleteBackup($filename)
+    {
+        $backupFile = $this->backupDir . '/' . basename($filename);
+
+        if (!file_exists($backupFile)) {
+            return [
+                'success' => false,
+                'message' => '备份文件不存在'
+            ];
+        }
+
+        if (unlink($backupFile)) {
+            return [
+                'success' => true,
+                'message' => '备份已删除'
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => '删除失败'
+        ];
+    }
+
+    public function downloadUpdate()
+    {
+        $checkResult = $this->checkUpdate();
+        if (!$checkResult['success']) {
+            return $checkResult;
+        }
+
+        if (!$checkResult['has_update']) {
+            return [
+                'success' => false,
+                'message' => '当前已是最新版本，无需更新'
+            ];
+        }
+
+        $backupResult = $this->createBackup();
+        if (!$backupResult['success']) {
+            return [
+                'success' => false,
+                'message' => '创建备份失败: ' . $backupResult['message']
+            ];
+        }
+
+        $downloadUrl = 'https://github.com/' . $this->githubRepo . '/archive/refs/heads/' . $this->githubBranch . '.zip';
+        $tempFile = tempnam(sys_get_temp_dir(), 'update_');
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $downloadUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        $fileContent = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || !$fileContent) {
+            return [
+                'success' => false,
+                'message' => '下载更新包失败'
+            ];
+        }
+
+        file_put_contents($tempFile, $fileContent);
+
+        if (!extension_loaded('zip')) {
+            unlink($tempFile);
+            return [
+                'success' => false,
+                'message' => 'PHP Zip 扩展未安装'
+            ];
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($tempFile) !== true) {
+            unlink($tempFile);
+            return [
+                'success' => false,
+                'message' => '无法打开更新包'
+            ];
+        }
+
+        $extractDir = sys_get_temp_dir() . '/m3u8_update_' . uniqid();
+        mkdir($extractDir);
+        $zip->extractTo($extractDir);
+        $zip->close();
+
+        $dirs = glob($extractDir . '/*', GLOB_ONLYDIR);
+        if (empty($dirs)) {
+            unlink($tempFile);
+            $this->rrmdir($extractDir);
+            return [
+                'success' => false,
+                'message' => '更新包格式错误'
+            ];
+        }
+
+        $sourceDir = $dirs[0];
+        $this->copyDirectory($sourceDir, $this->rootDir);
+
+        $versionFile = $this->rootDir . '/version.txt';
+        file_put_contents($versionFile, $checkResult['latest_commit']);
+
+        unlink($tempFile);
+        $this->rrmdir($extractDir);
+
+        return [
+            'success' => true,
+            'message' => '更新成功',
+            'backup_file' => $backupResult['filename'],
+            'new_version' => $checkResult['latest_commit']
+        ];
+    }
+
+    private function copyDirectory($src, $dst)
+    {
+        $dir = opendir($src);
+        if (!is_dir($dst)) {
+            mkdir($dst, 0755, true);
+        }
+        $excludeFiles = ['sq.txt', 'auth_config.json'];
+        while (($file = readdir($dir)) !== false) {
+            if ($file === '.' || $file === '..') continue;
+            if (in_array($file, $excludeFiles)) continue;
+            $srcPath = $src . '/' . $file;
+            $dstPath = $dst . '/' . $file;
+            if (is_dir($srcPath)) {
+                $this->copyDirectory($srcPath, $dstPath);
+            } else {
+                if (!file_exists($dstPath)) {
+                    copy($srcPath, $dstPath);
+                }
+            }
+        }
+        closedir($dir);
+    }
+
+    private function rrmdir($dir)
+    {
+        if (!is_dir($dir)) return;
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($files as $fileinfo) {
+            if ($fileinfo->isDir()) {
+                rmdir($fileinfo->getRealPath());
+            } else {
+                unlink($fileinfo->getRealPath());
+            }
+        }
+        rmdir($dir);
     }
 }
