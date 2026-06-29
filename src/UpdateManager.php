@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '1.4.0';
+    private $currentVersion = '1.5.0';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
@@ -451,6 +451,7 @@ class UpdateManager
         $skippedFiles = [];
         $excludeDirs = ['backups', '.git'];
         $excludeFiles = ['sq.php', 'auth_config.php', 'fix_update.php'];
+        $protectedPatterns = ['/^gz\/rules_.*\.php$/'];
         $systemFiles = [
             '.user.ini',
             '.htaccess',
@@ -471,6 +472,18 @@ class UpdateManager
         foreach ($orphanedFiles as $file) {
             $baseName = basename($file);
             $firstPart = explode('/', $file)[0] ?? '';
+
+            $isProtected = false;
+            foreach ($protectedPatterns as $pattern) {
+                if (preg_match($pattern, $file)) {
+                    $isProtected = true;
+                    break;
+                }
+            }
+            if ($isProtected) {
+                $skippedFiles[] = '跳过用户规则文件: ' . $file;
+                continue;
+            }
 
             $isSystemFile = false;
             foreach ($systemFiles as $sf) {
@@ -568,9 +581,18 @@ class UpdateManager
             mkdir($dst, 0755, true);
         }
         $excludeFiles = ['sq.php', 'auth_config.php'];
+        $excludePatterns = ['/^rules_.*\.php$/'];
         while (($file = readdir($dir)) !== false) {
             if ($file === '.' || $file === '..') continue;
             if (in_array($file, $excludeFiles)) continue;
+            $isExcluded = false;
+            foreach ($excludePatterns as $pattern) {
+                if (preg_match($pattern, $file)) {
+                    $isExcluded = true;
+                    break;
+                }
+            }
+            if ($isExcluded) continue;
             $srcPath = $src . '/' . $file;
             $dstPath = $dst . '/' . $file;
             if (is_dir($srcPath)) {
