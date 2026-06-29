@@ -821,7 +821,13 @@ header('Expires: 0');
         }
 
         function playVideo() {
-            const url = document.getElementById('analyzeUrl')?.value?.trim() || document.getElementById('playUrl')?.value?.trim();
+            const playPageActive = document.querySelector('.nav-item[data-page="play"]')?.classList.contains('active');
+            let url;
+            if (playPageActive) {
+                url = document.getElementById('playUrl')?.value?.trim();
+            } else {
+                url = document.getElementById('analyzeUrl')?.value?.trim() || document.getElementById('playUrl')?.value?.trim();
+            }
             if (!url) { showToast('请输入视频链接', 'error'); return; }
             document.querySelector('.nav-item[data-page="play"]').click();
             document.getElementById('playUrl').value = url;
@@ -853,37 +859,11 @@ header('Expires: 0');
                     container: document.getElementById('dplayer'),
                     video: {
                         url: mxjxUrl,
-                        type: 'customHls'
+                        type: 'hls'
                     },
-                    customType: {
-                        customHls: function (video, player) {
-                            const hls = new Hls({
-                                xhrSetup: function(xhr, url) {
-                                    xhr.withCredentials = false;
-                                }
-                            });
-                            hls.loadSource(video.src);
-                            hls.attachMedia(video);
-                            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                                document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
-                            });
-                            hls.on(Hls.Events.ERROR, function(event, data) {
-                                if (data.fatal) {
-                                    let errMsg = '视频加载失败';
-                                    switch (data.type) {
-                                        case Hls.ErrorTypes.NETWORK_ERROR:
-                                            errMsg = '网络错误: ' + (data.details || '无法加载视频资源');
-                                            break;
-                                        case Hls.ErrorTypes.MEDIA_ERROR:
-                                            errMsg = '媒体错误: ' + (data.details || '视频解码失败');
-                                            break;
-                                        default:
-                                            errMsg = '播放错误: ' + (data.details || data.type);
-                                    }
-                                    document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">' + errMsg + '</span>';
-                                    showToast(errMsg, 'error');
-                                }
-                            });
+                    hls: {
+                        xhrSetup: function(xhr, url) {
+                            xhr.withCredentials = false;
                         }
                     },
                     autoplay: true,
@@ -891,9 +871,55 @@ header('Expires: 0');
                     lang: 'zh-cn'
                 });
 
-                dp.on('error', function() {
-                    document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器错误，请检查视频链接</span>';
+                let statusUpdated = false;
+                dp.on('loadstart', function() {
+                    if (!statusUpdated) {
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频加载中...</span>';
+                    }
                 });
+
+                dp.on('canplay', function() {
+                    statusUpdated = true;
+                    document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
+                });
+
+                dp.on('playing', function() {
+                    statusUpdated = true;
+                    document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">正在播放...</span>';
+                });
+
+                dp.on('error', function() {
+                    if (!statusUpdated) {
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器错误，请检查视频链接</span>';
+                        showToast('播放器错误，请检查视频链接', 'error');
+                    }
+                });
+
+                dp.on('hls_error', function(event, data) {
+                    if (data && data.fatal) {
+                        let errMsg = '视频加载失败';
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                errMsg = '网络错误: ' + (data.details || '无法加载视频资源');
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                errMsg = '媒体错误: ' + (data.details || '视频解码失败');
+                                break;
+                            default:
+                                errMsg = '播放错误: ' + (data.details || data.type);
+                        }
+                        statusUpdated = true;
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">' + errMsg + '</span>';
+                        showToast(errMsg, 'error');
+                    }
+                });
+
+                setTimeout(function() {
+                    if (!statusUpdated && dp && dp.video && dp.video.readyState >= 2) {
+                        statusUpdated = true;
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功</span>';
+                    }
+                }, 5000);
             } catch (e) {
                 document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
                 showToast('播放失败: ' + e.message, 'error');
