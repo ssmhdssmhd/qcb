@@ -13,7 +13,6 @@ class UpdateManager
     private $coreFiles = [
         'index.php',
         'mx.php',
-        'mxadmin.php',
         'router.php',
         'src/M3U8AdSkipper.php',
         'src/M3U8Parser.php',
@@ -26,6 +25,9 @@ class UpdateManager
         'src/UpdateManager.php',
         'gz/DomainRuleManager.php',
         'gz/EnhancedAdRuleEngine.php'
+    ];
+    private $skipPhpCheckFiles = [
+        'mxadmin.php'
     ];
 
     public function __construct()
@@ -59,12 +61,13 @@ class UpdateManager
                 $missingFiles[] = $file;
                 continue;
             }
-            $content = file_get_contents($filePath);
-            if (strpos($content, '<?php') === false) {
-                $invalidFiles[] = $file;
-            }
-            if (strpos($content, 'require_once') !== false && strpos($content, 'AuthValidator') !== false) {
-                if (strpos($content, 'AuthValidator') === false && strpos($content, 'validateLocal') === false) {
+            if (!in_array($file, $this->skipPhpCheckFiles)) {
+                $ext = pathinfo($file, PATHINFO_EXTENSION);
+                if ($ext === 'php') {
+                    $content = file_get_contents($filePath);
+                    if (strpos($content, '<?php') === false) {
+                        $invalidFiles[] = $file;
+                    }
                 }
             }
         }
