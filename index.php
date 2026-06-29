@@ -1,6 +1,8 @@
 <?php
+ob_start();
 
 require_once __DIR__ . '/src/M3U8AdSkipper.php';
+require_once __DIR__ . '/src/M3U8Parser.php';
 require_once __DIR__ . '/src/CryptoUtil.php';
 require_once __DIR__ . '/src/AuthConfig.php';
 require_once __DIR__ . '/src/AuthValidator.php';
@@ -14,8 +16,11 @@ header('X-Powered-By: m3u8-ad-skipper-php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
+    ob_end_flush();
     exit;
 }
+
+ob_clean();
 
 $authValidator = new AuthValidator();
 $sqFile = __DIR__ . '/sq.php';
@@ -28,6 +33,7 @@ if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
         'message' => '授权异常，请联系 QQ2094332348 进行授权（' . $authValidator->getLastError() . '）',
         'contact_qq' => '2094332348'
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    ob_end_flush();
     exit;
 }
 
@@ -57,6 +63,7 @@ if ($relativePath === '/health' || $relativePath === '/api/health') {
         'language' => 'PHP',
         'timestamp' => date('c')
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    ob_end_flush();
     exit;
 }
 
@@ -69,6 +76,7 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
             'error' => 'Bad Request',
             'message' => '缺少 url 参数'
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
         exit;
     }
 
@@ -153,6 +161,7 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
         header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
         header('Content-Disposition: inline; filename="playlist.m3u8"');
         echo $newM3U8Content;
+        ob_end_flush();
         exit;
 
     } catch (Exception $e) {
@@ -162,6 +171,7 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
             'error' => 'Internal Server Error',
             'message' => $e->getMessage()
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
     }
     exit;
 }
@@ -217,6 +227,7 @@ if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === 
             ],
             'removed' => $removed
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
 
     } catch (Exception $e) {
         http_response_code(500);
@@ -225,6 +236,7 @@ if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === 
             'error' => 'Internal Server Error',
             'message' => $e->getMessage()
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
     }
     exit;
 }
@@ -241,3 +253,4 @@ echo json_encode([
         ['path' => '/health', 'method' => 'GET', 'description' => '健康检查']
     ]
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+ob_end_flush();

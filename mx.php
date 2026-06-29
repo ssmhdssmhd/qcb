@@ -1,10 +1,16 @@
 <?php
+ob_start();
 
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Accept');
 
 function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
     if (!(error_reporting() & $errno)) return;
+    ob_clean();
     $errors = [
         'error' => true,
         'type' => $errno,
@@ -12,10 +18,8 @@ function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
         'file' => basename($errfile),
         'line' => $errline
     ];
-    if (!headers_sent()) {
-        header('Content-Type: application/json; charset=utf-8');
-    }
     echo json_encode(['success' => false, 'message' => $errstr . ' (' . basename($errfile) . ':' . $errline . ')', 'error_detail' => $errors]);
+    ob_end_flush();
     exit;
 }
 set_error_handler('jsonErrorHandler');
@@ -23,14 +27,13 @@ set_error_handler('jsonErrorHandler');
 function jsonFatalHandler() {
     $error = error_get_last();
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        if (!headers_sent()) {
-            header('Content-Type: application/json; charset=utf-8');
-        }
+        ob_clean();
         echo json_encode([
             'success' => false,
             'message' => $error['message'] . ' (' . basename($error['file']) . ':' . $error['line'] . ')',
             'fatal_error' => true
         ]);
+        ob_end_flush();
     }
 }
 register_shutdown_function('jsonFatalHandler');
@@ -43,10 +46,7 @@ require_once __DIR__ . '/src/AuthValidator.php';
 require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
 require_once __DIR__ . '/gz/DomainRuleManager.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Accept');
+ob_clean();
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -79,6 +79,7 @@ $authValidator = new AuthValidator();
 function sendJson($data, $code = 200) {
     http_response_code($code);
     echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    ob_end_flush();
     exit;
 }
 
@@ -308,7 +309,7 @@ switch ($action) {
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $selfUrl = $scheme . '://' . $host . $basePath;
-            $mxjxUrl = $selfUrl . '/admin_api.php?action=mxjx&url=' . urlencode($url);
+            $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
 
             sendJson([
                 'success' => true,
