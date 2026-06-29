@@ -330,6 +330,27 @@
         <div class="nav-item" data-page="auth">授权管理</div>
     </div>
 
+    <div id="accessPreview" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px 30px;font-size:13px">
+        <div style="display:flex;flex-wrap:wrap;gap:20px">
+            <div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">后台管理</div>
+                <code id="preview-admin"></code>
+            </div>
+            <div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">API接口</div>
+                <code id="preview-api"></code>
+            </div>
+            <div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">直接解析</div>
+                <code id="preview-parse"></code>
+            </div>
+            <div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">播放地址</div>
+                <code id="preview-player"></code>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="page active" id="page-analyze">
             <div class="card">
@@ -1305,8 +1326,20 @@
             });
         });
 
+        function initAccessPreview() {
+            const protocol = window.location.protocol;
+            const host = window.location.host;
+            const base = protocol + '//' + host;
+
+            document.getElementById('preview-admin').textContent = base + '/mxadmin.html';
+            document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=xxx';
+            document.getElementById('preview-parse').textContent = base + '/?url=xxx';
+            document.getElementById('preview-player').textContent = base + '/mxjx?url=xxx';
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             refreshRules();
+            initAccessPreview();
         });
     </script>
 </body>
