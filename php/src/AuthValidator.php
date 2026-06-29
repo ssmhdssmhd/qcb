@@ -58,14 +58,6 @@ class AuthValidator
             return false;
         }
 
-        if ($this->authConfig->get('enable_timestamp_check', true)) {
-            $tolerance = $this->authConfig->get('timestamp_tolerance', 86400);
-            if (abs(time() - $timestamp) > $tolerance) {
-                $this->lastError = '授权已过期，请联系 QQ2094332348 进行授权';
-                return false;
-            }
-        }
-
         return true;
     }
 

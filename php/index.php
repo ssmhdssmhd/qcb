@@ -20,12 +20,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $authValidator = new AuthValidator();
 $sqFile = __DIR__ . '/sq.txt';
 
-if (!file_exists($sqFile)) {
+if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
     http_response_code(403);
     echo json_encode([
         'success' => false,
         'error' => 'Forbidden',
-        'message' => '授权文件不存在，请联系 QQ2094332348 进行授权'
+        'message' => '授权异常，请联系 QQ2094332348 进行授权（' . $authValidator->getLastError() . '）',
+        'contact_qq' => '2094332348'
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -74,6 +75,28 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
     try {
         $parsedUrl = parse_url($url);
         $domain = $parsedUrl['host'] ?? '';
+
+        $parser = new M3U8Parser();
+        $playlist = $parser->parse($url);
+
+        if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
+            $firstVariant = $playlist['variants'][0]['uri'] ?? '';
+            if ($firstVariant) {
+                $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                if (isset($parsedUrl['port'])) {
+                    $baseUrl .= ':' . $parsedUrl['port'];
+                }
+                $pathDir = dirname($parsedUrl['path'] ?? '');
+                $pathDir = $pathDir === '.' ? '' : $pathDir;
+                if (strpos($firstVariant, '/') === 0) {
+                    $url = $baseUrl . $firstVariant;
+                } else {
+                    $url = $baseUrl . $pathDir . '/' . $firstVariant;
+                }
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+            }
+        }
 
         $skipper = new M3U8AdSkipper();
 
