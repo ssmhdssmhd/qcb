@@ -507,7 +507,9 @@ header('Expires: 0');
                     <div style="display:flex;gap:12px;flex-wrap:wrap">
                         <button class="btn btn-secondary" onclick="generateRules()">自动生成规则</button>
                         <button class="btn btn-success" onclick="goToRules()">查看规则管理</button>
+                        <button class="btn btn-secondary" id="learnBtn" onclick="learnRules()">学习并更新规则</button>
                     </div>
+                    <div id="learnStatus" style="margin-top:12px;font-size:13px;color:#606266;display:none"></div>
                 </div>
             </div>
         </div>
@@ -515,9 +517,12 @@ header('Expires: 0');
         <div class="page" id="page-rules">
             <div class="card">
                 <div class="card-title">域名规则列表</div>
-                <div style="margin-bottom:16px;display:flex;gap:12px">
+                <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
                     <button class="btn btn-primary" onclick="showAddRule()">+ 新增规则</button>
                     <button class="btn btn-secondary" onclick="refreshRules()">刷新列表</button>
+                    <button class="btn btn-secondary" onclick="exportAllRules()">导出全部规则</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('importFileInput').click()">导入规则</button>
+                    <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importRulesFromFile(event)">
                 </div>
                 <div id="rulesTable"></div>
             </div>
@@ -894,6 +899,23 @@ header('Expires: 0');
             }
 
             renderSegmentList();
+
+            const learnStatusEl = document.getElementById('learnStatus');
+            const learnBtn = document.getElementById('learnBtn');
+            if (learnStatusEl && learnBtn) {
+                if (data.fastMode) {
+                    learnBtn.style.display = 'none';
+                    learnStatusEl.style.display = 'block';
+                    learnStatusEl.innerHTML = '<span style="color:#67c23a">✅ 快速模式：已有域名规则，直接使用规则去广告</span>（学习次数: ' + (data.learn_count || 0) + '次）';
+                } else if (data.autoLearned) {
+                    learnBtn.style.display = 'none';
+                    learnStatusEl.style.display = 'block';
+                    learnStatusEl.innerHTML = '<span style="color:#67c23a">✅ 自动学习完成，规则已更新</span>（学习次数: ' + (data.learn_count || 0) + '次）';
+                } else {
+                    learnBtn.style.display = 'inline-block';
+                    learnStatusEl.style.display = 'none';
+                }
+            }
         }
 
         function basename(path) {
@@ -975,6 +997,30 @@ header('Expires: 0');
                 showToast('规则已生成，请编辑保存', 'success');
             } catch (e) {
                 showToast('生成规则失败: ' + e.message, 'error');
+            }
+        }
+
+        async function learnRules() {
+            if (!currentAnalysis) { showToast('请先分析视频', 'error'); return; }
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '学习中...';
+            try {
+                const res = await fetch(API_BASE + '?action=rules/learn&url=' + encodeURIComponent(currentAnalysis.url));
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                const learnStatusEl = document.getElementById('learnStatus');
+                if (learnStatusEl) {
+                    learnStatusEl.style.display = 'block';
+                    learnStatusEl.innerHTML = '<span style="color:#67c23a">✅ 学习完成，规则已更新</span>（学习次数: ' + data.learn_count + '次）';
+                }
+                btn.style.display = 'none';
+                showToast('规则学习成功', 'success');
+            } catch (e) {
+                showToast('学习失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '学习并更新规则';
             }
         }
 
@@ -1175,15 +1221,15 @@ header('Expires: 0');
                 document.getElementById('rulesTable').innerHTML = '<div class="empty">暂无域名规则</div>';
                 return;
             }
-            let html = '<table class="rules-table"><thead><tr><th>资源名称</th><th>域名</th><th>时长规则</th><th>DISCON规则</th><th>序列号跳跃</th><th>更新时间</th><th>备注</th><th>操作</th></tr></thead><tbody>';
+            let html = '<table class="rules-table"><thead><tr><th>资源名称</th><th>域名</th><th>时长规则</th><th>DISCON规则</th><th>序列号跳跃</th><th>学习次数</th><th>更新时间</th><th>操作</th></tr></thead><tbody>';
             for (const domain of domains) {
                 const r = rules[domain];
                 const name = escapeHtml(r.name || domain);
-                const note = escapeHtml(r.note || '-');
                 const durCount = (r.duration_rules || []).filter(x => x.enabled).length;
                 const disCount = (r.discontinuity_rules || []).filter(x => x.enabled).length;
                 const seqCount = (r.sequence_jump_rules || []).filter(x => x.enabled).length;
-                const mtime = r._filemtime ? new Date(r._filemtime * 1000).toLocaleString() : '-';
+                const learnCount = r.learn_count || 0;
+                const mtime = r.last_learn_date || r.analysis_date || (r._filemtime ? new Date(r._filemtime * 1000).toLocaleString() : '-');
                 html += `
                     <tr>
                         <td><span style="color:#606266">${name}</span></td>
@@ -1191,9 +1237,10 @@ header('Expires: 0');
                         <td><span class="tag tag-blue">${durCount}条</span></td>
                         <td>${disCount > 0 ? '<span class="tag tag-orange">启用</span>' : '<span style="color:#c0c4cc">未启用</span>'}</td>
                         <td>${seqCount > 0 ? '<span class="tag tag-red">' + seqCount + '条</span>' : '<span style="color:#c0c4cc">无</span>'}</td>
+                        <td><span class="tag tag-green">${learnCount}次</span></td>
                         <td style="color:#909399;font-size:12px">${mtime}</td>
-                        <td style="color:#909399;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${note}">${note}</td>
                         <td>
+                            <button class="btn btn-sm btn-secondary" onclick="exportSingleRule('${escapeHtml(domain)}')">导出</button>
                             <button class="btn btn-sm btn-secondary" onclick="editRule('${escapeHtml(domain)}')">编辑</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteRule('${escapeHtml(domain)}')">删除</button>
                         </td>
@@ -1417,6 +1464,64 @@ header('Expires: 0');
                 refreshRules();
             } catch (e) {
                 showToast('删除失败: ' + e.message, 'error');
+            }
+        }
+
+        async function exportAllRules() {
+            try {
+                const res = await fetch(API_BASE + '?action=rules/export&download=1&_t=' + Date.now());
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'all_rules.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('导出成功', 'success');
+            } catch (e) {
+                showToast('导出失败: ' + e.message, 'error');
+            }
+        }
+
+        async function exportSingleRule(domain) {
+            try {
+                const res = await fetch(API_BASE + '?action=rules/export&domain=' + encodeURIComponent(domain) + '&download=1&_t=' + Date.now());
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'rules_' + domain + '.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('导出成功', 'success');
+            } catch (e) {
+                showToast('导出失败: ' + e.message, 'error');
+            }
+        }
+
+        async function importRulesFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const importData = JSON.parse(text);
+                const res = await fetch(API_BASE + '?action=rules/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(importData)
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast(data.message || '导入成功', 'success');
+                refreshRules();
+            } catch (e) {
+                showToast('导入失败: ' + e.message, 'error');
+            } finally {
+                event.target.value = '';
             }
         }
 

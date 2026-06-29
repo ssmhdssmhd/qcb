@@ -208,6 +208,7 @@ try {
                     'domain' => $domain,
                     'hasDomainRules' => true,
                     'fastMode' => true,
+                    'learn_count' => $domainRules['learn_count'] ?? 0,
                     'message' => '检测到已有域名规则，使用规则快速去广告',
                     'mxjxUrl' => $mxjxUrl,
                     'playlist' => [
@@ -247,13 +248,23 @@ try {
 
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
 
+            $autoLearn = isset($_GET['auto_learn']) ? $_GET['auto_learn'] === '1' || $_GET['auto_learn'] === 'true' : true;
+            $learnResult = null;
+            if ($autoLearn && $analysis['adCount'] > 0) {
+                $learnResult = $ruleManager->learnFromAnalysis($domain, $analysis);
+            }
+
+            $currentRules = $ruleManager->getRules($domain);
+
             sendJsonResponse([
                 'success' => true,
                 'url' => $url,
                 'mediaUrl' => $mediaUrl,
                 'domain' => $domain,
-                'hasDomainRules' => false,
+                'hasDomainRules' => $currentRules !== null,
                 'fastMode' => false,
+                'autoLearned' => $learnResult,
+                'learn_count' => $currentRules['learn_count'] ?? 0,
                 'playlist' => [
                     'isMaster' => !empty($playlist['isMaster']),
                     'version' => $playlist['version'] ?? 3,
@@ -359,6 +370,71 @@ try {
                     'adClusterCount' => count($analysis['adClusters'])
                 ]
             ]);
+            break;
+
+        case 'rules/learn':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            $parsedUrl = parse_url($url);
+            $domain = $parsedUrl['host'] ?? '';
+            $mediaUrl = resolveMasterPlaylist($url);
+
+            $engine = new EnhancedAdRuleEngine([
+                'checkDiscontinuity' => true,
+                'checkRepetitiveDuration' => true
+            ]);
+            $parser = new M3U8Parser();
+            $playlist = $parser->parse($mediaUrl);
+
+            if (empty($playlist['segments'])) {
+                sendJsonResponse(['success' => false, 'message' => '无法解析视频片段'], 400);
+            }
+
+            $analysis = $engine->analyzeAllSegments($playlist['segments']);
+            $result = $ruleManager->learnFromAnalysis($domain, $analysis);
+            $rules = $ruleManager->getRules($domain);
+
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '规则学习完成' : '规则学习失败',
+                'domain' => $domain,
+                'learn_count' => $rules['learn_count'] ?? 0,
+                'stats' => [
+                    'totalSegments' => $analysis['totalCount'],
+                    'adSegments' => $analysis['adCount'],
+                    'discontinuityCount' => $analysis['discontinuityCount'],
+                    'sequenceJumps' => count($analysis['sequenceJumps']),
+                    'adClusters' => count($analysis['adClusters'])
+                ]
+            ]);
+            break;
+
+        case 'rules/export':
+            $domain = $_GET['domain'] ?? '';
+            $exportData = $ruleManager->exportRules($domain ?: null);
+            if ($exportData === null) {
+                sendJsonResponse(['success' => false, 'message' => '规则不存在'], 404);
+            }
+            if (!empty($_GET['download'])) {
+                $filename = $domain ? "rules_{$domain}.json" : 'all_rules.json';
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Content-Type: application/json; charset=utf-8');
+                ob_clean();
+                echo json_encode($exportData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                exit;
+            }
+            sendJsonResponse($exportData);
+            break;
+
+        case 'rules/import':
+            $input = getInputJson();
+            if (empty($input)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少导入数据'], 400);
+            }
+            $result = $ruleManager->importRules($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
             break;
 
         case 'skip':
