@@ -13,7 +13,7 @@ class DomainRuleManager {
         $files = glob($this->gzDir . '/rules_*.php');
         foreach ($files as $file) {
             $domainRules = require $file;
-            if (is_array($rules) && isset($domainRules['domain'])) {
+            if (is_array($domainRules) && isset($domainRules['domain'])) {
                 $filename = basename($file);
                 $domainRules['_filename'] = $filename;
                 $domainRules['_filemtime'] = filemtime($file);
