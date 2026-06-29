@@ -64,3 +64,6 @@ htmlcov/
 
 # ===== Internal =====
 /.work/
+
+# ===== Backups =====
+backups/
