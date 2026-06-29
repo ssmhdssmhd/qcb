@@ -414,6 +414,109 @@ try {
             echo $newM3U8Content;
             exit;
 
+        case 'mxjx/info':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse([
+                    'code' => 400,
+                    'success' => false,
+                    'message' => '缺少 url 参数'
+                ], 400);
+            }
+            $parsedUrl = parse_url($url);
+            $domain = $parsedUrl['host'] ?? '';
+            $mediaUrl = resolveMasterPlaylist($url);
+            if ($mediaUrl !== $url) {
+                $parsedUrl = parse_url($mediaUrl);
+                $domain = $parsedUrl['host'] ?? '';
+            }
+            $url = $mediaUrl;
+
+            $skipper = new M3U8AdSkipper();
+            $reflection = new ReflectionClass($skipper);
+            $ruleEngineProp = $reflection->getProperty('ruleEngine');
+            $ruleEngineProp->setAccessible(true);
+
+            $enhancedEngine = new EnhancedAdRuleEngine([
+                'checkDiscontinuity' => true,
+                'checkRepetitiveDuration' => true
+            ]);
+            $enhancedEngine->setDomain($domain);
+            $ruleEngineProp->setValue($skipper, $enhancedEngine);
+
+            $filterProp = $reflection->getProperty('filter');
+            $filterProp->setAccessible(true);
+            $filter = $filterProp->getValue($skipper);
+
+            $filterReflection = new ReflectionClass($filter);
+            $filterEngineProp = $filterReflection->getProperty('ruleEngine');
+            $filterEngineProp->setAccessible(true);
+            $filterEngineProp->setValue($filter, $enhancedEngine);
+
+            $result = $skipper->process($url);
+
+            $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
+            $newM3U8Content = $result['output'];
+
+            if ($isRemote) {
+                $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                if (isset($parsedUrl['port'])) {
+                    $baseUrl .= ':' . $parsedUrl['port'];
+                }
+                $pathDir = dirname($parsedUrl['path'] ?? '');
+                $pathDir = $pathDir === '.' ? '' : $pathDir;
+
+                $lines = explode("\n", $newM3U8Content);
+                $newLines = [];
+                foreach ($lines as $line) {
+                    if (!empty(trim($line)) &&
+                        strpos($line, '#') !== 0 &&
+                        strpos($line, 'http://') !== 0 &&
+                        strpos($line, 'https://') !== 0) {
+                        if ($pathDir === '' || $pathDir === '/') {
+                            $line = $baseUrl . '/' . ltrim($line, '/');
+                        } else {
+                            $line = $baseUrl . $pathDir . '/' . ltrim($line, '/');
+                        }
+                    }
+                    $newLines[] = $line;
+                }
+                $newM3U8Content = implode("\n", $newLines);
+            }
+
+            $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? '';
+            $selfPath = dirname(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '');
+            $selfPath = $selfPath === '.' ? '' : $selfPath;
+            $selfBase = $protocol . '://' . $host . $selfPath;
+            $playUrl = $selfBase . '/mx.php?action=mxjx&url=' . urlencode($mediaUrl);
+
+            $stats = $result['stats'] ?? [];
+            $hasRules = $enhancedEngine->getCurrentDomainRules() !== null;
+
+            sendJsonResponse([
+                'code' => 200,
+                'success' => true,
+                'message' => '解析成功',
+                'data' => [
+                    'original_url' => $_GET['url'] ?? '',
+                    'media_url' => $mediaUrl,
+                    'domain' => $domain,
+                    'play_url' => $playUrl,
+                    'has_domain_rules' => $hasRules,
+                    'stats' => [
+                        'total_segments' => $stats['totalSegments'] ?? 0,
+                        'kept_segments' => $stats['keptSegments'] ?? 0,
+                        'removed_segments' => $stats['removedSegments'] ?? 0,
+                        'original_duration' => $stats['originalDuration'] ?? 0,
+                        'filtered_duration' => $stats['filteredDuration'] ?? 0,
+                        'saved_duration' => $stats['savedDuration'] ?? 0,
+                        'ad_percentage' => $stats['adPercentage'] ?? 0
+                    ]
+                ]
+            ]);
+            break;
+
         case 'update/version':
             sendJsonResponse([
                 'success' => true,

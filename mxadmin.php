@@ -673,7 +673,13 @@ header('Expires: 0');
     <div id="toastContainer"></div>
 
     <script>
-        const API_BASE = 'mx.php';
+        const API_BASE = (function() {
+            const protocol = window.location.protocol;
+            const host = window.location.host;
+            const path = window.location.pathname;
+            const baseDir = path.substring(0, path.lastIndexOf('/'));
+            return protocol + '//' + host + baseDir + '/mx.php';
+        })();
         let currentAnalysis = null;
         let currentSegmentTab = 'ad';
         let editingRules = null;
@@ -930,33 +936,70 @@ header('Expires: 0');
                     container: document.getElementById('dplayer'),
                     video: {
                         url: mxjxUrl,
-                        type: 'hls'
+                        type: 'hls',
+                        preload: 'auto'
                     },
                     hls: {
                         xhrSetup: function(xhr, url) {
                             xhr.withCredentials = false;
-                        }
+                        },
+                        startLevel: -1
                     },
                     autoplay: true,
+                    muted: false,
                     theme: '#667eea',
-                    lang: 'zh-cn'
+                    lang: 'zh-cn',
+                    screenshot: true,
+                    volume: 0.7,
+                    playbackSpeed: [0.5, 0.75, 1, 1.25, 1.5, 2],
+                    mutex: true
                 });
 
                 let statusUpdated = false;
+
                 dp.on('loadstart', function() {
                     if (!statusUpdated) {
                         document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频加载中...</span>';
                     }
                 });
 
+                dp.on('loadedmetadata', function() {
+                    if (!statusUpdated) {
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频元数据加载完成，正在缓冲...</span>';
+                    }
+                });
+
+                dp.on('loadeddata', function() {
+                    if (!statusUpdated) {
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频首帧已加载，准备播放...</span>';
+                    }
+                });
+
                 dp.on('canplay', function() {
                     statusUpdated = true;
                     document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
+                    if (dp && dp.video && dp.video.paused) {
+                        dp.video.play().catch(function() {
+                            document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
+                        });
+                    }
                 });
 
                 dp.on('playing', function() {
                     statusUpdated = true;
                     document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">正在播放...</span>';
+                });
+
+                dp.on('pause', function() {
+                    if (statusUpdated) {
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#909399">已暂停</span>';
+                    }
+                });
+
+                dp.on('waiting', function() {
+                    if (statusUpdated) {
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">缓冲中...</span>';
+                    }
                 });
 
                 dp.on('error', function() {
@@ -975,6 +1018,12 @@ header('Expires: 0');
                                 break;
                             case Hls.ErrorTypes.MEDIA_ERROR:
                                 errMsg = '媒体错误: ' + (data.details || '视频解码失败');
+                                try {
+                                    if (dp && dp.hls) {
+                                        dp.hls.recoverMediaError();
+                                        errMsg += '，正在尝试恢复...';
+                                    }
+                                } catch(e) {}
                                 break;
                             default:
                                 errMsg = '播放错误: ' + (data.details || data.type);
@@ -988,9 +1037,12 @@ header('Expires: 0');
                 setTimeout(function() {
                     if (!statusUpdated && dp && dp.video && dp.video.readyState >= 2) {
                         statusUpdated = true;
-                        document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功</span>';
+                        document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，点击播放按钮开始播放</span>';
+                        if (dp.video.paused) {
+                            dp.video.play().catch(function() {});
+                        }
                     }
-                }, 5000);
+                }, 3000);
             } catch (e) {
                 document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
                 showToast('播放失败: ' + e.message, 'error');
