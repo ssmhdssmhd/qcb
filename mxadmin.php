@@ -651,6 +651,12 @@ header('Expires: 0');
                 </div>
                 <div id="searchResults" style="display:none">
                     <div id="searchSummary" style="padding:10px 12px;background:#ecf5ff;border:1px solid #d9ecff;border-radius:6px;margin-bottom:12px;font-size:13px;color:#409eff"></div>
+                    <div id="searchActions" style="display:none;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                        <button class="btn btn-success" onclick="batchLearnAll()">📚 一键学习全部</button>
+                        <button class="btn btn-primary" onclick="batchAnalyzeAll()">🔍 一键分析全部</button>
+                        <span style="font-size:12px;color:#909399;margin-left:auto" id="searchStats">准备就绪</span>
+                    </div>
+                    <div id="batchResult" style="display:none;margin-bottom:12px;padding:12px;border-radius:6px"></div>
                     <div id="searchVideoList"></div>
                 </div>
                 <div id="searchLoading" style="display:none;text-align:center;padding:20px;color:#909399">
@@ -2453,6 +2459,11 @@ header('Expires: 0');
         function renderSearchResults(data, siteName) {
             const summaryEl = document.getElementById('searchSummary');
             const listEl = document.getElementById('searchVideoList');
+            const actionsEl = document.getElementById('searchActions');
+            const statsEl = document.getElementById('searchStats');
+
+            currentSearchData = data;
+            currentSearchSiteName = siteName;
 
             let totalVideos = 0;
             let sitesCount = 0;
@@ -2465,6 +2476,13 @@ header('Expires: 0');
                 totalVideos = (data.videos || []).length;
                 sitesCount = 1;
                 summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 找到 ${totalVideos} 个视频`;
+            }
+
+            if (totalVideos > 0) {
+                actionsEl.style.display = 'flex';
+                statsEl.textContent = `共 ${totalVideos} 个视频可学习`;
+            } else {
+                actionsEl.style.display = 'none';
             }
 
             let html = '';
@@ -2516,7 +2534,13 @@ header('Expires: 0');
 
             let html = `<div class="segment-item" style="border-bottom:1px solid #ebeef5;flex-wrap:wrap">
                 <div style="flex:1;min-width:200px">
-                    <div style="font-weight:500;color:#303133">${escapeHtml(videoName)}</div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <div style="font-weight:500;color:#303133">${escapeHtml(videoName)}</div>
+                        <div style="display:flex;gap:4px">
+                            <button class="btn btn-sm btn-success" onclick="learnFromVideoUrl('${escapeHtml(firstUrl)}', '${escapeHtml(videoName)}')" style="padding:4px 10px;font-size:11px">📚 学习</button>
+                            <button class="btn btn-sm btn-primary" onclick="analyzeFromSite('${escapeHtml(firstUrl)}')" style="padding:4px 10px;font-size:11px">🔍 分析</button>
+                        </div>
+                    </div>
                     <div style="font-size:12px;color:#909399;margin-top:4px">
                         <span style="background:#ecf5ff;color:#409eff;padding:2px 8px;border-radius:4px;margin-right:8px">${escapeHtml(siteName || '')}</span>
                         ${domain ? '<span style="background:#f0f9eb;color:#67c23a;padding:2px 8px;border-radius:4px">' + escapeHtml(domain) + '</span>' : ''}
@@ -2525,24 +2549,20 @@ header('Expires: 0');
 
             if (urls.length > 0) {
                 html += '<div style="margin-top:8px;font-size:12px">';
-                urls.slice(0, 5).forEach((u, idx) => {
+                urls.slice(0, 3).forEach((u, idx) => {
                     html += `<div style="padding:4px 0;display:flex;align-items:center;gap:8px">
                         <span style="color:#909399;white-space:nowrap">${escapeHtml(u.name || '剧集' + (idx + 1))}:</span>
                         <code style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#f5f7fa;padding:2px 6px;border-radius:4px;font-size:11px" title="${escapeHtml(u.url)}">${escapeHtml(u.url)}</code>
-                        <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(u.url)}')">复制</button>
-                        <button class="btn btn-sm btn-primary" onclick="learnFromVideoUrl('${escapeHtml(u.url)}', '${escapeHtml(videoName)}')">学习</button>
+                        <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(u.url)}')" style="padding:2px 8px;font-size:11px">复制</button>
                     </div>`;
                 });
-                if (urls.length > 5) {
-                    html += `<div style="color:#909399;padding:4px 0">... 还有 ${urls.length - 5} 个播放源</div>`;
+                if (urls.length > 3) {
+                    html += `<div style="color:#909399;padding:4px 0">... 还有 ${urls.length - 3} 个播放源</div>`;
                 }
                 html += '</div>';
             }
 
             html += `</div>
-                <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
-                    <button class="btn btn-sm btn-secondary" onclick="analyzeFromSite('${escapeHtml(firstUrl)}')">分析</button>
-                </div>
             </div>`;
 
             return html;
@@ -2583,10 +2603,182 @@ header('Expires: 0');
             }
         }
 
+        let currentSearchData = null;
+        let currentSearchSiteName = 'all';
+        let batchLearning = false;
+
+        function collectAllVideoUrls() {
+            const urls = [];
+            if (!currentSearchData) return urls;
+
+            if (currentSearchSiteName === 'all') {
+                const results = currentSearchData.results || [];
+                results.forEach(siteResult => {
+                    const videos = siteResult.videos || [];
+                    videos.forEach(v => {
+                        const firstUrl = v.first_url || v.url || '';
+                        if (firstUrl) {
+                            urls.push({
+                                url: firstUrl,
+                                name: v.name || '未知',
+                                site: siteResult.site || ''
+                            });
+                        }
+                    });
+                });
+            } else {
+                const videos = currentSearchData.videos || [];
+                videos.forEach(v => {
+                    const firstUrl = v.first_url || v.url || '';
+                    if (firstUrl) {
+                        urls.push({
+                            url: firstUrl,
+                            name: v.name || '未知',
+                            site: currentSearchSiteName
+                        });
+                    }
+                });
+            }
+            return urls;
+        }
+
+        async function batchLearnAll() {
+            if (batchLearning) {
+                showToast('正在批量学习中，请稍候...', 'warning');
+                return;
+            }
+
+            const videos = collectAllVideoUrls();
+            if (videos.length === 0) {
+                showToast('没有可学习的视频', 'warning');
+                return;
+            }
+
+            if (!confirm(`确定要批量学习 ${videos.length} 个视频吗？\n\n学习成功后将自动更新规则管理中的对应域名规则。`)) return;
+
+            batchLearning = true;
+            const resultEl = document.getElementById('batchResult');
+            resultEl.style.display = 'block';
+            resultEl.style.background = '#fffbe6';
+            resultEl.style.border = '1px solid #ffe58f';
+            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ')</div>';
+
+            let successCount = 0;
+            let failCount = 0;
+            const results = [];
+            const learnedDomains = new Set();
+
+            for (let i = 0; i < videos.length; i++) {
+                const video = videos[i];
+                try {
+                    const res = await fetch(API_BASE + '?action=sites/learn_video', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: video.url })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        successCount++;
+                        if (data.domain) {
+                            learnedDomains.add(data.domain);
+                        }
+                        results.push({
+                            name: video.name,
+                            site: video.site,
+                            success: true,
+                            domain: data.domain,
+                            segments: data.segments_count,
+                            ad_count: data.ad_count
+                        });
+                    } else {
+                        failCount++;
+                        results.push({
+                            name: video.name,
+                            site: video.site,
+                            success: false,
+                            message: data.message
+                        });
+                    }
+                } catch (e) {
+                    failCount++;
+                    results.push({
+                        name: video.name,
+                        site: video.site,
+                        success: false,
+                        message: e.message
+                    });
+                }
+
+                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + (i + 1) + '/' + videos.length + ')</div>';
+                document.getElementById('searchStats').textContent = `已完成 ${i + 1}/${videos.length}，成功 ${successCount}，失败 ${failCount}`;
+            }
+
+            let html = '<div style="margin-bottom:8px;font-weight:600">';
+            if (successCount > 0) {
+                html += '<span style="color:#67c23a">✅ 批量学习完成</span>';
+                resultEl.style.background = '#f0f9eb';
+                resultEl.style.border = '1px solid #c2e7b0';
+            } else {
+                html += '<span style="color:#f56c6c">❌ 批量学习失败</span>';
+                resultEl.style.background = '#fef0f0';
+                resultEl.style.border = '1px solid #fbc4c4';
+            }
+            html += '</div>';
+            html += '<div style="font-size:13px;color:#606266;margin-bottom:8px">';
+            html += `总计: ${videos.length} 个 | 成功: <span style="color:#67c23a">${successCount}</span> | 失败: <span style="color:#f56c6c">${failCount}</span>`;
+            if (learnedDomains.size > 0) {
+                html += ` | 更新域名: <span style="color:#409eff">${learnedDomains.size}</span> 个`;
+            }
+            html += '</div>';
+
+            if (learnedDomains.size > 0) {
+                html += '<div style="font-size:12px;color:#909399;margin-bottom:8px">';
+                html += '已更新域名: ' + Array.from(learnedDomains).join(', ');
+                html += '</div>';
+            }
+
+            const failedResults = results.filter(r => !r.success);
+            if (failedResults.length > 0 && failedResults.length <= 10) {
+                html += '<div style="font-size:12px"><details><summary style="cursor:pointer;color:#909399">查看失败详情</summary><div style="margin-top:8px">';
+                failedResults.forEach(r => {
+                    html += `<div style="padding:4px 0;color:#f56c6c">${escapeHtml(r.name)} - ${escapeHtml(r.message || '未知错误')}</div>`;
+                });
+                html += '</div></details></div>';
+            }
+
+            resultEl.innerHTML = html;
+            document.getElementById('searchStats').textContent = `完成 - 成功 ${successCount}，失败 ${failCount}，更新 ${learnedDomains.size} 个域名`;
+
+            batchLearning = false;
+            showToast(`批量学习完成：成功 ${successCount}，失败 ${failCount}`, successCount > 0 ? 'success' : 'error');
+        }
+
+        async function batchAnalyzeAll() {
+            const videos = collectAllVideoUrls();
+            if (videos.length === 0) {
+                showToast('没有可分析的视频', 'warning');
+                return;
+            }
+
+            if (!confirm(`确定要批量分析 ${videos.length} 个视频吗？`)) return;
+
+            const firstVideo = videos[0];
+            if (firstVideo && firstVideo.url) {
+                switchPage('analyze');
+                document.getElementById('videoUrl').value = firstVideo.url;
+                await analyzeVideo();
+                showToast('已跳转到分析页面并分析第一个视频', 'info');
+            }
+        }
+
         function clearSearchResults() {
             document.getElementById('searchKeyword').value = '';
             document.getElementById('searchResults').style.display = 'none';
             document.getElementById('searchLoading').style.display = 'none';
+            document.getElementById('batchResult').style.display = 'none';
+            document.getElementById('searchActions').style.display = 'none';
+            currentSearchData = null;
         }
 
         document.querySelectorAll('.nav-item').forEach(item => {
