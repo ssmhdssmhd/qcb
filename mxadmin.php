@@ -388,21 +388,21 @@ header('Expires: 0');
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">API接口</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">分析接口</div>
                 <div class="access-item">
                     <code id="preview-api" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-api').textContent)">复制</button>
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">直接解析</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">去广告接口</div>
                 <div class="access-item">
                     <code id="preview-parse" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-parse').textContent)">复制</button>
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">播放地址</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">信息接口(JSON)</div>
                 <div class="access-item">
                     <code id="preview-player" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-player').textContent)">复制</button>
@@ -1766,8 +1766,8 @@ header('Expires: 0');
 
             document.getElementById('preview-admin').textContent = base + '/mxadmin.php';
             document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=';
-            document.getElementById('preview-parse').textContent = base + '/?url=';
-            document.getElementById('preview-player').textContent = base + '/mxjx?url=';
+            document.getElementById('preview-parse').textContent = base + '/mx.php?action=mxjx&url=';
+            document.getElementById('preview-player').textContent = base + '/mx.php?action=mxjx/info&url=';
         }
 
         document.addEventListener('DOMContentLoaded', () => {
