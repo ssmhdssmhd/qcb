@@ -1,3 +1,8 @@
+<?php
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -897,11 +902,22 @@
 
         async function refreshRules() {
             try {
-                const res = await fetch(API_BASE + '?action=rules/list');
-                const data = await res.json();
-                if (!data.success) throw new Error(data.message);
+                const res = await fetch(API_BASE + '?action=rules/list&_t=' + Date.now(), {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    console.error('规则列表响应解析失败:', text.substring(0, 500));
+                    throw new Error('服务器返回非JSON数据: ' + text.substring(0, 100));
+                }
+                if (!data.success) throw new Error(data.message || '获取失败');
                 renderRulesTable(data.rules);
             } catch (e) {
+                console.error('获取规则列表错误:', e);
                 showToast('获取规则列表失败: ' + e.message, 'error');
             }
         }
