@@ -3,6 +3,23 @@
 @ini_set('html_errors', 0);
 error_reporting(0);
 
+$memoryLimit = @ini_get('memory_limit');
+if (return_bytes_func($memoryLimit) < 256 * 1024 * 1024) {
+    @ini_set('memory_limit', '256M');
+}
+
+function return_bytes_func($val) {
+    $val = trim($val);
+    $last = strtolower($val[strlen($val)-1]);
+    $val = (int)$val;
+    switch($last) {
+        case 'g': $val *= 1024;
+        case 'm': $val *= 1024;
+        case 'k': $val *= 1024;
+    }
+    return $val;
+}
+
 if (ob_get_level()) {
     ob_end_clean();
 }
@@ -82,6 +99,7 @@ try {
         $rootDir . '/gz/EnhancedAdRuleEngine.php',
         $rootDir . '/gz/DomainRuleManager.php',
         $rootDir . '/gz/ResourceSiteManager.php',
+        $rootDir . '/gz/OfficialSiteManager.php',
         $rootDir . '/gz/OfficialReplaceManager.php',
     ];
 
@@ -244,13 +262,18 @@ try {
             $engine->setDomain($domain);
 
             $parser = new M3U8Parser();
+            $parser->setMaxSegments(5000);
             $playlist = $parser->parse($mediaUrl);
+            unset($parser);
 
             if (empty($playlist['segments'])) {
+                unset($playlist);
+                unset($engine);
                 sendJsonResponse(['success' => false, 'message' => '无法解析视频片段'], 400);
             }
 
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
+            unset($engine);
 
             $autoLearn = isset($_GET['auto_learn']) ? $_GET['auto_learn'] === '1' || $_GET['auto_learn'] === 'true' : true;
             $learnResult = null;
@@ -259,6 +282,28 @@ try {
             }
 
             $currentRules = $ruleManager->getRules($domain);
+
+            $playlistInfo = [
+                'isMaster' => !empty($playlist['isMaster']),
+                'version' => $playlist['version'] ?? 3,
+                'targetDuration' => $playlist['targetDuration'] ?? 0,
+                'endlist' => !empty($playlist['endlist']),
+                'variantCount' => count($playlist['variants'] ?? [])
+            ];
+            unset($playlist);
+
+            $adSegments = array_values(array_filter($analysis['segments'], function($r) {
+                return $r['isAd'];
+            }));
+
+            $allSegmentsSummary = [];
+            foreach ($analysis['segments'] as $idx => $seg) {
+                $allSegmentsSummary[] = [
+                    'i' => $idx,
+                    'd' => $seg['duration'],
+                    'a' => !empty($seg['isAd']) ? 1 : 0
+                ];
+            }
 
             sendJsonResponse([
                 'success' => true,
@@ -269,13 +314,7 @@ try {
                 'fastMode' => false,
                 'autoLearned' => $learnResult,
                 'learn_count' => $currentRules['learn_count'] ?? 0,
-                'playlist' => [
-                    'isMaster' => !empty($playlist['isMaster']),
-                    'version' => $playlist['version'] ?? 3,
-                    'targetDuration' => $playlist['targetDuration'] ?? 0,
-                    'endlist' => !empty($playlist['endlist']),
-                    'variantCount' => count($playlist['variants'] ?? [])
-                ],
+                'playlist' => $playlistInfo,
                 'stats' => [
                     'totalSegments' => $analysis['totalCount'],
                     'adSegments' => $analysis['adCount'],
@@ -286,11 +325,10 @@ try {
                 'durationDistribution' => $analysis['durationDistribution'],
                 'sequenceJumps' => array_slice($analysis['sequenceJumps'], 0, 20),
                 'adClusters' => $analysis['adClusters'],
-                'adSegments' => array_values(array_filter($analysis['segments'], function($r) {
-                    return $r['isAd'];
-                })),
-                'allSegments' => $analysis['segments']
+                'adSegments' => $adSegments,
+                'allSegments' => $allSegmentsSummary
             ]);
+            unset($analysis);
             break;
 
         case 'rules/list':
@@ -995,6 +1033,115 @@ try {
                 'should_auto_learn' => $shouldLearn,
                 'config' => $config
             ]);
+            break;
+
+        case 'official_sites/status':
+            $officialMgr = new OfficialSiteManager();
+            sendJsonResponse([
+                'success' => true,
+                'enabled' => $officialMgr->isEnabled(),
+                'settings' => $officialMgr->getSettings()
+            ]);
+            break;
+
+        case 'official_sites/list':
+            $officialMgr = new OfficialSiteManager();
+            $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
+            $sites = $officialMgr->getAllSites($includePaused);
+            sendJsonResponse([
+                'success' => true,
+                'sites' => $sites,
+                'total' => count($sites),
+                'enabled' => $officialMgr->isEnabled(),
+                'settings' => $officialMgr->getSettings()
+            ]);
+            break;
+
+        case 'official_sites/get':
+            $officialMgr = new OfficialSiteManager();
+            $name = $_GET['name'] ?? '';
+            $site = $officialMgr->getSiteByName($name);
+            if ($site) {
+                sendJsonResponse(['success' => true, 'site' => $site]);
+            } else {
+                sendJsonResponse(['success' => false, 'message' => '资源站不存在'], 404);
+            }
+            break;
+
+        case 'official_sites/add':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $result = $officialMgr->addSite($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/update':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            unset($input['name']);
+            $result = $officialMgr->updateSite($name, $input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/delete':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            $result = $officialMgr->deleteSite($name);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/fetch_videos':
+            $officialMgr = new OfficialSiteManager();
+            $name = $_GET['name'] ?? '';
+            $page = intval($_GET['page'] ?? 1);
+            $limit = intval($_GET['limit'] ?? 20);
+            $result = $officialMgr->fetchVideos($name, $page, $limit);
+            sendJsonResponse($result);
+            break;
+
+        case 'official_sites/search':
+            $officialMgr = new OfficialSiteManager();
+            $name = $_GET['name'] ?? '';
+            $keyword = $_GET['keyword'] ?? '';
+            $page = intval($_GET['page'] ?? 1);
+            $limit = intval($_GET['limit'] ?? 20);
+            $result = $officialMgr->searchVideos($name, $keyword, $page, $limit);
+            sendJsonResponse($result);
+            break;
+
+        case 'official_sites/search_all':
+            $officialMgr = new OfficialSiteManager();
+            $keyword = $_GET['keyword'] ?? '';
+            $maxSites = intval($_GET['max_sites'] ?? 5);
+            $limitPerSite = intval($_GET['limit_per_site'] ?? 10);
+            $result = $officialMgr->searchAllSites($keyword, $maxSites, $limitPerSite);
+            sendJsonResponse($result);
+            break;
+
+        case 'official_sites/set_domain':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            $domainIndex = intval($input['domain_index'] ?? 0);
+            $officialMgr->setActiveDomain($name, $domainIndex);
+            sendJsonResponse(['success' => true, 'message' => '已切换域名']);
+            break;
+
+        case 'official_sites/settings/save':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $result = $officialMgr->updateSettings($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/toggle':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $enabled = !empty($input['enabled']);
+            $result = $officialMgr->setEnabled($enabled);
+            sendJsonResponse($result);
             break;
 
         case 'official_replace/config':

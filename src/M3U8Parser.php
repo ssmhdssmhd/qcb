@@ -2,6 +2,16 @@
 
 class M3U8Parser {
     private $baseUrl = '';
+    private $maxSegments = 5000;
+    private $saveRaw = false;
+
+    public function setMaxSegments($max) {
+        $this->maxSegments = intval($max);
+    }
+
+    public function setSaveRaw($save) {
+        $this->saveRaw = (bool)$save;
+    }
 
     public function parse($input) {
         $content = '';
@@ -20,7 +30,9 @@ class M3U8Parser {
             throw new Exception('无效的输入：不是URL、文件或M3U8内容');
         }
 
-        return $this->parseContent($content);
+        $result = $this->parseContent($content);
+        unset($content);
+        return $result;
     }
 
     private function isUrl($str) {
@@ -55,10 +67,12 @@ class M3U8Parser {
         $error = curl_error($ch);
 
         if ($error) {
+            curl_close($ch);
             throw new Exception('请求失败: ' . $error);
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
+            curl_close($ch);
             throw new Exception('HTTP ' . $httpCode);
         }
 
@@ -67,12 +81,16 @@ class M3U8Parser {
     }
 
     public function parseContent($content) {
-        $lines = explode("\n", $content);
-        $lines = array_map('trim', $lines);
-        $lines = array_filter($lines, function($l) {
-            return strlen($l) > 0;
-        });
-        $lines = array_values($lines);
+        $lines = [];
+        $line = strtok($content, "\n");
+        while ($line !== false) {
+            $trimmed = trim($line);
+            if ($trimmed !== '') {
+                $lines[] = $trimmed;
+            }
+            $line = strtok("\n");
+        }
+        unset($content);
 
         $playlist = [
             'version' => 3,
@@ -81,15 +99,15 @@ class M3U8Parser {
             'segments' => [],
             'isMaster' => false,
             'variants' => [],
-            'raw' => $content,
             'endlist' => false
         ];
 
         $currentSegment = null;
         $nextDiscontinuity = false;
         $i = 0;
+        $totalLines = count($lines);
 
-        while ($i < count($lines)) {
+        while ($i < $totalLines) {
             $line = $lines[$i];
 
             if ($line === '#EXTM3U') {
@@ -119,7 +137,7 @@ class M3U8Parser {
                 $playlist['isMaster'] = true;
                 $attrs = $this->parseAttributes(substr($line, 18));
                 $i++;
-                if ($i < count($lines) && strpos($lines[$i], '#') !== 0) {
+                if ($i < $totalLines && strpos($lines[$i], '#') !== 0) {
                     $playlist['variants'][] = [
                         'uri' => $lines[$i],
                         'bandwidth' => isset($attrs['BANDWIDTH']) ? (int)$attrs['BANDWIDTH'] : 0,
@@ -140,9 +158,7 @@ class M3U8Parser {
                     'duration' => $duration,
                     'title' => $title,
                     'uri' => '',
-                    'byteRange' => null,
-                    'discontinuity' => $nextDiscontinuity,
-                    'tags' => []
+                    'discontinuity' => $nextDiscontinuity
                 ];
                 $nextDiscontinuity = false;
                 $i++;
@@ -175,25 +191,24 @@ class M3U8Parser {
             }
 
             if (strpos($line, '#') === 0) {
-                if ($currentSegment) {
-                    $currentSegment['tags'][] = $line;
-                }
                 $i++;
                 continue;
             }
 
             if ($currentSegment && strpos($line, '#') !== 0) {
                 $currentSegment['uri'] = $line;
-                $currentSegment['absoluteUri'] = $this->resolveUri($line);
                 $playlist['segments'][] = $currentSegment;
                 $currentSegment = null;
-                $i++;
-                continue;
+
+                if (count($playlist['segments']) >= $this->maxSegments) {
+                    break;
+                }
             }
 
             $i++;
         }
 
+        unset($lines);
         return $playlist;
     }
 
@@ -211,7 +226,7 @@ class M3U8Parser {
         return $attrs;
     }
 
-    private function resolveUri($uri) {
+    public function resolveUri($uri) {
         if (!$this->baseUrl || preg_match('/^https?:\/\//i', $uri)) {
             return $uri;
         }
