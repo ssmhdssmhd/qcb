@@ -3,6 +3,23 @@
 @ini_set('html_errors', 0);
 error_reporting(0);
 
+$memoryLimit = @ini_get('memory_limit');
+if (return_bytes_func($memoryLimit) < 256 * 1024 * 1024) {
+    @ini_set('memory_limit', '256M');
+}
+
+function return_bytes_func($val) {
+    $val = trim($val);
+    $last = strtolower($val[strlen($val)-1]);
+    $val = (int)$val;
+    switch($last) {
+        case 'g': $val *= 1024;
+        case 'm': $val *= 1024;
+        case 'k': $val *= 1024;
+    }
+    return $val;
+}
+
 if (ob_get_level()) {
     ob_end_clean();
 }
@@ -244,13 +261,18 @@ try {
             $engine->setDomain($domain);
 
             $parser = new M3U8Parser();
+            $parser->setMaxSegments(5000);
             $playlist = $parser->parse($mediaUrl);
+            unset($parser);
 
             if (empty($playlist['segments'])) {
+                unset($playlist);
+                unset($engine);
                 sendJsonResponse(['success' => false, 'message' => '无法解析视频片段'], 400);
             }
 
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
+            unset($engine);
 
             $autoLearn = isset($_GET['auto_learn']) ? $_GET['auto_learn'] === '1' || $_GET['auto_learn'] === 'true' : true;
             $learnResult = null;
@@ -259,6 +281,28 @@ try {
             }
 
             $currentRules = $ruleManager->getRules($domain);
+
+            $playlistInfo = [
+                'isMaster' => !empty($playlist['isMaster']),
+                'version' => $playlist['version'] ?? 3,
+                'targetDuration' => $playlist['targetDuration'] ?? 0,
+                'endlist' => !empty($playlist['endlist']),
+                'variantCount' => count($playlist['variants'] ?? [])
+            ];
+            unset($playlist);
+
+            $adSegments = array_values(array_filter($analysis['segments'], function($r) {
+                return $r['isAd'];
+            }));
+
+            $allSegmentsSummary = [];
+            foreach ($analysis['segments'] as $idx => $seg) {
+                $allSegmentsSummary[] = [
+                    'i' => $idx,
+                    'd' => $seg['duration'],
+                    'a' => !empty($seg['isAd']) ? 1 : 0
+                ];
+            }
 
             sendJsonResponse([
                 'success' => true,
@@ -269,13 +313,7 @@ try {
                 'fastMode' => false,
                 'autoLearned' => $learnResult,
                 'learn_count' => $currentRules['learn_count'] ?? 0,
-                'playlist' => [
-                    'isMaster' => !empty($playlist['isMaster']),
-                    'version' => $playlist['version'] ?? 3,
-                    'targetDuration' => $playlist['targetDuration'] ?? 0,
-                    'endlist' => !empty($playlist['endlist']),
-                    'variantCount' => count($playlist['variants'] ?? [])
-                ],
+                'playlist' => $playlistInfo,
                 'stats' => [
                     'totalSegments' => $analysis['totalCount'],
                     'adSegments' => $analysis['adCount'],
@@ -286,11 +324,10 @@ try {
                 'durationDistribution' => $analysis['durationDistribution'],
                 'sequenceJumps' => array_slice($analysis['sequenceJumps'], 0, 20),
                 'adClusters' => $analysis['adClusters'],
-                'adSegments' => array_values(array_filter($analysis['segments'], function($r) {
-                    return $r['isAd'];
-                })),
-                'allSegments' => $analysis['segments']
+                'adSegments' => $adSegments,
+                'allSegments' => $allSegmentsSummary
             ]);
+            unset($analysis);
             break;
 
         case 'rules/list':

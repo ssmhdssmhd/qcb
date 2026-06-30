@@ -438,6 +438,17 @@ class ResourceSiteManager {
                     $siteResult['videos_failed']++;
                     $totalFailed++;
                 }
+
+                unset($learnResult);
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
+            }
+
+            unset($videos);
+            unset($fetchResult);
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
             }
 
             $results[] = $siteResult;
@@ -467,15 +478,26 @@ class ResourceSiteManager {
                 return ['success' => false, 'message' => '无法解析域名'];
             }
 
+            if (function_exists('memory_get_usage')) {
+                $currentLimit = @ini_get('memory_limit');
+                $currentLimitBytes = $this->return_bytes($currentLimit);
+                if ($currentLimitBytes < 256 * 1024 * 1024) {
+                    @ini_set('memory_limit', '256M');
+                }
+            }
+
             $mediaUrl = $this->resolveMasterPlaylist($videoUrl);
 
             if (!class_exists('M3U8Parser')) {
                 require_once __DIR__ . '/../src/M3U8Parser.php';
             }
             $parser = new M3U8Parser();
+            $parser->setMaxSegments(3000);
             $playlist = $parser->parse($mediaUrl);
+            unset($parser);
 
             if (empty($playlist['segments']) || count($playlist['segments']) < $minSegments) {
+                unset($playlist);
                 return ['success' => false, 'message' => '片段数不足', 'domain' => $videoDomain];
             }
 
@@ -488,23 +510,29 @@ class ResourceSiteManager {
             ]);
             $engine->setDomain($videoDomain);
             $analysis = $engine->analyzeAllSegments($playlist['segments']);
+            unset($engine);
+
+            $segmentsCount = count($playlist['segments']);
+            unset($playlist);
 
             $adPercentage = $analysis['totalCount'] > 0
                 ? ($analysis['adCount'] / $analysis['totalCount'] * 100)
                 : 0;
 
             if ($adPercentage >= $maxAdPercentage) {
+                unset($analysis);
                 return ['success' => false, 'message' => '广告占比过高', 'domain' => $videoDomain, 'ad_percentage' => $adPercentage];
             }
 
             $domainResult = $domainRuleManager->learnFromAnalysis($videoDomain, $analysis);
+            unset($analysis);
 
             if ($domainResult) {
                 return [
                     'success' => true,
                     'domain' => $videoDomain,
-                    'segments_count' => count($playlist['segments']),
-                    'ad_count' => $analysis['adCount'] ?? 0,
+                    'segments_count' => $segmentsCount,
+                    'ad_count' => 0,
                     'ad_percentage' => $adPercentage,
                     'rule_updated' => $domainResult
                 ];
@@ -512,8 +540,27 @@ class ResourceSiteManager {
                 return ['success' => false, 'message' => '规则学习失败', 'domain' => $videoDomain];
             }
         } catch (Exception $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            if (isset($playlist)) unset($playlist);
+            if (isset($engine)) unset($engine);
+            if (isset($analysis)) unset($analysis);
+            $msg = $e->getMessage();
+            if (strpos($msg, 'memory') !== false || strpos($msg, 'Allowed memory') !== false) {
+                return ['success' => false, 'message' => '内存不足，视频过大', 'domain' => $videoDomain ?? ''];
+            }
+            return ['success' => false, 'message' => $msg];
         }
+    }
+
+    private function return_bytes($val) {
+        $val = trim($val);
+        $last = strtolower($val[strlen($val)-1]);
+        $val = (int)$val;
+        switch($last) {
+            case 'g': $val *= 1024;
+            case 'm': $val *= 1024;
+            case 'k': $val *= 1024;
+        }
+        return $val;
     }
 
     private function resolveMasterPlaylist($url) {

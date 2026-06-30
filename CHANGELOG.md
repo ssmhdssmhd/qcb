@@ -5,6 +5,29 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [1.18.0] - 2026-06-30
+
+### 🔧 修复
+
+- **修复内存溢出问题** - 解决自动学习和视频分析时的内存耗尽错误
+  - **M3U8Parser 优化**:
+    - 移除 `raw` 原始内容字段，节省大量内存
+    - 移除 `absoluteUri` 字段（按需计算而非全部存储）
+    - 移除 `tags` 数组字段，减少每个片段的内存占用
+    - 新增 `maxSegments` 限制，最多解析 5000 个片段
+    - 使用 `strtok` 逐行解析，避免 `explode` 全量加载
+    - 解析完成后立即释放 `lines` 数组和 `content`
+  - **学习流程优化**:
+    - 每个视频学习后调用 `gc_collect_cycles()` 强制回收内存
+    - `parser`、`engine`、`playlist`、`analysis` 等大对象及时 `unset`
+    - 内存不足时返回友好错误提示而非直接崩溃
+    - 自动提升内存限制到 256MB（如低于此值）
+  - **分析接口优化**:
+    - `allSegments` 返回精简数据（仅索引、时长、是否广告）
+    - 响应数据量减少约 70%
+    - 分析完成后及时释放 `playlist` 和 `analysis` 对象
+  - **新增 `return_bytes` 工具函数** - 解析 PHP 内存限制格式
+
 ## [1.17.0] - 2026-06-30
 
 ### ✨ 新增功能
