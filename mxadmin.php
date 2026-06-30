@@ -3164,15 +3164,50 @@ header('Expires: 0');
                 const data = await res.json();
                 
                 if (data.success) {
+                    let seasonHtml = '';
+                    if (data.season) {
+                        seasonHtml = `<p><strong>季数:</strong> <span style="color:#409eff">${escapeHtml(data.season)}</span></p>`;
+                    }
+                    let episodeHtml = '';
+                    if (data.episode) {
+                        episodeHtml = `<p><strong>集数:</strong> <span style="color:#409eff">${escapeHtml(data.episode)}</span>`;
+                        if (data.target_episode) {
+                            episodeHtml += ` → 定位到: <span style="color:#67c23a">${escapeHtml(data.target_episode)}</span>`;
+                        }
+                        episodeHtml += '</p>';
+                    }
+                    let partHtml = '';
+                    if (data.part) {
+                        partHtml = `<p><strong>篇章:</strong> <span style="color:#e6a23c">${escapeHtml(data.part)}</span></p>`;
+                    }
+                    let versionHtml = '';
+                    if (data.version) {
+                        versionHtml = `<p><strong>版本:</strong> <span style="color:#909399">${escapeHtml(data.version)}</span></p>`;
+                    }
+                    let seasonMatchHtml = '';
+                    if (data.season_match !== undefined) {
+                        seasonMatchHtml = `<span style="color:${data.season_match ? '#67c23a' : '#f56c6c'};margin-left:8px;font-size:11px">
+                            ${data.season_match ? '季数匹配 ✓' : '季数不匹配 ✗'}
+                        </span>`;
+                    }
+
                     let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
                         <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 解析成功</div>
-                        <div style="font-size:13px;line-height:1.8">
+                        <div style="font-size:13px;line-height:2">
                             <p><strong>平台:</strong> ${escapeHtml(data.platform || '')}</p>
-                            <p><strong>视频名称:</strong> ${escapeHtml(data.video_title || '')}</p>
+                            <p><strong>原始标题:</strong> ${escapeHtml(data.video_title || '')}</p>
+                            <p><strong>基础名称:</strong> <code>${escapeHtml(data.base_title || '')}</code></p>
+                            ${seasonHtml}
+                            ${episodeHtml}
+                            ${partHtml}
+                            ${versionHtml}
                             <p><strong>匹配资源站:</strong> ${escapeHtml(data.site || '')}</p>
-                            <p><strong>匹配度:</strong> <span style="color:#67c23a">${data.match_score || 0}%</span></p>
-                            <p><strong>M3U8 地址:</strong> <code style="word-break:break-all">${escapeHtml(data.m3u8_url || '')}</code></p>
-                            <p><strong>集数:</strong> ${(data.all_urls || []).length} 集</p>
+                            <p><strong>总匹配度:</strong> <span style="color:#67c23a;font-size:16px;font-weight:600">${data.match_score || 0}%</span>
+                                ${seasonMatchHtml}
+                            </p>
+                            <p style="font-size:11px;color:#909399">基础匹配度: ${data.base_score || 0}%</p>
+                            <p><strong>M3U8 地址:</strong> <code style="word-break:break-all;font-size:11px">${escapeHtml(data.m3u8_url || '')}</code></p>
+                            <p><strong>总集数:</strong> ${(data.all_urls || []).length} 集</p>
                         </div>
                     </div>`;
                     
@@ -3191,12 +3226,24 @@ header('Expires: 0');
                     }
                     infoEl.innerHTML = html;
                 } else {
+                    let seasonHtml = '';
+                    if (data.season) {
+                        seasonHtml = `<p><strong>解析季数:</strong> ${escapeHtml(data.season)}</p>`;
+                    }
+                    let episodeHtml = '';
+                    if (data.episode) {
+                        episodeHtml = `<p><strong>解析集数:</strong> ${escapeHtml(data.episode)}</p>`;
+                    }
+
                     let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
                         <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 解析失败</div>
-                        <div style="font-size:13px;line-height:1.8">
+                        <div style="font-size:13px;line-height:2">
                             <p><strong>原因:</strong> ${escapeHtml(data.message || '未知错误')}</p>
                             ${data.platform ? `<p><strong>识别平台:</strong> ${escapeHtml(data.platform)}</p>` : ''}
                             ${data.video_title ? `<p><strong>提取标题:</strong> ${escapeHtml(data.video_title)}</p>` : ''}
+                            ${data.base_title ? `<p><strong>基础名称:</strong> <code>${escapeHtml(data.base_title)}</code></p>` : ''}
+                            ${seasonHtml}
+                            ${episodeHtml}
                         </div>
                     </div>`;
                     
