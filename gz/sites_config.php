@@ -7,10 +7,10 @@
 
 return [
     'version' => '1.0',
-    'update_date' => '2026-06-29',
+    'update_date' => '2026-06-30',
     'sites' => [
         [
-            'name' => '墨子',
+            'name' => '量子',
             'site_url' => 'http://23.224.101.30',
             'api_url' => 'https://cj.lziapi.com/api.php/provide/vod/from/lzm3u8/',
             'type' => 'maccms',

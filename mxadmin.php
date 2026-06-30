@@ -683,7 +683,7 @@ header('Expires: 0');
                 <div class="card-title" id="siteEditorTitle">新增资源站</div>
                 <div class="form-group">
                     <label>资源站名称</label>
-                    <input type="text" id="siteName" placeholder="例如：墨子">
+                    <input type="text" id="siteName" placeholder="例如：量子">
                 </div>
                 <div class="form-group">
                     <label>官网地址</label>

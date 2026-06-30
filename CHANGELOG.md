@@ -5,6 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [1.10.1] - 2026-06-30
+
+### 🔧 修复
+
+- **资源站名称更新** - 将「墨子」资源站更名为「量子」
+  - 更新 `sites_config.php` 中资源站名称
+  - 更新管理后台新增资源站表单 placeholder
+
 ## [1.10.0] - 2026-06-29
 
 ### ✨ 新增功能
