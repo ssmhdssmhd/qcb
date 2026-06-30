@@ -2309,23 +2309,46 @@ header('Expires: 0');
                 container.innerHTML = '<div class="empty">暂无视频数据</div>';
                 return;
             }
-            let html = '<div style="max-height:400px;overflow-y:auto">';
+            let html = '<div style="max-height:500px;overflow-y:auto">';
             videos.forEach((v, i) => {
+                const urls = v.urls || (v.url ? [{name: '播放', url: v.url}] : []);
+                const firstUrl = v.first_url || v.url || (urls[0] && urls[0].url) || '';
                 html += `
-                    <div class="segment-item" style="border-bottom:1px solid #ebeef5">
-                        <div style="flex:1">
+                    <div class="segment-item" style="border-bottom:1px solid #ebeef5;flex-wrap:wrap">
+                        <div style="flex:1;min-width:200px">
                             <div style="font-weight:500;color:#303133">${i + 1}. ${escapeHtml(v.name || '未知')}</div>
-                            <div style="font-size:12px;color:#909399;margin-top:4px;word-break:break-all;font-family:monospace">${escapeHtml(v.url || '')}</div>
+                            ${v.remarks ? `<div style="font-size:12px;color:#67c23a;margin-top:2px">${escapeHtml(v.remarks)}</div>` : ''}
+                            <div style="font-size:12px;color:#909399;margin-top:4px;word-break:break-all;font-family:monospace">${escapeHtml(firstUrl || '')}</div>
                         </div>
-                        <div style="display:flex;gap:6px;flex-shrink:0">
-                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(v.url || '')}')">复制</button>
-                            <button class="btn btn-sm btn-primary" onclick="analyzeFromSite('${escapeHtml(v.url || '')}')">分析</button>
+                        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;margin-top:8px">
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(firstUrl || '')}')">复制</button>
+                            <button class="btn btn-sm btn-primary" onclick="analyzeFromSite('${escapeHtml(firstUrl || '')}')">分析</button>
+                            ${urls.length > 1 ? `<button class="btn btn-sm btn-info" onclick="toggleEpisodes(${i})">${urls.length}集 ▼</button>` : ''}
                         </div>
+                        ${urls.length > 1 ? `<div id="episodes-${i}" style="display:none;width:100%;margin-top:10px;padding:10px;background:#f5f7fa;border-radius:4px">
+                            <div style="font-size:13px;color:#606266;margin-bottom:8px;font-weight:500">播放列表 (${urls.length}集)</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px">
+                                ${urls.map((u, j) => `
+                                    <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:#fff;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;">
+                                        <span style="color:#606266">${escapeHtml(u.name || ('第' + (j+1) + '集'))}</span>
+                                        <button class="btn btn-xs btn-secondary" style="padding:2px 6px;font-size:11px" onclick="copyText('${escapeHtml(u.url || '')}')">复制</button>
+                                        <button class="btn btn-xs btn-primary" style="padding:2px 6px;font-size:11px" onclick="analyzeFromSite('${escapeHtml(u.url || '')}')">分析</button>
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>` : ''}
                     </div>
                 `;
             });
             html += '</div>';
             container.innerHTML = html;
+        }
+
+        function toggleEpisodes(index) {
+            const el = document.getElementById('episodes-' + index);
+            if (el) {
+                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            }
         }
 
         function closeSiteVideos() {

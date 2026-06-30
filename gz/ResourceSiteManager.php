@@ -130,7 +130,7 @@ class ResourceSiteManager {
         } else {
             $url .= '&';
         }
-        $url .= 'ac=list&pg=' . intval($page) . '&limit=' . intval($limit);
+        $url .= 'ac=detail&pg=' . intval($page) . '&limit=' . intval($limit);
 
         $response = $this->httpGet($url);
         if ($response === false) {
@@ -148,15 +148,20 @@ class ResourceSiteManager {
             $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
             $vodName = $item['vod_name'] ?? $item['name'] ?? '';
             $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
 
             if (empty($vodPlayUrl)) continue;
 
-            $m3u8Url = $this->extractM3u8Url($vodPlayUrl);
-            if ($m3u8Url) {
+            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
+            if (!empty($allM3u8Urls)) {
                 $videos[] = [
                     'id' => $vodId,
                     'name' => $vodName,
-                    'url' => $m3u8Url,
+                    'pic' => $vodPic,
+                    'remarks' => $vodRemarks,
+                    'urls' => $allM3u8Urls,
+                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
                     'raw_play_url' => $vodPlayUrl
                 ];
             }
@@ -178,7 +183,7 @@ class ResourceSiteManager {
         } else {
             $url .= '&';
         }
-        $url .= 'ac=list&wd=' . urlencode($keyword) . '&pg=' . intval($page) . '&limit=' . intval($limit);
+        $url .= 'ac=detail&wd=' . urlencode($keyword) . '&pg=' . intval($page) . '&limit=' . intval($limit);
 
         $response = $this->httpGet($url);
         if ($response === false) {
@@ -269,14 +274,14 @@ class ResourceSiteManager {
     private function extractM3u8Url($playUrl) {
         if (empty($playUrl)) return null;
 
-        if (preg_match('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
+        if (preg_match('/https?:\/\/[^\s\$\r\n#]+\.m3u8[^\s\$\r\n#]*/i', $playUrl, $matches)) {
             return $matches[0];
         }
 
         if (strpos($playUrl, '$') !== false) {
             $parts = explode('$', $playUrl);
             foreach ($parts as $part) {
-                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $part, $matches)) {
+                if (preg_match('/https?:\/\/[^\s#]+\.m3u8[^\s#]*/i', $part, $matches)) {
                     return $matches[0];
                 }
             }
@@ -285,7 +290,7 @@ class ResourceSiteManager {
         if (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
             $lines = preg_split('/\r\n|\n/', $playUrl);
             foreach ($lines as $line) {
-                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $line, $matches)) {
+                if (preg_match('/https?:\/\/[^\s#]+\.m3u8[^\s#]*/i', $line, $matches)) {
                     return $matches[0];
                 }
             }
@@ -300,19 +305,24 @@ class ResourceSiteManager {
         $urls = [];
         $seen = [];
 
-        if (strpos($playUrl, '$') !== false) {
-            $lines = [];
-            if (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
-                $lines = preg_split('/\r\n|\n/', $playUrl);
-            } else {
-                $lines = [$playUrl];
-            }
+        $episodes = [];
+        if (strpos($playUrl, '#') !== false) {
+            $episodes = explode('#', $playUrl);
+        } elseif (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
+            $episodes = preg_split('/\r\n|\n/', $playUrl);
+        } else {
+            $episodes = [$playUrl];
+        }
 
-            foreach ($lines as $line) {
-                $parts = explode('$', $line);
-                for ($i = 0; $i < count($parts) - 1; $i += 2) {
-                    $name = trim($parts[$i] ?? '');
-                    $url = trim($parts[$i + 1] ?? '');
+        foreach ($episodes as $episode) {
+            $episode = trim($episode);
+            if (empty($episode)) continue;
+
+            if (strpos($episode, '$') !== false) {
+                $parts = explode('$', $episode);
+                if (count($parts) >= 2) {
+                    $name = trim($parts[0] ?? '');
+                    $url = trim($parts[1] ?? '');
                     if ($name && $url && preg_match('/\.m3u8/i', $url) && !isset($seen[$url])) {
                         $seen[$url] = true;
                         $urls[] = ['name' => $name, 'url' => $url];
@@ -321,7 +331,7 @@ class ResourceSiteManager {
             }
         }
 
-        if (preg_match_all('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
+        if (preg_match_all('/https?:\/\/[^\s\$\r\n#]+\.m3u8[^\s\$\r\n#]*/i', $playUrl, $matches)) {
             foreach ($matches[0] as $url) {
                 if (!isset($seen[$url])) {
                     $seen[$url] = true;
@@ -333,7 +343,7 @@ class ResourceSiteManager {
         if (empty($urls) && (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false)) {
             $lines = preg_split('/\r\n|\n/', $playUrl);
             foreach ($lines as $idx => $line) {
-                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $line, $matches)) {
+                if (preg_match('/https?:\/\/[^\s#]+\.m3u8[^\s#]*/i', $line, $matches)) {
                     $url = $matches[0];
                     if (!isset($seen[$url])) {
                         $seen[$url] = true;
