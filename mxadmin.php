@@ -626,6 +626,7 @@ header('Expires: 0');
         <div class="nav-item active" data-page="analyze">视频分析</div>
         <div class="nav-item" data-page="rules">规则管理</div>
         <div class="nav-item" data-page="sites">资源站管理</div>
+        <div class="nav-item" data-page="official_sites">官采专区</div>
         <div class="nav-item" data-page="official_replace">官替管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
@@ -952,6 +953,61 @@ header('Expires: 0');
                     <button class="btn btn-sm btn-secondary" style="float:right" onclick="closeSiteVideos()">关闭</button>
                 </div>
                 <div id="siteVideosList"></div>
+            </div>
+        </div>
+
+        <div class="page" id="page-official_sites">
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>官采资源站列表</span>
+                    <div style="display:flex;gap:10px">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="officialSitesEnabled" onchange="toggleOfficialSites()">
+                            启用官采专区
+                        </label>
+                        <button class="btn btn-sm btn-primary" onclick="showAddOfficialSite()">+ 添加官采站</button>
+                    </div>
+                </div>
+                <div id="officialSitesList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">官采专区设置</div>
+                <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+                    <div class="form-group">
+                        <label>自动切换域名</label>
+                        <select id="osAutoSwitch">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>每域名最大重试次数</label>
+                        <input type="number" id="osMaxRetry" value="2" min="0" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label>请求超时（秒）</label>
+                        <input type="number" id="osTimeout" value="10" min="5" max="60">
+                    </div>
+                    <div class="form-group">
+                        <label>默认每页条数</label>
+                        <input type="number" id="osDefaultLimit" value="20" min="5" max="100">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="saveOfficialSettings()">保存设置</button>
+            </div>
+
+            <div class="card" id="officialSiteVideos" style="display:none">
+                <div class="card-title">
+                    <span id="officialSiteVideoTitle">视频列表</span>
+                    <button class="btn btn-sm btn-secondary" style="float:right" onclick="closeOfficialSiteVideos()">关闭</button>
+                </div>
+                <div style="margin-bottom:12px;display:flex;gap:10px">
+                    <input type="text" id="officialVideoSearch" placeholder="搜索关键词..." style="flex:1;padding:10px 14px;border:1px solid var(--border-base);border-radius:6px;outline:none">
+                    <button class="btn btn-primary" onclick="searchOfficialVideos()">搜索</button>
+                    <button class="btn btn-secondary" onclick="refreshOfficialVideos()">刷新</button>
+                </div>
+                <div id="officialSiteVideosList"></div>
             </div>
         </div>
 
@@ -3504,10 +3560,279 @@ header('Expires: 0');
             }
         }
 
+        let currentOfficialSite = '';
+
+        async function loadOfficialSites() {
+            const res = await fetch(API_BASE + '?action=official_sites/list&include_paused=1&_t=' + Date.now());
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('officialSitesEnabled').checked = data.enabled;
+                if (data.settings) {
+                    document.getElementById('osAutoSwitch').value = data.settings.auto_switch_domain ? '1' : '0';
+                    document.getElementById('osMaxRetry').value = data.settings.max_retry_per_domain ?? 2;
+                    document.getElementById('osTimeout').value = data.settings.timeout ?? 10;
+                    document.getElementById('osDefaultLimit').value = data.settings.default_limit ?? 20;
+                }
+                renderOfficialSites(data.sites || []);
+            }
+        }
+
+        function renderOfficialSites(sites) {
+            const container = document.getElementById('officialSitesList');
+            if (sites.length === 0) {
+                container.innerHTML = '<div class="empty">暂无官采资源站</div>';
+                return;
+            }
+            let html = '<table class="rules-table">';
+            html += '<thead><tr><th>状态</th><th>名称</th><th>域名</th><th>类型</th><th>备注</th><th>优先级</th><th>操作</th></tr></thead>';
+            html += '<tbody>';
+            sites.forEach(site => {
+                const isPaused = site.status === 'paused';
+                const domains = site.domains || [];
+                const activeIdx = site.active_domain_index ?? 0;
+                const domainBadges = domains.map((d, i) => {
+                    const isActive = i === activeIdx;
+                    return `<span class="tag ${isActive ? 'tag-green' : 'tag-blue'}" style="cursor:pointer" onclick="switchOfficialDomain('${escapeHtml(site.name)}', ${i})" title="点击切换">${escapeHtml(d)}</span>`;
+                }).join(' ');
+
+                html += `<tr>
+                    <td>${isPaused ? '<span class="tag tag-orange">停用</span>' : '<span class="tag tag-green">运行中</span>'}</td>
+                    <td style="font-weight:500">
+                        ${escapeHtml(site.name || '')}
+                        <span class="tag tag-red" style="background:linear-gradient(135deg,#f56c6c,#e74c3c);color:white">官采</span>
+                    </td>
+                    <td><div style="max-width:280px;display:flex;flex-wrap:wrap;gap:4px">${domainBadges}</div></td>
+                    <td>${escapeHtml(site.type || 'maccms')}</td>
+                    <td>${escapeHtml(site.note || '')}</td>
+                    <td>${site.priority ?? 99}</td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="viewOfficialSiteVideos('${escapeHtml(site.name)}')">视频</button>
+                        <button class="btn btn-sm btn-primary" onclick="editOfficialSite('${escapeHtml(site.name)}')">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteOfficialSite('${escapeHtml(site.name)}')">删除</button>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function switchOfficialDomain(siteName, domainIndex) {
+            const res = await fetch(API_BASE + '?action=official_sites/set_domain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: siteName, domain_index: domainIndex })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('域名切换成功', 'success');
+                loadOfficialSites();
+            } else {
+                showToast(data.message || '切换失败', 'error');
+            }
+        }
+
+        async function toggleOfficialSites() {
+            const enabled = document.getElementById('officialSitesEnabled').checked;
+            const res = await fetch(API_BASE + '?action=official_sites/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(enabled ? '官采专区已启用' : '官采专区已停用', 'success');
+            } else {
+                showToast(data.message || '操作失败', 'error');
+            }
+        }
+
+        async function saveOfficialSettings() {
+            const settings = {
+                auto_switch_domain: document.getElementById('osAutoSwitch').value === '1',
+                max_retry_per_domain: parseInt(document.getElementById('osMaxRetry').value),
+                timeout: parseInt(document.getElementById('osTimeout').value),
+                default_limit: parseInt(document.getElementById('osDefaultLimit').value)
+            };
+            const res = await fetch(API_BASE + '?action=official_sites/settings/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('设置保存成功', 'success');
+            } else {
+                showToast(data.message || '保存失败', 'error');
+            }
+        }
+
+        function showAddOfficialSite() {
+            const name = prompt('请输入官采站名称：');
+            if (!name) return;
+            const domains = prompt('请输入域名（一行一个）：', 'cj.10010888.xyz\ncj.tianwe.cn\ntianwei.qzz.io');
+            if (!domains) return;
+            const apiPath = prompt('请输入API路径：', '/api.php/provide/vod/') || '/api.php/provide/vod/';
+            const note = prompt('备注：', '官采推荐') || '';
+            addOfficialSite({ name, domains, api_path: apiPath, note, type: 'maccms', priority: 1 });
+        }
+
+        async function addOfficialSite(siteData) {
+            const domainList = siteData.domains.split('\n').map(d => d.trim()).filter(d => d);
+            const siteUrl = 'https://' + domainList[0];
+            const apiUrl = siteUrl + siteData.api_path;
+            const res = await fetch(API_BASE + '?action=official_sites/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: siteData.name,
+                    code: siteData.name.toLowerCase(),
+                    site_url: siteUrl,
+                    api_url: apiUrl,
+                    type: siteData.type || 'maccms',
+                    status: 'active',
+                    note: siteData.note || '',
+                    priority: siteData.priority || 1,
+                    domains: domainList,
+                    api_path: siteData.api_path || '/api.php/provide/vod/'
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('添加成功', 'success');
+                loadOfficialSites();
+            } else {
+                showToast(data.message || '添加失败', 'error');
+            }
+        }
+
+        async function editOfficialSite(name) {
+            const res = await fetch(API_BASE + '?action=official_sites/get&name=' + encodeURIComponent(name));
+            const data = await res.json();
+            if (!data.success) {
+                showToast(data.message || '获取失败', 'error');
+                return;
+            }
+            const site = data.site;
+            const newNote = prompt('修改备注：', site.note || '');
+            if (newNote === null) return;
+            const newPriority = prompt('修改优先级（数字越小越靠前）：', site.priority ?? 99);
+            if (newPriority === null) return;
+
+            const updateRes = await fetch(API_BASE + '?action=official_sites/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    note: newNote,
+                    priority: parseInt(newPriority)
+                })
+            });
+            const updateData = await updateRes.json();
+            if (updateData.success) {
+                showToast('更新成功', 'success');
+                loadOfficialSites();
+            } else {
+                showToast(updateData.message || '更新失败', 'error');
+            }
+        }
+
+        async function deleteOfficialSite(name) {
+            if (!confirm('确定删除官采站「' + name + '」吗？')) return;
+            const res = await fetch(API_BASE + '?action=official_sites/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('删除成功', 'success');
+                loadOfficialSites();
+            } else {
+                showToast(data.message || '删除失败', 'error');
+            }
+        }
+
+        async function viewOfficialSiteVideos(siteName) {
+            currentOfficialSite = siteName;
+            document.getElementById('officialSiteVideoTitle').textContent = siteName + ' - 视频列表';
+            document.getElementById('officialSiteVideos').style.display = 'block';
+            document.getElementById('officialVideoSearch').value = '';
+            document.getElementById('officialSiteVideosList').innerHTML = '<div class="loading">加载中...</div>';
+            try {
+                const res = await fetch(API_BASE + '?action=official_sites/fetch_videos&name=' + encodeURIComponent(siteName) + '&_t=' + Date.now());
+                const data = await res.json();
+                renderOfficialVideos(data);
+            } catch (e) {
+                document.getElementById('officialSiteVideosList').innerHTML = 
+                    `<div style="color:#f56c6c;text-align:center;padding:20px">加载失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        function renderOfficialVideos(data) {
+            const container = document.getElementById('officialSiteVideosList');
+            if (!data.success || !data.videos || data.videos.length === 0) {
+                container.innerHTML = `<div class="empty">${data.message || '暂无视频数据'}</div>`;
+                return;
+            }
+            const videos = data.videos;
+            let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
+            videos.forEach(v => {
+                html += `<div class="stat-card" style="cursor:pointer" onclick="learnOfficialVideo('${escapeHtml(v.first_url || v.url || '')}', '${escapeHtml(v.name || '')}')">
+                    <div style="font-weight:500;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.name || '未知')}</div>
+                    <div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(v.remarks || v.type || '')}</div>
+                    <div style="margin-top:8px"><span class="tag tag-blue">${v.total || 0} 集</span></div>
+                </div>`;
+            });
+            html += '</div>';
+            if (data.domain_used) {
+                html = `<div style="margin-bottom:12px;padding:8px 12px;background:var(--primary-bg);border-radius:6px;font-size:13px;color:var(--primary-text)">
+                    当前使用域名: <strong>${escapeHtml(data.domain_used)}</strong>
+                </div>` + html;
+            }
+            container.innerHTML = html;
+        }
+
+        async function searchOfficialVideos() {
+            const keyword = document.getElementById('officialVideoSearch').value.trim();
+            if (!keyword || !currentOfficialSite) return;
+            document.getElementById('officialSiteVideosList').innerHTML = '<div class="loading">搜索中...</div>';
+            try {
+                const res = await fetch(API_BASE + '?action=official_sites/search&name=' + encodeURIComponent(currentOfficialSite) + '&keyword=' + encodeURIComponent(keyword) + '&_t=' + Date.now());
+                const data = await res.json();
+                renderOfficialVideos(data);
+            } catch (e) {
+                document.getElementById('officialSiteVideosList').innerHTML = 
+                    `<div style="color:#f56c6c;text-align:center;padding:20px">搜索失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        function refreshOfficialVideos() {
+            if (currentOfficialSite) {
+                viewOfficialSiteVideos(currentOfficialSite);
+            }
+        }
+
+        function closeOfficialSiteVideos() {
+            document.getElementById('officialSiteVideos').style.display = 'none';
+            currentOfficialSite = '';
+        }
+
+        async function learnOfficialVideo(url, name) {
+            if (!confirm('学习视频「' + name + '」的广告规则？')) return;
+            const res = await fetch(API_BASE + '?action=analyze&url=' + encodeURIComponent(url) + '&auto_learn=1&_t=' + Date.now());
+            const data = await res.json();
+            if (data.success) {
+                showToast('学习成功，广告占比: ' + (data.stats?.adPercentage || 0).toFixed(1) + '%', 'success');
+            } else {
+                showToast(data.message || '学习失败', 'error');
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initTheme();
             refreshRules();
             initAccessPreview();
+            loadOfficialSites();
             loadOfficialReplaceConfig();
         });
     </script>

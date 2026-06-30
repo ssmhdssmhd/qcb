@@ -5,6 +5,43 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [1.19.0] - 2026-06-30
+
+### ✨ 新增功能
+
+- **官采专区** - 新增官方采集资源站管理模块
+  - **多域名采集支持** - 同一资源站配置多个备用域名
+  - **自动切换域名** - 请求失败自动尝试下一个域名，保证可用性
+  - **TW 推荐采集** - 预置官采资源站：
+    - 主域名: cj.10010888.xyz
+    - 备用域名1: cj.tianwe.cn
+    - 备用域名2: tianwei.qzz.io
+  - **后台管理页面** - 「官采专区」独立导航菜单
+    - 官采资源站列表（带「官采」红色标签）
+    - 域名标签可视化，点击即可切换
+    - 启用/停用官采专区总开关
+    - 官采专区设置（自动切换、重试次数、超时等）
+    - 添加/编辑/删除官采站
+    - 查看视频列表和搜索
+    - 一键学习广告规则
+  - **API 接口** (13个):
+    - `official_sites/status` - 状态查询
+    - `official_sites/list` - 列表
+    - `official_sites/get` - 详情
+    - `official_sites/add` - 添加
+    - `official_sites/update` - 更新
+    - `official_sites/delete` - 删除
+    - `official_sites/fetch_videos` - 获取视频
+    - `official_sites/search` - 单站搜索
+    - `official_sites/search_all` - 全部搜索
+    - `official_sites/set_domain` - 切换域名
+    - `official_sites/settings/save` - 保存设置
+    - `official_sites/toggle` - 启停开关
+
+### 🐛 修复
+
+- 修复 `OfficialReplaceManager` 中调用不存在的 `searchSite()` 方法的错误，改为正确的 `searchVideos()` 调用
+
 ## [1.18.0] - 2026-06-30
 
 ### 🔧 修复

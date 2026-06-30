@@ -99,6 +99,7 @@ try {
         $rootDir . '/gz/EnhancedAdRuleEngine.php',
         $rootDir . '/gz/DomainRuleManager.php',
         $rootDir . '/gz/ResourceSiteManager.php',
+        $rootDir . '/gz/OfficialSiteManager.php',
         $rootDir . '/gz/OfficialReplaceManager.php',
     ];
 
@@ -1032,6 +1033,115 @@ try {
                 'should_auto_learn' => $shouldLearn,
                 'config' => $config
             ]);
+            break;
+
+        case 'official_sites/status':
+            $officialMgr = new OfficialSiteManager();
+            sendJsonResponse([
+                'success' => true,
+                'enabled' => $officialMgr->isEnabled(),
+                'settings' => $officialMgr->getSettings()
+            ]);
+            break;
+
+        case 'official_sites/list':
+            $officialMgr = new OfficialSiteManager();
+            $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
+            $sites = $officialMgr->getAllSites($includePaused);
+            sendJsonResponse([
+                'success' => true,
+                'sites' => $sites,
+                'total' => count($sites),
+                'enabled' => $officialMgr->isEnabled(),
+                'settings' => $officialMgr->getSettings()
+            ]);
+            break;
+
+        case 'official_sites/get':
+            $officialMgr = new OfficialSiteManager();
+            $name = $_GET['name'] ?? '';
+            $site = $officialMgr->getSiteByName($name);
+            if ($site) {
+                sendJsonResponse(['success' => true, 'site' => $site]);
+            } else {
+                sendJsonResponse(['success' => false, 'message' => '资源站不存在'], 404);
+            }
+            break;
+
+        case 'official_sites/add':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $result = $officialMgr->addSite($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/update':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            unset($input['name']);
+            $result = $officialMgr->updateSite($name, $input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/delete':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            $result = $officialMgr->deleteSite($name);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/fetch_videos':
+            $officialMgr = new OfficialSiteManager();
+            $name = $_GET['name'] ?? '';
+            $page = intval($_GET['page'] ?? 1);
+            $limit = intval($_GET['limit'] ?? 20);
+            $result = $officialMgr->fetchVideos($name, $page, $limit);
+            sendJsonResponse($result);
+            break;
+
+        case 'official_sites/search':
+            $officialMgr = new OfficialSiteManager();
+            $name = $_GET['name'] ?? '';
+            $keyword = $_GET['keyword'] ?? '';
+            $page = intval($_GET['page'] ?? 1);
+            $limit = intval($_GET['limit'] ?? 20);
+            $result = $officialMgr->searchVideos($name, $keyword, $page, $limit);
+            sendJsonResponse($result);
+            break;
+
+        case 'official_sites/search_all':
+            $officialMgr = new OfficialSiteManager();
+            $keyword = $_GET['keyword'] ?? '';
+            $maxSites = intval($_GET['max_sites'] ?? 5);
+            $limitPerSite = intval($_GET['limit_per_site'] ?? 10);
+            $result = $officialMgr->searchAllSites($keyword, $maxSites, $limitPerSite);
+            sendJsonResponse($result);
+            break;
+
+        case 'official_sites/set_domain':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            $domainIndex = intval($input['domain_index'] ?? 0);
+            $officialMgr->setActiveDomain($name, $domainIndex);
+            sendJsonResponse(['success' => true, 'message' => '已切换域名']);
+            break;
+
+        case 'official_sites/settings/save':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $result = $officialMgr->updateSettings($input);
+            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'official_sites/toggle':
+            $officialMgr = new OfficialSiteManager();
+            $input = getInputJson();
+            $enabled = !empty($input['enabled']);
+            $result = $officialMgr->setEnabled($enabled);
+            sendJsonResponse($result);
             break;
 
         case 'official_replace/config':
