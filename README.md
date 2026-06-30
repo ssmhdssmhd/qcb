@@ -35,6 +35,10 @@
 ├── mxadmin.php            # 后台管理页面
 ├── index.php              # 首页路由
 ├── router.php             # 路由配置
+├── auto_commit.sh         # 自动提交脚本 (Bash)
+├── auto_commit.php        # 自动提交脚本 (PHP)
+├── player/
+│   └── index.php          # 在线播放器页面
 ├── gz/
 │   ├── DomainRuleManager.php   # 域名规则管理器
 │   ├── EnhancedAdRuleEngine.php # 增强版广告规则引擎

@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [1.23.0] - 2026-06-30
+
+### ✨ 新增功能
+
+- **自动提交脚本** - 新增自动提交到 GitHub 的脚本，避免忘记提交
+  - `auto_commit.sh` - Bash 版本自动提交脚本
+  - `auto_commit.php` - PHP 版本自动提交脚本
+  - 自动检测文件变更，自动生成提交信息
+  - 自动推送到远程仓库
+  - 支持自定义提交信息
+  - 显示变更文件列表和数量
+  - 无变更时友好提示
+
+### 📁 文件变更
+
+- 新增 `auto_commit.sh` - Bash 自动提交脚本
+- 新增 `auto_commit.php` - PHP 自动提交脚本
+
 ## [1.22.0] - 2026-06-30
 
 ### ✨ 新增功能
