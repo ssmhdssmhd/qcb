@@ -5,9 +5,9 @@
  */
 
 class ResourceSiteManager {
-
     private $configFile;
     private $config;
+    private $lastHttpError = '';
 
     public function __construct() {
         $this->configFile = __DIR__ . '/sites_config.php';
@@ -124,17 +124,15 @@ class ResourceSiteManager {
     }
 
     public function fetchVideos($apiUrl, $page = 1, $limit = 20) {
-        $url = $apiUrl;
-        if (strpos($url, '?') === false) {
-            $url .= '?';
-        } else {
-            $url .= '&';
-        }
-        $url .= 'ac=list&pg=' . intval($page) . '&limit=' . intval($limit);
+        $url = $this->buildApiUrl($apiUrl, [
+            'ac' => 'detail',
+            'pg' => intval($page),
+            'limit' => intval($limit)
+        ]);
 
         $response = $this->httpGet($url);
         if ($response === false) {
-            return ['success' => false, 'message' => '请求失败'];
+            return ['success' => false, 'message' => '请求失败: ' . ($this->lastHttpError ?? '未知错误')];
         }
 
         $data = json_decode($response, true);
@@ -148,15 +146,20 @@ class ResourceSiteManager {
             $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
             $vodName = $item['vod_name'] ?? $item['name'] ?? '';
             $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
 
             if (empty($vodPlayUrl)) continue;
 
-            $m3u8Url = $this->extractM3u8Url($vodPlayUrl);
-            if ($m3u8Url) {
+            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
+            if (!empty($allM3u8Urls)) {
                 $videos[] = [
                     'id' => $vodId,
                     'name' => $vodName,
-                    'url' => $m3u8Url,
+                    'pic' => $vodPic,
+                    'remarks' => $vodRemarks,
+                    'urls' => $allM3u8Urls,
+                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
                     'raw_play_url' => $vodPlayUrl
                 ];
             }
@@ -172,17 +175,16 @@ class ResourceSiteManager {
     }
 
     public function searchVideos($apiUrl, $keyword, $page = 1, $limit = 20) {
-        $url = $apiUrl;
-        if (strpos($url, '?') === false) {
-            $url .= '?';
-        } else {
-            $url .= '&';
-        }
-        $url .= 'ac=list&wd=' . urlencode($keyword) . '&pg=' . intval($page) . '&limit=' . intval($limit);
+        $url = $this->buildApiUrl($apiUrl, [
+            'ac' => 'detail',
+            'wd' => $keyword,
+            'pg' => intval($page),
+            'limit' => intval($limit)
+        ]);
 
         $response = $this->httpGet($url);
         if ($response === false) {
-            return ['success' => false, 'message' => '请求失败'];
+            return ['success' => false, 'message' => '请求失败: ' . ($this->lastHttpError ?? '未知错误')];
         }
 
         $data = json_decode($response, true);
@@ -573,22 +575,74 @@ class ResourceSiteManager {
         return (time() - $lastTimestamp) >= ($intervalDays * 86400);
     }
 
-    private function httpGet($url, $timeout = 10) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return $response;
+    private function buildApiUrl($baseUrl, $params = []) {
+        $parsed = parse_url($baseUrl);
+        if ($parsed === false) {
+            return $baseUrl;
         }
+
+        $existingParams = [];
+        if (!empty($parsed['query'])) {
+            parse_str($parsed['query'], $existingParams);
+        }
+
+        $mergedParams = array_merge($existingParams, $params);
+
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host = $parsed['host'] ?? '';
+        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $path = $parsed['path'] ?? '/';
+
+        $url = $scheme . '://' . $host . $port . $path;
+        if (!empty($mergedParams)) {
+            $url .= '?' . http_build_query($mergedParams);
+        }
+
+        return $url;
+    }
+
+    private function httpGet($url, $timeout = 15, $retry = 2) {
+        $lastError = '';
+        $userAgents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+        ];
+
+        for ($attempt = 0; $attempt <= $retry; $attempt++) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+            curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Accept: application/json, text/plain, */*',
+                'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
+                'Referer: ' . (parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . '/')
+            ]);
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+                return $response;
+            }
+
+            $lastError = $error ? $error : ('HTTP ' . $httpCode);
+            if ($attempt < $retry) {
+                usleep(300000);
+            }
+        }
+
+        $this->lastHttpError = $lastError;
         return false;
     }
 

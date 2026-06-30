@@ -2467,11 +2467,16 @@ header('Expires: 0');
 
             let totalVideos = 0;
             let sitesCount = 0;
+            let successSites = 0;
+            let failedSites = 0;
 
             if (siteName === 'all') {
                 totalVideos = data.total_videos || 0;
                 sitesCount = data.sites_searched || 0;
-                summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 共搜索 ${sitesCount} 个站点，找到 ${totalVideos} 个视频`;
+                const results = data.results || [];
+                successSites = results.filter(r => (r.videos || []).length > 0).length;
+                failedSites = results.filter(r => r.error).length;
+                summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 搜索 ${sitesCount} 个站点，成功 ${successSites} 个，找到 ${totalVideos} 个视频`;
             } else {
                 totalVideos = (data.videos || []).length;
                 sitesCount = 1;
@@ -2489,27 +2494,43 @@ header('Expires: 0');
 
             if (siteName === 'all') {
                 const results = data.results || [];
-                results.forEach(siteResult => {
+                const successResults = results.filter(r => (r.videos || []).length > 0);
+                const failedResults = results.filter(r => r.error);
+                
+                if (successResults.length === 0 && failedResults.length === 0) {
+                    html += '<div class="empty">未找到相关视频</div>';
+                }
+                
+                successResults.forEach(siteResult => {
                     const videos = siteResult.videos || [];
-                    if (videos.length === 0 && !siteResult.error) return;
-
                     html += `<div style="margin-bottom:16px">
                         <div style="padding:8px 12px;background:#f5f7fa;border-radius:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
                             <strong>${escapeHtml(siteResult.site || '')}</strong>
-                            <span style="font-size:12px;color:#909399">
-                                ${siteResult.error ? '<span style="color:#f56c6c">失败: ' + escapeHtml(siteResult.error) + '</span>' : videos.length + ' 个视频'}
+                            <span style="font-size:12px;color:#67c23a">
+                                ${videos.length} 个视频
                             </span>
-                        </div>`;
-
-                    if (videos.length > 0) {
-                        html += '<div style="max-height:300px;overflow-y:auto;border:1px solid #ebeef5;border-radius:6px">';
-                        videos.forEach((v, i) => {
-                            html += renderSearchVideoItem(v, siteResult.site);
-                        });
-                        html += '</div>';
-                    }
-                    html += '</div>';
+                        </div>
+                        <div style="max-height:300px;overflow-y:auto;border:1px solid #ebeef5;border-radius:6px">`;
+                    videos.forEach((v, i) => {
+                        html += renderSearchVideoItem(v, siteResult.site);
+                    });
+                    html += '</div></div>';
                 });
+
+                if (failedResults.length > 0) {
+                    html += `<div style="margin-top:16px;padding:12px;background:#fafafa;border:1px solid #ebeef5;border-radius:6px">
+                        <div style="font-size:13px;color:#909399;margin-bottom:8px;cursor:pointer;user-select:none" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+                            <span id="failedToggle">▶</span> ${failedResults.length} 个资源站暂不可用 <span style="font-size:11px">(点击展开/收起)</span>
+                        </div>
+                        <div id="failedSitesList" style="display:none;font-size:12px;color:#909399">`;
+                    failedResults.forEach(r => {
+                        html += `<div style="padding:4px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between">
+                            <span>${escapeHtml(r.site || '')}</span>
+                            <span style="color:#c0c4cc">${escapeHtml(r.error || '未知错误')}</span>
+                        </div>`;
+                    });
+                    html += '</div></div>';
+                }
             } else {
                 const videos = data.videos || [];
                 if (videos.length > 0) {
