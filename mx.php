@@ -82,6 +82,7 @@ try {
         $rootDir . '/gz/EnhancedAdRuleEngine.php',
         $rootDir . '/gz/DomainRuleManager.php',
         $rootDir . '/gz/ResourceSiteManager.php',
+        $rootDir . '/gz/OfficialReplaceManager.php',
     ];
 
     foreach ($requiredFiles as $file) {
@@ -112,6 +113,7 @@ try {
     $updateManager = new UpdateManager();
     $authValidator = new AuthValidator();
     $siteManager = new ResourceSiteManager();
+    $officialReplaceMgr = new OfficialReplaceManager();
 } catch (Throwable $e) {
     sendJsonResponse([
         'success' => false,
@@ -995,6 +997,110 @@ try {
             ]);
             break;
 
+        case 'official_replace/config':
+            $config = $officialReplaceMgr->getConfig();
+            sendJsonResponse([
+                'success' => true,
+                'config' => $config
+            ]);
+            break;
+
+        case 'official_replace/config/save':
+            $input = getInputJson();
+            $result = $officialReplaceMgr->saveConfigData($input);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '保存成功' : '保存失败'
+            ], $result ? 200 : 400);
+            break;
+
+        case 'official_replace/platforms':
+            $platforms = $officialReplaceMgr->getPlatforms();
+            sendJsonResponse([
+                'success' => true,
+                'platforms' => $platforms,
+                'total' => count($platforms)
+            ]);
+            break;
+
+        case 'official_replace/platform/add':
+            $input = getInputJson();
+            $result = $officialReplaceMgr->addPlatform($input);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '添加成功' : '添加失败'
+            ], $result ? 200 : 400);
+            break;
+
+        case 'official_replace/platform/update':
+            $input = getInputJson();
+            $index = $input['index'] ?? -1;
+            if ($index < 0) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 index 参数'], 400);
+            }
+            $result = $officialReplaceMgr->updatePlatform($index, $input);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '更新成功' : '更新失败'
+            ], $result ? 200 : 400);
+            break;
+
+        case 'official_replace/platform/delete':
+            $input = getInputJson();
+            $index = $input['index'] ?? -1;
+            if ($index < 0) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 index 参数'], 400);
+            }
+            $result = $officialReplaceMgr->deletePlatform($index);
+            sendJsonResponse([
+                'success' => $result,
+                'message' => $result ? '删除成功' : '删除失败'
+            ], $result ? 200 : 400);
+            break;
+
+        case 'official_replace/resolve':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            $result = $officialReplaceMgr->resolve($url);
+            sendJsonResponse($result, $result['success'] ? 200 : 404);
+            break;
+
+        case 'official_replace/info':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            $result = $officialReplaceMgr->resolve($url);
+            
+            if ($result['success']) {
+                $m3u8Url = $result['m3u8_url'] ?? '';
+                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                $basePath = dirname($requestUri);
+                $basePath = $basePath === '/' ? '' : $basePath;
+                $selfUrl = $scheme . '://' . $host . $basePath;
+                $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'platform' => $result['platform'],
+                    'original_url' => $result['original_url'],
+                    'video_title' => $result['video_title'],
+                    'match_score' => $result['match_score'],
+                    'site' => $result['site'],
+                    'm3u8_url' => $m3u8Url,
+                    'ad_skip_url' => $mxjxUrl,
+                    'all_urls' => $result['all_urls'],
+                    'episodes' => count($result['all_urls'])
+                ]);
+            } else {
+                sendJsonResponse($result, 404);
+            }
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
@@ -1019,6 +1125,14 @@ try {
                     'sites/auto_learn/config/save' => '保存自动学习配置',
                     'sites/auto_learn/run' => '执行自动学习',
                     'sites/auto_learn/status' => '自动学习状态',
+                    'official_replace/config' => '官替配置',
+                    'official_replace/config/save' => '保存官替配置',
+                    'official_replace/platforms' => '官替平台列表',
+                    'official_replace/platform/add' => '添加官替平台',
+                    'official_replace/platform/update' => '更新官替平台',
+                    'official_replace/platform/delete' => '删除官替平台',
+                    'official_replace/resolve' => '官替解析-完整结果',
+                    'official_replace/info' => '官替解析-精简信息',
                     'skip' => '去广告接口',
                     'mxjx' => '去广告m3u8输出',
                     'update/version' => '获取当前版本',

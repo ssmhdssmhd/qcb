@@ -411,6 +411,7 @@ header('Expires: 0');
         <div class="nav-item active" data-page="analyze">视频分析</div>
         <div class="nav-item" data-page="rules">规则管理</div>
         <div class="nav-item" data-page="sites">资源站管理</div>
+        <div class="nav-item" data-page="official_replace">官替管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
         <div class="nav-item" data-page="auth">授权管理</div>
@@ -444,6 +445,13 @@ header('Expires: 0');
                 <div class="access-item">
                     <code id="preview-player" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-player').textContent)">复制</button>
+                </div>
+            </div>
+            <div style="flex:1;min-width:200px">
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">官替API接口</div>
+                <div class="access-item">
+                    <code id="preview-official-replace" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-official-replace').textContent)">复制</button>
                 </div>
             </div>
         </div>
@@ -726,15 +734,106 @@ header('Expires: 0');
             <div class="card" id="siteVideos" style="display:none">
                 <div class="card-title">
                     <span id="siteVideosTitle">视频列表</span>
-                    <div style="float:right;display:flex;gap:8px;align-items:center">
-                        <span id="siteVideosStats" style="font-size:12px;color:#909399;margin-right:8px"></span>
-                        <button class="btn btn-sm btn-success" onclick="siteVideosBatchLearn()">📚 一键学习</button>
-                        <button class="btn btn-sm btn-primary" onclick="siteVideosBatchAnalyze()">🔍 一键分析</button>
-                        <button class="btn btn-sm btn-secondary" onclick="closeSiteVideos()">关闭</button>
+                    <button class="btn btn-sm btn-secondary" style="float:right" onclick="closeSiteVideos()">关闭</button>
+                </div>
+                <div id="siteVideosList"></div>
+            </div>
+        </div>
+
+        <div class="page" id="page-official_replace">
+            <div class="card">
+                <div class="card-title">官替 API 配置</div>
+                <div class="stats-grid" id="officialReplaceStats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="orTotalPlatforms">-</div>
+                        <div class="stat-label">支持平台数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="orStatus">-</div>
+                        <div class="stat-label">功能状态</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="orSearchSites">-</div>
+                        <div class="stat-label">搜索资源站</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="orThreshold">-</div>
+                        <div class="stat-label">匹配阈值</div>
                     </div>
                 </div>
-                <div id="siteVideosBatchResult" style="display:none;margin-bottom:12px;padding:12px;border-radius:6px;font-size:13px"></div>
-                <div id="siteVideosList"></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>启用官替功能</label>
+                        <select id="orEnabled">
+                            <option value="true">启用</option>
+                            <option value="false">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>匹配阈值 (0-100)</label>
+                        <input type="number" id="orThresholdInput" min="0" max="100" value="60">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>最大搜索站点数</label>
+                        <input type="number" id="orMaxSites" min="1" max="20" value="5">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>搜索资源站 (逗号分隔)</label>
+                        <input type="text" id="orSearchSitesInput" placeholder="留空表示搜索全部">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="saveOfficialReplaceConfig()">保存配置</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span>支持平台列表</span>
+                    <button class="btn btn-sm btn-primary" style="float:right" onclick="addOfficialPlatform()">+ 添加平台</button>
+                </div>
+                <div id="officialPlatformsList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">官替 API 测试</div>
+                <div class="input-group">
+                    <input type="text" id="officialTestUrl" placeholder="输入官方视频链接，如：https://v.qq.com/x/cover/xxx.html">
+                    <button class="btn btn-primary" onclick="testOfficialReplace()">测试解析</button>
+                </div>
+                <div style="font-size:12px;color:#909399;margin-bottom:16px">
+                    支持：腾讯视频、爱奇艺、优酷、芒果TV、哔哩哔哩 等平台
+                </div>
+                <div id="officialTestResult" style="display:none">
+                    <div id="officialTestInfo"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">API 接口说明</div>
+                <div style="font-size:13px;line-height:1.8;color:#606266">
+                    <p><strong>完整解析接口：</strong></p>
+                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
+                        <code id="api-resolve-url"></code>
+                    </div>
+                    <p><strong>精简信息接口 (JSON)：</strong></p>
+                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
+                        <code id="api-info-url"></code>
+                    </div>
+                    <p><strong>参数说明：</strong></p>
+                    <ul style="margin-left:20px">
+                        <li><code>url</code> - 官方视频播放页面链接</li>
+                    </ul>
+                    <p><strong>返回示例：</strong></p>
+                    <pre style="background:#f5f7fa;padding:12px;border-radius:6px;overflow:auto;font-size:12px">{
+  "success": true,
+  "platform": "腾讯视频",
+  "video_title": "庆余年",
+  "match_score": 95.5,
+  "site": "量子",
+  "m3u8_url": "https://.../index.m3u8",
+  "ad_skip_url": "https://你的域名/mx.php?action=mxjx&url=...",
+  "episodes": 42
+}</pre>
+                </div>
             </div>
         </div>
 
@@ -2293,27 +2392,17 @@ header('Expires: 0');
             }
         }
 
-        let currentSiteVideos = [];
-        let currentSiteName = '';
-        let siteVideosBatchRunning = false;
-
         async function fetchSiteVideos(name) {
             document.getElementById('siteVideosTitle').textContent = name + ' - 视频列表';
             document.getElementById('siteVideos').style.display = 'block';
             document.getElementById('siteVideosList').innerHTML = '<div class="loading">正在获取视频列表...</div>';
-            document.getElementById('siteVideosBatchResult').style.display = 'none';
-            document.getElementById('siteVideosStats').textContent = '';
             document.getElementById('siteVideos').scrollIntoView({ behavior: 'smooth' });
             try {
                 const res = await fetch(API_BASE + '?action=sites/fetch_videos&name=' + encodeURIComponent(name) + '&limit=10');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
-                currentSiteVideos = data.videos || [];
-                currentSiteName = name;
                 renderSiteVideos(data.videos || []);
             } catch (e) {
-                currentSiteVideos = [];
-                currentSiteName = '';
                 document.getElementById('siteVideosList').innerHTML = '<div class="empty">获取失败: ' + escapeHtml(e.message) + '</div>';
                 showToast('获取视频失败: ' + e.message, 'error');
             }
@@ -2323,46 +2412,20 @@ header('Expires: 0');
             const container = document.getElementById('siteVideosList');
             if (videos.length === 0) {
                 container.innerHTML = '<div class="empty">暂无视频数据</div>';
-                document.getElementById('siteVideosStats').textContent = '';
                 return;
             }
-            let totalEpisodes = 0;
-            videos.forEach(v => {
-                const urls = v.urls || (v.url ? [{name: '播放', url: v.url}] : []);
-                totalEpisodes += urls.length;
-            });
-            document.getElementById('siteVideosStats').textContent = `${videos.length}个视频 / ${totalEpisodes}集`;
-
-            let html = '<div style="max-height:500px;overflow-y:auto">';
+            let html = '<div style="max-height:400px;overflow-y:auto">';
             videos.forEach((v, i) => {
-                const urls = v.urls || (v.url ? [{name: '播放', url: v.url}] : []);
-                const firstUrl = v.first_url || v.url || (urls[0] && urls[0].url) || '';
                 html += `
-                    <div class="segment-item" style="border-bottom:1px solid #ebeef5;flex-wrap:wrap">
-                        <div style="flex:1;min-width:200px">
+                    <div class="segment-item" style="border-bottom:1px solid #ebeef5">
+                        <div style="flex:1">
                             <div style="font-weight:500;color:#303133">${i + 1}. ${escapeHtml(v.name || '未知')}</div>
-                            ${v.remarks ? `<div style="font-size:12px;color:#67c23a;margin-top:2px">${escapeHtml(v.remarks)}</div>` : ''}
-                            <div style="font-size:12px;color:#909399;margin-top:4px;word-break:break-all;font-family:monospace">${escapeHtml(firstUrl || '')}</div>
+                            <div style="font-size:12px;color:#909399;margin-top:4px;word-break:break-all;font-family:monospace">${escapeHtml(v.url || '')}</div>
                         </div>
-                        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;margin-top:8px">
-                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(firstUrl || '')}')">复制</button>
-                            <button class="btn btn-sm btn-primary" onclick="analyzeFromSite('${escapeHtml(firstUrl || '')}')">分析</button>
-                            <button class="btn btn-sm btn-success" onclick="learnFromVideoUrl('${escapeHtml(firstUrl)}', '${escapeHtml(v.name || '未知')}')">学习</button>
-                            ${urls.length > 1 ? `<button class="btn btn-sm btn-info" onclick="toggleEpisodes(${i})">${urls.length}集 ▼</button>` : ''}
+                        <div style="display:flex;gap:6px;flex-shrink:0">
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(v.url || '')}')">复制</button>
+                            <button class="btn btn-sm btn-primary" onclick="analyzeFromSite('${escapeHtml(v.url || '')}')">分析</button>
                         </div>
-                        ${urls.length > 1 ? `<div id="episodes-${i}" style="display:none;width:100%;margin-top:10px;padding:10px;background:#f5f7fa;border-radius:4px">
-                            <div style="font-size:13px;color:#606266;margin-bottom:8px;font-weight:500">播放列表 (${urls.length}集)</div>
-                            <div style="display:flex;flex-wrap:wrap;gap:6px">
-                                ${urls.map((u, j) => `
-                                    <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:#fff;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;">
-                                        <span style="color:#606266">${escapeHtml(u.name || ('第' + (j+1) + '集'))}</span>
-                                        <button class="btn btn-xs btn-secondary" style="padding:2px 6px;font-size:11px" onclick="copyText('${escapeHtml(u.url || '')}')">复制</button>
-                                        <button class="btn btn-xs btn-primary" style="padding:2px 6px;font-size:11px" onclick="analyzeFromSite('${escapeHtml(u.url || '')}')">分析</button>
-                                        <button class="btn btn-xs btn-success" style="padding:2px 6px;font-size:11px" onclick="learnFromVideoUrl('${escapeHtml(u.url)}', '${escapeHtml(v.name || '未知') + ' - ' + escapeHtml(u.name || ('第' + (j+1) + '集'))}')">学习</button>
-                                    </span>
-                                `).join('')}
-                            </div>
-                        </div>` : ''}
                     </div>
                 `;
             });
@@ -2370,227 +2433,8 @@ header('Expires: 0');
             container.innerHTML = html;
         }
 
-        function toggleEpisodes(index) {
-            const el = document.getElementById('episodes-' + index);
-            if (el) {
-                el.style.display = el.style.display === 'none' ? 'block' : 'none';
-            }
-        }
-
         function closeSiteVideos() {
             document.getElementById('siteVideos').style.display = 'none';
-        }
-
-        function collectSiteVideoUrls() {
-            const urls = [];
-            currentSiteVideos.forEach(v => {
-                const firstUrl = v.first_url || v.url || '';
-                if (firstUrl) {
-                    urls.push({
-                        url: firstUrl,
-                        name: v.name || '未知',
-                        site: currentSiteName
-                    });
-                }
-            });
-            return urls;
-        }
-
-        async function siteVideosBatchLearn() {
-            if (siteVideosBatchRunning) {
-                showToast('正在批量操作中，请稍候...', 'warning');
-                return;
-            }
-
-            const videos = collectSiteVideoUrls();
-            if (videos.length === 0) {
-                showToast('没有可学习的视频', 'warning');
-                return;
-            }
-
-            if (!confirm(`确定要批量学习 ${videos.length} 个视频吗？\n\n学习成功后将自动更新规则管理中的对应域名规则。`)) return;
-
-            siteVideosBatchRunning = true;
-            const resultEl = document.getElementById('siteVideosBatchResult');
-            resultEl.style.display = 'block';
-            resultEl.style.background = '#fffbe6';
-            resultEl.style.border = '1px solid #ffe58f';
-            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ')</div>';
-
-            let successCount = 0;
-            let failCount = 0;
-            const results = [];
-            const learnedDomains = new Set();
-
-            for (let i = 0; i < videos.length; i++) {
-                const video = videos[i];
-                try {
-                    const res = await fetch(API_BASE + '?action=sites/learn_video', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: video.url })
-                    });
-                    const data = await res.json();
-
-                    if (data.success) {
-                        successCount++;
-                        if (data.domain) {
-                            learnedDomains.add(data.domain);
-                        }
-                        results.push({
-                            name: video.name,
-                            site: video.site,
-                            success: true,
-                            domain: data.domain,
-                            segments: data.segments_count,
-                            ad_count: data.ad_count
-                        });
-                    } else {
-                        failCount++;
-                        results.push({
-                            name: video.name,
-                            site: video.site,
-                            success: false,
-                            message: data.message
-                        });
-                    }
-                } catch (e) {
-                    failCount++;
-                    results.push({
-                        name: video.name,
-                        site: video.site,
-                        success: false,
-                        message: e.message
-                    });
-                }
-
-                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + (i + 1) + '/' + videos.length + ')</div>';
-            }
-
-            let html = '<div style="margin-bottom:8px;font-weight:600">';
-            if (successCount > 0) {
-                html += '<span style="color:#67c23a">✅ 批量学习完成</span>';
-                resultEl.style.background = '#f0f9eb';
-                resultEl.style.border = '1px solid #c2e7b0';
-            } else {
-                html += '<span style="color:#f56c6c">❌ 批量学习失败</span>';
-                resultEl.style.background = '#fef0f0';
-                resultEl.style.border = '1px solid #fbc4c4';
-            }
-            html += '</div>';
-            html += '<div style="font-size:13px;color:#606266;margin-bottom:8px">';
-            html += `总计: ${videos.length} 个 | 成功: <span style="color:#67c23a">${successCount}</span> | 失败: <span style="color:#f56c6c">${failCount}</span>`;
-            if (learnedDomains.size > 0) {
-                html += ` | 更新域名: <span style="color:#409eff">${learnedDomains.size}</span> 个`;
-            }
-            html += '</div>';
-
-            html += '<div style="max-height:200px;overflow-y:auto;font-size:12px">';
-            results.forEach((r, idx) => {
-                html += `<div style="padding:4px 0;border-bottom:1px solid #ebeef5;display:flex;justify-content:space-between;align-items:center">
-                    <span>${r.success ? '✅' : '❌'} ${escapeHtml(r.name)}</span>
-                    <span style="color:${r.success ? '#67c23a' : '#f56c6c'}">${r.success ? (r.domain || '成功') : (r.message || '失败')}</span>
-                </div>`;
-            });
-            html += '</div>';
-
-            resultEl.innerHTML = html;
-            siteVideosBatchRunning = false;
-        }
-
-        async function siteVideosBatchAnalyze() {
-            if (siteVideosBatchRunning) {
-                showToast('正在批量操作中，请稍候...', 'warning');
-                return;
-            }
-
-            const videos = collectSiteVideoUrls();
-            if (videos.length === 0) {
-                showToast('没有可分析的视频', 'warning');
-                return;
-            }
-
-            siteVideosBatchRunning = true;
-            const resultEl = document.getElementById('siteVideosBatchResult');
-            resultEl.style.display = 'block';
-            resultEl.style.background = '#ecf5ff';
-            resultEl.style.border = '1px solid #b3d8ff';
-            resultEl.innerHTML = '<div class="loading">正在批量分析中，请稍候... (0/' + videos.length + ')</div>';
-
-            let successCount = 0;
-            let failCount = 0;
-            let totalAdRemoved = 0;
-            const results = [];
-
-            for (let i = 0; i < videos.length; i++) {
-                const video = videos[i];
-                try {
-                    const res = await fetch(API_BASE + '?action=analyze&url=' + encodeURIComponent(video.url) + '&quick=1');
-                    const data = await res.json();
-
-                    if (data.success) {
-                        successCount++;
-                        const adCount = (data.stats && data.stats.adSegments) || 0;
-                        totalAdRemoved += adCount;
-                        results.push({
-                            name: video.name,
-                            site: video.site,
-                            success: true,
-                            segments: (data.stats && data.stats.totalSegments) || 0,
-                            ad_count: adCount,
-                            ad_percentage: (data.stats && data.stats.adPercentage) || 0
-                        });
-                    } else {
-                        failCount++;
-                        results.push({
-                            name: video.name,
-                            site: video.site,
-                            success: false,
-                            message: data.message || '分析失败'
-                        });
-                    }
-                } catch (e) {
-                    failCount++;
-                    results.push({
-                        name: video.name,
-                        site: video.site,
-                        success: false,
-                        message: e.message
-                    });
-                }
-
-                resultEl.innerHTML = '<div class="loading">正在批量分析中，请稍候... (' + (i + 1) + '/' + videos.length + ')</div>';
-            }
-
-            let html = '<div style="margin-bottom:8px;font-weight:600">';
-            if (successCount > 0) {
-                html += '<span style="color:#409eff">🔍 批量分析完成</span>';
-                resultEl.style.background = '#ecf5ff';
-                resultEl.style.border = '1px solid #b3d8ff';
-            } else {
-                html += '<span style="color:#f56c6c">❌ 批量分析失败</span>';
-                resultEl.style.background = '#fef0f0';
-                resultEl.style.border = '1px solid #fbc4c4';
-            }
-            html += '</div>';
-            html += '<div style="font-size:13px;color:#606266;margin-bottom:8px">';
-            html += `总计: ${videos.length} 个 | 成功: <span style="color:#67c23a">${successCount}</span> | 失败: <span style="color:#f56c6c">${failCount}</span>`;
-            if (totalAdRemoved > 0) {
-                html += ` | 识别广告片段: <span style="color:#e6a23c">${totalAdRemoved}</span>`;
-            }
-            html += '</div>';
-
-            html += '<div style="max-height:200px;overflow-y:auto;font-size:12px">';
-            results.forEach((r, idx) => {
-                html += `<div style="padding:4px 0;border-bottom:1px solid #ebeef5;display:flex;justify-content:space-between;align-items:center">
-                    <span>${r.success ? '✅' : '❌'} ${escapeHtml(r.name)}</span>
-                    <span style="color:${r.success ? '#409eff' : '#f56c6c'}">${r.success ? (r.segments + '段 / 广告' + r.ad_count + '段') : (r.message || '失败')}</span>
-                </div>`;
-            });
-            html += '</div>';
-
-            resultEl.innerHTML = html;
-            siteVideosBatchRunning = false;
         }
 
         function analyzeFromSite(url) {
@@ -2728,11 +2572,16 @@ header('Expires: 0');
 
             let totalVideos = 0;
             let sitesCount = 0;
+            let successSites = 0;
+            let failedSites = 0;
 
             if (siteName === 'all') {
                 totalVideos = data.total_videos || 0;
                 sitesCount = data.sites_searched || 0;
-                summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 共搜索 ${sitesCount} 个站点，找到 ${totalVideos} 个视频`;
+                const results = data.results || [];
+                successSites = results.filter(r => (r.videos || []).length > 0).length;
+                failedSites = results.filter(r => r.error).length;
+                summaryEl.innerHTML = `搜索"${escapeHtml(data.keyword || '')}" - 搜索 ${sitesCount} 个站点，成功 ${successSites} 个，找到 ${totalVideos} 个视频`;
             } else {
                 totalVideos = (data.videos || []).length;
                 sitesCount = 1;
@@ -2750,27 +2599,43 @@ header('Expires: 0');
 
             if (siteName === 'all') {
                 const results = data.results || [];
-                results.forEach(siteResult => {
+                const successResults = results.filter(r => (r.videos || []).length > 0);
+                const failedResults = results.filter(r => r.error);
+                
+                if (successResults.length === 0 && failedResults.length === 0) {
+                    html += '<div class="empty">未找到相关视频</div>';
+                }
+                
+                successResults.forEach(siteResult => {
                     const videos = siteResult.videos || [];
-                    if (videos.length === 0 && !siteResult.error) return;
-
                     html += `<div style="margin-bottom:16px">
                         <div style="padding:8px 12px;background:#f5f7fa;border-radius:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
                             <strong>${escapeHtml(siteResult.site || '')}</strong>
-                            <span style="font-size:12px;color:#909399">
-                                ${siteResult.error ? '<span style="color:#f56c6c">失败: ' + escapeHtml(siteResult.error) + '</span>' : videos.length + ' 个视频'}
+                            <span style="font-size:12px;color:#67c23a">
+                                ${videos.length} 个视频
                             </span>
-                        </div>`;
-
-                    if (videos.length > 0) {
-                        html += '<div style="max-height:300px;overflow-y:auto;border:1px solid #ebeef5;border-radius:6px">';
-                        videos.forEach((v, i) => {
-                            html += renderSearchVideoItem(v, siteResult.site);
-                        });
-                        html += '</div>';
-                    }
-                    html += '</div>';
+                        </div>
+                        <div style="max-height:300px;overflow-y:auto;border:1px solid #ebeef5;border-radius:6px">`;
+                    videos.forEach((v, i) => {
+                        html += renderSearchVideoItem(v, siteResult.site);
+                    });
+                    html += '</div></div>';
                 });
+
+                if (failedResults.length > 0) {
+                    html += `<div style="margin-top:16px;padding:12px;background:#fafafa;border:1px solid #ebeef5;border-radius:6px">
+                        <div style="font-size:13px;color:#909399;margin-bottom:8px;cursor:pointer;user-select:none" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+                            <span id="failedToggle">▶</span> ${failedResults.length} 个资源站暂不可用 <span style="font-size:11px">(点击展开/收起)</span>
+                        </div>
+                        <div id="failedSitesList" style="display:none;font-size:12px;color:#909399">`;
+                    failedResults.forEach(r => {
+                        html += `<div style="padding:4px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between">
+                            <span>${escapeHtml(r.site || '')}</span>
+                            <span style="color:#c0c4cc">${escapeHtml(r.error || '未知错误')}</span>
+                        </div>`;
+                    });
+                    html += '</div></div>';
+                }
             } else {
                 const videos = data.videos || [];
                 if (videos.length > 0) {
@@ -3093,11 +2958,316 @@ header('Expires: 0');
             document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=';
             document.getElementById('preview-parse').textContent = base + '/mx.php?action=mxjx&url=';
             document.getElementById('preview-player').textContent = base + '/mx.php?action=mxjx/info&url=';
+            document.getElementById('preview-official-replace').textContent = base + '/mx.php?action=official_replace/info&url=';
+        }
+
+        let currentOfficialConfig = null;
+        let editingPlatformIndex = -1;
+
+        async function loadOfficialReplaceConfig() {
+            try {
+                const res = await fetch(API_BASE + '?action=official_replace/config&_t=' + Date.now());
+                const data = await res.json();
+                if (data.success && data.config) {
+                    currentOfficialConfig = data.config;
+                    const cfg = data.config;
+                    document.getElementById('orTotalPlatforms').textContent = (cfg.platforms || []).length;
+                    document.getElementById('orStatus').textContent = cfg.enabled ? '已启用' : '已禁用';
+                    document.getElementById('orStatus').style.color = cfg.enabled ? '#67c23a' : '#f56c6c';
+                    document.getElementById('orSearchSites').textContent = (cfg.search_sites || []).length > 0 ? (cfg.search_sites || []).length + '个' : '全部';
+                    document.getElementById('orThreshold').textContent = cfg.match_threshold || 60;
+
+                    document.getElementById('orEnabled').value = cfg.enabled ? 'true' : 'false';
+                    document.getElementById('orThresholdInput').value = cfg.match_threshold || 60;
+                    document.getElementById('orMaxSites').value = cfg.max_search_sites || 5;
+                    document.getElementById('orSearchSitesInput').value = (cfg.search_sites || []).join(',');
+
+                    const base = window.location.protocol + '//' + window.location.host + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+                    document.getElementById('api-resolve-url').textContent = base + '/mx.php?action=official_replace/resolve&url=';
+                    document.getElementById('api-info-url').textContent = base + '/mx.php?action=official_replace/info&url=';
+
+                    renderOfficialPlatforms(cfg.platforms || []);
+                }
+            } catch (e) {
+                showToast('加载官替配置失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderOfficialPlatforms(platforms) {
+            const listEl = document.getElementById('officialPlatformsList');
+            if (platforms.length === 0) {
+                listEl.innerHTML = '<div class="empty">暂无平台配置</div>';
+                return;
+            }
+
+            let html = '<table class="rule-table"><thead><tr><th>平台名称</th><th>域名</th><th>状态</th><th>优先级</th><th>操作</th></tr></thead><tbody>';
+            platforms.forEach((p, index) => {
+                html += `<tr>
+                    <td><strong>${escapeHtml(p.name || '')}</strong></td>
+                    <td><code>${escapeHtml(p.domain || '')}</code></td>
+                    <td><span style="color:${p.enabled ? '#67c23a' : '#f56c6c'}">${p.enabled ? '启用' : '禁用'}</span></td>
+                    <td>${p.priority || '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editOfficialPlatform(${index})">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteOfficialPlatform(${index})">删除</button>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            listEl.innerHTML = html;
+        }
+
+        async function saveOfficialReplaceConfig() {
+            if (!currentOfficialConfig) return;
+            
+            const newConfig = JSON.parse(JSON.stringify(currentOfficialConfig));
+            newConfig.enabled = document.getElementById('orEnabled').value === 'true';
+            newConfig.match_threshold = parseInt(document.getElementById('orThresholdInput').value) || 60;
+            newConfig.max_search_sites = parseInt(document.getElementById('orMaxSites').value) || 5;
+            
+            const sitesInput = document.getElementById('orSearchSitesInput').value.trim();
+            newConfig.search_sites = sitesInput ? sitesInput.split(',').map(s => s.trim()).filter(s => s) : [];
+
+            try {
+                const res = await fetch(API_BASE + '?action=official_replace/config/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('配置保存成功', 'success');
+                    loadOfficialReplaceConfig();
+                } else {
+                    showToast('保存失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        function addOfficialPlatform() {
+            editingPlatformIndex = -1;
+            showPlatformEditor({
+                name: '',
+                domain: '',
+                enabled: true,
+                pattern: '',
+                title_selector: '',
+                priority: 10
+            });
+        }
+
+        function editOfficialPlatform(index) {
+            if (!currentOfficialConfig || !currentOfficialConfig.platforms) return;
+            editingPlatformIndex = index;
+            showPlatformEditor(currentOfficialConfig.platforms[index]);
+        }
+
+        function showPlatformEditor(platform) {
+            const html = `<div id="platformEditorModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000">
+                <div style="background:white;border-radius:8px;padding:24px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto">
+                    <h3 style="margin-bottom:16px">${editingPlatformIndex >= 0 ? '编辑' : '添加'}平台</h3>
+                    <div class="form-group"><label>平台名称</label><input type="text" id="pe-name" value="${escapeHtml(platform.name || '')}"></div>
+                    <div class="form-group"><label>域名</label><input type="text" id="pe-domain" placeholder="如: v.qq.com" value="${escapeHtml(platform.domain || '')}"></div>
+                    <div class="form-group"><label>启用</label><select id="pe-enabled"><option value="true" ${platform.enabled ? 'selected' : ''}>启用</option><option value="false" ${!platform.enabled ? 'selected' : ''}>禁用</option></select></div>
+                    <div class="form-group"><label>URL 匹配正则</label><input type="text" id="pe-pattern" placeholder="如: /v\\.qq\\.com\\/.*?(?:vid=|\\/)([a-zA-Z0-9]+)/i" value="${escapeHtml(platform.pattern || '')}"></div>
+                    <div class="form-group"><label>标题选择器</label><input type="text" id="pe-title_selector" placeholder="如: meta[property=og:title]" value="${escapeHtml(platform.title_selector || '')}"></div>
+                    <div class="form-group"><label>优先级</label><input type="number" id="pe-priority" value="${platform.priority || 10}"></div>
+                    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
+                        <button class="btn btn-secondary" onclick="closePlatformEditor()">取消</button>
+                        <button class="btn btn-primary" onclick="savePlatformEditor()">保存</button>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        function closePlatformEditor() {
+            const modal = document.getElementById('platformEditorModal');
+            if (modal) modal.remove();
+        }
+
+        async function savePlatformEditor() {
+            const platformData = {
+                name: document.getElementById('pe-name').value.trim(),
+                domain: document.getElementById('pe-domain').value.trim(),
+                enabled: document.getElementById('pe-enabled').value === 'true',
+                pattern: document.getElementById('pe-pattern').value.trim(),
+                title_selector: document.getElementById('pe-title_selector').value.trim(),
+                priority: parseInt(document.getElementById('pe-priority').value) || 10
+            };
+
+            if (!platformData.name || !platformData.domain) {
+                showToast('请填写平台名称和域名', 'error');
+                return;
+            }
+
+            try {
+                const action = editingPlatformIndex >= 0 ? 'official_replace/platform/update' : 'official_replace/platform/add';
+                const body = editingPlatformIndex >= 0 
+                    ? { index: editingPlatformIndex, ...platformData }
+                    : platformData;
+
+                const res = await fetch(API_BASE + '?action=' + action, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(editingPlatformIndex >= 0 ? '更新成功' : '添加成功', 'success');
+                    closePlatformEditor();
+                    loadOfficialReplaceConfig();
+                } else {
+                    showToast('操作失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('操作失败: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteOfficialPlatform(index) {
+            if (!confirm('确定要删除这个平台吗？')) return;
+            try {
+                const res = await fetch(API_BASE + '?action=official_replace/platform/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: index })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('删除成功', 'success');
+                    loadOfficialReplaceConfig();
+                } else {
+                    showToast('删除失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('删除失败: ' + e.message, 'error');
+            }
+        }
+
+        async function testOfficialReplace() {
+            const url = document.getElementById('officialTestUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+
+            const resultEl = document.getElementById('officialTestResult');
+            const infoEl = document.getElementById('officialTestInfo');
+            resultEl.style.display = 'block';
+            infoEl.innerHTML = '<div style="text-align:center;padding:20px;color:#909399">正在解析...</div>';
+
+            try {
+                const res = await fetch(API_BASE + '?action=official_replace/resolve&url=' + encodeURIComponent(url) + '&_t=' + Date.now());
+                const data = await res.json();
+                
+                if (data.success) {
+                    let seasonHtml = '';
+                    if (data.season) {
+                        seasonHtml = `<p><strong>季数:</strong> <span style="color:#409eff">${escapeHtml(data.season)}</span></p>`;
+                    }
+                    let episodeHtml = '';
+                    if (data.episode) {
+                        episodeHtml = `<p><strong>集数:</strong> <span style="color:#409eff">${escapeHtml(data.episode)}</span>`;
+                        if (data.target_episode) {
+                            episodeHtml += ` → 定位到: <span style="color:#67c23a">${escapeHtml(data.target_episode)}</span>`;
+                        }
+                        episodeHtml += '</p>';
+                    }
+                    let partHtml = '';
+                    if (data.part) {
+                        partHtml = `<p><strong>篇章:</strong> <span style="color:#e6a23c">${escapeHtml(data.part)}</span></p>`;
+                    }
+                    let versionHtml = '';
+                    if (data.version) {
+                        versionHtml = `<p><strong>版本:</strong> <span style="color:#909399">${escapeHtml(data.version)}</span></p>`;
+                    }
+                    let seasonMatchHtml = '';
+                    if (data.season_match !== undefined) {
+                        seasonMatchHtml = `<span style="color:${data.season_match ? '#67c23a' : '#f56c6c'};margin-left:8px;font-size:11px">
+                            ${data.season_match ? '季数匹配 ✓' : '季数不匹配 ✗'}
+                        </span>`;
+                    }
+
+                    let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
+                        <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 解析成功</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>平台:</strong> ${escapeHtml(data.platform || '')}</p>
+                            <p><strong>原始标题:</strong> ${escapeHtml(data.video_title || '')}</p>
+                            <p><strong>基础名称:</strong> <code>${escapeHtml(data.base_title || '')}</code></p>
+                            ${seasonHtml}
+                            ${episodeHtml}
+                            ${partHtml}
+                            ${versionHtml}
+                            <p><strong>匹配资源站:</strong> ${escapeHtml(data.site || '')}</p>
+                            <p><strong>总匹配度:</strong> <span style="color:#67c23a;font-size:16px;font-weight:600">${data.match_score || 0}%</span>
+                                ${seasonMatchHtml}
+                            </p>
+                            <p style="font-size:11px;color:#909399">基础匹配度: ${data.base_score || 0}%</p>
+                            <p><strong>M3U8 地址:</strong> <code style="word-break:break-all;font-size:11px">${escapeHtml(data.m3u8_url || '')}</code></p>
+                            <p><strong>总集数:</strong> ${(data.all_urls || []).length} 集</p>
+                        </div>
+                    </div>`;
+                    
+                    if (data.alternatives && data.alternatives.length > 1) {
+                        html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">其他候选结果:</div>';
+                        data.alternatives.slice(1, 6).forEach(v => {
+                            html += `<div style="padding:8px;background:#f5f7fa;border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+                                <div>
+                                    <div style="font-weight:500">${escapeHtml(v.name || '未知')}</div>
+                                    <div style="font-size:12px;color:#909399">${escapeHtml(v.site || '')}</div>
+                                </div>
+                                <button class="btn btn-sm btn-primary" onclick="learnFromVideoUrl('${escapeHtml(v.first_url || v.url || '')}', '${escapeHtml(v.name || '')}')">学习</button>
+                            </div>`;
+                        });
+                        html += '</div>';
+                    }
+                    infoEl.innerHTML = html;
+                } else {
+                    let seasonHtml = '';
+                    if (data.season) {
+                        seasonHtml = `<p><strong>解析季数:</strong> ${escapeHtml(data.season)}</p>`;
+                    }
+                    let episodeHtml = '';
+                    if (data.episode) {
+                        episodeHtml = `<p><strong>解析集数:</strong> ${escapeHtml(data.episode)}</p>`;
+                    }
+
+                    let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 解析失败</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>原因:</strong> ${escapeHtml(data.message || '未知错误')}</p>
+                            ${data.platform ? `<p><strong>识别平台:</strong> ${escapeHtml(data.platform)}</p>` : ''}
+                            ${data.video_title ? `<p><strong>提取标题:</strong> ${escapeHtml(data.video_title)}</p>` : ''}
+                            ${data.base_title ? `<p><strong>基础名称:</strong> <code>${escapeHtml(data.base_title)}</code></p>` : ''}
+                            ${seasonHtml}
+                            ${episodeHtml}
+                        </div>
+                    </div>`;
+                    
+                    if (data.candidates && data.candidates.length > 0) {
+                        html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">候选结果 (匹配度不足):</div>';
+                        data.candidates.forEach(v => {
+                            html += `<div style="padding:8px;background:#f5f7fa;border-radius:6px;margin-bottom:6px">
+                                <div style="font-weight:500">${escapeHtml(v.name || '未知')}</div>
+                                <div style="font-size:12px;color:#909399">${escapeHtml(v.site || '')}</div>
+                            </div>`;
+                        });
+                        html += '</div>';
+                    }
+                    infoEl.innerHTML = html;
+                }
+            } catch (e) {
+                infoEl.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">请求失败: ${escapeHtml(e.message)}</div>`;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             refreshRules();
             initAccessPreview();
+            loadOfficialReplaceConfig();
         });
     </script>
 </body>

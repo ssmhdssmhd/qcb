@@ -75,11 +75,9 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
     private function addDurationRule($rule) {
         $threshold = $rule['threshold'] ?? 2;
         $operator = $rule['operator'] ?? '<';
-        $weight = $rule['weight'] ?? 60;
         $this->addRule([
             'name' => $rule['name'] ?? 'custom-duration',
             'description' => $rule['reason'] ?? '时长规则',
-            'weight' => $weight,
             'check' => function($segment) use ($threshold, $operator) {
                 $duration = $segment['duration'] ?? 0;
                 switch ($operator) {
@@ -95,11 +93,9 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
     }
 
     private function addDiscontinuityRule($rule) {
-        $weight = $rule['weight'] ?? 50;
         $this->addRule([
             'name' => $rule['name'] ?? 'custom-discontinuity',
             'description' => $rule['reason'] ?? 'DISCONTINUITY 标记',
-            'weight' => $weight,
             'check' => function($segment) {
                 return !empty($segment['discontinuity']);
             }
@@ -109,11 +105,9 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
     private function addSequenceJumpRule($rule) {
         $threshold = $rule['threshold'] ?? 100000;
         $direction = $rule['direction'] ?? 'any';
-        $weight = $rule['weight'] ?? 90;
         $this->addRule([
             'name' => $rule['name'] ?? 'sequence-jump',
             'description' => $rule['reason'] ?? '序列号跳跃检测',
-            'weight' => $weight,
             'check' => function($segment, $index, $segments) use ($threshold, $direction) {
                 if ($index === 0) return false;
                 $currentSeq = $this->extractSequenceNumber($segment['uri'] ?? '');
@@ -135,7 +129,6 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
         $this->addRule([
             'name' => 'custom-filename-pattern',
             'description' => '文件名模式匹配: ' . $pattern,
-            'weight' => 40,
             'check' => function($segment) use ($pattern) {
                 $uri = $segment['uri'] ?? '';
                 $filename = basename($uri);

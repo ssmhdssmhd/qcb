@@ -5,9 +5,9 @@
  */
 
 class ResourceSiteManager {
-
     private $configFile;
     private $config;
+    private $lastHttpError = '';
 
     public function __construct() {
         $this->configFile = __DIR__ . '/sites_config.php';
@@ -124,17 +124,15 @@ class ResourceSiteManager {
     }
 
     public function fetchVideos($apiUrl, $page = 1, $limit = 20) {
-        $url = $apiUrl;
-        if (strpos($url, '?') === false) {
-            $url .= '?';
-        } else {
-            $url .= '&';
-        }
-        $url .= 'ac=detail&pg=' . intval($page) . '&limit=' . intval($limit);
+        $url = $this->buildApiUrl($apiUrl, [
+            'ac' => 'detail',
+            'pg' => intval($page),
+            'limit' => intval($limit)
+        ]);
 
         $response = $this->httpGet($url);
         if ($response === false) {
-            return ['success' => false, 'message' => '请求失败'];
+            return ['success' => false, 'message' => '请求失败: ' . ($this->lastHttpError ?? '未知错误')];
         }
 
         $data = json_decode($response, true);
@@ -177,17 +175,16 @@ class ResourceSiteManager {
     }
 
     public function searchVideos($apiUrl, $keyword, $page = 1, $limit = 20) {
-        $url = $apiUrl;
-        if (strpos($url, '?') === false) {
-            $url .= '?';
-        } else {
-            $url .= '&';
-        }
-        $url .= 'ac=detail&wd=' . urlencode($keyword) . '&pg=' . intval($page) . '&limit=' . intval($limit);
+        $url = $this->buildApiUrl($apiUrl, [
+            'ac' => 'detail',
+            'wd' => $keyword,
+            'pg' => intval($page),
+            'limit' => intval($limit)
+        ]);
 
         $response = $this->httpGet($url);
         if ($response === false) {
-            return ['success' => false, 'message' => '请求失败'];
+            return ['success' => false, 'message' => '请求失败: ' . ($this->lastHttpError ?? '未知错误')];
         }
 
         $data = json_decode($response, true);
@@ -274,14 +271,14 @@ class ResourceSiteManager {
     private function extractM3u8Url($playUrl) {
         if (empty($playUrl)) return null;
 
-        if (preg_match('/https?:\/\/[^\s\$\r\n#]+\.m3u8[^\s\$\r\n#]*/i', $playUrl, $matches)) {
+        if (preg_match('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
             return $matches[0];
         }
 
         if (strpos($playUrl, '$') !== false) {
             $parts = explode('$', $playUrl);
             foreach ($parts as $part) {
-                if (preg_match('/https?:\/\/[^\s#]+\.m3u8[^\s#]*/i', $part, $matches)) {
+                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $part, $matches)) {
                     return $matches[0];
                 }
             }
@@ -290,7 +287,7 @@ class ResourceSiteManager {
         if (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
             $lines = preg_split('/\r\n|\n/', $playUrl);
             foreach ($lines as $line) {
-                if (preg_match('/https?:\/\/[^\s#]+\.m3u8[^\s#]*/i', $line, $matches)) {
+                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $line, $matches)) {
                     return $matches[0];
                 }
             }
@@ -305,24 +302,19 @@ class ResourceSiteManager {
         $urls = [];
         $seen = [];
 
-        $episodes = [];
-        if (strpos($playUrl, '#') !== false) {
-            $episodes = explode('#', $playUrl);
-        } elseif (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
-            $episodes = preg_split('/\r\n|\n/', $playUrl);
-        } else {
-            $episodes = [$playUrl];
-        }
+        if (strpos($playUrl, '$') !== false) {
+            $lines = [];
+            if (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
+                $lines = preg_split('/\r\n|\n/', $playUrl);
+            } else {
+                $lines = [$playUrl];
+            }
 
-        foreach ($episodes as $episode) {
-            $episode = trim($episode);
-            if (empty($episode)) continue;
-
-            if (strpos($episode, '$') !== false) {
-                $parts = explode('$', $episode);
-                if (count($parts) >= 2) {
-                    $name = trim($parts[0] ?? '');
-                    $url = trim($parts[1] ?? '');
+            foreach ($lines as $line) {
+                $parts = explode('$', $line);
+                for ($i = 0; $i < count($parts) - 1; $i += 2) {
+                    $name = trim($parts[$i] ?? '');
+                    $url = trim($parts[$i + 1] ?? '');
                     if ($name && $url && preg_match('/\.m3u8/i', $url) && !isset($seen[$url])) {
                         $seen[$url] = true;
                         $urls[] = ['name' => $name, 'url' => $url];
@@ -331,7 +323,7 @@ class ResourceSiteManager {
             }
         }
 
-        if (preg_match_all('/https?:\/\/[^\s\$\r\n#]+\.m3u8[^\s\$\r\n#]*/i', $playUrl, $matches)) {
+        if (preg_match_all('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
             foreach ($matches[0] as $url) {
                 if (!isset($seen[$url])) {
                     $seen[$url] = true;
@@ -343,7 +335,7 @@ class ResourceSiteManager {
         if (empty($urls) && (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false)) {
             $lines = preg_split('/\r\n|\n/', $playUrl);
             foreach ($lines as $idx => $line) {
-                if (preg_match('/https?:\/\/[^\s#]+\.m3u8[^\s#]*/i', $line, $matches)) {
+                if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $line, $matches)) {
                     $url = $matches[0];
                     if (!isset($seen[$url])) {
                         $seen[$url] = true;
@@ -583,22 +575,74 @@ class ResourceSiteManager {
         return (time() - $lastTimestamp) >= ($intervalDays * 86400);
     }
 
-    private function httpGet($url, $timeout = 10) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return $response;
+    private function buildApiUrl($baseUrl, $params = []) {
+        $parsed = parse_url($baseUrl);
+        if ($parsed === false) {
+            return $baseUrl;
         }
+
+        $existingParams = [];
+        if (!empty($parsed['query'])) {
+            parse_str($parsed['query'], $existingParams);
+        }
+
+        $mergedParams = array_merge($existingParams, $params);
+
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host = $parsed['host'] ?? '';
+        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $path = $parsed['path'] ?? '/';
+
+        $url = $scheme . '://' . $host . $port . $path;
+        if (!empty($mergedParams)) {
+            $url .= '?' . http_build_query($mergedParams);
+        }
+
+        return $url;
+    }
+
+    private function httpGet($url, $timeout = 15, $retry = 2) {
+        $lastError = '';
+        $userAgents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+        ];
+
+        for ($attempt = 0; $attempt <= $retry; $attempt++) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+            curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Accept: application/json, text/plain, */*',
+                'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
+                'Referer: ' . (parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . '/')
+            ]);
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+                return $response;
+            }
+
+            $lastError = $error ? $error : ('HTTP ' . $httpCode);
+            if ($attempt < $retry) {
+                usleep(300000);
+            }
+        }
+
+        $this->lastHttpError = $lastError;
         return false;
     }
 
