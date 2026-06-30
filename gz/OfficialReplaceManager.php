@@ -478,8 +478,16 @@ class OfficialReplaceManager {
                 }
             }
         } else {
+            $allSites = $siteMgr->getAllSites(false);
+            $siteMap = [];
+            foreach ($allSites as $s) {
+                $siteMap[$s['name']] = $s;
+            }
             foreach ($sites as $siteName) {
-                $result = $siteMgr->searchSite($siteName, $keyword);
+                if (!isset($siteMap[$siteName])) continue;
+                $apiUrl = $siteMap[$siteName]['api_url'] ?? '';
+                if (empty($apiUrl)) continue;
+                $result = $siteMgr->searchVideos($apiUrl, $keyword, 1, 10);
                 if ($result && $result['success'] && !empty($result['videos'])) {
                     foreach ($result['videos'] as $v) {
                         $v['site'] = $siteName;
