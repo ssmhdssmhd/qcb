@@ -1,7 +1,7 @@
 <?php
 /**
- * 官采资源站配置列表
- * 官方采集专区 - 支持多域名采集
+ * 推荐采集资源站配置列表
+ * 推荐采集专区 - 支持多域名采集
  */
 
 return [
@@ -16,7 +16,7 @@ return [
             'api_url' => 'https://cj.10010888.xyz/api.php/provide/vod/',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '官采推荐',
+            'note' => '推荐采集',
             'priority' => 1,
             'is_official' => true,
             'domains' => [

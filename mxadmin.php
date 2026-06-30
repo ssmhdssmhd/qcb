@@ -349,6 +349,7 @@ header('Expires: 0');
         .tag-blue { background: var(--primary-bg); color: var(--primary-text); }
         .tag-green { background: var(--success-light); color: var(--success); }
         .tag-orange { background: var(--warning-light); color: var(--warning); }
+        .tag-gray { background: linear-gradient(135deg, #909399, #c0c4cc); color: white; }
         .detail-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -626,7 +627,7 @@ header('Expires: 0');
         <div class="nav-item active" data-page="analyze">视频分析</div>
         <div class="nav-item" data-page="rules">规则管理</div>
         <div class="nav-item" data-page="sites">资源站管理</div>
-        <div class="nav-item" data-page="official_sites">官采专区</div>
+        <div class="nav-item" data-page="official_sites">推荐采集</div>
         <div class="nav-item" data-page="official_replace">官替管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
@@ -959,20 +960,20 @@ header('Expires: 0');
         <div class="page" id="page-official_sites">
             <div class="card">
                 <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>官采资源站列表</span>
+                    <span>推荐采集资源站列表</span>
                     <div style="display:flex;gap:10px">
                         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-regular)">
                             <input type="checkbox" id="officialSitesEnabled" onchange="toggleOfficialSites()">
-                            启用官采专区
+                            启用推荐采集
                         </label>
-                        <button class="btn btn-sm btn-primary" onclick="showAddOfficialSite()">+ 添加官采站</button>
+                        <button class="btn btn-sm btn-primary" onclick="showAddOfficialSite()">+ 添加推荐站</button>
                     </div>
                 </div>
                 <div id="officialSitesList"></div>
             </div>
 
             <div class="card">
-                <div class="card-title">官采专区设置</div>
+                <div class="card-title">推荐采集设置</div>
                 <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
                     <div class="form-group">
                         <label>自动切换域名</label>
@@ -3580,7 +3581,7 @@ header('Expires: 0');
         function renderOfficialSites(sites) {
             const container = document.getElementById('officialSitesList');
             if (sites.length === 0) {
-                container.innerHTML = '<div class="empty">暂无官采资源站</div>';
+                container.innerHTML = '<div class="empty">暂无推荐采集资源站</div>';
                 return;
             }
             let html = '<table class="rules-table">';
@@ -3599,7 +3600,7 @@ header('Expires: 0');
                     <td>${isPaused ? '<span class="tag tag-orange">停用</span>' : '<span class="tag tag-green">运行中</span>'}</td>
                     <td style="font-weight:500">
                         ${escapeHtml(site.name || '')}
-                        <span class="tag tag-red" style="background:linear-gradient(135deg,#f56c6c,#e74c3c);color:white">官采</span>
+                        <span class="tag tag-gray">推荐</span>
                     </td>
                     <td><div style="max-width:280px;display:flex;flex-wrap:wrap;gap:4px">${domainBadges}</div></td>
                     <td>${escapeHtml(site.type || 'maccms')}</td>
@@ -3640,7 +3641,7 @@ header('Expires: 0');
             });
             const data = await res.json();
             if (data.success) {
-                showToast(enabled ? '官采专区已启用' : '官采专区已停用', 'success');
+                showToast(enabled ? '推荐采集已启用' : '推荐采集已停用', 'success');
             } else {
                 showToast(data.message || '操作失败', 'error');
             }
@@ -3667,12 +3668,12 @@ header('Expires: 0');
         }
 
         function showAddOfficialSite() {
-            const name = prompt('请输入官采站名称：');
+            const name = prompt('请输入推荐站名称：');
             if (!name) return;
             const domains = prompt('请输入域名（一行一个）：', 'cj.10010888.xyz\ncj.tianwe.cn\ntianwei.qzz.io');
             if (!domains) return;
             const apiPath = prompt('请输入API路径：', '/api.php/provide/vod/') || '/api.php/provide/vod/';
-            const note = prompt('备注：', '官采推荐') || '';
+            const note = prompt('备注：', '推荐采集') || '';
             addOfficialSite({ name, domains, api_path: apiPath, note, type: 'maccms', priority: 1 });
         }
 
@@ -3737,7 +3738,7 @@ header('Expires: 0');
         }
 
         async function deleteOfficialSite(name) {
-            if (!confirm('确定删除官采站「' + name + '」吗？')) return;
+            if (!confirm('确定删除推荐站「' + name + '」吗？')) return;
             const res = await fetch(API_BASE + '?action=official_sites/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

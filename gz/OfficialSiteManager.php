@@ -1,6 +1,6 @@
 <?php
 /**
- * 官采资源站管理器
+ * 推荐采集资源站管理器
  * 支持多域名采集、自动切换
  */
 
@@ -81,7 +81,7 @@ class OfficialSiteManager {
     public function fetchVideos($siteName, $page = 1, $limit = 20) {
         $site = $this->getSiteByName($siteName);
         if (!$site) {
-            return ['success' => false, 'message' => '官采资源站不存在'];
+            return ['success' => false, 'message' => '推荐采集资源站不存在'];
         }
         return $this->requestWithFallback($site, 'list', [
             'page' => $page,
@@ -92,7 +92,7 @@ class OfficialSiteManager {
     public function searchVideos($siteName, $keyword, $page = 1, $limit = 20) {
         $site = $this->getSiteByName($siteName);
         if (!$site) {
-            return ['success' => false, 'message' => '官采资源站不存在'];
+            return ['success' => false, 'message' => '推荐采集资源站不存在'];
         }
         return $this->requestWithFallback($site, 'search', [
             'keyword' => $keyword,
@@ -310,7 +310,7 @@ class OfficialSiteManager {
     }
 
     private function saveConfig() {
-        $content = "<?php\n/**\n * 官采资源站配置列表\n * 官方采集专区 - 支持多域名采集\n */\n\nreturn ";
+        $content = "<?php\n/**\n * 推荐采集资源站配置列表\n * 推荐采集专区 - 支持多域名采集\n */\n\nreturn ";
         $content .= var_export($this->config, true);
         $content .= ";\n";
         file_put_contents($this->configFile, $content);
