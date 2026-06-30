@@ -311,23 +311,62 @@ class ResourceSiteManager {
             }
 
             foreach ($lines as $line) {
+                $line = trim($line);
+                if (empty($line)) continue;
+
                 $parts = explode('$', $line);
-                for ($i = 0; $i < count($parts) - 1; $i += 2) {
-                    $name = trim($parts[$i] ?? '');
-                    $url = trim($parts[$i + 1] ?? '');
-                    if ($name && $url && preg_match('/\.m3u8/i', $url) && !isset($seen[$url])) {
-                        $seen[$url] = true;
+                $lineUrls = [];
+                $urlIndices = [];
+
+                foreach ($parts as $i => $part) {
+                    $part = trim($part);
+                    if (preg_match('/^https?:\/\/.+\.m3u8/i', $part)) {
+                        $urlIndices[] = $i;
+                        $lineUrls[$i] = $part;
+                    }
+                }
+
+                foreach ($urlIndices as $idx) {
+                    $url = $lineUrls[$idx];
+                    $name = '';
+
+                    if ($idx > 0) {
+                        $prevPart = trim($parts[$idx - 1] ?? '');
+                        if (!preg_match('/^https?:\/\//i', $prevPart) && !empty($prevPart)) {
+                            $name = $prevPart;
+                        }
+                    }
+
+                    if (empty($name)) {
+                        $epFromUrl = $this->extractEpisodeFromUrl($url);
+                        if ($epFromUrl) {
+                            $name = $epFromUrl;
+                        }
+                    }
+
+                    if (empty($name)) {
+                        $num = count($urls) + count($lineUrls);
+                        $name = '第' . $num . '集';
+                    }
+
+                    $cleanUrl = preg_replace('/#.*$/', '', $url);
+                    if (!isset($seen[$cleanUrl])) {
+                        $seen[$cleanUrl] = true;
                         $urls[] = ['name' => $name, 'url' => $url];
                     }
                 }
             }
         }
 
-        if (preg_match_all('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
-            foreach ($matches[0] as $url) {
-                if (!isset($seen[$url])) {
-                    $seen[$url] = true;
-                    $urls[] = ['name' => '自动提取', 'url' => $url];
+        if (empty($urls)) {
+            if (preg_match_all('/https?:\/\/[^\s\$\r\n]+\.m3u8[^\s\$\r\n]*/i', $playUrl, $matches)) {
+                foreach ($matches[0] as $url) {
+                    $cleanUrl = preg_replace('/#.*$/', '', $url);
+                    if (!isset($seen[$cleanUrl])) {
+                        $seen[$cleanUrl] = true;
+                        $epName = $this->extractEpisodeFromUrl($url);
+                        $urls[] = ['name' => $epName ?: '自动提取', 'url' => $url];
+                    }
                 }
             }
         }
@@ -337,15 +376,138 @@ class ResourceSiteManager {
             foreach ($lines as $idx => $line) {
                 if (preg_match('/https?:\/\/[^\s]+\.m3u8[^\s]*/i', $line, $matches)) {
                     $url = $matches[0];
-                    if (!isset($seen[$url])) {
-                        $seen[$url] = true;
-                        $urls[] = ['name' => '第' . ($idx + 1) . '行', 'url' => $url];
+                    $cleanUrl = preg_replace('/#.*$/', '', $url);
+                    if (!isset($seen[$cleanUrl])) {
+                        $seen[$cleanUrl] = true;
+                        $epName = $this->extractEpisodeFromUrl($url);
+                        $urls[] = ['name' => $epName ?: ('第' . ($idx + 1) . '集'), 'url' => $url];
                     }
                 }
             }
         }
 
+        $urls = $this->normalizeEpisodeNames($urls);
+
         return $urls;
+    }
+
+    private function extractEpisodeFromUrl($url) {
+        if (preg_match('/#(.+)$/i', $url, $m)) {
+            $frag = trim($m[1]);
+            if (!empty($frag) && preg_match('/第[^\s]+/u', $frag)) {
+                return $frag;
+            }
+            if (!empty($frag) && mb_strlen($frag) <= 20) {
+                return $frag;
+            }
+        }
+        return null;
+    }
+
+    private function normalizeEpisodeNames($urls) {
+        if (empty($urls)) return $urls;
+
+        $result = [];
+        $seen = [];
+        $episodeNumbers = [];
+
+        foreach ($urls as $item) {
+            $url = $item['url'];
+            $name = $item['name'];
+
+            $cleanUrl = preg_replace('/#.*$/', '', $url);
+            if (isset($seen[$cleanUrl])) continue;
+            $seen[$cleanUrl] = true;
+
+            if (preg_match('/^https?:\/\//i', $name)) {
+                $epFromUrl = $this->extractEpisodeFromUrl($name);
+                if ($epFromUrl) {
+                    $name = $epFromUrl;
+                }
+            }
+
+            $epNum = $this->extractEpisodeNumber($name);
+            if ($epNum !== null) {
+                $episodeNumbers[] = $epNum;
+            }
+
+            $result[] = [
+                'name' => $name,
+                'url' => $url,
+                '_epNum' => $epNum
+            ];
+        }
+
+        $total = count($result);
+        if ($total > 0) {
+            $hasEpNum = count(array_filter($result, function($r) { return $r['_epNum'] !== null; }));
+
+            $needReindex = false;
+            if ($hasEpNum < $total * 0.7) {
+                $needReindex = true;
+            } else {
+                $expected = range(1, $total);
+                $actual = array_values(array_filter(array_column($result, '_epNum')));
+                sort($actual);
+                $matches = 0;
+                $minLen = min(count($expected), count($actual));
+                for ($i = 0; $i < $minLen; $i++) {
+                    if ($actual[$i] == $expected[$i]) $matches++;
+                }
+                if ($minLen > 0 && $matches / $minLen < 0.7) {
+                    $needReindex = true;
+                }
+            }
+
+            if ($needReindex) {
+                foreach ($result as $i => &$item) {
+                    $item['name'] = '第' . str_pad($i + 1, 2, '0', STR_PAD_LEFT) . '集';
+                }
+                unset($item);
+            }
+
+            foreach ($result as &$item) {
+                unset($item['_epNum']);
+            }
+            unset($item);
+        }
+
+        return $result;
+    }
+
+    private function extractEpisodeNumber($name) {
+        if (empty($name)) return null;
+        if (preg_match('/第\s*(\d+)\s*集/u', $name, $m)) {
+            return intval($m[1]);
+        }
+        if (preg_match('/第\s*([一二三四五六七八九十百千]+)\s*集/u', $name, $m)) {
+            return $this->chineseToNumber($m[1]);
+        }
+        if (preg_match('/^(\d{1,4})$/', $name, $m)) {
+            return intval($m[1]);
+        }
+        if (preg_match('/EP?\s*(\d+)/i', $name, $m)) {
+            return intval($m[1]);
+        }
+        return null;
+    }
+
+    private function chineseToNumber($cn) {
+        $map = ['零' => 0, '一' => 1, '二' => 2, '三' => 3, '四' => 4, '五' => 5, '六' => 6, '七' => 7, '八' => 8, '九' => 9, '十' => 10];
+        if (isset($map[$cn])) return $map[$cn];
+        if (mb_strlen($cn) == 2 && mb_substr($cn, 0, 1) == '十') {
+            return 10 + ($map[mb_substr($cn, 1, 1)] ?? 0);
+        }
+        if (mb_strlen($cn) == 2 && mb_substr($cn, 1, 1) == '十') {
+            return ($map[mb_substr($cn, 0, 1)] ?? 0) * 10;
+        }
+        return null;
+    }
+
+    private function isValidEpisodeName($name) {
+        if (empty($name)) return false;
+        if (preg_match('/^https?:\/\//i', $name)) return false;
+        return $this->extractEpisodeNumber($name) !== null;
     }
 
     public function getAutoLearnConfig() {

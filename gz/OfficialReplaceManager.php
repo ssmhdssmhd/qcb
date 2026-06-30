@@ -190,7 +190,11 @@ class OfficialReplaceManager {
             'success' => true,
             'platform' => $platform['name'],
             'original_url' => $url,
-            'video_title' => $videoInfo['title'],
+            'video_title' => $bestMatch['video']['name'] ?: $videoInfo['title'],
+            'video_name' => $bestMatch['video']['name'] ?? '',
+            'video_pic' => $bestMatch['video']['pic'] ?? '',
+            'video_remarks' => $bestMatch['video']['remarks'] ?? '',
+            'original_title' => $videoInfo['title'],
             'base_title' => $videoInfo['base_title'],
             'season' => $videoInfo['season'],
             'episode' => $videoInfo['episode'],
@@ -204,6 +208,7 @@ class OfficialReplaceManager {
             'm3u8_url' => $targetEpisodeUrl,
             'target_episode' => $targetEpisodeName,
             'all_urls' => $bestMatch['video']['urls'] ?? [],
+            'episodes' => count($bestMatch['video']['urls'] ?? []),
             'alternatives' => $searchResult['videos']
         ];
     }

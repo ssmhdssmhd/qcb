@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [1.21.0] - 2026-06-30
+
+### 🐛 修复
+
+- **修复集数名称错位问题** - 解决资源站播放列表中集数名称与URL对应错误的问题
+  - 重写 `extractAllM3u8Urls` 解析逻辑，正确识别名称与URL的对应关系
+  - 新增 `normalizeEpisodeNames` 智能校正功能，自动检测并重新编号错位的集数
+  - 新增 `extractEpisodeNumber` 集数编号提取工具
+  - URL去重基于去除#片段后的纯地址，避免重复
+
+### ✨ 优化
+
+- **优化官替API返回数据** - 接口返回更清晰、更完整的视频信息
+  - `video_title` 优先使用搜索到的视频名称（更准确）
+  - 新增 `video_name`、`video_pic`、`video_remarks` 字段
+  - 新增 `target_episode` 当前集数名称字段
+  - 新增 `episodes` 总集数字段
+  - 保留 `original_title` 原始页面标题
+
 ## [1.20.0] - 2026-06-30
 
 ### 🎨 UI 优化

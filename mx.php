@@ -1236,12 +1236,16 @@ try {
                     'platform' => $result['platform'],
                     'original_url' => $result['original_url'],
                     'video_title' => $result['video_title'],
+                    'video_name' => $result['video_name'] ?? '',
+                    'video_pic' => $result['video_pic'] ?? '',
+                    'video_remarks' => $result['video_remarks'] ?? '',
                     'match_score' => $result['match_score'],
                     'site' => $result['site'],
                     'm3u8_url' => $m3u8Url,
+                    'target_episode' => $result['target_episode'] ?? '',
                     'ad_skip_url' => $mxjxUrl,
                     'all_urls' => $result['all_urls'],
-                    'episodes' => count($result['all_urls'])
+                    'episodes' => $result['episodes'] ?? count($result['all_urls'])
                 ]);
             } else {
                 sendJsonResponse($result, 404);
