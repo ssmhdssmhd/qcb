@@ -18,16 +18,20 @@ class AdRuleEngine {
                 '广告', '插播', '贴片', '片头', '片尾'
             ],
             'adFilenamePatterns' => isset($options['adFilenamePatterns']) ? $options['adFilenamePatterns'] : [
-                '/ad[s]?[-_]?\d+/i',
-                '/advert/i',
-                '/commercial/i',
-                '/pre[-_]?roll/i',
-                '/mid[-_]?roll/i',
-                '/post[-_]?roll/i',
-                '/sponsor/i',
-                '/^ad\//i'
+                '/(?:^|[-_\.\/])ad[s]?[-_]?\d+/i',
+                '/(?:^|[-_\.\/])advert/i',
+                '/(?:^|[-_\.\/])commercial/i',
+                '/(?:^|[-_\.\/])pre[-_]?roll/i',
+                '/(?:^|[-_\.\/])mid[-_]?roll/i',
+                '/(?:^|[-_\.\/])post[-_]?roll/i',
+                '/(?:^|[-_\.\/])sponsor/i',
+                '/(?:^|[-_\.\/])promo[-_]?\d*/i',
+                '/(?:^|[-_\.\/])\d{6}_\d+\.ts/i'
             ],
             'durationTolerance' => isset($options['durationTolerance']) ? $options['durationTolerance'] : 0.5,
+            'adThreshold' => isset($options['adThreshold']) ? $options['adThreshold'] : 60,
+            'minAdClusterSize' => isset($options['minAdClusterSize']) ? $options['minAdClusterSize'] : 3,
+            'maxAdClusterGap' => isset($options['maxAdClusterGap']) ? $options['maxAdClusterGap'] : 1,
             'checkShortSegments' => !isset($options['checkShortSegments']) || $options['checkShortSegments'] !== false,
             'checkLongSegments' => isset($options['checkLongSegments']) && $options['checkLongSegments'] === true,
             'checkKeywords' => !isset($options['checkKeywords']) || $options['checkKeywords'] !== false,
@@ -44,6 +48,7 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'short-duration',
                 'description' => '片段时长过短，可能是广告',
+                'weight' => 30,
                 'check' => function($segment, $index, $segments) {
                     return $segment['duration'] < $this->options['minSegmentDuration'];
                 }
@@ -54,6 +59,7 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'long-duration',
                 'description' => '片段时长过长，可能是广告',
+                'weight' => 30,
                 'check' => function($segment, $index, $segments) {
                     return $segment['duration'] > $this->options['maxSegmentDuration'];
                 }
@@ -64,11 +70,24 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'keyword-match',
                 'description' => '标题或文件名包含广告关键词',
+                'weight' => 40,
                 'check' => function($segment) {
-                    $text = mb_strtolower(($segment['title'] ?? '') . ' ' . ($segment['uri'] ?? ''));
+                    $uri = $segment['uri'] ?? '';
+                    $title = $segment['title'] ?? '';
+                    $text = mb_strtolower($title . ' ' . basename($uri));
+                    
                     foreach ($this->options['adKeywords'] as $kw) {
-                        if (mb_strpos($text, mb_strtolower($kw)) !== false) {
-                            return true;
+                        $kwLower = mb_strtolower($kw);
+                        $kwLen = mb_strlen($kwLower);
+                        
+                        if ($kwLen <= 2) {
+                            if (preg_match('/(?:^|[-_\.\/\s])' . preg_quote($kwLower, '/') . '(?:$|[-_\.\/\s])/i', $text)) {
+                                return true;
+                            }
+                        } else {
+                            if (mb_strpos($text, $kwLower) !== false) {
+                                return true;
+                            }
                         }
                     }
                     return false;
@@ -80,6 +99,7 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'filename-pattern',
                 'description' => '文件名匹配广告命名模式',
+                'weight' => 35,
                 'check' => function($segment) {
                     $uri = $segment['uri'] ?? '';
                     $pathParts = explode('/', $uri);
@@ -98,6 +118,7 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'discontinuity',
                 'description' => '存在不连续标记，可能是插播广告',
+                'weight' => 25,
                 'check' => function($segment, $index, $segments) {
                     return !empty($segment['discontinuity']);
                 }
@@ -108,6 +129,7 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'repetitive-duration',
                 'description' => '重复出现相近时长的短片段，可能是广告',
+                'weight' => 45,
                 'check' => function($segment, $index, $segments) {
                     if (count($segments) < 20) return false;
                     
@@ -132,21 +154,21 @@ class AdRuleEngine {
                     $maxConsecutive = $bucketStats['maxConsecutive'];
                     $totalCount = count($segments);
                     
-                    $isShort = $duration >= 1 && $duration <= 6;
+                    $isShort = $duration >= 0.5 && $duration <= 5;
                     $similarRatio = $similarCount / $totalCount;
                     
-                    $isVeryShortCluster = $duration <= 4 && $similarRatio >= 0.15 && $similarRatio <= 0.5;
-                    $isShortConsecutiveAd = $isShort && $maxConsecutive >= 5 && $similarRatio <= 0.6;
+                    $isVeryShortCluster = $duration <= 3 && $similarRatio >= 0.1 && $similarRatio <= 0.4;
+                    $isShortConsecutiveAd = $isShort && $maxConsecutive >= 8 && $similarRatio <= 0.5;
                     
                     $hasOtherDurationClusters = false;
                     foreach ($stats as $key => $bStats) {
-                        if ($key !== $durationKey && $bStats['count'] / $totalCount >= 0.15) {
+                        if ($key !== $durationKey && $bStats['count'] / $totalCount >= 0.2) {
                             $hasOtherDurationClusters = true;
                             break;
                         }
                     }
                     
-                    if (!$hasOtherDurationClusters && $similarRatio > 0.7) {
+                    if (!$hasOtherDurationClusters && $similarRatio > 0.6) {
                         return false;
                     }
                     
@@ -159,22 +181,28 @@ class AdRuleEngine {
 
     public function checkSegment($segment, $index, $segments) {
         $matchedRules = [];
+        $totalWeight = 0;
 
         foreach ($this->rules as $rule) {
             try {
                 if (call_user_func($rule['check'], $segment, $index, $segments)) {
+                    $weight = $rule['weight'] ?? 50;
                     $matchedRules[] = [
                         'name' => $rule['name'],
-                        'description' => $rule['description']
+                        'description' => $rule['description'],
+                        'weight' => $weight
                     ];
+                    $totalWeight += $weight;
                 }
             } catch (Exception $e) {
-                // 忽略规则检查错误
             }
         }
 
+        $adThreshold = $this->options['adThreshold'] ?? 50;
+
         return [
-            'isAd' => count($matchedRules) > 0,
+            'isAd' => $totalWeight >= $adThreshold,
+            'confidence' => $totalWeight,
             'matchedRules' => $matchedRules
         ];
     }
@@ -188,6 +216,65 @@ class AdRuleEngine {
                 'index' => $index
             ], $result);
         }
+
+        $minClusterSize = $this->options['minAdClusterSize'] ?? 2;
+        if ($minClusterSize > 1) {
+            $results = $this->filterSingleAdSegments($results, $minClusterSize);
+        }
+
+        return $results;
+    }
+
+    private function filterSingleAdSegments($results, $minClusterSize = 3) {
+        $maxGap = $this->options['maxAdClusterGap'] ?? 1;
+        $clusters = [];
+        $currentCluster = null;
+        $gapCount = 0;
+
+        foreach ($results as $index => $result) {
+            if ($result['isAd']) {
+                if ($currentCluster === null) {
+                    $currentCluster = ['start' => $index, 'end' => $index, 'adCount' => 1, 'hasDiscontinuity' => !empty($result['segment']['discontinuity'])];
+                } else {
+                    $currentCluster['end'] = $index;
+                    $currentCluster['adCount']++;
+                    if (!empty($result['segment']['discontinuity'])) {
+                        $currentCluster['hasDiscontinuity'] = true;
+                    }
+                }
+                $gapCount = 0;
+            } else {
+                if ($currentCluster !== null) {
+                    $gapCount++;
+                    if ($gapCount > $maxGap) {
+                        $clusters[] = $currentCluster;
+                        $currentCluster = null;
+                        $gapCount = 0;
+                    } else {
+                        $currentCluster['end'] = $index;
+                    }
+                }
+            }
+        }
+        if ($currentCluster !== null) {
+            $clusters[] = $currentCluster;
+        }
+
+        foreach ($clusters as $cluster) {
+            $adCount = $cluster['adCount'] ?? 0;
+            $hasDiscontinuity = !empty($cluster['hasDiscontinuity']);
+            
+            if ($adCount < $minClusterSize && !$hasDiscontinuity) {
+                for ($i = $cluster['start']; $i <= $cluster['end']; $i++) {
+                    if ($results[$i]['isAd']) {
+                        $results[$i]['isAd'] = false;
+                        $results[$i]['filtered'] = true;
+                        $results[$i]['filterReason'] = '广告簇过小(' . $adCount . '段)';
+                    }
+                }
+            }
+        }
+
         return $results;
     }
 
@@ -208,7 +295,8 @@ class AdRuleEngine {
         return array_map(function($r) {
             return [
                 'name' => $r['name'],
-                'description' => $r['description']
+                'description' => $r['description'],
+                'weight' => $r['weight'] ?? 50
             ];
         }, $this->rules);
     }
