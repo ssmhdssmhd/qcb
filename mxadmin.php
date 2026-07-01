@@ -2825,12 +2825,12 @@ header('Expires: 0');
         function showUpdateConfirm(updateData) {
             return new Promise((resolve) => {
                 const modalHtml = `
-                    <div id="updateConfirmModal" class="update-modal-overlay" onclick="if(event.target===this)document.getElementById('updateConfirmModal').remove();resolve(false);">
+                    <div id="updateConfirmModal" class="update-modal-overlay">
                         <div class="update-modal" style="width:440px">
                             <div class="update-modal-header">
                                 <div class="update-modal-icon">⚠️</div>
                                 <div class="update-modal-title">确认更新</div>
-                                <button class="update-modal-close" onclick="document.getElementById('updateConfirmModal').remove();resolve(false);">✕</button>
+                                <button class="update-modal-close" id="confirm-close-btn">✕</button>
                             </div>
                             <div class="update-modal-body">
                                 <p style="color:#606266;font-size:13px;margin-bottom:16px;line-height:1.6">
@@ -2849,15 +2849,29 @@ header('Expires: 0');
                                 ` : ''}
                             </div>
                             <div class="update-modal-footer">
-                                <button class="btn btn-secondary" onclick="document.getElementById('updateConfirmModal').remove();resolve(false);">取消</button>
-                                <button class="btn btn-primary" onclick="document.getElementById('updateConfirmModal').remove();resolve(true);">确认更新</button>
+                                <button class="btn btn-secondary" id="confirm-cancel-btn">取消</button>
+                                <button class="btn btn-primary" id="confirm-ok-btn">确认更新</button>
                             </div>
                         </div>
                     </div>
                 `;
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = modalHtml;
-                document.body.appendChild(tempDiv.firstElementChild);
+                const modal = tempDiv.firstElementChild;
+                document.body.appendChild(modal);
+
+                const closeModal = (result) => {
+                    modal.remove();
+                    resolve(result);
+                };
+
+                document.getElementById('confirm-close-btn').onclick = () => closeModal(false);
+                document.getElementById('confirm-cancel-btn').onclick = () => closeModal(false);
+                document.getElementById('confirm-ok-btn').onclick = () => closeModal(true);
+
+                modal.onclick = (e) => {
+                    if (e.target === modal) closeModal(false);
+                };
             });
         }
 
