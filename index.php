@@ -36,6 +36,7 @@ try {
         $rootDir . '/src/AuthConfig.php',
         $rootDir . '/src/AuthValidator.php',
         $rootDir . '/gz/EnhancedAdRuleEngine.php',
+        $rootDir . '/gz/OfficialReplaceManager.php',
     ];
     foreach ($requiredFiles as $file) {
         if (!file_exists($file)) {
@@ -94,6 +95,120 @@ if ($relativePath === '/health' || $relativePath === '/api/health') {
         'language' => 'PHP',
         'timestamp' => date('c')
     ]);
+}
+
+if ($relativePath === '/parse' || $relativePath === '/api/parse' || $relativePath === '/jiexi') {
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $url = $_GET['url'] ?? '';
+    if (empty($url)) {
+        sendIndexJson([
+            'code' => 400,
+            'original_url' => '',
+            'parsed_url' => '',
+            'message' => '缺少 url 参数',
+            'example' => '/parse?url=https://example.com/playlist.m3u8',
+            'endpoints' => [
+                ['path' => '/parse', 'method' => 'GET', 'description' => '统一解析接口'],
+                ['path' => '/', 'method' => 'GET', 'description' => '去广告接口'],
+                ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
+                ['path' => '/health', 'method' => 'GET', 'description' => '健康检查']
+            ]
+        ], 400);
+    }
+
+    $officialDomains = [
+        'v.qq.com',
+        'iqiyi.com',
+        'youku.com',
+        'mgtv.com',
+        'bilibili.com',
+        'sohu.com',
+        'pptv.com'
+    ];
+
+    $parsedUrl = parse_url($url);
+    $host = $parsedUrl['host'] ?? '';
+    $isOfficialUrl = false;
+
+    foreach ($officialDomains as $domain) {
+        if (strpos($host, $domain) !== false) {
+            $isOfficialUrl = true;
+            break;
+        }
+    }
+
+    try {
+        if ($isOfficialUrl) {
+            $officialReplaceMgr = new OfficialReplaceManager();
+            $result = $officialReplaceMgr->resolve($url);
+
+            if ($result['success'] && !empty($result['m3u8_url'])) {
+                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                $host_name = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $requestUriPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                $basePath = dirname($requestUriPath);
+                $basePath = $basePath === '/' ? '' : $basePath;
+                $selfUrl = $scheme . '://' . $host_name . $basePath;
+                $mxjxUrl = $selfUrl . '/mxjx?url=' . urlencode($result['m3u8_url']);
+
+                sendIndexJson([
+                    'code' => 200,
+                    'original_url' => $url,
+                    'parsed_url' => $mxjxUrl,
+                    'type' => 'official_replace',
+                    'platform' => $result['platform'],
+                    'video_title' => $result['video_title'] ?? ''
+                ], 200);
+            } else {
+                sendIndexJson([
+                    'code' => 404,
+                    'original_url' => $url,
+                    'parsed_url' => '',
+                    'type' => 'official_replace',
+                    'message' => $result['message'] ?? '未找到匹配资源'
+                ], 404);
+            }
+        } else {
+            $skipper = new M3U8AdSkipper();
+            $m3u8Result = $skipper->process($url);
+
+            if ($m3u8Result['success'] || !empty($m3u8Result['output'])) {
+                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                $host_name = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $requestUriPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                $basePath = dirname($requestUriPath);
+                $basePath = $basePath === '/' ? '' : $basePath;
+                $selfUrl = $scheme . '://' . $host_name . $basePath;
+                $mxjxUrl = $selfUrl . '/mxjx?url=' . urlencode($url);
+
+                sendIndexJson([
+                    'code' => 200,
+                    'original_url' => $url,
+                    'parsed_url' => $mxjxUrl,
+                    'type' => 'ad_skip',
+                    'stats' => $m3u8Result['stats'] ?? []
+                ], 200);
+            } else {
+                sendIndexJson([
+                    'code' => 500,
+                    'original_url' => $url,
+                    'parsed_url' => '',
+                    'type' => 'ad_skip',
+                    'message' => '解析失败'
+                ], 500);
+            }
+        }
+    } catch (Throwable $e) {
+        sendIndexJson([
+            'code' => 500,
+            'original_url' => $url,
+            'parsed_url' => '',
+            'message' => $e->getMessage()
+        ], 500);
+    }
 }
 
 if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
@@ -206,6 +321,7 @@ if ($relativePath === '/' || $relativePath === '/api/skip' || $relativePath === 
             'message' => '缺少 url 参数',
             'example' => '/?url=https://example.com/playlist.m3u8',
             'endpoints' => [
+                ['path' => '/parse', 'method' => 'GET', 'description' => '统一解析接口（自动判断官解/直连）'],
                 ['path' => '/', 'method' => 'GET', 'description' => '去广告接口'],
                 ['path' => '/api/skip', 'method' => 'GET', 'description' => '去广告接口'],
                 ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
@@ -261,6 +377,7 @@ sendIndexJson([
     'message' => '接口不存在',
     'path' => $relativePath,
     'availableEndpoints' => [
+        ['path' => '/parse', 'method' => 'GET', 'description' => '统一解析接口（自动判断官解/直连）'],
         ['path' => '/', 'method' => 'GET', 'description' => '去广告接口'],
         ['path' => '/api/skip', 'method' => 'GET', 'description' => '去广告接口'],
         ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
