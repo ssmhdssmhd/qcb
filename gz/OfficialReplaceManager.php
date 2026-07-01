@@ -892,10 +892,39 @@ class OfficialReplaceManager {
         $bestMatch = null;
         $bestScore = 0;
 
+        $excludePatterns = [
+            '/电影解说/i',
+            '/预告片/i',
+            '/片花/i',
+            '/花絮/i',
+            '/剪辑/i',
+            '/解说/i',
+            '/速看/i',
+            '/混剪/i',
+            '/盘点/i',
+            '/reaction/i',
+            '/MV/i',
+            '/主题曲/i',
+            '/片尾曲/i',
+            '/片头曲/i',
+            '/OST/i',
+        ];
+
         foreach ($videos as $video) {
             $videoName = $video['name'] ?? '';
             $videoRemarks = $video['remarks'] ?? '';
             $fullName = $videoName . ' ' . $videoRemarks;
+
+            $isExcluded = false;
+            foreach ($excludePatterns as $pattern) {
+                if (preg_match($pattern, $videoName)) {
+                    $isExcluded = true;
+                    break;
+                }
+            }
+            if ($isExcluded) {
+                continue;
+            }
 
             $videoParsed = $this->parseVideoTitle($fullName);
             $videoBaseTitle = $videoParsed['base_title'];
@@ -905,6 +934,15 @@ class OfficialReplaceManager {
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
             $score = $baseScore;
+
+            if ($keyword && $videoBaseTitle) {
+                if (mb_strpos($videoBaseTitle, $keyword) !== false) {
+                    $score += 10;
+                }
+                if (mb_strpos($keyword, $videoBaseTitle) !== false) {
+                    $score += 5;
+                }
+            }
 
             $seasonMatch = false;
             if ($targetSeason !== null && $videoSeason !== null) {
@@ -935,6 +973,12 @@ class OfficialReplaceManager {
                     $score += 10;
                 } else {
                     $score -= 5;
+                }
+            }
+
+            if (!empty($videoRemarks)) {
+                if (preg_match('/更新至|连载|全\d+集|共\d+集|已完结|HD|高清|正片/u', $videoRemarks)) {
+                    $score += 5;
                 }
             }
 

@@ -598,9 +598,21 @@ try {
 
                 $stats = $result['stats'] ?? [];
                 $adPercentage = $stats['adPercentage'] ?? 0;
-                if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
+                $totalSegments = $stats['totalSegments'] ?? 0;
+                $keptSegments = $stats['keptSegments'] ?? 0;
+                $removedSegments = $stats['removedSegments'] ?? 0;
+                
+                $tooManyRemoved = false;
+                if ($adPercentage >= 90 && $totalSegments > 10) {
+                    $tooManyRemoved = true;
+                }
+                if ($totalSegments > 20 && $keptSegments < $totalSegments * 0.1) {
+                    $tooManyRemoved = true;
+                }
+                
+                if ($tooManyRemoved) {
                     $newM3U8Content = @file_get_contents($url);
-                    if ($newM3U8Content === false) {
+                    if ($newM3U8Content === false || empty(trim($newM3U8Content))) {
                         $newM3U8Content = $result['output'];
                     }
                 } else {

@@ -642,31 +642,63 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             }
         }
 
+        let loadTimeout = null;
+        
+        function clearLoadTimeout() {
+            if (loadTimeout) {
+                clearTimeout(loadTimeout);
+                loadTimeout = null;
+            }
+        }
+
         function createHls(video, url) {
             if (hls) {
                 hls.destroy();
             }
+            clearLoadTimeout();
+            
             if (Hls.isSupported()) {
                 hls = new Hls(hlsConfig);
                 hls.loadSource(url);
                 hls.attachMedia(video);
+                
+                loadTimeout = setTimeout(function() {
+                    if (video.readyState < 2) {
+                        console.warn('视频加载超时，尝试原始地址');
+                        showToast('视频加载较慢，正在尝试其他方式...', 'warning');
+                    }
+                }, 15000);
+                
                 hls.on(Hls.Events.MANIFEST_PARSED, function () {
                     console.log('HLS 加载完成');
+                    clearLoadTimeout();
                 });
                 hls.on(Hls.Events.ERROR, function (event, data) {
                     console.error('HLS 错误:', data);
                     if (data.fatal) {
+                        clearLoadTimeout();
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 console.log('网络错误，尝试恢复...');
-                                hls.startLoad();
+                                try {
+                                    hls.startLoad();
+                                } catch(e) {
+                                    showToast('网络错误，视频加载失败', 'error');
+                                    updatePlayStatus('error', '网络错误，请检查网络或尝试切换播放源');
+                                }
                                 break;
                             case Hls.ErrorTypes.MEDIA_ERROR:
                                 console.log('媒体错误，尝试恢复...');
-                                hls.recoverMediaError();
+                                try {
+                                    hls.recoverMediaError();
+                                } catch(e) {
+                                    showToast('媒体错误，视频加载失败', 'error');
+                                    updatePlayStatus('error', '媒体格式错误，请尝试切换播放源');
+                                }
                                 break;
                             default:
                                 showToast('视频加载失败，请检查链接是否正确', 'error');
+                                updatePlayStatus('error', '视频加载失败，请尝试重新加载');
                                 break;
                         }
                     }
@@ -678,6 +710,19 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             } else {
                 showToast('您的浏览器不支持 HLS 播放', 'error');
                 return null;
+            }
+        }
+        
+        function updatePlayStatus(type, message) {
+            const statusEl = document.getElementById('status');
+            if (!statusEl) return;
+            
+            if (type === 'error') {
+                statusEl.innerHTML = '<span style="color: #ef4444;">❌ ' + message + '</span>';
+            } else if (type === 'success') {
+                statusEl.innerHTML = '<span style="color: #10b981;">✅ ' + message + '</span>';
+            } else if (type === 'loading') {
+                statusEl.innerHTML = '<span style="color: #f59e0b;">⏳ ' + message + '</span>';
             }
         }
 
