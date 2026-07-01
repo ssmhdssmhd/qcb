@@ -428,4 +428,63 @@ class ProxyManager {
 
         return "[\n" . implode(",\n", $items) . "\n" . $prefix . "]";
     }
+
+    public function fetchProxiesFromWeb($verify = true, $maxPerSource = 20) {
+        require_once __DIR__ . '/ProxyFetcher.php';
+
+        $fetcher = new ProxyFetcher([
+            'timeout' => $this->config['timeout'] ?? 10,
+            'max_per_source' => $maxPerSource
+        ]);
+
+        $result = $fetcher->fetchAll($verify);
+        $added = 0;
+
+        foreach ($result['proxies'] as $proxy) {
+            $addResult = $this->addProxy([
+                'type' => $proxy['type'],
+                'host' => $proxy['host'],
+                'port' => $proxy['port'],
+                'username' => $proxy['username'] ?? '',
+                'password' => $proxy['password'] ?? '',
+                'response_time' => $proxy['response_time'] ?? 0,
+                'status' => $verify ? 'active' : 'active'
+            ]);
+            if ($addResult['success']) {
+                $added++;
+            }
+        }
+
+        return [
+            'success' => true,
+            'added' => $added,
+            'total_fetched' => $result['total'],
+            'sources' => $result['sources'],
+            'message' => "成功获取并添加 {$added} 个可用代理"
+        ];
+    }
+
+    public function clearInactiveProxies() {
+        $activeProxies = [];
+        $cleared = 0;
+        foreach ($this->proxies as $proxy) {
+            if (($proxy['status'] ?? 'active') === 'active') {
+                $activeProxies[] = $proxy;
+            } else {
+                $cleared++;
+            }
+        }
+        $this->proxies = $activeProxies;
+        $this->config['proxies'] = $this->proxies;
+        $this->saveConfig();
+        return ['success' => true, 'cleared' => $cleared];
+    }
+
+    public function clearAllProxies() {
+        $count = count($this->proxies);
+        $this->proxies = [];
+        $this->config['proxies'] = [];
+        $this->saveConfig();
+        return ['success' => true, 'cleared' => $count];
+    }
 }

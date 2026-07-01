@@ -5,6 +5,44 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.3.0] - 2026-07-01
+
+### 🌐 代理池网络获取（核心新增）
+- **ProxyFetcher 代理获取器** - 新增独立代理获取类，从 10+ 个公开代理源获取免费代理
+- **多源支持** - 支持 ProxyScrape、ProxyList、OpenProxyList、ProxySpace、多个 GitHub 代理列表等
+- **自动验证** - 获取后自动验证代理可用性，只保留有效代理
+- **自动去重** - 多个来源获取的代理自动去重
+- **类型识别** - 支持 HTTP、HTTPS、SOCKS5 多种代理类型
+- **失败容错** - 单个源失败不影响其他源，自动跳过失败的源
+
+### ⚡ ProxyManager 增强
+- **fetchProxiesFromWeb()** - 一键从网络获取并验证代理
+- **clearInactiveProxies()** - 清理所有失效代理
+- **clearAllProxies()** - 清空代理池
+- **批量导入优化** - 支持多种格式的代理地址解析
+
+### 🎛️ 代理管理界面升级
+- **一键获取代理按钮** - 点击即可从网络自动获取可用代理
+- **清理失效按钮** - 一键清理所有失效代理
+- **获取进度提示** - 获取过程中显示状态提示
+- **获取结果统计** - 显示成功获取数量和可用源数量
+
+### 🔧 代理源列表
+| 源名称 | 类型 | 说明 |
+|--------|------|------|
+| ProxyScrape | 纯文本 | 高质量免费代理 |
+| ProxyList.download | 纯文本 | 每日更新代理列表 |
+| OpenProxyList | 纯文本 | 开源代理列表 |
+| ProxySpace | 纯文本 | 免费代理空间 |
+| sunny9577 GitHub | 纯文本 | GitHub 代理收集项目 |
+| TheSpeedX GitHub | 纯文本 | 大型代理列表 |
+| ShiftyTR GitHub | 纯文本 | 持续更新代理 |
+| hookzof GitHub | 纯文本 | SOCKS5 代理列表 |
+| ProxyScan API | JSON | API 接口代理 |
+| PubProxy API | JSON | 公共代理 API |
+
+---
+
 ## [2.2.0] - 2026-07-01
 
 ### 🎉 更新弹窗提示（核心新增）
