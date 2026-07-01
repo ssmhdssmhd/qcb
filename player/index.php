@@ -4,19 +4,31 @@
 error_reporting(0);
 
 $url = $_GET['url'] ?? '';
+$playerType = $_GET['player'] ?? '';
 $apiUrl = 'http://114.134.184.91:9002/mx.php?action=mxjx&url=';
 $officialReplaceUrl = 'http://114.134.184.91:9002/mx.php?action=official_replace/info&url=';
 
+$configFile = __DIR__ . '/../gz/player_config.php';
+$playerConfig = [
+    'player' => 'dplayer',
+    'autoplay' => false,
+    'preload' => 'auto',
+];
+
+if (file_exists($configFile)) {
+    $fileConfig = require $configFile;
+    $playerConfig = array_merge($playerConfig, $fileConfig);
+}
+
+if (!empty($playerType)) {
+    $playerConfig['player'] = $playerType;
+}
+
 $videoUrl = '';
-$errorMsg = '';
 $originalUrl = $url;
 $isOfficialUrl = false;
-$videoTitle = '';
-$videoInfo = null;
 
-// 官方视频平台域名列表
 $officialDomains = [
-    'v.qq.com',
     'v.qq.com',
     'iqiyi.com',
     'youku.com',
@@ -30,7 +42,6 @@ if (!empty($url)) {
     $parsedUrl = parse_url($url);
     $host = $parsedUrl['host'] ?? '';
 
-    // 检查是否是官方视频平台
     foreach ($officialDomains as $domain) {
         if (strpos($host, $domain) !== false) {
             $isOfficialUrl = true;
@@ -38,23 +49,44 @@ if (!empty($url)) {
         }
     }
 
-    // 如果是官解链接，使用官替接口
     if ($isOfficialUrl) {
         $videoUrl = $officialReplaceUrl . urlencode($url);
     } else {
-        // 普通 M3U8 链接，直接使用解析接口
         $videoUrl = $apiUrl . urlencode($url);
     }
 }
+
+$playerNameMap = [
+    'dplayer' => 'DPlayer',
+    'videojs' => 'Video.js',
+    'muiplayer' => 'MuiPlayer',
+    'artplayer' => 'ArtPlayer',
+    'nplayer' => 'NPlayer',
+];
+
+$currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>在线视频播放器</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <title>在线视频播放器 - <?php echo $currentPlayerName; ?></title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+    <?php if ($playerConfig['player'] === 'dplayer'): ?>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dplayer@1.27.1/dist/DPlayer.min.css">
     <script src="https://cdn.jsdelivr.net/npm/dplayer@1.27.1/dist/DPlayer.min.js"></script>
+    <?php elseif ($playerConfig['player'] === 'videojs'): ?>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/video.js@8.12.0/dist/video-js.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/video.js@8.12.0/dist/video.min.js"></script>
+    <?php elseif ($playerConfig['player'] === 'muiplayer'): ?>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mui-player@1.8.2/dist/mui-player.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/mui-player@1.8.2/dist/mui-player.min.js"></script>
+    <?php elseif ($playerConfig['player'] === 'artplayer'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/artplayer@5.1.4/dist/artplayer.min.js"></script>
+    <?php elseif ($playerConfig['player'] === 'nplayer'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/nplayer@1.0.15/dist/NPlayer.min.js"></script>
+    <?php endif; ?>
     <style>
         * {
             margin: 0;
@@ -78,6 +110,8 @@ if (!empty($url)) {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
         .header h1 {
@@ -93,6 +127,37 @@ if (!empty($url)) {
             font-size: 12px;
             color: rgba(255, 255, 255, 0.5);
             margin-top: 4px;
+        }
+
+        .player-switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-switch label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .player-switch select {
+            padding: 8px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .player-switch select:focus {
+            border-color: #00d4ff;
+        }
+
+        .player-switch select option {
+            background: #1a1a2e;
+            color: #fff;
         }
 
         .container {
@@ -113,10 +178,15 @@ if (!empty($url)) {
             margin-bottom: 20px;
         }
 
-        #dplayer {
+        #videoPlayer {
             width: 100%;
             aspect-ratio: 16 / 9;
             background: #000;
+        }
+
+        #videoPlayer video {
+            width: 100%;
+            height: 100%;
         }
 
         .info-panel {
@@ -198,67 +268,6 @@ if (!empty($url)) {
 
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.15);
-        }
-
-        .loading {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 400px;
-            gap: 20px;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top-color: #00d4ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
-        }
-
-        .error-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 400px;
-            gap: 16px;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .error-icon {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: rgba(239, 68, 68, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-        }
-
-        .error-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #ef4444;
-        }
-
-        .error-desc {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
-            max-width: 400px;
         }
 
         .empty-state {
@@ -353,6 +362,10 @@ if (!empty($url)) {
             background: #ef4444;
         }
 
+        .video::-webkit-media-controls {
+            display: flex !important;
+        }
+
         @media (max-width: 768px) {
             .header {
                 padding: 16px 20px;
@@ -381,13 +394,23 @@ if (!empty($url)) {
     <div class="header">
         <div>
             <h1>🎬 在线视频播放器</h1>
-            <div class="subtitle">支持 M3U8 在线解析播放 · 去广告播放 · 官解链接自动替换</div>
+            <div class="subtitle">当前播放器: <?php echo $currentPlayerName; ?> · 支持 M3U8 在线解析播放 · 去广告播放 · 官解链接自动替换</div>
+        </div>
+        <div class="player-switch">
+            <label for="playerSelect">切换播放器:</label>
+            <select id="playerSelect" onchange="switchPlayer(this.value)">
+                <option value="dplayer" <?php echo $playerConfig['player'] === 'dplayer' ? 'selected' : ''; ?>>DPlayer（推荐）</option>
+                <option value="videojs" <?php echo $playerConfig['player'] === 'videojs' ? 'selected' : ''; ?>>Video.js</option>
+                <option value="muiplayer" <?php echo $playerConfig['player'] === 'muiplayer' ? 'selected' : ''; ?>>MuiPlayer</option>
+                <option value="artplayer" <?php echo $playerConfig['player'] === 'artplayer' ? 'selected' : ''; ?>>ArtPlayer</option>
+                <option value="nplayer" <?php echo $playerConfig['player'] === 'nplayer' ? 'selected' : ''; ?>>NPlayer</option>
+            </select>
         </div>
     </div>
 
     <div class="container">
         <div class="player-wrapper">
-            <div id="dplayer"></div>
+            <div id="videoPlayer"></div>
         </div>
 
         <?php if (empty($url)): ?>
@@ -422,6 +445,17 @@ if (!empty($url)) {
             <div class="url-display" id="playUrl" style="display:none;"></div>
             <div class="url-label" id="statusLabel" style="display:none;">解析状态</div>
             <div class="url-display" id="status" style="display:none;"></div>
+            <div class="btn-group" style="margin-top: 12px;">
+                <button class="btn btn-secondary" onclick="copyUrl('originalUrl')">
+                    <span>📋</span> 复制原始地址
+                </button>
+                <button class="btn btn-secondary" onclick="copyUrl('playUrl')">
+                    <span>📋</span> 复制播放地址
+                </button>
+                <button class="btn btn-primary" onclick="reloadPlayer()">
+                    <span>🔄</span> 重新加载
+                </button>
+            </div>
         </div>
         <?php else: ?>
         <div class="info-panel">
@@ -447,18 +481,40 @@ if (!empty($url)) {
     </div>
 
     <div class="footer">
-        在线视频播放器 · 支持 M3U8 格式解析播放
+        在线视频播放器 · 支持 M3U8 格式解析播放 · 当前播放器: <?php echo $currentPlayerName; ?>
     </div>
 
     <div class="toast" id="toast"></div>
 
     <script>
-        let dp = null;
+        let player = null;
+        let hls = null;
         const videoUrl = <?php echo json_encode($videoUrl); ?>;
         const originalUrl = <?php echo json_encode($originalUrl); ?>;
         const isOfficialUrl = <?php echo json_encode($isOfficialUrl); ?>;
         const officialReplaceUrl = <?php echo json_encode($officialReplaceUrl); ?>;
         const apiUrl = <?php echo json_encode($apiUrl); ?>;
+        const currentPlayer = <?php echo json_encode($playerConfig['player']); ?>;
+        const autoplay = <?php echo json_encode($playerConfig['autoplay']); ?>;
+        const preload = <?php echo json_encode($playerConfig['preload']); ?>;
+
+        const hlsConfig = {
+            enableWorker: true,
+            lowLatencyMode: false,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 600,
+            minBufferLength: 2,
+            maxBufferSize: 60 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            startLevel: -1,
+            capLevelToPlayerSize: false,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 10,
+            fragLoadingTimeOut: 20000,
+            manifestLoadingTimeOut: 10000,
+            levelLoadingTimeOut: 10000,
+        };
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -485,14 +541,35 @@ if (!empty($url)) {
                 showToast('请输入视频链接', 'error');
                 return;
             }
-            window.location.href = '?url=' + encodeURIComponent(url);
+            const params = new URLSearchParams(window.location.search);
+            params.set('url', url);
+            window.location.search = params.toString();
+        }
+
+        function switchPlayer(playerType) {
+            const params = new URLSearchParams(window.location.search);
+            params.set('player', playerType);
+            window.location.search = params.toString();
+        }
+
+        function destroyPlayer() {
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            if (player) {
+                try {
+                    if (currentPlayer === 'dplayer' && player.destroy) player.destroy();
+                    if (currentPlayer === 'videojs' && player.dispose) player.dispose();
+                    if (currentPlayer === 'artplayer' && player.destroy) player.destroy();
+                    if (currentPlayer === 'nplayer' && player.dispose) player.dispose();
+                } catch (e) {}
+                player = null;
+            }
         }
 
         function reloadPlayer() {
-            if (dp) {
-                dp.destroy();
-                dp = null;
-            }
+            destroyPlayer();
             if (isOfficialUrl) {
                 handleOfficialUrl();
             } else {
@@ -500,7 +577,6 @@ if (!empty($url)) {
             }
         }
 
-        // 获取平台名称
         function getPlatformName(url) {
             const platforms = {
                 'v.qq.com': '腾讯视频',
@@ -511,7 +587,6 @@ if (!empty($url)) {
                 'sohu.com': '搜狐视频',
                 'pptv.com': 'PP视频'
             };
-
             for (const [domain, name] of Object.entries(platforms)) {
                 if (url.indexOf(domain) !== -1) {
                     return name;
@@ -520,65 +595,39 @@ if (!empty($url)) {
             return '未知平台';
         }
 
-        // 处理官解链接
         async function handleOfficialUrl() {
             if (!isOfficialUrl) {
                 initPlayer(videoUrl);
                 return;
             }
-
             const platformName = getPlatformName(originalUrl);
             document.getElementById('platformInfo').textContent = '✅ 检测到 ' + platformName + ' 链接';
-
             try {
                 showToast('正在解析官解链接...', 'success');
-
                 const response = await fetch(officialReplaceUrl + encodeURIComponent(originalUrl));
                 const data = await response.json();
-
                 if (data.success) {
-                    // 显示视频信息
                     if (data.video_title) {
                         document.getElementById('videoTitleLabel').style.display = 'block';
                         document.getElementById('videoTitle').style.display = 'block';
                         document.getElementById('videoTitle').textContent = data.video_title;
                     }
-
+                    let playUrl = '';
                     if (data.ad_skip_url) {
-                        // 使用去广告后的播放地址
-                        const playUrl = data.ad_skip_url;
-
-                        document.getElementById('playUrlLabel').style.display = 'block';
-                        document.getElementById('playUrl').style.display = 'block';
-                        document.getElementById('playUrl').textContent = playUrl;
-
-                        document.getElementById('statusLabel').style.display = 'block';
-                        document.getElementById('status').style.display = 'block';
-                        document.getElementById('status').innerHTML = '<span style="color: #10b981;">✅ 解析成功</span>，正在加载播放器...';
-
-                        showToast('官解链接解析成功！', 'success');
-
-                        // 初始化播放器
-                        initPlayer(playUrl);
+                        playUrl = data.ad_skip_url;
                     } else if (data.m3u8_url) {
-                        // 直接使用 M3U8 地址
-                        const playUrl = apiUrl + encodeURIComponent(data.m3u8_url);
-
-                        document.getElementById('playUrlLabel').style.display = 'block';
-                        document.getElementById('playUrl').style.display = 'block';
-                        document.getElementById('playUrl').textContent = data.m3u8_url;
-
-                        document.getElementById('statusLabel').style.display = 'block';
-                        document.getElementById('status').style.display = 'block';
-                        document.getElementById('status').innerHTML = '<span style="color: #10b981;">✅ 解析成功</span>，正在加载播放器...';
-
-                        showToast('官解链接解析成功！', 'success');
-
-                        // 初始化播放器
-                        initPlayer(playUrl);
+                        playUrl = apiUrl + encodeURIComponent(data.m3u8_url);
                     } else {
                         throw new Error('未获取到播放地址');
                     }
+                    document.getElementById('playUrlLabel').style.display = 'block';
+                    document.getElementById('playUrl').style.display = 'block';
+                    document.getElementById('playUrl').textContent = playUrl;
+                    document.getElementById('statusLabel').style.display = 'block';
+                    document.getElementById('status').style.display = 'block';
+                    document.getElementById('status').innerHTML = '<span style="color: #10b981;">✅ 解析成功</span>，正在加载播放器...';
+                    showToast('官解链接解析成功！', 'success');
+                    initPlayer(playUrl);
                 } else {
                     throw new Error(data.message || '解析失败');
                 }
@@ -591,57 +640,255 @@ if (!empty($url)) {
             }
         }
 
+        function createHls(video, url) {
+            if (hls) {
+                hls.destroy();
+            }
+            if (Hls.isSupported()) {
+                hls = new Hls(hlsConfig);
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    console.log('HLS 加载完成');
+                });
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    console.error('HLS 错误:', data);
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log('网络错误，尝试恢复...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log('媒体错误，尝试恢复...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                showToast('视频加载失败，请检查链接是否正确', 'error');
+                                break;
+                        }
+                    }
+                });
+                return hls;
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                return null;
+            } else {
+                showToast('您的浏览器不支持 HLS 播放', 'error');
+                return null;
+            }
+        }
+
         function initPlayer(url) {
             if (!url) return;
 
-            const dplayerEl = document.getElementById('dplayer');
+            const container = document.getElementById('videoPlayer');
+            container.innerHTML = '';
 
-            dp = new DPlayer({
-                container: dplayerEl,
+            if (currentPlayer === 'dplayer') {
+                initDPlayer(container, url);
+            } else if (currentPlayer === 'videojs') {
+                initVideoJs(container, url);
+            } else if (currentPlayer === 'muiplayer') {
+                initMuiPlayer(container, url);
+            } else if (currentPlayer === 'artplayer') {
+                initArtPlayer(container, url);
+            } else if (currentPlayer === 'nplayer') {
+                initNPlayer(container, url);
+            } else {
+                initDPlayer(container, url);
+            }
+        }
+
+        function initDPlayer(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            container.appendChild(videoEl);
+
+            player = new DPlayer({
+                container: container,
                 video: {
                     url: url,
                     type: 'customHls',
                     customType: {
-                        customHls: function (video, player) {
-                            if (Hls.isSupported()) {
-                                const hls = new Hls({
-                                    enableWorker: true,
-                                    lowLatencyMode: true,
-                                });
-                                hls.loadSource(video.src);
-                                hls.attachMedia(video);
-                                hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                                    console.log('HLS 加载完成');
-                                });
-                                hls.on(Hls.Events.ERROR, function (event, data) {
-                                    console.error('HLS 错误:', data);
-                                    if (data.fatal) {
-                                        showToast('视频加载失败，请检查链接是否正确', 'error');
-                                    }
-                                });
-                                player.hls = hls;
-                            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                                video.src = video.src;
-                            } else {
-                                showToast('您的浏览器不支持 HLS 播放', 'error');
-                            }
+                        customHls: function (video, dp) {
+                            createHls(video, url);
                         }
                     }
                 },
-                autoplay: false,
+                autoplay: autoplay,
                 theme: '#00d4ff',
                 loop: false,
                 lang: 'zh-cn',
                 screenshot: true,
                 hotkey: true,
-                preload: 'metadata',
+                preload: preload,
                 volume: 0.7,
                 mutex: true,
             });
 
-            dp.on('error', function () {
+            player.on('error', function () {
                 showToast('视频播放出错，请检查链接是否有效', 'error');
             });
+        }
+
+        function initVideoJs(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.id = 'videojs-player';
+            videoEl.className = 'video-js vjs-big-play-centered';
+            videoEl.controls = true;
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            container.appendChild(videoEl);
+
+            player = videojs('videojs-player', {
+                autoplay: autoplay,
+                controls: true,
+                preload: preload,
+                language: 'zh-CN',
+                fluid: true,
+                aspectRatio: '16:9',
+                controlBar: {
+                    children: [
+                        'playToggle',
+                        'volumePanel',
+                        'currentTimeDisplay',
+                        'timeDivider',
+                        'durationDisplay',
+                        'progressControl',
+                        'fullscreenToggle',
+                    ]
+                }
+            });
+
+            if (Hls.isSupported()) {
+                createHls(videoEl, url);
+            } else {
+                player.src(url);
+            }
+
+            player.on('error', function () {
+                showToast('视频播放出错，请检查链接是否有效', 'error');
+            });
+        }
+
+        function initMuiPlayer(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.id = 'muiplayer-video';
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            container.appendChild(videoEl);
+
+            if (Hls.isSupported()) {
+                createHls(videoEl, url);
+            } else {
+                videoEl.src = url;
+            }
+
+            player = new MuiPlayer({
+                container: '#videoPlayer',
+                video: {
+                    url: url,
+                    poster: '',
+                },
+                autoplay: autoplay,
+                preload: preload,
+                volume: 0.7,
+                themeColor: '#00d4ff',
+                mode: 'both',
+                language: 'zh-CN',
+                showRate: true,
+                title: '视频播放',
+            });
+
+            if (Hls.isSupported()) {
+                player.video.addEventListener('loadedmetadata', function () {
+                    console.log('MuiPlayer HLS 加载完成');
+                });
+            }
+        }
+
+        function initArtPlayer(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            container.appendChild(videoEl);
+
+            player = new Artplayer({
+                container: container,
+                url: url,
+                autoplay: autoplay,
+                preload: preload,
+                volume: 0.7,
+                theme: '#00d4ff',
+                lang: 'zh-cn',
+                setting: true,
+                playbackRate: true,
+                fullscreen: true,
+                fullscreenWeb: true,
+                miniProgressBar: true,
+                mutex: true,
+                pip: true,
+                autoSize: false,
+                playsInline: true,
+                autoPlayback: true,
+                fastForward: true,
+                customType: {
+                    m3u8: function (video, url, art) {
+                        if (Hls.isSupported()) {
+                            const hlsInstance = new Hls(hlsConfig);
+                            hlsInstance.loadSource(url);
+                            hlsInstance.attachMedia(video);
+                            art.hls = hlsInstance;
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = url;
+                        }
+                    }
+                },
+            });
+
+            player.on('error', function () {
+                showToast('视频播放出错，请检查链接是否有效', 'error');
+            });
+        }
+
+        function initNPlayer(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.id = 'nplayer-video';
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            container.appendChild(videoEl);
+
+            if (Hls.isSupported()) {
+                createHls(videoEl, url);
+            } else {
+                videoEl.src = url;
+            }
+
+            player = new NPlayer.Player({
+                container: container,
+                video: videoEl,
+                volume: 0.7,
+                autoplay: autoplay,
+                themeColor: '#00d4ff',
+            });
+
+            if (Hls.isSupported()) {
+                videoEl.addEventListener('loadedmetadata', function () {
+                    console.log('NPlayer HLS 加载完成');
+                });
+            }
         }
 
         document.getElementById('urlInput')?.addEventListener('keypress', function (e) {
@@ -650,13 +897,10 @@ if (!empty($url)) {
             }
         });
 
-        // 根据链接类型初始化播放器
         if (videoUrl) {
             if (isOfficialUrl) {
-                // 官解链接需要先解析
                 handleOfficialUrl();
             } else {
-                // 普通 M3U8 链接直接播放
                 initPlayer(videoUrl);
             }
         }
