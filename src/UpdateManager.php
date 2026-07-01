@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '1.10.0';
+    private $currentVersion = '2.2.0';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
@@ -207,6 +207,8 @@ class UpdateManager
 
         $hasUpdate = $latestCommit !== $currentCommit;
 
+        $changelog = $this->getRecentCommits($currentCommit);
+
         return [
             'success' => true,
             'current_version' => $this->currentVersion,
@@ -215,8 +217,87 @@ class UpdateManager
             'latest_message' => $commitMessage,
             'latest_date' => $commitDate,
             'has_update' => $hasUpdate,
-            'repo_url' => 'https://github.com/' . $this->githubRepo
+            'repo_url' => 'https://github.com/' . $this->githubRepo,
+            'changelog' => $changelog
         ];
+    }
+
+    private function getRecentCommits($sinceCommit = '')
+    {
+        $changelog = [];
+        $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits?sha=' . $this->githubBranch . '&per_page=20';
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $apiUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || !$response) {
+            return $changelog;
+        }
+
+        $commits = json_decode($response, true);
+        if (!is_array($commits)) {
+            return $changelog;
+        }
+
+        $foundCurrent = false;
+        foreach ($commits as $commit) {
+            $sha = $commit['sha'] ?? '';
+            if (!empty($sinceCommit) && strpos($sha, $sinceCommit) === 0) {
+                $foundCurrent = true;
+                break;
+            }
+
+            $message = $commit['commit']['message'] ?? '';
+            $message = explode("\n", trim($message))[0] ?? '';
+            $date = $commit['commit']['committer']['date'] ?? '';
+            $author = $commit['commit']['author']['name'] ?? 'Unknown';
+
+            $type = 'feat';
+            $typeLabel = '功能更新';
+            $typeColor = '#67c23a';
+
+            if (preg_match('/^(\w+):/', $message, $m)) {
+                $type = strtolower($m[1]);
+                $message = trim(substr($message, strlen($m[0])));
+            }
+
+            $typeMap = [
+                'feat' => ['label' => '✨ 新功能', 'color' => '#67c23a'],
+                'fix' => ['label' => '🐛 修复', 'color' => '#f56c6c'],
+                'perf' => ['label' => '⚡ 优化', 'color' => '#e6a23c'],
+                'refactor' => ['label' => '♻️ 重构', 'color' => '#909399'],
+                'docs' => ['label' => '📝 文档', 'color' => '#409eff'],
+                'style' => ['label' => '💄 样式', 'color' => '#d87fd2'],
+                'chore' => ['label' => '🔧 工具', 'color' => '#909399'],
+                'merge' => ['label' => '🔀 合并', 'color' => '#409eff'],
+                'wip' => ['label' => '🚧 开发中', 'color' => '#e6a23c'],
+            ];
+
+            if (isset($typeMap[$type])) {
+                $typeLabel = $typeMap[$type]['label'];
+                $typeColor = $typeMap[$type]['color'];
+            }
+
+            $changelog[] = [
+                'sha' => substr($sha, 0, 7),
+                'full_sha' => $sha,
+                'message' => $message,
+                'date' => $date,
+                'date_formatted' => !empty($date) ? date('Y-m-d H:i', strtotime($date)) : '',
+                'author' => $author,
+                'type' => $type,
+                'type_label' => $typeLabel,
+                'type_color' => $typeColor
+            ];
+        }
+
+        return $changelog;
     }
 
     public function createBackup()
