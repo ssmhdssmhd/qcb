@@ -564,11 +564,22 @@ $proxies = $proxyMgr->getAllProxies();
                 formData.append(key, data[key]);
             }
             
-            const res = await fetch('proxy_admin.php', {
+            const scriptName = window.location.pathname.split('/').pop() || 'proxy_admin.php';
+            const res = await fetch(scriptName, {
                 method: 'POST',
                 body: formData
             });
-            return res.json();
+            
+            if (!res.ok) {
+                throw new Error('网络请求失败: ' + res.status);
+            }
+            
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error('返回数据格式错误');
+            }
         }
         
         async function saveProxy() {
@@ -680,17 +691,22 @@ $proxies = $proxyMgr->getAllProxies();
         }
 
         async function fetchFromWeb() {
-            if (!confirm('确定要从网络获取免费代理吗？这可能需要一些时间。\n\n系统将从多个公开代理源获取并自动验证可用性。')) return;
+            const verify = confirm('获取后要自动验证代理可用性吗？\n\n验证会更慢但能确保代理可用。\n点击「确定」= 验证（推荐）\n点击「取消」= 不验证，快速获取');
             
             showToast('正在从网络获取代理，请稍候...', 'success');
             
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = '获取中...';
+            const btn = event?.target;
+            const originalText = btn ? btn.textContent : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '获取中...';
+            }
             
             try {
-                const result = await apiCall('fetch_from_web', { verify: 'true', max_per_source: 20 });
+                const result = await apiCall('fetch_from_web', { 
+                    verify: verify ? 'true' : 'false', 
+                    max_per_source: 15 
+                });
                 if (result.success) {
                     let msg = `成功添加 ${result.added} 个可用代理`;
                     if (result.sources) {
@@ -705,8 +721,10 @@ $proxies = $proxyMgr->getAllProxies();
             } catch (e) {
                 showToast('获取失败: ' + e.message, 'error');
             } finally {
-                btn.disabled = false;
-                btn.textContent = originalText;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
             }
         }
 

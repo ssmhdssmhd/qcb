@@ -6,13 +6,21 @@
  */
 
 class ProxyFetcher {
-    private $timeout = 10;
-    private $maxPerSource = 30;
+    private $timeout = 8;
+    private $connectTimeout = 5;
+    private $maxPerSource = 15;
+    private $verifyTimeout = 5;
+    private $maxVerifyCount = 15;
+    private $fastFail = true;
     private $sources = [];
 
     public function __construct($options = []) {
-        $this->timeout = $options['timeout'] ?? 10;
-        $this->maxPerSource = $options['max_per_source'] ?? 30;
+        $this->timeout = $options['timeout'] ?? 8;
+        $this->connectTimeout = $options['connect_timeout'] ?? 5;
+        $this->maxPerSource = $options['max_per_source'] ?? 15;
+        $this->verifyTimeout = $options['verify_timeout'] ?? 5;
+        $this->maxVerifyCount = $options['max_verify_count'] ?? 15;
+        $this->fastFail = $options['fast_fail'] ?? true;
         $this->initSources();
     }
 
@@ -141,11 +149,14 @@ class ProxyFetcher {
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $this->connectTimeout);
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_ENCODING, 'gzip, deflate');
+        curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -296,20 +307,41 @@ class ProxyFetcher {
         return $unique;
     }
 
-    public function verifyProxies($proxies, $testUrl = 'https://httpbin.org/get', $timeout = 8) {
+    public function verifyProxies($proxies, $testUrl = 'https://httpbin.org/get', $timeout = null) {
+        if ($timeout === null) {
+            $timeout = $this->verifyTimeout;
+        }
+
         $verified = [];
         $total = count($proxies);
-        $count = 0;
+        $testCount = min($total, $this->maxVerifyCount);
 
-        foreach ($proxies as $proxy) {
-            $count++;
+        for ($i = 0; $i < $testCount; $i++) {
+            $proxy = $proxies[$i];
             $result = $this->testSingleProxy($proxy, $testUrl, $timeout);
             if ($result['success']) {
                 $proxy['response_time'] = $result['response_time'];
                 $proxy['status'] = 'active';
                 $verified[] = $proxy;
+                if (count($verified) >= 10) {
+                    break;
+                }
             }
-            if (count($verified) >= 20) break;
+        }
+
+        if (count($verified) < 5 && $testCount < $total) {
+            $remaining = array_slice($proxies, $testCount, 20);
+            foreach ($remaining as $proxy) {
+                $result = $this->testSingleProxy($proxy, $testUrl, $timeout);
+                if ($result['success']) {
+                    $proxy['response_time'] = $result['response_time'];
+                    $proxy['status'] = 'active';
+                    $verified[] = $proxy;
+                    if (count($verified) >= 10) {
+                        break;
+                    }
+                }
+            }
         }
 
         return $verified;
@@ -320,10 +352,13 @@ class ProxyFetcher {
         curl_setopt($ch, CURLOPT_URL, $testUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, min($timeout, 4));
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
+        curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        curl_setopt($ch, CURLOPT_ENCODING, 'gzip');
 
         $type = strtolower($proxy['type'] ?? 'http');
         if ($type === 'http') {
