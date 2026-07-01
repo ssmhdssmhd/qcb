@@ -527,104 +527,137 @@ try {
             break;
 
         case 'mxjx':
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
             $url = $_GET['url'] ?? '';
             if (empty($url)) {
-                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                header('Content-Type: application/json; charset=utf-8');
+                sendJsonResponse(['success' => false, 'code' => 400, 'message' => '缺少 url 参数'], 400);
             }
 
-            $cacheManager = new CacheManager($rootDir . '/cache');
-            $parsedUrl = parse_url($url);
-            $domain = $parsedUrl['host'] ?? '';
-
-            $cacheKey = 'mxjx_' . md5($url . '_' . $domain);
-            $cachedContent = $cacheManager->get($cacheKey);
-
-            if ($cachedContent !== null && is_string($cachedContent)) {
-                header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
-                header('Content-Disposition: inline; filename="playlist.m3u8"');
-                header('X-Cache: HIT');
-                ob_clean();
-                echo $cachedContent;
-                exit;
-            }
-
-            $mediaUrl = resolveMasterPlaylist($url);
-            if ($mediaUrl !== $url) {
-                $parsedUrl = parse_url($mediaUrl);
+            try {
+                $cacheManager = new CacheManager($rootDir . '/cache');
+                $parsedUrl = parse_url($url);
                 $domain = $parsedUrl['host'] ?? '';
-            }
-            $url = $mediaUrl;
+                
+                // 添加时间戳避免相同URL缓存问题
+                $timestamp = $_GET['_t'] ?? '';
+                $cacheKey = 'mxjx_' . md5($url . '_' . $domain . '_' . $timestamp);
+                $cachedContent = $cacheManager->get($cacheKey);
 
-            $skipper = new M3U8AdSkipper();
-            $reflection = new ReflectionClass($skipper);
-            $ruleEngineProp = $reflection->getProperty('ruleEngine');
-            $ruleEngineProp->setAccessible(true);
+                if ($cachedContent !== null && is_string($cachedContent) && empty($timestamp)) {
+                    header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
+                    header('Content-Disposition: inline; filename="playlist.m3u8"');
+                    header('X-Cache: HIT');
+                    ob_clean();
+                    echo $cachedContent;
+                    exit;
+                }
 
-            $enhancedEngine = new EnhancedAdRuleEngine([
-                'checkDiscontinuity' => true,
-                'checkRepetitiveDuration' => true
-            ]);
-            $enhancedEngine->setDomain($domain);
-            $ruleEngineProp->setValue($skipper, $enhancedEngine);
+                $mediaUrl = resolveMasterPlaylist($url);
+                if ($mediaUrl !== $url) {
+                    $parsedUrl = parse_url($mediaUrl);
+                    $domain = $parsedUrl['host'] ?? '';
+                }
+                $url = $mediaUrl;
 
-            $filterProp = $reflection->getProperty('filter');
-            $filterProp->setAccessible(true);
-            $filter = $filterProp->getValue($skipper);
+                $skipper = new M3U8AdSkipper();
+                $reflection = new ReflectionClass($skipper);
+                $ruleEngineProp = $reflection->getProperty('ruleEngine');
+                $ruleEngineProp->setAccessible(true);
 
-            $filterReflection = new ReflectionClass($filter);
-            $filterEngineProp = $filterReflection->getProperty('ruleEngine');
-            $filterEngineProp->setAccessible(true);
-            $filterEngineProp->setValue($filter, $enhancedEngine);
+                $enhancedEngine = new EnhancedAdRuleEngine([
+                    'checkDiscontinuity' => true,
+                    'checkRepetitiveDuration' => true
+                ]);
+                $enhancedEngine->setDomain($domain);
+                $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
-            $result = $skipper->process($url);
+                $filterProp = $reflection->getProperty('filter');
+                $filterProp->setAccessible(true);
+                $filter = $filterProp->getValue($skipper);
 
-            $stats = $result['stats'] ?? [];
-            $adPercentage = $stats['adPercentage'] ?? 0;
-            if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
-                $newM3U8Content = file_get_contents($url);
-                if ($newM3U8Content === false) {
+                $filterReflection = new ReflectionClass($filter);
+                $filterEngineProp = $filterReflection->getProperty('ruleEngine');
+                $filterEngineProp->setAccessible(true);
+                $filterEngineProp->setValue($filter, $enhancedEngine);
+
+                $result = $skipper->process($url);
+
+                if (!$result['success'] && empty($result['output'])) {
+                    header('Content-Type: application/json; charset=utf-8');
+                    sendJsonResponse([
+                        'success' => false,
+                        'code' => 500,
+                        'message' => 'M3U8 解析失败',
+                        'error' => $result['error'] ?? '未知错误'
+                    ], 500);
+                }
+
+                $stats = $result['stats'] ?? [];
+                $adPercentage = $stats['adPercentage'] ?? 0;
+                if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
+                    $newM3U8Content = @file_get_contents($url);
+                    if ($newM3U8Content === false) {
+                        $newM3U8Content = $result['output'];
+                    }
+                } else {
                     $newM3U8Content = $result['output'];
                 }
-            } else {
-                $newM3U8Content = $result['output'];
-            }
 
-            $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
+                $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
 
-            if ($isRemote) {
-                $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
-                if (isset($parsedUrl['port'])) {
-                    $baseUrl .= ':' . $parsedUrl['port'];
-                }
-                $pathDir = dirname($parsedUrl['path'] ?? '');
-                $pathDir = $pathDir === '.' ? '' : $pathDir;
-
-                $lines = explode("\n", $newM3U8Content);
-                $newLines = [];
-                foreach ($lines as $line) {
-                    if (!empty(trim($line)) &&
-                        strpos($line, '#') !== 0 &&
-                        strpos($line, 'http://') !== 0 &&
-                        strpos($line, 'https://') !== 0) {
-                        if ($pathDir === '' || $pathDir === '/') {
-                            $line = $baseUrl . '/' . ltrim($line, '/');
-                        } else {
-                            $line = $baseUrl . $pathDir . '/' . ltrim($line, '/');
-                        }
+                if ($isRemote) {
+                    $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                    if (isset($parsedUrl['port'])) {
+                        $baseUrl .= ':' . $parsedUrl['port'];
                     }
-                    $newLines[] = $line;
+                    $pathDir = dirname($parsedUrl['path'] ?? '');
+                    $pathDir = $pathDir === '.' ? '' : $pathDir;
+
+                    $lines = explode("\n", $newM3U8Content);
+                    $newLines = [];
+                    foreach ($lines as $line) {
+                        if (!empty(trim($line)) &&
+                            strpos($line, '#') !== 0 &&
+                            strpos($line, 'http://') !== 0 &&
+                            strpos($line, 'https://') !== 0) {
+                            if ($pathDir === '' || $pathDir === '/') {
+                                $line = $baseUrl . '/' . ltrim($line, '/');
+                            } else {
+                                $line = $baseUrl . $pathDir . '/' . ltrim($line, '/');
+                            }
+                        }
+                        $newLines[] = $line;
+                    }
+                    $newM3U8Content = implode("\n", $newLines);
                 }
-                $newM3U8Content = implode("\n", $newLines);
+
+                // 仅在无时间戳参数时缓存
+                if (empty($timestamp)) {
+                    $cacheManager->set($cacheKey, $newM3U8Content, 120);
+                }
+
+                header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
+                header('Content-Disposition: inline; filename="playlist.m3u8"');
+                header('X-Cache: MISS');
+                header('X-Request-Time: ' . time());
+                ob_clean();
+                echo $newM3U8Content;
+                exit;
+
+            } catch (Exception $e) {
+                header('Content-Type: application/json; charset=utf-8');
+                sendJsonResponse([
+                    'success' => false,
+                    'code' => 500,
+                    'message' => '处理失败',
+                    'error' => $e->getMessage()
+                ], 500);
             }
-
-            $cacheManager->set($cacheKey, $newM3U8Content, 120);
-
-            header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
-            header('Content-Disposition: inline; filename="playlist.m3u8"');
-            header('X-Cache: MISS');
-            ob_clean();
-            echo $newM3U8Content;
-            exit;
+            break;
 
         case 'mxjx/info':
             $url = $_GET['url'] ?? '';
