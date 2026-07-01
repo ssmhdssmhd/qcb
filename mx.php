@@ -1303,6 +1303,88 @@ try {
             }
             break;
 
+        case 'moxi':
+        case 'moxi/api':
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
+            $url = $_GET['url'] ?? '';
+            $playType = $_GET['type'] ?? '';
+            
+            if (empty($url)) {
+                echo json_encode([
+                    'code' => 400,
+                    'url' => '',
+                    'msg' => '缺少 url 参数',
+                    'jm' => '',
+                    'js' => '',
+                    'time' => date('Y-m-d H:i:s'),
+                    'kfz' => '沫兮API'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            
+            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
+            $selfUrl = $scheme . '://' . $host . $basePath;
+            
+            $officialDomains = ['v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'bilibili.com', 'sohu.com', 'pptv.com'];
+            $parsedUrl = parse_url($url);
+            $urlHost = $parsedUrl['host'] ?? '';
+            $isOfficialUrl = false;
+            
+            foreach ($officialDomains as $domain) {
+                if (strpos($urlHost, $domain) !== false) {
+                    $isOfficialUrl = true;
+                    break;
+                }
+            }
+            
+            $playUrl = '';
+            $juMing = '';
+            $jiShu = '';
+            $code = 200;
+            $msg = '解析成功';
+            
+            if ($isOfficialUrl) {
+                $result = $officialReplaceMgr->resolve($url);
+                if ($result['success']) {
+                    $m3u8Url = $result['m3u8_url'] ?? '';
+                    $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                    $juMing = $result['video_title'] ?? '';
+                    $jiShu = $result['target_episode'] ?? ($result['episode'] ?? '');
+                    if (empty($jiShu)) {
+                        $jiShu = '正片';
+                    }
+                } else {
+                    $code = 404;
+                    $msg = $result['message'] ?? '解析失败';
+                }
+            } else {
+                $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+                $juMing = '在线视频';
+                $jiShu = '正片';
+            }
+            
+            $response = [
+                'code' => $code,
+                'url' => $playUrl,
+                'msg' => $playUrl,
+                'jm' => $juMing,
+                'js' => $jiShu,
+                'time' => date('Y-m-d H:i:s'),
+                'kfz' => '沫兮API - 在线视频解析'
+            ];
+            
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+            exit;
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
@@ -1335,6 +1417,8 @@ try {
                     'official_replace/platform/delete' => '删除官替平台',
                     'official_replace/resolve' => '官替解析-完整结果',
                     'official_replace/info' => '官替解析-精简信息',
+                    'moxi' => '沫兮API接口',
+                    'moxi/api' => '沫兮API接口(别名)',
                     'skip' => '去广告接口',
                     'mxjx' => '去广告m3u8输出',
                     'update/version' => '获取当前版本',
