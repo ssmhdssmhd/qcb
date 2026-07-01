@@ -124,106 +124,143 @@ class ResourceSiteManager {
     }
 
     public function fetchVideos($apiUrl, $page = 1, $limit = 20) {
-        $url = $this->buildApiUrl($apiUrl, [
-            'ac' => 'detail',
-            'pg' => intval($page),
-            'limit' => intval($limit)
-        ]);
+        $fetchStrategies = [
+            ['ac' => 'detail'],
+            ['ac' => 'videolist'],
+        ];
 
-        $response = $this->httpGet($url);
-        if ($response === false) {
-            return ['success' => false, 'message' => '请求失败: ' . ($this->lastHttpError ?? '未知错误')];
-        }
+        $lastError = '';
+        foreach ($fetchStrategies as $strategy) {
+            $params = array_merge($strategy, [
+                'pg' => intval($page),
+                'limit' => intval($limit)
+            ]);
+            $url = $this->buildApiUrl($apiUrl, $params);
 
-        $data = json_decode($response, true);
-        if (!$data) {
-            return ['success' => false, 'message' => '解析JSON失败'];
-        }
+            $response = $this->httpGet($url);
+            if ($response === false) {
+                $lastError = $this->lastHttpError ?? '未知错误';
+                continue;
+            }
 
-        $videos = [];
-        $list = $data['list'] ?? $data['data'] ?? [];
-        foreach ($list as $item) {
-            $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
-            $vodName = $item['vod_name'] ?? $item['name'] ?? '';
-            $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
-            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
-            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
+            $data = json_decode($response, true);
+            if (!$data) {
+                $lastError = '解析JSON失败';
+                continue;
+            }
 
-            if (empty($vodPlayUrl)) continue;
+            $videos = [];
+            $list = $data['list'] ?? $data['data'] ?? [];
+            foreach ($list as $item) {
+                $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
+                $vodName = $item['vod_name'] ?? $item['name'] ?? '';
+                $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+                $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+                $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
 
-            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
-            if (!empty($allM3u8Urls)) {
-                $videos[] = [
-                    'id' => $vodId,
-                    'name' => $vodName,
-                    'pic' => $vodPic,
-                    'remarks' => $vodRemarks,
-                    'urls' => $allM3u8Urls,
-                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
-                    'raw_play_url' => $vodPlayUrl
+                if (empty($vodPlayUrl)) continue;
+
+                $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
+                if (!empty($allM3u8Urls)) {
+                    $videos[] = [
+                        'id' => $vodId,
+                        'name' => $vodName,
+                        'pic' => $vodPic,
+                        'remarks' => $vodRemarks,
+                        'urls' => $allM3u8Urls,
+                        'first_url' => $allM3u8Urls[0]['url'] ?? '',
+                        'raw_play_url' => $vodPlayUrl
+                    ];
+                }
+            }
+
+            if (!empty($videos)) {
+                return [
+                    'success' => true,
+                    'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
+                    'page' => $page,
+                    'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
+                    'videos' => $videos
                 ];
             }
+            $lastError = '无视频数据';
         }
 
-        return [
-            'success' => true,
-            'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
-            'page' => $page,
-            'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
-            'videos' => $videos
-        ];
+        return ['success' => false, 'message' => '获取失败: ' . $lastError];
     }
 
     public function searchVideos($apiUrl, $keyword, $page = 1, $limit = 20) {
-        $url = $this->buildApiUrl($apiUrl, [
-            'ac' => 'detail',
-            'wd' => $keyword,
-            'pg' => intval($page),
-            'limit' => intval($limit)
-        ]);
-
-        $response = $this->httpGet($url);
-        if ($response === false) {
-            return ['success' => false, 'message' => '请求失败: ' . ($this->lastHttpError ?? '未知错误')];
-        }
-
-        $data = json_decode($response, true);
-        if (!$data) {
-            return ['success' => false, 'message' => '解析JSON失败'];
-        }
-
-        $videos = [];
-        $list = $data['list'] ?? $data['data'] ?? [];
-        foreach ($list as $item) {
-            $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
-            $vodName = $item['vod_name'] ?? $item['name'] ?? '';
-            $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
-            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
-            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
-
-            if (empty($vodPlayUrl)) continue;
-
-            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
-            if (!empty($allM3u8Urls)) {
-                $videos[] = [
-                    'id' => $vodId,
-                    'name' => $vodName,
-                    'pic' => $vodPic,
-                    'remarks' => $vodRemarks,
-                    'urls' => $allM3u8Urls,
-                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
-                    'raw_play_url' => $vodPlayUrl
-                ];
-            }
-        }
-
-        return [
-            'success' => true,
-            'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
-            'page' => $page,
-            'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
-            'videos' => $videos
+        $searchStrategies = [
+            ['ac' => 'detail', 'wd' => $keyword],
+            ['ac' => 'videolist', 'wd' => $keyword],
         ];
+
+        $lastError = '';
+        foreach ($searchStrategies as $strategy) {
+            $params = array_merge($strategy, [
+                'pg' => intval($page),
+                'limit' => intval($limit)
+            ]);
+            $url = $this->buildApiUrl($apiUrl, $params);
+
+            $response = $this->httpGet($url);
+            if ($response === false) {
+                $lastError = $this->lastHttpError ?? '未知错误';
+                continue;
+            }
+
+            $data = json_decode($response, true);
+            if (!$data) {
+                $lastError = '解析JSON失败';
+                continue;
+            }
+
+            $code = $data['code'] ?? $data['status'] ?? 0;
+            if ($code != 200 && $code != 1 && !empty($data['msg']) && empty($data['list']) && empty($data['data'])) {
+                $lastError = $data['msg'] ?? '接口返回错误';
+                continue;
+            }
+
+            $videos = [];
+            $list = $data['list'] ?? $data['data'] ?? [];
+            if (empty($list)) {
+                $lastError = '搜索无结果';
+                continue;
+            }
+
+            foreach ($list as $item) {
+                $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
+                $vodName = $item['vod_name'] ?? $item['name'] ?? '';
+                $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+                $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+                $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
+
+                if (empty($vodPlayUrl)) continue;
+
+                $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
+                if (!empty($allM3u8Urls)) {
+                    $videos[] = [
+                        'id' => $vodId,
+                        'name' => $vodName,
+                        'pic' => $vodPic,
+                        'remarks' => $vodRemarks,
+                        'urls' => $allM3u8Urls,
+                        'first_url' => $allM3u8Urls[0]['url'] ?? '',
+                        'raw_play_url' => $vodPlayUrl
+                    ];
+                }
+            }
+
+            return [
+                'success' => true,
+                'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
+                'page' => $page,
+                'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
+                'videos' => $videos
+            ];
+        }
+
+        return ['success' => false, 'message' => '搜索失败: ' . $lastError];
     }
 
     public function searchAllSites($keyword, $maxSites = 5, $limitPerSite = 10) {
@@ -825,56 +862,75 @@ class ResourceSiteManager {
             $proxyMgr = new ProxyManager();
         }
 
+        $sslVersions = [null, CURL_SSLVERSION_TLSv1_2, CURL_SSLVERSION_TLSv1_1, CURL_SSLVERSION_SSLv2 | CURL_SSLVERSION_SSLv3];
+
         for ($attempt = 0; $attempt <= $retry; $attempt++) {
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
-            curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Accept: application/json, text/plain, */*',
-                'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
-                'Referer: ' . (parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . '/')
-            ]);
-            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            foreach ($sslVersions as $sslIdx => $sslVersion) {
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                if ($sslVersion !== null) {
+                    curl_setopt($ch, CURLOPT_SSLVERSION, $sslVersion);
+                }
+                curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+                curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    'Accept: application/json, text/plain, */*',
+                    'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
+                    'Referer: ' . (parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . '/')
+                ]);
+                curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
-            $currentProxy = null;
-            if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
-                $currentProxy = $proxyMgr->applyProxyToCurl($ch);
-            }
+                $currentProxy = null;
+                if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
+                    $currentProxy = $proxyMgr->applyProxyToCurl($ch);
+                }
 
-            $startTime = microtime(true);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $error = curl_error($ch);
-            $responseTime = round((microtime(true) - $startTime) * 1000, 2);
-            curl_close($ch);
+                $startTime = microtime(true);
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error = curl_error($ch);
+                $responseTime = round((microtime(true) - $startTime) * 1000, 2);
+                curl_close($ch);
 
-            if ($currentProxy) {
+                if ($currentProxy) {
+                    if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+                        $proxyMgr->markProxySuccess($currentProxy['id'], $responseTime);
+                        return $response;
+                    } else {
+                        $proxyMgr->markProxyFailed($currentProxy['id']);
+                    }
+                }
+
                 if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
-                    $proxyMgr->markProxySuccess($currentProxy['id'], $responseTime);
                     return $response;
-                } else {
-                    $proxyMgr->markProxyFailed($currentProxy['id']);
+                }
+
+                $lastError = $error ? $error : ('HTTP ' . $httpCode);
+
+                $isSslError = $error && (
+                    stripos($error, 'SSL') !== false ||
+                    stripos($error, 'tls') !== false ||
+                    stripos($error, 'certificate') !== false
+                );
+
+                if (!$isSslError) {
+                    break;
                 }
             }
 
-            if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
-                return $response;
-            }
-
-            $lastError = $error ? $error : ('HTTP ' . $httpCode);
-            
-            $isRetryable = $error && (
-                strpos($error, 'Could not resolve') !== false ||
-                strpos($error, 'Connection timed out') !== false ||
-                strpos($error, 'Failed to connect') !== false ||
-                strpos($error, 'Operation timed out') !== false
+            $isRetryable = $lastError && (
+                strpos($lastError, 'Could not resolve') !== false ||
+                strpos($lastError, 'Connection timed out') !== false ||
+                strpos($lastError, 'Failed to connect') !== false ||
+                strpos($lastError, 'Operation timed out') !== false ||
+                stripos($lastError, 'SSL') !== false ||
+                stripos($lastError, 'tls') !== false
             ) || ($httpCode >= 500 || $httpCode == 429);
 
             if ($attempt < $retry && $isRetryable) {
