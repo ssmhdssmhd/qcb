@@ -27,6 +27,20 @@ class ProxyFetcher {
     private function initSources() {
         $this->sources = [
             [
+                'name' => 'proxy.scdn.io',
+                'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=http&count=20',
+                'type' => 'json_scdn',
+                'enabled' => true,
+                'priority' => 1
+            ],
+            [
+                'name' => 'proxy.scdn.io-https',
+                'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=https&count=20',
+                'type' => 'json_scdn',
+                'enabled' => true,
+                'priority' => 2
+            ],
+            [
                 'name' => 'ProxyScrape',
                 'url' => 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all',
                 'type' => 'plain',
@@ -180,6 +194,9 @@ class ProxyFetcher {
             case 'json_pubproxy':
                 $proxies = $this->parsePubproxyJson($response);
                 break;
+            case 'json_scdn':
+                $proxies = $this->parseScdnJson($response, $source);
+                break;
             default:
                 $proxies = $this->parsePlainList($response, 'http');
                 break;
@@ -283,6 +300,34 @@ class ProxyFetcher {
                     'type' => $type,
                     'host' => $host,
                     'port' => intval($port),
+                    'username' => '',
+                    'password' => ''
+                ];
+            }
+        }
+
+        return $proxies;
+    }
+
+    private function parseScdnJson($content, $source = []) {
+        $proxies = [];
+        $data = json_decode($content, true);
+
+        if (!isset($data['code']) || $data['code'] != 200) return $proxies;
+        if (!isset($data['data']['proxies']) || !is_array($data['data']['proxies'])) return $proxies;
+
+        $url = $source['url'] ?? '';
+        $defaultType = 'http';
+        if (stripos($url, 'protocol=https') !== false) {
+            $defaultType = 'http';
+        }
+
+        foreach ($data['data']['proxies'] as $proxyStr) {
+            if (preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$/', trim($proxyStr), $m)) {
+                $proxies[] = [
+                    'type' => $defaultType,
+                    'host' => $m[1],
+                    'port' => intval($m[2]),
                     'username' => '',
                     'password' => ''
                 ];
