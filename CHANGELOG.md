@@ -5,6 +5,38 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.1.0] - 2026-07-01
+
+### 🛡️ 安全保护机制（核心新增）
+- **M3U8AdSkipper 安全保护** - 新增 `processWithSafeguard()` 方法，检测广告占比异常时自动保护
+- **三级安全防护策略**：
+  - 一级：智能过滤模式（smart_filter）- 仅删除高度确认的广告簇
+  - 二级：阈值自适应调整（threshold_adjustment）- 自动提高检测阈值
+  - 三级：回退原始内容（fallback_original）- 无法确定时保留全部内容
+- **触发条件**：广告占比 ≥85%、保留内容 <20%、所有片段均为广告时触发
+
+### 🎚️ 动态阈值自适应
+- **EnhancedAdRuleEngine** 新增 `analyzeAllSegmentsWithAdaptation()` 方法
+- 检测到异常结果时自动逐级提高阈值
+- 自动寻找最佳平衡点，确保至少保留 30% 内容片段
+- 完成后自动恢复原始阈值，不影响后续分析
+
+### 🧠 学习机制防过度拟合
+- **DomainRuleManager** 学习前自动验证分析结果合理性
+- 广告占比过高（≥85%）、保留内容过少（<15%）、全量误判时跳过学习
+- 阈值调整采用学习衰减因子，学习次数越多调整越谨慎
+- 避免单次异常结果污染规则库
+
+### ⚡ 接口升级
+- **analyze 接口快速模式** - 集成安全保护，自动识别规则不匹配场景
+- **mxjx 接口** - 改用 processWithSafeguard，增加 X-Safeguard 响应头
+- 新增响应头：`X-Safeguard`、`X-Safeguard-Reason`、`X-Safeguard-Method`
+- 安全保护触发时自动切换模式，保证视频可播放
+
+### 🔧 其他改进
+- AdRuleEngine 新增 `setAdThreshold()` / `getAdThreshold()` 方法
+- 所有接口语法检查通过，单元测试全通过
+
 ## [2.0.0] - 2026-07-01
 
 ### ✨ 新增功能

@@ -6,6 +6,10 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
 
     private $domainRules = [];
     private $currentDomain = null;
+    private $adaptiveMode = false;
+    private $originalThreshold = 50;
+    private $safeguardEnabled = true;
+    private $minContentRatio = 0.2;
 
     public function __construct($options = []) {
         $defaultOptions = [
@@ -15,10 +19,15 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
             'checkAdClusters' => true,
             'checkPreRoll' => true,
             'checkPostRoll' => true,
-            'adThreshold' => 50
+            'adThreshold' => 50,
+            'safeguardEnabled' => true,
+            'minContentRatio' => 0.2
         ];
         $options = array_merge($defaultOptions, $options);
         parent::__construct($options);
+        $this->originalThreshold = $options['adThreshold'] ?? 50;
+        $this->safeguardEnabled = $options['safeguardEnabled'] ?? true;
+        $this->minContentRatio = $options['minContentRatio'] ?? 0.2;
         $this->loadAllDomainRules();
     }
 
@@ -153,6 +162,97 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
             return intval($matches[1]);
         }
         return null;
+    }
+
+    public function setAdThreshold($threshold) {
+        parent::setAdThreshold($threshold);
+    }
+
+    public function getAdThreshold() {
+        return parent::getAdThreshold();
+    }
+
+    public function resetThreshold() {
+        parent::setAdThreshold($this->originalThreshold);
+        $this->adaptiveMode = false;
+    }
+
+    public function isAdaptiveMode() {
+        return $this->adaptiveMode;
+    }
+
+    public function analyzeAllSegmentsWithAdaptation($segments) {
+        $result = $this->analyzeAllSegments($segments);
+
+        if (!$this->safeguardEnabled) {
+            return $result;
+        }
+
+        $total = count($segments);
+        $adCount = $result['adCount'];
+        $adPercentage = $result['adPercentage'];
+
+        $needsAdaptation = false;
+        $reason = '';
+
+        if ($total >= 10 && $adPercentage >= 85) {
+            $needsAdaptation = true;
+            $reason = '广告占比过高 (' . $adPercentage . '%)';
+        }
+
+        if ($total >= 20 && ($total - $adCount) < $total * $this->minContentRatio) {
+            $needsAdaptation = true;
+            $reason = '保留内容过少 (' . ($total - $adCount) . '/' . $total . ')';
+        }
+
+        if ($total > 0 && $adCount >= $total) {
+            $needsAdaptation = true;
+            $reason = '所有片段均被判定为广告';
+        }
+
+        if (!$needsAdaptation) {
+            $result['adapted'] = false;
+            return $result;
+        }
+
+        $this->adaptiveMode = true;
+        $originalThreshold = $this->getAdThreshold();
+        $attempts = 0;
+        $maxAttempts = 5;
+        $bestResult = $result;
+
+        while ($attempts < $maxAttempts) {
+            $attempts++;
+            $newThreshold = $this->getAdThreshold() + 20;
+            if ($newThreshold > 200) {
+                $newThreshold = 200;
+            }
+            $this->setAdThreshold($newThreshold);
+
+            $tempResult = $this->analyzeAllSegments($segments);
+            $tempAdPercentage = $tempResult['adPercentage'];
+            $tempContentCount = $tempResult['contentCount'];
+
+            if ($tempAdPercentage <= 70 && $tempContentCount >= $total * 0.3) {
+                $bestResult = $tempResult;
+                break;
+            }
+
+            if ($tempAdPercentage < $adPercentage && $tempContentCount > $result['contentCount']) {
+                $bestResult = $tempResult;
+            }
+        }
+
+        $bestResult['adapted'] = true;
+        $bestResult['adaptationReason'] = $reason;
+        $bestResult['originalThreshold'] = $originalThreshold;
+        $bestResult['adaptedThreshold'] = $this->getAdThreshold();
+        $bestResult['adaptationAttempts'] = $attempts;
+
+        $this->setAdThreshold($originalThreshold);
+        $this->adaptiveMode = false;
+
+        return $bestResult;
     }
 
     public function analyzeAllSegments($segments) {

@@ -212,8 +212,11 @@ try {
                 $filterEngineProp->setAccessible(true);
                 $filterEngineProp->setValue($filter, $engine);
 
-                $result = $skipper->process($mediaUrl);
+                $result = $skipper->processWithSafeguard($mediaUrl);
                 $stats = $result['stats'] ?? [];
+                $safeguardTriggered = !empty($result['safeguardTriggered']);
+                $safeguardReason = $result['safeguardReason'] ?? '';
+                $safeguardMethod = $result['safeguardMethod'] ?? '';
 
                 $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
                 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -223,34 +226,57 @@ try {
                 $selfUrl = $scheme . '://' . $host . $basePath;
                 $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($mediaUrl);
 
-                sendJsonResponse([
-                    'success' => true,
-                    'url' => $url,
-                    'mediaUrl' => $mediaUrl,
-                    'domain' => $domain,
-                    'hasDomainRules' => true,
-                    'fastMode' => true,
-                    'learn_count' => $domainRules['learn_count'] ?? 0,
-                    'message' => '检测到已有域名规则，使用规则快速去广告',
-                    'mxjxUrl' => $mxjxUrl,
-                    'playlist' => [
-                        'isMaster' => false,
-                        'version' => $result['original']['version'] ?? 3,
-                        'targetDuration' => $result['original']['targetDuration'] ?? 0,
-                        'endlist' => !empty($result['original']['endlist'])
-                    ],
-                    'stats' => [
-                        'totalSegments' => $stats['totalSegments'] ?? 0,
-                        'adSegments' => $stats['removedSegments'] ?? 0,
-                        'keptSegments' => $stats['keptSegments'] ?? 0,
-                        'originalDuration' => $stats['originalDuration'] ?? 0,
-                        'filteredDuration' => $stats['filteredDuration'] ?? 0,
-                        'savedDuration' => $stats['savedDuration'] ?? 0,
-                        'adPercentage' => $stats['adPercentage'] ?? 0
-                    ],
-                    'domainRules' => $domainRules
-                ]);
-                break;
+                if ($safeguardTriggered && $safeguardMethod === 'none') {
+                    $fallbackToFull = true;
+                } else {
+                    $fallbackToFull = false;
+                }
+
+                $fastModeMessage = '检测到已有域名规则，使用规则快速去广告';
+                if ($safeguardTriggered) {
+                    if ($safeguardMethod === 'smart_filter') {
+                        $fastModeMessage = '规则过于激进，已自动切换智能过滤模式';
+                    } elseif ($safeguardMethod === 'threshold_adjustment') {
+                        $fastModeMessage = '规则过于激进，已自动调整检测阈值';
+                    } elseif ($safeguardMethod === 'none') {
+                        $fastModeMessage = '规则不匹配当前视频，将使用完整分析模式';
+                    }
+                }
+
+                if ($fallbackToFull) {
+                } else {
+                    sendJsonResponse([
+                        'success' => true,
+                        'url' => $url,
+                        'mediaUrl' => $mediaUrl,
+                        'domain' => $domain,
+                        'hasDomainRules' => true,
+                        'fastMode' => true,
+                        'safeguardTriggered' => $safeguardTriggered,
+                        'safeguardReason' => $safeguardReason,
+                        'safeguardMethod' => $safeguardMethod,
+                        'learn_count' => $domainRules['learn_count'] ?? 0,
+                        'message' => $fastModeMessage,
+                        'mxjxUrl' => $mxjxUrl,
+                        'playlist' => [
+                            'isMaster' => false,
+                            'version' => $result['original']['version'] ?? 3,
+                            'targetDuration' => $result['original']['targetDuration'] ?? 0,
+                            'endlist' => !empty($result['original']['endlist'])
+                        ],
+                        'stats' => [
+                            'totalSegments' => $stats['totalSegments'] ?? 0,
+                            'adSegments' => $stats['removedSegments'] ?? 0,
+                            'keptSegments' => $stats['keptSegments'] ?? 0,
+                            'originalDuration' => $stats['originalDuration'] ?? 0,
+                            'filteredDuration' => $stats['filteredDuration'] ?? 0,
+                            'savedDuration' => $stats['savedDuration'] ?? 0,
+                            'adPercentage' => $stats['adPercentage'] ?? 0
+                        ],
+                        'domainRules' => $domainRules
+                    ]);
+                    break;
+                }
             }
 
             $mediaUrl = resolveMasterPlaylist($url);
@@ -584,7 +610,10 @@ try {
                 $filterEngineProp->setAccessible(true);
                 $filterEngineProp->setValue($filter, $enhancedEngine);
 
-                $result = $skipper->process($url);
+                $result = $skipper->processWithSafeguard($url);
+                $safeguardTriggered = !empty($result['safeguardTriggered']);
+                $safeguardReason = $result['safeguardReason'] ?? '';
+                $safeguardMethod = $result['safeguardMethod'] ?? '';
 
                 if (!$result['success'] && empty($result['output'])) {
                     header('Content-Type: application/json; charset=utf-8');
@@ -596,28 +625,7 @@ try {
                     ], 500);
                 }
 
-                $stats = $result['stats'] ?? [];
-                $adPercentage = $stats['adPercentage'] ?? 0;
-                $totalSegments = $stats['totalSegments'] ?? 0;
-                $keptSegments = $stats['keptSegments'] ?? 0;
-                $removedSegments = $stats['removedSegments'] ?? 0;
-                
-                $tooManyRemoved = false;
-                if ($adPercentage >= 90 && $totalSegments > 10) {
-                    $tooManyRemoved = true;
-                }
-                if ($totalSegments > 20 && $keptSegments < $totalSegments * 0.1) {
-                    $tooManyRemoved = true;
-                }
-                
-                if ($tooManyRemoved) {
-                    $newM3U8Content = @file_get_contents($url);
-                    if ($newM3U8Content === false || empty(trim($newM3U8Content))) {
-                        $newM3U8Content = $result['output'];
-                    }
-                } else {
-                    $newM3U8Content = $result['output'];
-                }
+                $newM3U8Content = $result['output'];
 
                 $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
 
@@ -656,6 +664,13 @@ try {
                 header('Content-Disposition: inline; filename="playlist.m3u8"');
                 header('X-Cache: MISS');
                 header('X-Request-Time: ' . time());
+                if ($safeguardTriggered) {
+                    header('X-Safeguard: triggered');
+                    header('X-Safeguard-Reason: ' . rawurlencode($safeguardReason));
+                    header('X-Safeguard-Method: ' . $safeguardMethod);
+                } else {
+                    header('X-Safeguard: not_triggered');
+                }
                 ob_clean();
                 echo $newM3U8Content;
                 exit;

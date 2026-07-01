@@ -303,6 +303,14 @@ class AdRuleEngine {
         ];
     }
 
+    public function setAdThreshold($threshold) {
+        $this->options['adThreshold'] = max(10, min(200, $threshold));
+    }
+
+    public function getAdThreshold() {
+        return $this->options['adThreshold'] ?? 50;
+    }
+
     public function checkAllSegments($segments) {
         $results = [];
         foreach ($segments as $index => $segment) {

@@ -59,13 +59,42 @@ class DomainRuleManager {
     }
 
     public function learnFromAnalysis($domain, $analysisResult) {
+        $totalCount = $analysisResult['totalCount'] ?? 0;
+        $adCount = $analysisResult['adCount'] ?? 0;
+        $adPercentage = $totalCount > 0 ? ($adCount / $totalCount * 100) : 0;
+
+        if ($totalCount >= 10 && $adPercentage >= 85) {
+            return [
+                'success' => false,
+                'reason' => '广告占比过高 (' . round($adPercentage, 1) . '%)，可能是误判，跳过学习',
+                'skipped' => true
+            ];
+        }
+
+        if ($totalCount >= 20 && ($totalCount - $adCount) < $totalCount * 0.15) {
+            return [
+                'success' => false,
+                'reason' => '保留内容过少，可能是误判，跳过学习',
+                'skipped' => true
+            ];
+        }
+
+        if ($totalCount > 0 && $adCount >= $totalCount) {
+            return [
+                'success' => false,
+                'reason' => '所有片段均被判定为广告，跳过学习',
+                'skipped' => true
+            ];
+        }
+
         $existingRules = $this->getRules($domain);
         $newRules = $this->createFromAnalysis($domain, $analysisResult);
 
         if ($existingRules === null) {
             $newRules['learn_count'] = 1;
             $newRules['history_stats'] = [$analysisResult];
-            return $this->saveRules($domain, $newRules);
+            $saveResult = $this->saveRules($domain, $newRules);
+            return ['success' => $saveResult, 'new_rules' => true, 'skipped' => false];
         }
 
         $mergedRules = $this->mergeRules($existingRules, $newRules, $analysisResult);
@@ -78,7 +107,8 @@ class DomainRuleManager {
             $mergedRules['history_stats'] = array_slice($mergedRules['history_stats'], -10);
         }
 
-        return $this->saveRules($domain, $mergedRules);
+        $saveResult = $this->saveRules($domain, $mergedRules);
+        return ['success' => $saveResult, 'new_rules' => false, 'skipped' => false];
     }
 
     private function mergeRules($existing, $new, $analysisResult) {
@@ -131,10 +161,15 @@ class DomainRuleManager {
         $adPct = $analysisResult['totalCount'] > 0
             ? ($analysisResult['adCount'] / $analysisResult['totalCount'] * 100)
             : 0;
-        if ($adPct > 30) {
-            $merged['ad_threshold'] = max(30, min(80, ($existing['ad_threshold'] ?? 50) - 5));
+        $learnCount = $existing['learn_count'] ?? 1;
+        $adjustFactor = max(0.2, 1 / sqrt($learnCount));
+
+        if ($adPct > 30 && $adPct < 70) {
+            $adjustment = round(5 * $adjustFactor, 1);
+            $merged['ad_threshold'] = max(30, min(90, ($existing['ad_threshold'] ?? 50) - $adjustment));
         } elseif ($adPct < 10) {
-            $merged['ad_threshold'] = min(80, ($existing['ad_threshold'] ?? 50) + 5);
+            $adjustment = round(3 * $adjustFactor, 1);
+            $merged['ad_threshold'] = min(90, ($existing['ad_threshold'] ?? 50) + $adjustment);
         }
 
         $insertionPoints = $analysisResult['insertionPoints'] ?? null;
