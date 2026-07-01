@@ -60,6 +60,20 @@ if (!empty($action) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $type = $_POST['type'] ?? 'http';
             $result = $proxyMgr->importProxies($text, $type);
             break;
+
+        case 'fetch_from_web':
+            $verify = !isset($_POST['verify']) || $_POST['verify'] == 'true';
+            $maxPerSource = intval($_POST['max_per_source'] ?? 20);
+            $result = $proxyMgr->fetchProxiesFromWeb($verify, $maxPerSource);
+            break;
+
+        case 'clear_inactive':
+            $result = $proxyMgr->clearInactiveProxies();
+            break;
+
+        case 'clear_all':
+            $result = $proxyMgr->clearAllProxies();
+            break;
     }
     
     echo json_encode($result, JSON_UNESCAPED_UNICODE);
@@ -363,9 +377,11 @@ $proxies = $proxyMgr->getAllProxies();
                 <div class="switch <?php echo $stats['auto_switch'] ? 'active' : ''; ?>" id="switch-auto" onclick="toggleAutoSwitch()"></div>
             </div>
             <div class="btn-group">
+                <button class="btn btn-success" onclick="fetchFromWeb()">🌐 一键获取代理</button>
                 <button class="btn btn-success" onclick="checkAllProxies()">🔍 检测全部</button>
                 <button class="btn btn-primary" onclick="showAddModal()">➕ 添加代理</button>
                 <button class="btn btn-warning" onclick="showImportModal()">📥 批量导入</button>
+                <button class="btn btn-secondary" onclick="clearInactive()">🗑️ 清理失效</button>
             </div>
         </div>
     </div>
@@ -660,6 +676,49 @@ $proxies = $proxyMgr->getAllProxies();
                 setTimeout(() => location.reload(), 1000);
             } else {
                 showToast(result.message || '导入失败', 'error');
+            }
+        }
+
+        async function fetchFromWeb() {
+            if (!confirm('确定要从网络获取免费代理吗？这可能需要一些时间。\n\n系统将从多个公开代理源获取并自动验证可用性。')) return;
+            
+            showToast('正在从网络获取代理，请稍候...', 'success');
+            
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '获取中...';
+            
+            try {
+                const result = await apiCall('fetch_from_web', { verify: 'true', max_per_source: 20 });
+                if (result.success) {
+                    let msg = `成功添加 ${result.added} 个可用代理`;
+                    if (result.sources) {
+                        const successSources = result.sources.filter(s => s.success).length;
+                        msg += `（${successSources}/${result.sources.length} 个源成功）`;
+                    }
+                    showToast(msg, 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast(result.message || '获取失败', 'error');
+                }
+            } catch (e) {
+                showToast('获取失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        async function clearInactive() {
+            if (!confirm('确定要清理所有失效的代理吗？')) return;
+            
+            const result = await apiCall('clear_inactive');
+            if (result.success) {
+                showToast(`已清理 ${result.cleared} 个失效代理`);
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(result.message || '清理失败', 'error');
             }
         }
         
