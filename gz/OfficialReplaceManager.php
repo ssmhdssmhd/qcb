@@ -447,6 +447,19 @@ class OfficialReplaceManager {
         $title = $this->extractTitle($html, $platform);
         $cover = $this->extractCover($html);
         $episodeInfo = $this->extractEpisodeFromHtml($html, $platform);
+        $videoId = $this->extractVideoId($url, $platform);
+
+        if (empty($title) || mb_strlen($title) < 3) {
+            $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
+            if ($apiInfo) {
+                if (!empty($apiInfo['title'])) {
+                    $title = $apiInfo['title'];
+                }
+                if (!empty($apiInfo['cover']) && empty($cover)) {
+                    $cover = $apiInfo['cover'];
+                }
+            }
+        }
 
         return [
             'title' => $title,
@@ -457,6 +470,53 @@ class OfficialReplaceManager {
         ];
     }
 
+    private function fetchVideoInfoFromApi($videoId, $platform) {
+        if (empty($videoId)) {
+            return null;
+        }
+
+        $platformName = $platform['name'] ?? '';
+        $result = ['title' => null, 'cover' => null];
+
+        if ($platformName === '腾讯视频') {
+            $apiUrl = 'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json';
+            $response = $this->httpGet($apiUrl);
+            if ($response) {
+                $jsonStr = preg_replace('/^QZOutputJson=/', '', $response);
+                $jsonStr = preg_replace('/;$/', '', $jsonStr);
+                $data = json_decode($jsonStr, true);
+                if ($data && isset($data['vl']['vi'][0])) {
+                    $vi = $data['vl']['vi'][0];
+                    if (!empty($vi['ti'])) {
+                        $result['title'] = $vi['ti'];
+                    }
+                    if (!empty($vi['fn'])) {
+                        $result['filename'] = $vi['fn'];
+                    }
+                }
+            }
+
+            if (empty($result['title'])) {
+                $apiUrl2 = 'https://node.video.qq.com/x/api/float_vinfo2?vid=' . urlencode($videoId);
+                $response2 = $this->httpGet($apiUrl2);
+                if ($response2) {
+                    $data2 = json_decode($response2, true);
+                    if ($data2 && isset($data2['c']['title'])) {
+                        $result['title'] = $data2['c']['title'];
+                        if (!empty($data2['c']['pic'])) {
+                            $result['cover'] = $data2['c']['pic'];
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!empty($result['title'])) {
+            return $result;
+        }
+        return null;
+    }
+
     private function extractEpisodeFromHtml($html, $platform) {
         $info = [
             'episode_num' => null,
@@ -465,20 +525,23 @@ class OfficialReplaceManager {
         ];
 
         $patterns = [
-            '/第\s*(\d+)\s*集/u',
-            '/EP\s*(\d+)/i',
-            '/更新至(\d+)集/u',
-            '/共(\d+)集/u',
-            '/(\d+)集全/u'
+            '/第\s*(\d+)\s*[集期]/u' => 'episode',
+            '/更新至\s*(\d+)\s*[集期]/u' => 'total',
+            '/共\s*(\d+)\s*[集期]/u' => 'total',
+            '/(\d+)\s*集全/u' => 'total',
+            '/(?<![a-zA-Z])EP\s*(\d+)(?![a-zA-Z])/i' => 'episode',
+            '/(?<![a-zA-Z])E\s*(\d+)(?![a-zA-Z])/i' => 'episode',
         ];
 
-        foreach ($patterns as $pattern) {
+        foreach ($patterns as $pattern => $type) {
             if (preg_match($pattern, $html, $matches)) {
-                if (strpos($pattern, '更新') !== false || strpos($pattern, '共') !== false || strpos($pattern, '集全') !== false) {
+                if ($type === 'total') {
                     $info['total_episodes'] = intval($matches[1]);
                 } else {
-                    $info['episode_num'] = intval($matches[1]);
-                    $info['episode_name'] = $matches[0];
+                    if ($info['episode_num'] === null) {
+                        $info['episode_num'] = intval($matches[1]);
+                        $info['episode_name'] = $matches[0];
+                    }
                 }
             }
         }
@@ -585,6 +648,13 @@ class OfficialReplaceManager {
         $title = trim($title, " \t\n\r\0\x0B-_—|·");
         $title = trim($title);
 
+        $invalidTitles = ['腾讯视频', '爱奇艺', '优酷', '芒果TV', '哔哩哔哩', 'bilibili', '搜狐视频', 'PP视频'];
+        foreach ($invalidTitles as $inv) {
+            if (mb_strtolower($title) === mb_strtolower($inv)) {
+                return null;
+            }
+        }
+
         if (mb_strlen($title) < 2) {
             return null;
         }
@@ -646,8 +716,10 @@ class OfficialReplaceManager {
                 $basePart = trim($matches[1]);
                 $numPart = intval($matches[2]);
                 if (mb_strlen($basePart) >= 2 && $numPart >= 1 && $numPart <= 99) {
-                    $result['season'] = $matches[2];
-                    $result['season_num'] = $numPart;
+                    if (!preg_match('/^\d+$/u', $cleanTitle)) {
+                        $result['season'] = $matches[2];
+                        $result['season_num'] = $numPart;
+                    }
                 }
             }
         }
@@ -658,12 +730,11 @@ class OfficialReplaceManager {
             '/EP\s*(\d+)/i' => 'num',
             '/E\s*(\d+)/i' => 'num',
             '/(\d+)集/u' => 'num_suffix',
-            '/^\s*(\d{1,3})\s*$/' => 'pure_num',
         ];
 
         foreach ($episodePatterns as $pattern => $type) {
             if (preg_match($pattern, $cleanTitle, $matches)) {
-                if ($type === 'num' || $type === 'pure_num') {
+                if ($type === 'num') {
                     $result['episode'] = $matches[0];
                     $result['episode_num'] = intval($matches[1]);
                 } elseif ($type === 'cn') {
