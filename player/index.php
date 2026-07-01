@@ -5,12 +5,46 @@ error_reporting(0);
 
 $url = $_GET['url'] ?? '';
 $apiUrl = 'http://114.134.184.91:9002/mx.php?action=mxjx&url=';
+$officialReplaceUrl = 'http://114.134.184.91:9002/mx.php?action=official_replace/info&url=';
 
 $videoUrl = '';
 $errorMsg = '';
+$originalUrl = $url;
+$isOfficialUrl = false;
+$videoTitle = '';
+$videoInfo = null;
+
+// 官方视频平台域名列表
+$officialDomains = [
+    'v.qq.com',
+    'v.qq.com',
+    'iqiyi.com',
+    'youku.com',
+    'mgtv.com',
+    'bilibili.com',
+    'sohu.com',
+    'pptv.com'
+];
 
 if (!empty($url)) {
-    $videoUrl = $apiUrl . urlencode($url);
+    $parsedUrl = parse_url($url);
+    $host = $parsedUrl['host'] ?? '';
+
+    // 检查是否是官方视频平台
+    foreach ($officialDomains as $domain) {
+        if (strpos($host, $domain) !== false) {
+            $isOfficialUrl = true;
+            break;
+        }
+    }
+
+    // 如果是官解链接，使用官替接口
+    if ($isOfficialUrl) {
+        $videoUrl = $officialReplaceUrl . urlencode($url);
+    } else {
+        // 普通 M3U8 链接，直接使用解析接口
+        $videoUrl = $apiUrl . urlencode($url);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -347,7 +381,7 @@ if (!empty($url)) {
     <div class="header">
         <div>
             <h1>🎬 在线视频播放器</h1>
-            <div class="subtitle">支持 M3U8 在线解析播放 · 去广告播放</div>
+            <div class="subtitle">支持 M3U8 在线解析播放 · 去广告播放 · 官解链接自动替换</div>
         </div>
     </div>
 
@@ -363,13 +397,31 @@ if (!empty($url)) {
                 <div class="empty-icon">🎥</div>
                 <div class="empty-title">请输入视频链接</div>
                 <div class="empty-desc">在地址栏后面加上 ?url=视频链接 即可播放，或在下方输入框中输入视频地址</div>
+                <div class="empty-desc" style="margin-top: 12px; color: #00d4ff;">
+                    💡 支持官方视频链接（腾讯/爱奇艺/优酷/芒果TV/哔哩哔哩等），会自动替换为资源站播放
+                </div>
                 <div class="input-group">
-                    <input type="text" id="urlInput" placeholder="请输入 M3U8 视频链接..." />
+                    <input type="text" id="urlInput" placeholder="请输入 M3U8 视频链接或官解链接..." />
                     <button class="btn btn-primary" onclick="playVideo()">
                         <span>▶</span> 播放
                     </button>
                 </div>
             </div>
+        </div>
+        <?php else: ?>
+        <?php if ($isOfficialUrl): ?>
+        <div class="info-panel" style="border-left: 4px solid #00d4ff;">
+            <h2>🎯 官解链接自动替换</h2>
+            <div class="url-label">原始官解地址</div>
+            <div class="url-display" id="originalUrl"><?php echo htmlspecialchars($originalUrl); ?></div>
+            <div class="url-label">平台检测</div>
+            <div class="url-display" id="platformInfo">正在检测平台...</div>
+            <div class="url-label" id="videoTitleLabel" style="display:none;">视频信息</div>
+            <div class="url-display" id="videoTitle" style="display:none;"></div>
+            <div class="url-label" id="playUrlLabel" style="display:none;">资源站播放地址</div>
+            <div class="url-display" id="playUrl" style="display:none;"></div>
+            <div class="url-label" id="statusLabel" style="display:none;">解析状态</div>
+            <div class="url-display" id="status" style="display:none;"></div>
         </div>
         <?php else: ?>
         <div class="info-panel">
@@ -391,6 +443,7 @@ if (!empty($url)) {
             </div>
         </div>
         <?php endif; ?>
+        <?php endif; ?>
     </div>
 
     <div class="footer">
@@ -402,7 +455,10 @@ if (!empty($url)) {
     <script>
         let dp = null;
         const videoUrl = <?php echo json_encode($videoUrl); ?>;
-        const originalUrl = <?php echo json_encode($url); ?>;
+        const originalUrl = <?php echo json_encode($originalUrl); ?>;
+        const isOfficialUrl = <?php echo json_encode($isOfficialUrl); ?>;
+        const officialReplaceUrl = <?php echo json_encode($officialReplaceUrl); ?>;
+        const apiUrl = <?php echo json_encode($apiUrl); ?>;
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -437,18 +493,113 @@ if (!empty($url)) {
                 dp.destroy();
                 dp = null;
             }
-            initPlayer();
+            if (isOfficialUrl) {
+                handleOfficialUrl();
+            } else {
+                initPlayer(videoUrl);
+            }
         }
 
-        function initPlayer() {
-            if (!videoUrl) return;
+        // 获取平台名称
+        function getPlatformName(url) {
+            const platforms = {
+                'v.qq.com': '腾讯视频',
+                'iqiyi.com': '爱奇艺',
+                'youku.com': '优酷',
+                'mgtv.com': '芒果TV',
+                'bilibili.com': '哔哩哔哩',
+                'sohu.com': '搜狐视频',
+                'pptv.com': 'PP视频'
+            };
+
+            for (const [domain, name] of Object.entries(platforms)) {
+                if (url.indexOf(domain) !== -1) {
+                    return name;
+                }
+            }
+            return '未知平台';
+        }
+
+        // 处理官解链接
+        async function handleOfficialUrl() {
+            if (!isOfficialUrl) {
+                initPlayer(videoUrl);
+                return;
+            }
+
+            const platformName = getPlatformName(originalUrl);
+            document.getElementById('platformInfo').textContent = '✅ 检测到 ' + platformName + ' 链接';
+
+            try {
+                showToast('正在解析官解链接...', 'success');
+
+                const response = await fetch(officialReplaceUrl + encodeURIComponent(originalUrl));
+                const data = await response.json();
+
+                if (data.success) {
+                    // 显示视频信息
+                    if (data.video_title) {
+                        document.getElementById('videoTitleLabel').style.display = 'block';
+                        document.getElementById('videoTitle').style.display = 'block';
+                        document.getElementById('videoTitle').textContent = data.video_title;
+                    }
+
+                    if (data.ad_skip_url) {
+                        // 使用去广告后的播放地址
+                        const playUrl = data.ad_skip_url;
+
+                        document.getElementById('playUrlLabel').style.display = 'block';
+                        document.getElementById('playUrl').style.display = 'block';
+                        document.getElementById('playUrl').textContent = playUrl;
+
+                        document.getElementById('statusLabel').style.display = 'block';
+                        document.getElementById('status').style.display = 'block';
+                        document.getElementById('status').innerHTML = '<span style="color: #10b981;">✅ 解析成功</span>，正在加载播放器...';
+
+                        showToast('官解链接解析成功！', 'success');
+
+                        // 初始化播放器
+                        initPlayer(playUrl);
+                    } else if (data.m3u8_url) {
+                        // 直接使用 M3U8 地址
+                        const playUrl = apiUrl + encodeURIComponent(data.m3u8_url);
+
+                        document.getElementById('playUrlLabel').style.display = 'block';
+                        document.getElementById('playUrl').style.display = 'block';
+                        document.getElementById('playUrl').textContent = data.m3u8_url;
+
+                        document.getElementById('statusLabel').style.display = 'block';
+                        document.getElementById('status').style.display = 'block';
+                        document.getElementById('status').innerHTML = '<span style="color: #10b981;">✅ 解析成功</span>，正在加载播放器...';
+
+                        showToast('官解链接解析成功！', 'success');
+
+                        // 初始化播放器
+                        initPlayer(playUrl);
+                    } else {
+                        throw new Error('未获取到播放地址');
+                    }
+                } else {
+                    throw new Error(data.message || '解析失败');
+                }
+            } catch (error) {
+                console.error('官解解析错误:', error);
+                document.getElementById('statusLabel').style.display = 'block';
+                document.getElementById('status').style.display = 'block';
+                document.getElementById('status').innerHTML = '<span style="color: #ef4444;">❌ 解析失败</span>：' + error.message;
+                showToast('官解链接解析失败：' + error.message, 'error');
+            }
+        }
+
+        function initPlayer(url) {
+            if (!url) return;
 
             const dplayerEl = document.getElementById('dplayer');
-            
+
             dp = new DPlayer({
                 container: dplayerEl,
                 video: {
-                    url: videoUrl,
+                    url: url,
                     type: 'customHls',
                     customType: {
                         customHls: function (video, player) {
@@ -499,8 +650,15 @@ if (!empty($url)) {
             }
         });
 
+        // 根据链接类型初始化播放器
         if (videoUrl) {
-            initPlayer();
+            if (isOfficialUrl) {
+                // 官解链接需要先解析
+                handleOfficialUrl();
+            } else {
+                // 普通 M3U8 链接直接播放
+                initPlayer(videoUrl);
+            }
         }
     </script>
 </body>
