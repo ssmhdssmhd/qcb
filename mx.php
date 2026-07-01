@@ -1351,6 +1351,145 @@ try {
             $code = 200;
             $msg = '解析成功';
             
+            $extractTitleFromUrl = function($url) use (&$extractEpisodeFromUrl) {
+                $parsed = parse_url($url);
+                $path = $parsed['path'] ?? '';
+                $host = $parsed['host'] ?? '';
+                
+                if (empty($path)) {
+                    return $host ?: '在线视频';
+                }
+                
+                $pathParts = array_values(array_filter(explode('/', $path), function($v) {
+                    return !empty($v);
+                }));
+                
+                if (empty($pathParts)) {
+                    return $host ?: '在线视频';
+                }
+                
+                $fileName = end($pathParts);
+                $fileNameWithoutExt = preg_replace('/\.(m3u8|mp4|mkv|avi|mov|flv|ts|html?)$/i', '', $fileName);
+                
+                $isEpisodeLike = false;
+                if (preg_match('/第?\d+[集期话]/u', $fileNameWithoutExt)) {
+                    $isEpisodeLike = true;
+                }
+                if (preg_match('/^(episode|ep|e|集|期|话)[_\-]?\d+$/i', $fileNameWithoutExt)) {
+                    $isEpisodeLike = true;
+                }
+                if (preg_match('/^\d+$/',$fileNameWithoutExt) && strlen($fileNameWithoutExt) <= 4) {
+                    $isEpisodeLike = true;
+                }
+                if (preg_match('/[_\-]\d+$/', $fileNameWithoutExt) && strlen($fileNameWithoutExt) <= 15) {
+                    $prefix = preg_replace('/[_\-]\d+$/', '', $fileNameWithoutExt);
+                    if (in_array(strtolower($prefix), ['episode', 'ep', 'e', '第', '集', ''])) {
+                        $isEpisodeLike = true;
+                    }
+                }
+                
+                if ($isEpisodeLike || $fileName === 'index.m3u8' || $fileNameWithoutExt === 'index') {
+                    $candidates = [];
+                    $dirParts = array_slice($pathParts, 0, -1);
+                    foreach (array_reverse($dirParts) as $part) {
+                        if (preg_match('/^[a-f0-9]{8,}$/i', $part)) continue;
+                        if (is_numeric($part)) continue;
+                        if (strlen($part) < 2) continue;
+                        $lowerPart = strtolower($part);
+                        if (in_array($lowerPart, ['video', 'videos', 'm3u8', 'movie', 'tv', 'play', 'player'])) continue;
+                        $candidates[] = $part;
+                    }
+                    if (!empty($candidates)) {
+                        $title = $candidates[0];
+                        $title = preg_replace('/[_-]+/', ' ', $title);
+                        $title = trim($title);
+                        if (!empty($title)) {
+                            if (preg_match('/^[a-z\s]+$/i', $title)) {
+                                return ucwords($title);
+                            }
+                            return $title;
+                        }
+                    }
+                    return $host ?: '在线视频';
+                }
+                
+                $title = $fileNameWithoutExt;
+                $title = preg_replace('/[_-]+/', ' ', $title);
+                $title = preg_replace('/\s*\d+\s*$/', '', $title);
+                $title = trim($title);
+                
+                if (empty($title) || strlen($title) < 2) {
+                    $dirParts = array_slice($pathParts, 0, -1);
+                    foreach (array_reverse($dirParts) as $part) {
+                        if (preg_match('/^[a-f0-9]{8,}$/i', $part)) continue;
+                        if (is_numeric($part)) continue;
+                        if (strlen($part) < 2) continue;
+                        $lowerPart = strtolower($part);
+                        if (in_array($lowerPart, ['video', 'videos', 'm3u8', 'movie', 'tv'])) continue;
+                        $title = $part;
+                        $title = preg_replace('/[_-]+/', ' ', $title);
+                        $title = trim($title);
+                        if (!empty($title)) {
+                            if (preg_match('/^[a-z\s]+$/i', $title)) {
+                                return ucwords($title);
+                            }
+                            return $title;
+                        }
+                    }
+                    return $host ?: '在线视频';
+                }
+                
+                if (preg_match('/^[a-z\s]+$/i', $title)) {
+                    return ucwords($title);
+                }
+                
+                return $title;
+            };
+            
+            $extractEpisodeFromUrl = function($url) {
+                $parsed = parse_url($url);
+                $path = $parsed['path'] ?? '';
+                
+                if (empty($path)) {
+                    return '正片';
+                }
+                
+                $pathParts = array_values(array_filter(explode('/', $path), function($v) {
+                    return !empty($v);
+                }));
+                
+                foreach (array_reverse($pathParts) as $part) {
+                    $part = preg_replace('/\.(m3u8|mp4|mkv|avi|mov|flv|ts|html?)$/i', '', $part);
+                    
+                    if (preg_match('/第(\d+)[集期话]/u', $part, $matches)) {
+                        return '第' . $matches[1] . '集';
+                    }
+                    
+                    if (preg_match('/(?:episode|ep|e)[_\-]?(\d+)/i', $part, $matches)) {
+                        return '第' . intval($matches[1]) . '集';
+                    }
+                    
+                    if (preg_match('/^(\d+)$/', $part, $matches)) {
+                        $num = intval($matches[1]);
+                        if ($num > 0 && $num < 1000) {
+                            return '第' . $num . '集';
+                        }
+                    }
+                    
+                    if (preg_match('/[_\-](\d+)$/', $part, $matches)) {
+                        $num = intval($matches[1]);
+                        if ($num > 0 && $num < 1000) {
+                            $prefix = preg_replace('/[_\-]\d+$/', '', $part);
+                            if (empty($prefix) || in_array(strtolower($prefix), ['episode', 'ep', 'e'])) {
+                                return '第' . $num . '集';
+                            }
+                        }
+                    }
+                }
+                
+                return '正片';
+            };
+            
             if ($isOfficialUrl) {
                 $result = $officialReplaceMgr->resolve($url);
                 if ($result['success']) {
@@ -1362,13 +1501,88 @@ try {
                         $jiShu = '正片';
                     }
                 } else {
-                    $code = 404;
-                    $msg = $result['message'] ?? '解析失败';
+                    $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+                    $juMing = $result['video_title'] ?? '';
+                    if (empty($juMing)) {
+                        $juMing = $extractTitleFromUrl($url);
+                    }
+                    $jiShu = $result['episode'] ?? '';
+                    if (empty($jiShu)) {
+                        $jiShu = $extractEpisodeFromUrl($url);
+                    }
+                    $code = 200;
+                    $msg = '解析成功';
                 }
             } else {
                 $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
-                $juMing = '在线视频';
-                $jiShu = '正片';
+                $juMing = $extractTitleFromUrl($url);
+                $jiShu = $extractEpisodeFromUrl($url);
+                
+                $searchKeyword = '';
+                $parsedUrl = parse_url($url);
+                $path = $parsedUrl['path'] ?? '';
+                $pathParts = array_values(array_filter(explode('/', $path), function($v) {
+                    return !empty($v);
+                }));
+                
+                foreach ($pathParts as $part) {
+                    if (preg_match('/\.(m3u8|mp4|mkv|avi|mov|flv|ts)$/i', $part)) continue;
+                    if (preg_match('/^[a-f0-9]{8,}$/i', $part)) continue;
+                    if (is_numeric($part)) continue;
+                    if (strlen($part) < 3) continue;
+                    if ($part === 'video' || $part === 'videos' || $part === 'm3u8') continue;
+                    $searchKeyword = $part;
+                    break;
+                }
+                
+                if (!empty($searchKeyword) && $searchKeyword !== $juMing) {
+                    $searchKeyword = preg_replace('/[_-]+/', ' ', $searchKeyword);
+                    $searchKeyword = trim($searchKeyword);
+                }
+                
+                if (!empty($searchKeyword) && class_exists('ResourceSiteManager') && isset($siteManager)) {
+                    try {
+                        $searchResult = $siteManager->searchAllSites($searchKeyword, 3, 5);
+                        if ($searchResult['success'] && !empty($searchResult['results'])) {
+                            $bestMatch = null;
+                            $bestScore = 0;
+                            $urlBase = basename($path, '.m3u8');
+                            
+                            foreach ($searchResult['results'] as $siteResult) {
+                                if (empty($siteResult['videos'])) continue;
+                                foreach ($siteResult['videos'] as $video) {
+                                    $videoName = $video['name'] ?? '';
+                                    if (empty($videoName)) continue;
+                                    
+                                    $score = 0;
+                                    similar_text($searchKeyword, $videoName, $score);
+                                    
+                                    $firstUrl = $video['first_url'] ?? $video['url'] ?? '';
+                                    if (!empty($firstUrl)) {
+                                        $firstUrlPath = parse_url($firstUrl, PHP_URL_PATH) ?? '';
+                                        similar_text($path, $firstUrlPath, $pathScore);
+                                        if ($pathScore > $score) {
+                                            $score = $pathScore;
+                                        }
+                                    }
+                                    
+                                    if ($score > $bestScore && $score > 40) {
+                                        $bestScore = $score;
+                                        $bestMatch = $video;
+                                    }
+                                }
+                            }
+                            
+                            if ($bestMatch && $bestScore > 50) {
+                                $juMing = $bestMatch['name'] ?? $juMing;
+                                if (!empty($bestMatch['remarks'])) {
+                                    $jiShu = $bestMatch['remarks'];
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                    }
+                }
             }
             
             $response = [
