@@ -604,7 +604,9 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             document.getElementById('platformInfo').textContent = '✅ 检测到 ' + platformName + ' 链接';
             try {
                 showToast('正在解析官解链接...', 'success');
-                const response = await fetch(officialReplaceUrl + encodeURIComponent(originalUrl));
+                // 添加时间戳参数避免浏览器缓存
+                const timestamp = Date.now();
+                const response = await fetch(officialReplaceUrl + encodeURIComponent(originalUrl) + '&_t=' + timestamp);
                 const data = await response.json();
                 if (data.success) {
                     if (data.video_title) {
