@@ -131,6 +131,7 @@ class OfficialReplaceManager {
         }
 
         $videoId = $this->extractVideoId($url, $platform);
+
         $videoInfo = $this->fetchVideoInfo($url, $platform);
         $videoTitle = '';
 
@@ -146,19 +147,37 @@ class OfficialReplaceManager {
         $videoInfo['parsed'] = $parsedInfo;
         $videoInfo['base_title'] = $parsedInfo['base_title'];
         $videoInfo['season'] = $parsedInfo['season'];
+        $videoInfo['season_num'] = $parsedInfo['season_num'];
         $videoInfo['episode'] = $parsedInfo['episode'];
+        $videoInfo['episode_num'] = $parsedInfo['episode_num'];
         $videoInfo['part'] = $parsedInfo['part'];
         $videoInfo['version'] = $parsedInfo['version'];
         $videoInfo['video_id'] = $videoId;
 
-        $searchKeyword = $parsedInfo['base_title'];
-        $searchResult = $this->searchInSites($searchKeyword);
-        if (!$searchResult['success'] || empty($searchResult['videos'])) {
-            $searchKeyword = $videoTitle;
-            $searchResult = $this->searchInSites($searchKeyword);
+        if (empty($videoInfo['episode_num']) && !empty($videoInfo['episode_info']['episode_num'])) {
+            $videoInfo['episode_num'] = $videoInfo['episode_info']['episode_num'];
+            $videoInfo['episode'] = $videoInfo['episode_info']['episode_name'];
         }
 
-        if (!$searchResult['success'] || empty($searchResult['videos'])) {
+        if (empty($videoInfo['total_episodes']) && !empty($videoInfo['episode_info']['total_episodes'])) {
+            $videoInfo['total_episodes'] = $videoInfo['episode_info']['total_episodes'];
+        }
+
+        $searchKeywords = $this->buildSearchKeywords($videoInfo, $platform);
+        $searchResult = null;
+        $usedKeyword = '';
+
+        foreach ($searchKeywords as $keyword) {
+            if (empty($keyword)) continue;
+            $result = $this->searchInSites($keyword);
+            if ($result['success'] && !empty($result['videos'])) {
+                $searchResult = $result;
+                $usedKeyword = $keyword;
+                break;
+            }
+        }
+
+        if (!$searchResult || empty($searchResult['videos'])) {
             return [
                 'success' => false,
                 'message' => '未找到匹配的资源',
@@ -167,11 +186,14 @@ class OfficialReplaceManager {
                 'base_title' => $videoInfo['base_title'],
                 'season' => $videoInfo['season'],
                 'episode' => $videoInfo['episode'],
-                'video_id' => $videoId
+                'video_id' => $videoId,
+                'search_keywords' => $searchKeywords
             ];
         }
 
         $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
+        $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
+
         if (!$bestMatch) {
             return [
                 'success' => false,
@@ -182,7 +204,8 @@ class OfficialReplaceManager {
                 'season' => $videoInfo['season'],
                 'episode' => $videoInfo['episode'],
                 'video_id' => $videoId,
-                'candidates' => array_slice($searchResult['videos'], 0, 5)
+                'used_keyword' => $usedKeyword,
+                'candidates' => array_slice($allMatches, 0, 5)
             ];
         }
 
@@ -190,8 +213,8 @@ class OfficialReplaceManager {
         $targetEpisodeName = '';
         $allUrls = $bestMatch['video']['urls'] ?? [];
 
-        if (!empty($videoInfo['episode']) && !empty($allUrls)) {
-            $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode']);
+        if (!empty($videoInfo['episode_num']) && !empty($allUrls)) {
+            $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num']);
             if ($epResult) {
                 $targetEpisodeUrl = $epResult['url'];
                 $targetEpisodeName = $epResult['name'];
@@ -208,6 +231,17 @@ class OfficialReplaceManager {
             }
         }
 
+        $targetEpisodeUrl = preg_replace('/#.*$/', '', $targetEpisodeUrl);
+        
+        foreach ($allUrls as &$urlItem) {
+            if (is_array($urlItem) && isset($urlItem['url'])) {
+                $urlItem['url'] = preg_replace('/#.*$/', '', $urlItem['url']);
+            } elseif (is_string($urlItem)) {
+                $urlItem = preg_replace('/#.*$/', '', $urlItem);
+            }
+        }
+        unset($urlItem);
+
         return [
             'success' => true,
             'platform' => $platform['name'],
@@ -219,7 +253,9 @@ class OfficialReplaceManager {
             'original_title' => $videoTitle,
             'base_title' => $videoInfo['base_title'],
             'season' => $videoInfo['season'],
+            'season_num' => $videoInfo['season_num'],
             'episode' => $videoInfo['episode'],
+            'episode_num' => $videoInfo['episode_num'],
             'part' => $videoInfo['part'],
             'version' => $videoInfo['version'],
             'video_id' => $videoId,
@@ -232,9 +268,119 @@ class OfficialReplaceManager {
             'target_episode' => $targetEpisodeName,
             'all_urls' => $allUrls,
             'episodes' => count($allUrls),
-            'alternatives' => $searchResult['videos'],
+            'alternatives' => array_slice($allMatches, 1, 5),
+            'all_matches' => $allMatches,
+            'used_keyword' => $usedKeyword,
+            'search_keywords' => $searchKeywords,
             'request_time' => time()
         ];
+    }
+
+    private function buildSearchKeywords($videoInfo, $platform) {
+        $keywords = [];
+        $baseTitle = $videoInfo['base_title'] ?? '';
+        $seasonNum = $videoInfo['season_num'] ?? null;
+        $version = $videoInfo['version'] ?? '';
+
+        if (!empty($baseTitle)) {
+            $keywords[] = $baseTitle;
+
+            if ($seasonNum && $seasonNum > 1) {
+                $keywords[] = $baseTitle . ' 第' . $seasonNum . '季';
+                $keywords[] = $baseTitle . ' 第二季';
+            }
+
+            if (!empty($version)) {
+                $keywords[] = $baseTitle . ' ' . $version;
+            }
+        }
+
+        $originalTitle = $videoInfo['title'] ?? '';
+        if (!empty($originalTitle) && $originalTitle !== $baseTitle) {
+            $keywords[] = $originalTitle;
+        }
+
+        $videoId = $videoInfo['video_id'] ?? '';
+        if (!empty($videoId)) {
+            $keywords[] = $videoId;
+        }
+
+        return array_values(array_unique($keywords));
+    }
+
+    private function findAllMatches($videoInfo, $videos) {
+        $threshold = $this->config['match_threshold'] ?? 60;
+        $matches = [];
+
+        foreach ($videos as $video) {
+            $videoName = $video['name'] ?? '';
+            $videoRemarks = $video['remarks'] ?? '';
+            $fullName = $videoName . ' ' . $videoRemarks;
+
+            $videoParsed = $this->parseVideoTitle($fullName);
+            $videoBaseTitle = $videoParsed['base_title'];
+            $videoSeason = $videoParsed['season_num'];
+            $videoPart = $videoParsed['part'];
+            $videoVersion = $videoParsed['version'];
+
+            $keyword = $videoInfo['base_title'] ?? $videoInfo['title'];
+            $targetSeason = $videoInfo['season_num'] ?? null;
+            $targetPart = $videoInfo['part'] ?? null;
+            $targetVersion = $videoInfo['version'] ?? null;
+
+            $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+            $score = $baseScore;
+            $seasonMatch = false;
+
+            if ($targetSeason !== null && $videoSeason !== null) {
+                if ($targetSeason == $videoSeason) {
+                    $score += 25;
+                    $seasonMatch = true;
+                } else {
+                    $score -= 30;
+                }
+            } elseif ($targetSeason !== null && $videoSeason === null) {
+                if ($targetSeason == 1) {
+                    $score += 5;
+                } else {
+                    $score -= 10;
+                }
+            }
+
+            if ($targetPart && $videoPart) {
+                if ($targetPart == $videoPart) {
+                    $score += 15;
+                } else {
+                    $score -= 15;
+                }
+            }
+
+            if ($targetVersion && $videoVersion) {
+                if ($targetVersion == $videoVersion) {
+                    $score += 10;
+                } else {
+                    $score -= 5;
+                }
+            }
+
+            $score = min(100, max(0, $score));
+
+            if ($score >= $threshold * 0.8) {
+                $matches[] = [
+                    'video' => $video,
+                    'score' => round($score, 2),
+                    'base_score' => round($baseScore, 2),
+                    'season_match' => $seasonMatch,
+                    'site' => $video['site'] ?? ''
+                ];
+            }
+        }
+
+        usort($matches, function($a, $b) {
+            return $b['score'] - $a['score'];
+        });
+
+        return $matches;
     }
 
     private function extractVideoId($url, $platform) {
@@ -300,37 +446,116 @@ class OfficialReplaceManager {
 
         $title = $this->extractTitle($html, $platform);
         $cover = $this->extractCover($html);
+        $episodeInfo = $this->extractEpisodeFromHtml($html, $platform);
 
         return [
             'title' => $title,
             'cover' => $cover,
             'url' => $url,
-            'platform' => $platform['name']
+            'platform' => $platform['name'],
+            'episode_info' => $episodeInfo
         ];
     }
 
-    private function extractTitle($html, $platform) {
+    private function extractEpisodeFromHtml($html, $platform) {
+        $info = [
+            'episode_num' => null,
+            'episode_name' => '',
+            'total_episodes' => null
+        ];
+
         $patterns = [
-            '/<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']/i',
-            '/<meta[^>]+name=["\']twitter:title["\'][^>]+content=["\']([^"\']+)["\']/i',
-            '/<title[^>]*>([^<]+)<\/title>/i',
-            '/<h1[^>]*>([^<]+)<\/h1>/i'
+            '/第\s*(\d+)\s*集/u',
+            '/EP\s*(\d+)/i',
+            '/更新至(\d+)集/u',
+            '/共(\d+)集/u',
+            '/(\d+)集全/u'
         ];
 
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $html, $matches)) {
-                $title = trim($matches[1]);
-                $title = preg_replace('/\s+/', ' ', $title);
-                if (!empty($title) && mb_strlen($title) > 2) {
-                    $title = $this->cleanTitle($title);
-                    if (!empty($title)) {
-                        return $title;
+                if (strpos($pattern, '更新') !== false || strpos($pattern, '共') !== false || strpos($pattern, '集全') !== false) {
+                    $info['total_episodes'] = intval($matches[1]);
+                } else {
+                    $info['episode_num'] = intval($matches[1]);
+                    $info['episode_name'] = $matches[0];
+                }
+            }
+        }
+
+        return $info;
+    }
+
+    private function extractTitle($html, $platform) {
+        $candidates = [];
+
+        $ogPattern = '/<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']/i';
+        if (preg_match($ogPattern, $html, $matches)) {
+            $candidates[] = trim($matches[1]);
+        }
+
+        $twitterPattern = '/<meta[^>]+name=["\']twitter:title["\'][^>]+content=["\']([^"\']+)["\']/i';
+        if (preg_match($twitterPattern, $html, $matches)) {
+            $candidates[] = trim($matches[1]);
+        }
+
+        $titlePattern = '/<title[^>]*>([^<]+)<\/title>/i';
+        if (preg_match($titlePattern, $html, $matches)) {
+            $candidates[] = trim($matches[1]);
+        }
+
+        $videoTitlePatterns = [
+            '/<h1[^>]*class=["\'][^"\']*video-title[^"\']*["\'][^>]*>([^<]+)<\/h1>/i',
+            '/<h1[^>]*>([^<]+)<\/h1>/i',
+            '/class=["\'][^"\']*video_title[^"\']*["\'][^>]*>([^<]+)</i',
+            '/class=["\'][^"\']*main_title[^"\']*["\'][^>]*>([^<]+)</i',
+            '/class=["\'][^"\']*player-title[^"\']*["\'][^>]*>([^<]+)</i',
+        ];
+        foreach ($videoTitlePatterns as $pattern) {
+            if (preg_match($pattern, $html, $matches)) {
+                $candidates[] = trim(strip_tags($matches[1]));
+            }
+        }
+
+        $jsonLdPattern = '/<script[^>]+type=["\']application\/ld\+json["\'][^>]*>(.*?)<\/script>/is';
+        if (preg_match_all($jsonLdPattern, $html, $matches)) {
+            foreach ($matches[1] as $json) {
+                $data = json_decode($json, true);
+                if ($data) {
+                    if (isset($data['name'])) {
+                        $candidates[] = $data['name'];
+                    }
+                    if (isset($data['headline'])) {
+                        $candidates[] = $data['headline'];
                     }
                 }
             }
         }
 
-        return null;
+        $bestTitle = '';
+        $bestScore = 0;
+
+        foreach ($candidates as $candidate) {
+            $candidate = $this->cleanTitle($candidate);
+            if (empty($candidate)) continue;
+            
+            $score = mb_strlen($candidate);
+            
+            if (preg_match('/第\s*\d+\s*[集期部季]/u', $candidate)) {
+                $score += 10;
+            }
+            
+            if (mb_strlen($candidate) > 3 && mb_strlen($candidate) < 50) {
+                $score += 5;
+            }
+            
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestTitle = $candidate;
+            }
+        }
+
+        return !empty($bestTitle) ? $bestTitle : null;
     }
 
     private function extractCover($html) {
@@ -352,7 +577,12 @@ class OfficialReplaceManager {
         $title = preg_replace('/在线观看.*?$/u', '', $title);
         $title = preg_replace('/高清.*?$/u', '', $title);
         $title = preg_replace('/完整版.*?$/u', '', $title);
-        $title = trim($title, " \t\n\r\0\x0B-_—|");
+        $title = preg_replace('/_腾讯视频/i', '', $title);
+        $title = preg_replace('/- 腾讯视频/i', '', $title);
+        $title = preg_replace('/最新一期.*?$/u', '', $title);
+        $title = preg_replace('/第.*?期.*?$/u', '', $title);
+        $title = preg_replace('/\s+/', ' ', $title);
+        $title = trim($title, " \t\n\r\0\x0B-_—|·");
         $title = trim($title);
 
         if (mb_strlen($title) < 2) {
