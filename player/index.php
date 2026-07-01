@@ -181,12 +181,44 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
         #videoPlayer {
             width: 100%;
             aspect-ratio: 16 / 9;
-            background: #000;
+            background: #000 !important;
+            position: relative;
+            overflow: hidden;
+            border-radius: 12px;
         }
 
-        #videoPlayer video {
-            width: 100%;
-            height: 100%;
+        #videoPlayer .dplayer {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 100% !important;
+            position: absolute !important;
+            top: 0;
+            left: 0;
+        }
+
+        #videoPlayer .dplayer-video-wrap {
+            width: 100% !important;
+            height: 100% !important;
+            background: #000 !important;
+        }
+
+        #videoPlayer .dplayer-video-wrap .dplayer-video {
+            object-fit: contain !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: #000 !important;
+            display: block !important;
+        }
+        
+        #videoPlayer .dplayer-loading {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #videoPlayer .dplayer-loading-icon {
+            width: 50px !important;
+            height: 50px !important;
         }
 
         .info-panel {
@@ -452,6 +484,9 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                 <button class="btn btn-secondary" onclick="copyUrl('playUrl')">
                     <span>📋</span> 复制播放地址
                 </button>
+                <button class="btn btn-secondary" id="toggleAdBtn" onclick="toggleAdSkip()" style="display: none;">
+                    <span>🎬</span> 原始地址
+                </button>
                 <button class="btn btn-primary" onclick="reloadPlayer()">
                     <span>🔄</span> 重新加载
                 </button>
@@ -571,7 +606,15 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
         function reloadPlayer() {
             destroyPlayer();
             if (isOfficialUrl) {
-                handleOfficialUrl();
+                if (useAdSkip && currentPlayUrl) {
+                    updatePlayStatus('loading', '正在重新加载...');
+                    initPlayer(currentPlayUrl);
+                } else if (!useAdSkip && currentRawUrl) {
+                    updatePlayStatus('loading', '正在重新加载...');
+                    initPlayer(currentRawUrl);
+                } else {
+                    handleOfficialUrl();
+                }
             } else {
                 initPlayer(videoUrl);
             }
@@ -595,8 +638,14 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             return '未知平台';
         }
 
+        let currentPlayUrl = '';
+        let currentRawUrl = '';
+        let useAdSkip = true;
+        
         async function handleOfficialUrl() {
             if (!isOfficialUrl) {
+                currentPlayUrl = videoUrl;
+                currentRawUrl = videoUrl;
                 initPlayer(videoUrl);
                 return;
             }
@@ -604,7 +653,6 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             document.getElementById('platformInfo').textContent = '✅ 检测到 ' + platformName + ' 链接';
             try {
                 showToast('正在解析官解链接...', 'success');
-                // 添加时间戳参数避免浏览器缓存
                 const timestamp = Date.now();
                 const response = await fetch(officialReplaceUrl + encodeURIComponent(originalUrl) + '&_t=' + timestamp);
                 const data = await response.json();
@@ -614,14 +662,22 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                         document.getElementById('videoTitle').style.display = 'block';
                         document.getElementById('videoTitle').textContent = data.video_title;
                     }
+                    
                     let playUrl = '';
+                    let rawUrl = '';
                     if (data.ad_skip_url) {
                         playUrl = data.ad_skip_url;
+                        rawUrl = data.m3u8_url;
                     } else if (data.m3u8_url) {
                         playUrl = apiUrl + encodeURIComponent(data.m3u8_url);
+                        rawUrl = data.m3u8_url;
                     } else {
                         throw new Error('未获取到播放地址');
                     }
+                    
+                    currentPlayUrl = playUrl;
+                    currentRawUrl = rawUrl;
+                    
                     document.getElementById('playUrlLabel').style.display = 'block';
                     document.getElementById('playUrl').style.display = 'block';
                     document.getElementById('playUrl').textContent = playUrl;
@@ -629,6 +685,12 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                     document.getElementById('status').style.display = 'block';
                     document.getElementById('status').innerHTML = '<span style="color: #10b981;">✅ 解析成功</span>，正在加载播放器...';
                     showToast('官解链接解析成功！', 'success');
+                    
+                    const toggleBtn = document.getElementById('toggleAdBtn');
+                    if (toggleBtn) {
+                        toggleBtn.style.display = 'inline-flex';
+                    }
+                    
                     initPlayer(playUrl);
                 } else {
                     throw new Error(data.message || '解析失败');
@@ -639,6 +701,28 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                 document.getElementById('status').style.display = 'block';
                 document.getElementById('status').innerHTML = '<span style="color: #ef4444;">❌ 解析失败</span>：' + error.message;
                 showToast('官解链接解析失败：' + error.message, 'error');
+            }
+        }
+        
+        function toggleAdSkip() {
+            useAdSkip = !useAdSkip;
+            const btn = document.getElementById('toggleAdBtn');
+            if (useAdSkip) {
+                btn.innerHTML = '<span>📺</span> 去广告播放';
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-secondary');
+                if (currentPlayUrl) {
+                    updatePlayStatus('loading', '正在切换到去广告播放...');
+                    initPlayer(currentPlayUrl);
+                }
+            } else {
+                btn.innerHTML = '<span>🎬</span> 原始地址';
+                btn.classList.remove('btn-secondary');
+                btn.classList.add('btn-warning');
+                if (currentRawUrl) {
+                    updatePlayStatus('loading', '正在切换到原始地址播放...');
+                    initPlayer(currentRawUrl);
+                }
             }
         }
 
@@ -748,10 +832,19 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
         }
 
         function initDPlayer(container, url) {
-            const videoEl = document.createElement('video');
-            videoEl.playsInline = true;
-            videoEl.webkitPlaysInline = true;
-            container.appendChild(videoEl);
+            if (player && player.destroy) {
+                try {
+                    player.destroy();
+                } catch(e) {}
+                player = null;
+            }
+            if (hls) {
+                try {
+                    hls.destroy();
+                } catch(e) {}
+                hls = null;
+            }
+            clearLoadTimeout();
 
             player = new DPlayer({
                 container: container,
@@ -760,7 +853,73 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                     type: 'customHls',
                     customType: {
                         customHls: function (video, dp) {
-                            createHls(video, url);
+                            if (Hls.isSupported()) {
+                                hls = new Hls(hlsConfig);
+                                hls.loadSource(url);
+                                hls.attachMedia(video);
+                                
+                                loadTimeout = setTimeout(function() {
+                                    if (video.readyState < 2) {
+                                        showToast('视频加载较慢，请耐心等待...', 'warning');
+                                        updatePlayStatus('loading', '视频加载中，请耐心等待...');
+                                    }
+                                }, 10000);
+                                
+                                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                                    console.log('HLS 加载完成');
+                                    clearLoadTimeout();
+                                    updatePlayStatus('success', '视频加载成功');
+                                    if (autoplay) {
+                                        video.play().catch(function(e) {
+                                            console.warn('自动播放被阻止:', e);
+                                        });
+                                    }
+                                });
+                                
+                                hls.on(Hls.Events.ERROR, function (event, data) {
+                                    console.error('HLS 错误:', data);
+                                    if (data.fatal) {
+                                        clearLoadTimeout();
+                                        switch (data.type) {
+                                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                                console.log('网络错误，尝试恢复...');
+                                                try {
+                                                    hls.startLoad();
+                                                } catch(e) {
+                                                    showToast('网络错误，视频加载失败', 'error');
+                                                    updatePlayStatus('error', '网络错误，请检查网络或尝试刷新');
+                                                }
+                                                break;
+                                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                                console.log('媒体错误，尝试恢复...');
+                                                try {
+                                                    hls.recoverMediaError();
+                                                } catch(e) {
+                                                    showToast('媒体错误，正在尝试恢复...', 'error');
+                                                    updatePlayStatus('error', '媒体格式错误，正在尝试恢复...');
+                                                    setTimeout(function() {
+                                                        if (player && player.destroy) {
+                                                            try { player.destroy(); } catch(e) {}
+                                                        }
+                                                        initDPlayer(container, url);
+                                                    }, 1000);
+                                                }
+                                                break;
+                                            default:
+                                                showToast('视频加载失败', 'error');
+                                                updatePlayStatus('error', '视频加载失败，请尝试重新加载');
+                                                break;
+                                        }
+                                    }
+                                });
+                            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                                video.src = url;
+                                if (autoplay) {
+                                    video.play().catch(function(e) {
+                                        console.warn('自动播放被阻止:', e);
+                                    });
+                                }
+                            }
                         }
                     }
                 },
@@ -773,10 +932,17 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                 preload: preload,
                 volume: 0.7,
                 mutex: true,
+                airplay: true,
             });
 
             player.on('error', function () {
-                showToast('视频播放出错，请检查链接是否有效', 'error');
+                console.error('DPlayer 错误');
+                showToast('视频播放出错', 'error');
+            });
+            
+            player.on('play', function() {
+                clearLoadTimeout();
+                updatePlayStatus('success', '正在播放');
             });
         }
 
