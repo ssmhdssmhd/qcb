@@ -1850,6 +1850,69 @@ header('Expires: 0');
             }
         }
 
+        async function loadPlayerConfig() {
+            try {
+                const res = await fetch(API_BASE + '?action=player/config&_t=' + Date.now());
+                const data = await res.json();
+                if (data.success && data.config) {
+                    const config = data.config;
+                    const playerSelect = document.getElementById('playerSelect');
+                    const autoplaySelect = document.getElementById('playerAutoplay');
+                    const preloadSelect = document.getElementById('playerPreload');
+                    
+                    if (playerSelect && config.player) {
+                        playerSelect.value = config.player;
+                    }
+                    if (autoplaySelect) {
+                        autoplaySelect.value = config.autoplay ? 'true' : 'false';
+                    }
+                    if (preloadSelect && config.preload) {
+                        preloadSelect.value = config.preload;
+                    }
+                }
+            } catch (e) {
+                console.error('加载播放器配置失败:', e);
+            }
+        }
+
+        function changePlayerPreview() {
+            const player = document.getElementById('playerSelect')?.value;
+            showToast('已选择 ' + player + ' 播放器，点击保存生效', 'info');
+        }
+
+        async function savePlayerConfig() {
+            const player = document.getElementById('playerSelect')?.value;
+            const autoplay = document.getElementById('playerAutoplay')?.value === 'true';
+            const preload = document.getElementById('playerPreload')?.value;
+            
+            if (!player) {
+                showToast('请选择播放器', 'error');
+                return;
+            }
+            
+            try {
+                const res = await fetch(API_BASE + '?action=player/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        player: player,
+                        autoplay: autoplay,
+                        preload: preload
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('保存成功', 'success');
+                } else {
+                    showToast(data.message || '保存失败', 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
         async function refreshRules() {
             try {
                 const res = await fetch(API_BASE + '?action=rules/list&_t=' + Date.now(), {
@@ -4012,6 +4075,7 @@ header('Expires: 0');
             initAccessPreview();
             loadOfficialSites();
             loadOfficialReplaceConfig();
+            loadPlayerConfig();
         });
     </script>
 </body>

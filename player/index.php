@@ -5,8 +5,16 @@ error_reporting(0);
 
 $url = $_GET['url'] ?? '';
 $playerType = $_GET['player'] ?? '';
-$apiUrl = 'http://114.134.184.91:9002/mx.php?action=mxjx&url=';
-$officialReplaceUrl = 'http://114.134.184.91:9002/mx.php?action=official_replace/info&url=';
+
+$scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$basePath = dirname(dirname($requestUri));
+$basePath = $basePath === '/' || $basePath === '\\' ? '' : $basePath;
+$baseUrl = $scheme . '://' . $host . $basePath;
+
+$apiUrl = $baseUrl . '/mx.php?action=mxjx&url=';
+$officialReplaceUrl = $baseUrl . '/mx.php?action=official_replace/info&url=';
 
 $configFile = __DIR__ . '/../gz/player_config.php';
 $playerConfig = [

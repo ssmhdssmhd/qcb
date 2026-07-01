@@ -1303,6 +1303,72 @@ try {
             }
             break;
 
+        case 'player/config':
+            $configFile = $rootDir . '/gz/player_config.php';
+            $defaultConfig = [
+                'player' => 'dplayer',
+                'autoplay' => false,
+                'preload' => 'auto',
+                'hls_config' => [
+                    'enableWorker' => true,
+                    'lowLatencyMode' => false,
+                    'maxBufferLength' => 30,
+                    'maxMaxBufferLength' => 600,
+                    'minBufferLength' => 2,
+                    'maxBufferSize' => 60 * 1000 * 1000,
+                    'maxBufferHole' => 0.5,
+                    'highBufferWatchdogPeriod' => 2,
+                    'startLevel' => -1,
+                    'capLevelToPlayerSize' => false,
+                ],
+            ];
+            $config = $defaultConfig;
+            if (file_exists($configFile)) {
+                $fileConfig = require $configFile;
+                if (is_array($fileConfig)) {
+                    $config = array_merge($defaultConfig, $fileConfig);
+                }
+            }
+            sendJsonResponse(['success' => true, 'config' => $config]);
+            break;
+
+        case 'player/config/save':
+            $input = getInputJson();
+            $configFile = $rootDir . '/gz/player_config.php';
+            
+            $allowedKeys = ['player', 'autoplay', 'preload', 'hls_config'];
+            $newConfig = [];
+            
+            foreach ($allowedKeys as $key) {
+                if (isset($input[$key])) {
+                    $newConfig[$key] = $input[$key];
+                }
+            }
+            
+            if (empty($newConfig)) {
+                sendJsonResponse(['success' => false, 'message' => '没有有效的配置项'], 400);
+            }
+            
+            $existingConfig = [];
+            if (file_exists($configFile)) {
+                $existingConfig = require $configFile;
+                if (!is_array($existingConfig)) {
+                    $existingConfig = [];
+                }
+            }
+            
+            $finalConfig = array_merge($existingConfig, $newConfig);
+            
+            $configContent = '<?php' . "\nreturn " . var_export($finalConfig, true) . ';';
+            $result = file_put_contents($configFile, $configContent);
+            
+            sendJsonResponse([
+                'success' => $result !== false,
+                'message' => $result !== false ? '保存成功' : '保存失败',
+                'config' => $finalConfig
+            ], $result !== false ? 200 : 400);
+            break;
+
         case 'moxi':
         case 'moxi/api':
             header('Content-Type: application/json; charset=utf-8');
