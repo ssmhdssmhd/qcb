@@ -1209,6 +1209,13 @@ header('Expires: 0');
                             <option value="none">不预加载</option>
                         </select>
                     </div>
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label>API 地址（留空则自动获取当前域名）</label>
+                        <input type="text" id="playerApiBaseUrl" placeholder="例如：https://your-domain.com" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px">
+                        <div style="margin-top:6px;font-size:12px;color:#909399">
+                            💡 留空为动态获取当前域名；如使用授权IP，填写授权服务器地址，格式：http(s)://IP:端口
+                        </div>
+                    </div>
                 </div>
                 <div style="margin-top:12px;font-size:13px;color:#606266">
                     💡 不同播放器特点：DPlayer（弹幕+截图）、Video.js（兼容性好）、MuiPlayer（移动端优化）、ArtPlayer（功能丰富）、NPlayer（轻量高效）
@@ -1859,6 +1866,7 @@ header('Expires: 0');
                     const playerSelect = document.getElementById('playerSelect');
                     const autoplaySelect = document.getElementById('playerAutoplay');
                     const preloadSelect = document.getElementById('playerPreload');
+                    const apiBaseUrlInput = document.getElementById('playerApiBaseUrl');
                     
                     if (playerSelect && config.player) {
                         playerSelect.value = config.player;
@@ -1868,6 +1876,9 @@ header('Expires: 0');
                     }
                     if (preloadSelect && config.preload) {
                         preloadSelect.value = config.preload;
+                    }
+                    if (apiBaseUrlInput && config.api_base_url !== undefined) {
+                        apiBaseUrlInput.value = config.api_base_url || '';
                     }
                 }
             } catch (e) {
@@ -1884,6 +1895,7 @@ header('Expires: 0');
             const player = document.getElementById('playerSelect')?.value;
             const autoplay = document.getElementById('playerAutoplay')?.value === 'true';
             const preload = document.getElementById('playerPreload')?.value;
+            const apiBaseUrl = document.getElementById('playerApiBaseUrl')?.value.trim();
             
             if (!player) {
                 showToast('请选择播放器', 'error');
@@ -1899,7 +1911,8 @@ header('Expires: 0');
                     body: JSON.stringify({
                         player: player,
                         autoplay: autoplay,
-                        preload: preload
+                        preload: preload,
+                        api_base_url: apiBaseUrl
                     })
                 });
                 const data = await res.json();

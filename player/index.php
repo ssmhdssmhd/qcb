@@ -6,27 +6,34 @@ error_reporting(0);
 $url = $_GET['url'] ?? '';
 $playerType = $_GET['player'] ?? '';
 
-$scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$basePath = dirname(dirname($requestUri));
-$basePath = $basePath === '/' || $basePath === '\\' ? '' : $basePath;
-$baseUrl = $scheme . '://' . $host . $basePath;
-
-$apiUrl = $baseUrl . '/mx.php?action=mxjx&url=';
-$officialReplaceUrl = $baseUrl . '/mx.php?action=official_replace/info&url=';
-
 $configFile = __DIR__ . '/../gz/player_config.php';
 $playerConfig = [
     'player' => 'dplayer',
     'autoplay' => false,
     'preload' => 'auto',
+    'api_base_url' => '',
 ];
 
 if (file_exists($configFile)) {
     $fileConfig = require $configFile;
-    $playerConfig = array_merge($playerConfig, $fileConfig);
+    if (is_array($fileConfig)) {
+        $playerConfig = array_merge($playerConfig, $fileConfig);
+    }
 }
+
+if (!empty($playerConfig['api_base_url'])) {
+    $baseUrl = rtrim($playerConfig['api_base_url'], '/');
+} else {
+    $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    $basePath = dirname(dirname($requestUri));
+    $basePath = $basePath === '/' || $basePath === '\\' ? '' : $basePath;
+    $baseUrl = $scheme . '://' . $host . $basePath;
+}
+
+$apiUrl = $baseUrl . '/mx.php?action=mxjx&url=';
+$officialReplaceUrl = $baseUrl . '/mx.php?action=official_replace/info&url=';
 
 if (!empty($playerType)) {
     $playerConfig['player'] = $playerType;

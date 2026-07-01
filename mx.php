@@ -1309,6 +1309,7 @@ try {
                 'player' => 'dplayer',
                 'autoplay' => false,
                 'preload' => 'auto',
+                'api_base_url' => '',
                 'hls_config' => [
                     'enableWorker' => true,
                     'lowLatencyMode' => false,
@@ -1336,7 +1337,7 @@ try {
             $input = getInputJson();
             $configFile = $rootDir . '/gz/player_config.php';
             
-            $allowedKeys = ['player', 'autoplay', 'preload', 'hls_config'];
+            $allowedKeys = ['player', 'autoplay', 'preload', 'api_base_url', 'hls_config'];
             $newConfig = [];
             
             foreach ($allowedKeys as $key) {

@@ -16,4 +16,5 @@ return array (
     'startLevel' => -1,
     'capLevelToPlayerSize' => false,
   ),
+  'api_base_url' => '',
 );
