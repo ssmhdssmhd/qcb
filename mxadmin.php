@@ -2777,9 +2777,29 @@ header('Expires: 0');
             if (!confirmed) return;
 
             const btn = document.getElementById('updateBtn');
-            btn.disabled = true;
-            btn.textContent = '更新中...';
-            const statusEl = document.getElementById('updateResult') || document.createElement('div');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '更新中...';
+            }
+
+            let statusEl = document.getElementById('updateResult');
+            if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.id = 'updateResult';
+                statusEl.style.fontSize = '12px';
+                statusEl.style.color = '#606266';
+                statusEl.style.padding = '12px';
+                statusEl.style.background = '#f5f7fa';
+                statusEl.style.borderRadius = '8px';
+                statusEl.style.marginTop = '12px';
+                const pageUpdate = document.getElementById('page-update');
+                if (pageUpdate) {
+                    pageUpdate.appendChild(statusEl);
+                } else {
+                    document.body.appendChild(statusEl);
+                }
+            }
+
             try {
                 statusEl.innerHTML = '<div style="color:#409eff">正在验证授权...</div>';
                 const authRes = await fetch(API_BASE + '?action=update/integrity');
@@ -2817,20 +2837,22 @@ header('Expires: 0');
             } catch (e) {
                 statusEl.innerHTML = '<div style="color:#f56c6c">更新失败: ' + escapeHtml(e.message) + '</div>';
                 showToast('更新失败: ' + e.message, 'error');
-                btn.disabled = false;
-                btn.textContent = '立即更新';
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '立即更新';
+                }
             }
         }
 
         function showUpdateConfirm(updateData) {
             return new Promise((resolve) => {
                 const modalHtml = `
-                    <div id="updateConfirmModal" class="update-modal-overlay">
+                    <div class="update-modal-overlay" data-confirm-modal>
                         <div class="update-modal" style="width:440px">
                             <div class="update-modal-header">
                                 <div class="update-modal-icon">⚠️</div>
                                 <div class="update-modal-title">确认更新</div>
-                                <button class="update-modal-close" id="confirm-close-btn">✕</button>
+                                <button class="update-modal-close" data-action="close">✕</button>
                             </div>
                             <div class="update-modal-body">
                                 <p style="color:#606266;font-size:13px;margin-bottom:16px;line-height:1.6">
@@ -2849,8 +2871,8 @@ header('Expires: 0');
                                 ` : ''}
                             </div>
                             <div class="update-modal-footer">
-                                <button class="btn btn-secondary" id="confirm-cancel-btn">取消</button>
-                                <button class="btn btn-primary" id="confirm-ok-btn">确认更新</button>
+                                <button class="btn btn-secondary" data-action="cancel">取消</button>
+                                <button class="btn btn-primary" data-action="confirm">确认更新</button>
                             </div>
                         </div>
                     </div>
@@ -2860,18 +2882,25 @@ header('Expires: 0');
                 const modal = tempDiv.firstElementChild;
                 document.body.appendChild(modal);
 
+                let resolved = false;
                 const closeModal = (result) => {
+                    if (resolved) return;
+                    resolved = true;
                     modal.remove();
                     resolve(result);
                 };
 
-                document.getElementById('confirm-close-btn').onclick = () => closeModal(false);
-                document.getElementById('confirm-cancel-btn').onclick = () => closeModal(false);
-                document.getElementById('confirm-ok-btn').onclick = () => closeModal(true);
+                const closeBtn = modal.querySelector('[data-action="close"]');
+                const cancelBtn = modal.querySelector('[data-action="cancel"]');
+                const confirmBtn = modal.querySelector('[data-action="confirm"]');
 
-                modal.onclick = (e) => {
+                if (closeBtn) closeBtn.addEventListener('click', () => closeModal(false));
+                if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal(false));
+                if (confirmBtn) confirmBtn.addEventListener('click', () => closeModal(true));
+
+                modal.addEventListener('click', (e) => {
                     if (e.target === modal) closeModal(false);
-                };
+                });
             });
         }
 
