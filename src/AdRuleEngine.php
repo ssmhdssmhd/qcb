@@ -44,6 +44,8 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'short-duration',
                 'description' => '片段时长过短，可能是广告',
+                'category' => 'duration',
+                'weight' => 30,
                 'check' => function($segment, $index, $segments) {
                     return $segment['duration'] < $this->options['minSegmentDuration'];
                 }
@@ -54,6 +56,8 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'long-duration',
                 'description' => '片段时长过长，可能是广告',
+                'category' => 'duration',
+                'weight' => 30,
                 'check' => function($segment, $index, $segments) {
                     return $segment['duration'] > $this->options['maxSegmentDuration'];
                 }
@@ -64,6 +68,8 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'keyword-match',
                 'description' => '标题或文件名包含广告关键词',
+                'category' => 'keyword',
+                'weight' => 50,
                 'check' => function($segment) {
                     $text = mb_strtolower(($segment['title'] ?? '') . ' ' . ($segment['uri'] ?? ''));
                     foreach ($this->options['adKeywords'] as $kw) {
@@ -80,6 +86,8 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'filename-pattern',
                 'description' => '文件名匹配广告命名模式',
+                'category' => 'pattern',
+                'weight' => 60,
                 'check' => function($segment) {
                     $uri = $segment['uri'] ?? '';
                     $pathParts = explode('/', $uri);
@@ -98,6 +106,8 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'discontinuity',
                 'description' => '存在不连续标记，可能是插播广告',
+                'category' => 'marker',
+                'weight' => 80,
                 'check' => function($segment, $index, $segments) {
                     return !empty($segment['discontinuity']);
                 }
@@ -108,6 +118,8 @@ class AdRuleEngine {
             $this->rules[] = [
                 'name' => 'repetitive-duration',
                 'description' => '重复出现相近时长的短片段，可能是广告',
+                'category' => 'pattern',
+                'weight' => 55,
                 'check' => function($segment, $index, $segments) {
                     if (count($segments) < 20) return false;
                     
@@ -155,27 +167,139 @@ class AdRuleEngine {
                 }
             ];
         }
+
+        if (!empty($this->options['checkCueMarkers'])) {
+            $this->rules[] = [
+                'name' => 'cue-marker',
+                'description' => '存在 CUE-OUT/CUE-IN 广告标记',
+                'category' => 'marker',
+                'weight' => 95,
+                'check' => function($segment) {
+                    return !empty($segment['cueMarkers']) && count($segment['cueMarkers']) > 0;
+                }
+            ];
+        }
+
+        if (!empty($this->options['checkScte35'])) {
+            $this->rules[] = [
+                'name' => 'scte35-marker',
+                'description' => '存在 SCTE-35 广告信令标记',
+                'category' => 'marker',
+                'weight' => 95,
+                'check' => function($segment) {
+                    return !empty($segment['scte35']);
+                }
+            ];
+        }
+
+        if (!empty($this->options['checkAdTags'])) {
+            $this->rules[] = [
+                'name' => 'ad-tag-marker',
+                'description' => '存在 EXT-X-AD 广告标签',
+                'category' => 'marker',
+                'weight' => 90,
+                'check' => function($segment) {
+                    return !empty($segment['adMarkers']) && count($segment['adMarkers']) > 0;
+                }
+            ];
+        }
+
+        if (!empty($this->options['checkAdClusters'])) {
+            $this->rules[] = [
+                'name' => 'ad-cluster-boundary',
+                'description' => '位于广告簇边界（DISCONTINUITY + 时长突变）',
+                'category' => 'cluster',
+                'weight' => 70,
+                'check' => function($segment, $index, $segments) {
+                    if (empty($segment['discontinuity'])) return false;
+                    if ($index === 0 || $index >= count($segments) - 1) return true;
+                    
+                    $prevDuration = $segments[$index - 1]['duration'] ?? 0;
+                    $currDuration = $segment['duration'];
+                    $durationDiff = abs($currDuration - $prevDuration);
+                    
+                    return $durationDiff > $prevDuration * 0.5;
+                }
+            ];
+        }
+
+        if (!empty($this->options['checkPreRoll'])) {
+            $this->rules[] = [
+                'name' => 'pre-roll-position',
+                'description' => '位于视频开头，可能是前贴片广告',
+                'category' => 'position',
+                'weight' => 40,
+                'check' => function($segment, $index, $segments) {
+                    $total = count($segments);
+                    if ($total < 10) return false;
+                    if ($index > $total * 0.1) return false;
+                    
+                    $firstQuarterDur = 0;
+                    for ($i = 0; $i < min(10, $total); $i++) {
+                        $firstQuarterDur += $segments[$i]['duration'] ?? 0;
+                    }
+                    return $index < 10 && $firstQuarterDur < 60 && $segment['duration'] < 10;
+                }
+            ];
+        }
+
+        if (!empty($this->options['checkPostRoll'])) {
+            $this->rules[] = [
+                'name' => 'post-roll-position',
+                'description' => '位于视频结尾，可能是后贴片广告',
+                'category' => 'position',
+                'weight' => 40,
+                'check' => function($segment, $index, $segments) {
+                    $total = count($segments);
+                    if ($total < 10) return false;
+                    if ($index < $total * 0.9) return false;
+                    
+                    $lastQuarterDur = 0;
+                    for ($i = max(0, $total - 10); $i < $total; $i++) {
+                        $lastQuarterDur += $segments[$i]['duration'] ?? 0;
+                    }
+                    return $index >= $total - 10 && $lastQuarterDur < 60 && $segment['duration'] < 10;
+                }
+            ];
+        }
     }
 
     public function checkSegment($segment, $index, $segments) {
         $matchedRules = [];
+        $totalWeight = 0;
+        $categories = [];
 
         foreach ($this->rules as $rule) {
             try {
                 if (call_user_func($rule['check'], $segment, $index, $segments)) {
+                    $weight = $rule['weight'] ?? 50;
+                    $category = $rule['category'] ?? 'unknown';
                     $matchedRules[] = [
                         'name' => $rule['name'],
-                        'description' => $rule['description']
+                        'description' => $rule['description'],
+                        'weight' => $weight,
+                        'category' => $category
                     ];
+                    $totalWeight += $weight;
+                    if (!isset($categories[$category])) {
+                        $categories[$category] = 0;
+                    }
+                    $categories[$category] += $weight;
                 }
             } catch (Exception $e) {
                 // 忽略规则检查错误
             }
         }
 
+        $adThreshold = $this->options['adThreshold'] ?? 50;
+        $isAd = $totalWeight >= $adThreshold;
+
         return [
-            'isAd' => count($matchedRules) > 0,
-            'matchedRules' => $matchedRules
+            'isAd' => $isAd,
+            'matchedRules' => $matchedRules,
+            'confidence' => min(100, $totalWeight),
+            'categories' => $categories,
+            'totalWeight' => $totalWeight
         ];
     }
 
@@ -208,7 +332,9 @@ class AdRuleEngine {
         return array_map(function($r) {
             return [
                 'name' => $r['name'],
-                'description' => $r['description']
+                'description' => $r['description'],
+                'category' => $r['category'] ?? 'unknown',
+                'weight' => $r['weight'] ?? 50
             ];
         }, $this->rules);
     }

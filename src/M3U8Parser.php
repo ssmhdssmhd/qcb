@@ -158,14 +158,22 @@ class M3U8Parser {
             'version' => 3,
             'targetDuration' => 0,
             'mediaSequence' => 0,
+            'discontinuitySequence' => 0,
             'segments' => [],
             'isMaster' => false,
             'variants' => [],
-            'endlist' => false
+            'endlist' => false,
+            'adMarkers' => [],
+            'cueMarkers' => [],
+            'scte35Markers' => [],
+            'customTags' => []
         ];
 
         $currentSegment = null;
         $nextDiscontinuity = false;
+        $pendingAdMarkers = [];
+        $pendingCueMarkers = [];
+        $pendingScte35 = null;
         $i = 0;
         $totalLines = count($lines);
 
@@ -195,6 +203,12 @@ class M3U8Parser {
                 continue;
             }
 
+            if (strpos($line, '#EXT-X-DISCONTINUITY-SEQUENCE:') === 0) {
+                $playlist['discontinuitySequence'] = (int)substr($line, 30);
+                $i++;
+                continue;
+            }
+
             if (strpos($line, '#EXT-X-STREAM-INF:') === 0) {
                 $playlist['isMaster'] = true;
                 $attrs = $this->parseAttributes(substr($line, 18));
@@ -212,6 +226,71 @@ class M3U8Parser {
                 continue;
             }
 
+            if (strpos($line, '#EXT-X-CUE-OUT:') === 0) {
+                $duration = (float)substr($line, 15);
+                $cueMarker = [
+                    'type' => 'cue-out',
+                    'duration' => $duration,
+                    'index' => count($playlist['segments']),
+                    'raw' => $line
+                ];
+                $playlist['cueMarkers'][] = $cueMarker;
+                $pendingCueMarkers[] = $cueMarker;
+                $i++;
+                continue;
+            }
+
+            if ($line === '#EXT-X-CUE-IN' || strpos($line, '#EXT-X-CUE-IN:') === 0) {
+                $cueMarker = [
+                    'type' => 'cue-in',
+                    'index' => count($playlist['segments']),
+                    'raw' => $line
+                ];
+                $playlist['cueMarkers'][] = $cueMarker;
+                $pendingCueMarkers[] = $cueMarker;
+                $i++;
+                continue;
+            }
+
+            if (strpos($line, '#EXT-OATCLS-SCTE35:') === 0) {
+                $scte35 = [
+                    'type' => 'oatcls-scte35',
+                    'data' => substr($line, 21),
+                    'index' => count($playlist['segments'])
+                ];
+                $playlist['scte35Markers'][] = $scte35;
+                $pendingScte35 = $scte35;
+                $i++;
+                continue;
+            }
+
+            if (strpos($line, '#EXT-X-SCTE35:') === 0) {
+                $attrs = $this->parseAttributes(substr($line, 16));
+                $scte35 = [
+                    'type' => 'ext-x-scte35',
+                    'attributes' => $attrs,
+                    'index' => count($playlist['segments']),
+                    'raw' => $line
+                ];
+                $playlist['scte35Markers'][] = $scte35;
+                $pendingScte35 = $scte35;
+                $i++;
+                continue;
+            }
+
+            if (strpos($line, '#EXT-X-AD:') === 0 || strpos($line, '#EXT-X-AD-') === 0) {
+                $adMarker = [
+                    'type' => 'ad-tag',
+                    'tag' => $line,
+                    'index' => count($playlist['segments']),
+                    'raw' => $line
+                ];
+                $playlist['adMarkers'][] = $adMarker;
+                $pendingAdMarkers[] = $adMarker;
+                $i++;
+                continue;
+            }
+
             if (strpos($line, '#EXTINF:') === 0) {
                 $parts = explode(',', substr($line, 8), 2);
                 $duration = (float)$parts[0];
@@ -220,8 +299,25 @@ class M3U8Parser {
                     'duration' => $duration,
                     'title' => $title,
                     'uri' => '',
-                    'discontinuity' => $nextDiscontinuity
+                    'discontinuity' => $nextDiscontinuity,
+                    'adMarkers' => [],
+                    'cueMarkers' => [],
+                    'scte35' => null
                 ];
+
+                if (!empty($pendingAdMarkers)) {
+                    $currentSegment['adMarkers'] = $pendingAdMarkers;
+                    $pendingAdMarkers = [];
+                }
+                if (!empty($pendingCueMarkers)) {
+                    $currentSegment['cueMarkers'] = $pendingCueMarkers;
+                    $pendingCueMarkers = [];
+                }
+                if ($pendingScte35 !== null) {
+                    $currentSegment['scte35'] = $pendingScte35;
+                    $pendingScte35 = null;
+                }
+
                 $nextDiscontinuity = false;
                 $i++;
                 continue;
@@ -253,6 +349,12 @@ class M3U8Parser {
             }
 
             if (strpos($line, '#') === 0) {
+                if (strpos($line, '#EXT') === 0) {
+                    $playlist['customTags'][] = [
+                        'tag' => $line,
+                        'index' => count($playlist['segments'])
+                    ];
+                }
                 $i++;
                 continue;
             }

@@ -137,6 +137,52 @@ class DomainRuleManager {
             $merged['ad_threshold'] = min(80, ($existing['ad_threshold'] ?? 50) + 5);
         }
 
+        $insertionPoints = $analysisResult['insertionPoints'] ?? null;
+        if ($insertionPoints) {
+            $merged['insertion_patterns'] = $this->mergeInsertionPatterns(
+                $existing['insertion_patterns'] ?? [],
+                $insertionPoints
+            );
+        }
+
+        $adTypes = $analysisResult['adTypes'] ?? null;
+        if ($adTypes) {
+            $merged['ad_type_stats'] = $this->mergeAdTypeStats(
+                $existing['ad_type_stats'] ?? [],
+                $adTypes
+            );
+        }
+
+        $psychFeatures = $analysisResult['psychologicalFeatures'] ?? null;
+        if ($psychFeatures) {
+            $merged['psychological_profile'] = $this->mergePsychologicalProfile(
+                $existing['psychological_profile'] ?? [],
+                $psychFeatures
+            );
+        }
+
+        $confidence = $analysisResult['confidence'] ?? 0;
+        $merged['confidence_score'] = $this->updateConfidenceScore(
+            $existing['confidence_score'] ?? 0,
+            $confidence,
+            $existing['learn_count'] ?? 1
+        );
+
+        $cueMarkerCount = $analysisResult['cueMarkerCount'] ?? 0;
+        $scte35Count = $analysisResult['scte35Count'] ?? 0;
+        $adTagCount = $analysisResult['adTagCount'] ?? 0;
+
+        $merged['marker_stats'] = [
+            'discontinuity_count' => ($merged['marker_stats']['discontinuity_count'] ?? 0) + $discoCount,
+            'cue_marker_count' => ($merged['marker_stats']['cue_marker_count'] ?? 0) + $cueMarkerCount,
+            'scte35_count' => ($merged['marker_stats']['scte35_count'] ?? 0) + $scte35Count,
+            'ad_tag_count' => ($merged['marker_stats']['ad_tag_count'] ?? 0) + $adTagCount
+        ];
+
+        if ($cueMarkerCount > 0 || $scte35Count > 0 || $adTagCount > 0) {
+            $merged['enable_marker_detection'] = true;
+        }
+
         return $merged;
     }
 
@@ -256,6 +302,145 @@ class DomainRuleManager {
         return $patterns;
     }
 
+    private function mergeInsertionPatterns($existing, $new) {
+        $result = $existing;
+
+        if (!empty($new['pre_roll']['found'])) {
+            $result['pre_roll'] = $result['pre_roll'] ?? [
+                'detected_count' => 0,
+                'avg_duration' => 0,
+                'avg_segment_count' => 0
+            ];
+            $prevCount = $result['pre_roll']['detected_count'] ?? 0;
+            $result['pre_roll']['detected_count'] = $prevCount + 1;
+            $result['pre_roll']['avg_duration'] = round(
+                (($result['pre_roll']['avg_duration'] ?? 0) * $prevCount + ($new['pre_roll']['duration'] ?? 0)) / ($prevCount + 1),
+                2
+            );
+            $result['pre_roll']['avg_segment_count'] = round(
+                (($result['pre_roll']['avg_segment_count'] ?? 0) * $prevCount + ($new['pre_roll']['segment_count'] ?? 0)) / ($prevCount + 1),
+                1
+            );
+        }
+
+        if (!empty($new['mid_roll']['found'])) {
+            $result['mid_roll'] = $result['mid_roll'] ?? [
+                'detected_count' => 0,
+                'avg_clip_count' => 0,
+                'avg_duration_per_clip' => 0,
+                'positions' => []
+            ];
+            $prevCount = $result['mid_roll']['detected_count'] ?? 0;
+            $result['mid_roll']['detected_count'] = $prevCount + 1;
+            $result['mid_roll']['avg_clip_count'] = round(
+                (($result['mid_roll']['avg_clip_count'] ?? 0) * $prevCount + ($new['mid_roll']['count'] ?? 0)) / ($prevCount + 1),
+                1
+            );
+            $totalMidDur = 0;
+            foreach ($new['mid_roll']['points'] ?? [] as $p) {
+                $totalMidDur += $p['duration'] ?? 0;
+            }
+            $avgMidDur = count($new['mid_roll']['points'] ?? []) > 0 ? $totalMidDur / count($new['mid_roll']['points']) : 0;
+            $result['mid_roll']['avg_duration_per_clip'] = round(
+                (($result['mid_roll']['avg_duration_per_clip'] ?? 0) * $prevCount + $avgMidDur) / ($prevCount + 1),
+                2
+            );
+        }
+
+        if (!empty($new['post_roll']['found'])) {
+            $result['post_roll'] = $result['post_roll'] ?? [
+                'detected_count' => 0,
+                'avg_duration' => 0,
+                'avg_segment_count' => 0
+            ];
+            $prevCount = $result['post_roll']['detected_count'] ?? 0;
+            $result['post_roll']['detected_count'] = $prevCount + 1;
+            $result['post_roll']['avg_duration'] = round(
+                (($result['post_roll']['avg_duration'] ?? 0) * $prevCount + ($new['post_roll']['duration'] ?? 0)) / ($prevCount + 1),
+                2
+            );
+            $result['post_roll']['avg_segment_count'] = round(
+                (($result['post_roll']['avg_segment_count'] ?? 0) * $prevCount + ($new['post_roll']['segment_count'] ?? 0)) / ($prevCount + 1),
+                1
+            );
+        }
+
+        return $result;
+    }
+
+    private function mergeAdTypeStats($existing, $new) {
+        $result = $existing;
+        $typeKeys = ['pre_roll_ad', 'mid_roll_ad', 'post_roll_ad', 'marker_based_ad', 'pattern_based_ad', 'duration_based_ad'];
+
+        foreach ($typeKeys as $key) {
+            if (!isset($result[$key])) {
+                $result[$key] = ['total_count' => 0, 'total_duration' => 0, 'avg_count_per_video' => 0, 'sample_count' => 0];
+            }
+            if (isset($new[$key])) {
+                $prevSamples = $result[$key]['sample_count'] ?? 0;
+                $result[$key]['sample_count'] = $prevSamples + 1;
+                $result[$key]['total_count'] += $new[$key]['count'] ?? 0;
+                $result[$key]['total_duration'] += $new[$key]['duration'] ?? 0;
+                $result[$key]['avg_count_per_video'] = round(
+                    $result[$key]['total_count'] / $result[$key]['sample_count'],
+                    2
+                );
+            }
+        }
+
+        return $result;
+    }
+
+    private function mergePsychologicalProfile($existing, $new) {
+        $result = $existing;
+
+        $fields = ['ad_density', 'attention_grab_score', 'frequency_score', 'watchability_score'];
+        foreach ($fields as $field) {
+            if (isset($new[$field])) {
+                if (!isset($result[$field])) {
+                    $result[$field] = ['avg' => 0, 'sample_count' => 0, 'min' => 100, 'max' => 0];
+                }
+                $prevSamples = $result[$field]['sample_count'] ?? 0;
+                $oldAvg = $result[$field]['avg'] ?? 0;
+                $result[$field]['avg'] = round(
+                    ($oldAvg * $prevSamples + $new[$field]) / ($prevSamples + 1),
+                    2
+                );
+                $result[$field]['sample_count'] = $prevSamples + 1;
+                $result[$field]['min'] = min($result[$field]['min'] ?? 100, $new[$field]);
+                $result[$field]['max'] = max($result[$field]['max'] ?? 0, $new[$field]);
+            }
+        }
+
+        if (!empty($new['interruption_pattern'])) {
+            $result['pattern_distribution'] = $result['pattern_distribution'] ?? [];
+            $pattern = $new['interruption_pattern'];
+            if (!isset($result['pattern_distribution'][$pattern])) {
+                $result['pattern_distribution'][$pattern] = 0;
+            }
+            $result['pattern_distribution'][$pattern]++;
+        }
+
+        if (!empty($new['user_experience_impact'])) {
+            $result['ux_impact_distribution'] = $result['ux_impact_distribution'] ?? [];
+            $impact = $new['user_experience_impact'];
+            if (!isset($result['ux_impact_distribution'][$impact])) {
+                $result['ux_impact_distribution'][$impact] = 0;
+            }
+            $result['ux_impact_distribution'][$impact]++;
+        }
+
+        return $result;
+    }
+
+    private function updateConfidenceScore($oldScore, $newScore, $learnCount) {
+        if ($learnCount <= 1) {
+            return $newScore;
+        }
+        $weight = min(0.3, 1 / $learnCount);
+        return round($oldScore * (1 - $weight) + $newScore * $weight, 0);
+    }
+
     public function exportRules($domain = null) {
         if ($domain !== null) {
             $rules = $this->getRules($domain);
@@ -341,6 +526,11 @@ class DomainRuleManager {
     }
 
     public function createFromAnalysis($domain, $analysisResult, $customConfig = []) {
+        $cueMarkerCount = $analysisResult['cueMarkerCount'] ?? 0;
+        $scte35Count = $analysisResult['scte35Count'] ?? 0;
+        $adTagCount = $analysisResult['adTagCount'] ?? 0;
+        $hasMarkers = $cueMarkerCount > 0 || $scte35Count > 0 || $adTagCount > 0;
+
         $defaultRules = [
             'domain' => $domain,
             'duration_rules' => [
@@ -383,6 +573,12 @@ class DomainRuleManager {
                     'weight' => 90
                 ]
             ],
+            'marker_detection' => [
+                'cue_markers' => $cueMarkerCount > 0,
+                'scte35' => $scte35Count > 0,
+                'ad_tags' => $adTagCount > 0,
+                'enabled' => $hasMarkers
+            ],
             'filename_patterns' => [],
             'ad_threshold' => 50,
             'confidence' => [
@@ -390,14 +586,37 @@ class DomainRuleManager {
                 'medium' => 50,
                 'low' => 30
             ],
+            'confidence_score' => $analysisResult['confidence'] ?? 0,
+            'insertion_patterns' => $analysisResult['insertionPoints'] ?? [
+                'pre_roll' => ['found' => false],
+                'mid_roll' => ['found' => false],
+                'post_roll' => ['found' => false]
+            ],
+            'ad_type_stats' => $analysisResult['adTypes'] ?? [],
+            'psychological_profile' => $analysisResult['psychologicalFeatures'] ?? [],
+            'marker_stats' => [
+                'discontinuity_count' => $analysisResult['discontinuityCount'] ?? 0,
+                'cue_marker_count' => $cueMarkerCount,
+                'scte35_count' => $scte35Count,
+                'ad_tag_count' => $adTagCount
+            ],
             'note' => '基于靶机测试分析自动生成的规则',
             'analysis_date' => date('Y-m-d H:i:s'),
             'analysis_stats' => [
                 'totalSegments' => $analysisResult['totalCount'],
                 'adSegments' => $analysisResult['adCount'],
+                'contentSegments' => $analysisResult['contentCount'] ?? 0,
+                'totalDuration' => $analysisResult['totalDuration'] ?? 0,
+                'adDuration' => $analysisResult['adDuration'] ?? 0,
+                'contentDuration' => $analysisResult['contentDuration'] ?? 0,
+                'adPercentage' => $analysisResult['adPercentage'] ?? 0,
                 'discontinuityCount' => $analysisResult['discontinuityCount'],
+                'cueMarkerCount' => $cueMarkerCount,
+                'scte35Count' => $scte35Count,
+                'adTagCount' => $adTagCount,
                 'sequenceJumps' => count($analysisResult['sequenceJumps']),
-                'adClusters' => count($analysisResult['adClusters'])
+                'adClusters' => count($analysisResult['adClusters']),
+                'confidence' => $analysisResult['confidence'] ?? 0
             ]
         ];
         return array_merge($defaultRules, $customConfig);
