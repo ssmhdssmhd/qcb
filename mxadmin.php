@@ -629,6 +629,7 @@ header('Expires: 0');
         <div class="nav-item" data-page="sites">资源站管理</div>
         <div class="nav-item" data-page="official_sites">推荐采集</div>
         <div class="nav-item" data-page="official_replace">官替管理</div>
+        <div class="nav-item" data-page="moxi_api">沫兮API</div>
         <div class="nav-item" onclick="location.href='proxy/proxy_admin.php'" style="cursor:pointer">代理池管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
@@ -670,6 +671,13 @@ header('Expires: 0');
                 <div class="access-item">
                     <code id="preview-official-replace" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-official-replace').textContent)">复制</button>
+                </div>
+            </div>
+            <div style="flex:1;min-width:200px">
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">沫兮API接口</div>
+                <div class="access-item">
+                    <code id="preview-moxi" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-moxi').textContent)">复制</button>
                 </div>
             </div>
         </div>
@@ -1106,6 +1114,68 @@ header('Expires: 0');
   "ad_skip_url": "https://你的域名/mx.php?action=mxjx&url=...",
   "episodes": 42
 }</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-moxi_api">
+            <div class="card">
+                <div class="card-title">沫兮API 接口说明</div>
+                <div style="font-size:13px;line-height:1.8;color:#606266">
+                    <p><strong>沫兮API 解析接口：</strong></p>
+                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
+                        <code id="moxi-api-url"></code>
+                    </div>
+                    <p><strong>参数说明：</strong></p>
+                    <ul style="margin-left:20px">
+                        <li><code>url</code> - 视频播放链接（支持官方视频链接或直接M3U8链接）</li>
+                        <li><code>type</code> - （可选）播放类型</li>
+                    </ul>
+                    <p><strong>返回字段说明：</strong></p>
+                    <ul style="margin-left:20px">
+                        <li><code>code</code> - 状态码，200表示成功，400表示参数错误，404表示解析失败</li>
+                        <li><code>url</code> - 解析后的播放地址</li>
+                        <li><code>msg</code> - 返回消息</li>
+                        <li><code>jm</code> - 剧名</li>
+                        <li><code>js</code> - 集数</li>
+                        <li><code>time</code> - 响应时间</li>
+                        <li><code>kfz</code> - 开发者/接口标识</li>
+                    </ul>
+                    <p><strong>返回示例：</strong></p>
+                    <pre style="background:#f5f7fa;padding:12px;border-radius:6px;overflow:auto;font-size:12px">{
+  "code": 200,
+  "url": "https://你的域名/mx.php?action=mxjx&url=...",
+  "msg": "解析成功",
+  "jm": "庆余年",
+  "js": "第1集",
+  "time": "2024-01-01 12:00:00",
+  "kfz": "沫兮API - 在线视频解析"
+}</pre>
+                    <p><strong>支持平台：</strong></p>
+                    <ul style="margin-left:20px">
+                        <li>腾讯视频 (v.qq.com)</li>
+                        <li>爱奇艺 (iqiyi.com)</li>
+                        <li>优酷 (youku.com)</li>
+                        <li>芒果TV (mgtv.com)</li>
+                        <li>哔哩哔哩 (bilibili.com)</li>
+                        <li>搜狐视频 (sohu.com)</li>
+                        <li>PP视频 (pptv.com)</li>
+                        <li>直接M3U8链接</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">沫兮API 接口测试</div>
+                <div class="input-group">
+                    <input type="text" id="moxiTestUrl" placeholder="输入视频链接，如：https://v.qq.com/x/cover/xxx.html">
+                    <button class="btn btn-primary" onclick="testMoxiApi()">测试解析</button>
+                </div>
+                <div style="font-size:12px;color:#909399;margin-bottom:16px">
+                    支持官方视频链接和直接M3U8链接
+                </div>
+                <div id="moxiTestResult" style="display:none">
+                    <div id="moxiTestInfo"></div>
                 </div>
             </div>
         </div>
@@ -3292,6 +3362,13 @@ header('Expires: 0');
             document.getElementById('preview-parse').textContent = base + '/mx.php?action=mxjx&url=';
             document.getElementById('preview-player').textContent = base + '/mx.php?action=mxjx/info&url=';
             document.getElementById('preview-official-replace').textContent = base + '/mx.php?action=official_replace/info&url=';
+            document.getElementById('preview-moxi').textContent = base + '/mx.php?action=moxi&url=';
+            
+            const moxiApiUrl = base + '/mx.php?action=moxi&url=';
+            const moxiApiEl = document.getElementById('moxi-api-url');
+            if (moxiApiEl) {
+                moxiApiEl.textContent = moxiApiUrl;
+            }
         }
 
         let currentOfficialConfig = null;
@@ -3590,6 +3667,70 @@ header('Expires: 0');
                         });
                         html += '</div>';
                     }
+                    infoEl.innerHTML = html;
+                }
+            } catch (e) {
+                infoEl.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">请求失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function testMoxiApi() {
+            const url = document.getElementById('moxiTestUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+
+            const resultEl = document.getElementById('moxiTestResult');
+            const infoEl = document.getElementById('moxiTestInfo');
+            resultEl.style.display = 'block';
+            infoEl.innerHTML = '<div style="text-align:center;padding:20px;color:#909399">正在解析...</div>';
+
+            try {
+                const res = await fetch(API_BASE + '?action=moxi&url=' + encodeURIComponent(url) + '&_t=' + Date.now());
+                const data = await res.json();
+                
+                if (data.code === 200) {
+                    let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
+                        <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 解析成功</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>状态码:</strong> <span style="color:#67c23a">${data.code}</span></p>
+                            <p><strong>剧名 (jm):</strong> ${escapeHtml(data.jm || '')}</p>
+                            <p><strong>集数 (js):</strong> ${escapeHtml(data.js || '')}</p>
+                            <p><strong>消息 (msg):</strong> ${escapeHtml(data.msg || '')}</p>
+                            <p><strong>响应时间 (time):</strong> ${escapeHtml(data.time || '')}</p>
+                            <p><strong>开发者 (kfz):</strong> ${escapeHtml(data.kfz || '')}</p>
+                            <p><strong>播放地址 (url):</strong></p>
+                            <div style="background:#fff;padding:8px;border-radius:4px;margin-top:4px;border:1px solid #e1f3d8">
+                                <code style="word-break:break-all;font-size:11px">${escapeHtml(data.url || '')}</code>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-sm btn-primary" onclick="window.open('${escapeHtml(data.url || '')}', '_blank')">新窗口播放</button>
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(data.url || '')}')">复制播放地址</button>
+                        </div>
+                    </div>`;
+                    
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
+                    
+                    infoEl.innerHTML = html;
+                } else {
+                    let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 解析失败</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>状态码:</strong> <span style="color:#f56c6c">${data.code}</span></p>
+                            <p><strong>消息:</strong> ${escapeHtml(data.msg || '未知错误')}</p>
+                            <p><strong>响应时间:</strong> ${escapeHtml(data.time || '')}</p>
+                            <p><strong>开发者:</strong> ${escapeHtml(data.kfz || '')}</p>
+                        </div>
+                    </div>`;
+                    
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
+                    
                     infoEl.innerHTML = html;
                 }
             } catch (e) {
