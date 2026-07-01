@@ -343,7 +343,7 @@ $proxies = $proxyMgr->getAllProxies();
 <body>
     <div class="header">
         <h1>🔄 代理池管理</h1>
-        <a href="mxadmin.php" class="back-btn">← 返回后台</a>
+        <a href="../mxadmin.php" class="back-btn">← 返回后台</a>
     </div>
     
     <div class="stats-grid">
