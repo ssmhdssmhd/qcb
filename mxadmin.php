@@ -1111,13 +1111,48 @@ header('Expires: 0');
 
         <div class="page" id="page-play">
             <div class="card">
+                <div class="card-title">播放器设置</div>
+                <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
+                    <div class="form-group">
+                        <label>选择播放器</label>
+                        <select id="playerSelect" onchange="changePlayerPreview()">
+                            <option value="dplayer">DPlayer（推荐）</option>
+                            <option value="videojs">Video.js</option>
+                            <option value="muiplayer">MuiPlayer</option>
+                            <option value="artplayer">ArtPlayer</option>
+                            <option value="nplayer">NPlayer</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>自动播放</label>
+                        <select id="playerAutoplay">
+                            <option value="false">关闭</option>
+                            <option value="true">开启</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>预加载</label>
+                        <select id="playerPreload">
+                            <option value="auto">自动（推荐）</option>
+                            <option value="metadata">仅元数据</option>
+                            <option value="none">不预加载</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top:12px;font-size:13px;color:#606266">
+                    💡 不同播放器特点：DPlayer（弹幕+截图）、Video.js（兼容性好）、MuiPlayer（移动端优化）、ArtPlayer（功能丰富）、NPlayer（轻量高效）
+                </div>
+                <button class="btn btn-primary" style="margin-top:12px" onclick="savePlayerConfig()">保存播放器设置</button>
+            </div>
+
+            <div class="card">
                 <div class="card-title">无广告播放测试</div>
                 <div class="input-group">
                     <input type="text" id="playUrl" placeholder="输入 M3U8 视频链接">
                     <button class="btn btn-primary" onclick="playVideo()">播放</button>
                 </div>
                 <div id="playerContainer" style="display:none;margin-top:20px">
-                    <div id="dplayer" style="width:100%;border-radius:8px;overflow:hidden"></div>
+                    <div id="videoPlayer" style="width:100%;border-radius:8px;overflow:hidden"></div>
                     <div style="margin-top:12px;font-size:13px;color:#606266" id="playInfo"></div>
                 </div>
             </div>
