@@ -5,6 +5,110 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.1.0] - 2026-07-01
+
+### 🛡️ 安全保护机制（核心新增）
+- **M3U8AdSkipper 安全保护** - 新增 `processWithSafeguard()` 方法，检测广告占比异常时自动保护
+- **三级安全防护策略**：
+  - 一级：智能过滤模式（smart_filter）- 仅删除高度确认的广告簇
+  - 二级：阈值自适应调整（threshold_adjustment）- 自动提高检测阈值
+  - 三级：回退原始内容（fallback_original）- 无法确定时保留全部内容
+- **触发条件**：广告占比 ≥85%、保留内容 <20%、所有片段均为广告时触发
+
+### 🎚️ 动态阈值自适应
+- **EnhancedAdRuleEngine** 新增 `analyzeAllSegmentsWithAdaptation()` 方法
+- 检测到异常结果时自动逐级提高阈值
+- 自动寻找最佳平衡点，确保至少保留 30% 内容片段
+- 完成后自动恢复原始阈值，不影响后续分析
+
+### 🧠 学习机制防过度拟合
+- **DomainRuleManager** 学习前自动验证分析结果合理性
+- 广告占比过高（≥85%）、保留内容过少（<15%）、全量误判时跳过学习
+- 阈值调整采用学习衰减因子，学习次数越多调整越谨慎
+- 避免单次异常结果污染规则库
+
+### ⚡ 接口升级
+- **analyze 接口快速模式** - 集成安全保护，自动识别规则不匹配场景
+- **mxjx 接口** - 改用 processWithSafeguard，增加 X-Safeguard 响应头
+- 新增响应头：`X-Safeguard`、`X-Safeguard-Reason`、`X-Safeguard-Method`
+- 安全保护触发时自动切换模式，保证视频可播放
+
+### 🔧 其他改进
+- AdRuleEngine 新增 `setAdThreshold()` / `getAdThreshold()` 方法
+- 所有接口语法检查通过，单元测试全通过
+
+## [2.0.0] - 2026-07-01
+
+### ✨ 新增功能
+
+- **专业视频广告分析器 (AdAnalyzer)** - 新增专业级 M3U8 视频广告分析类
+  - 完整的广告分析报告生成（文字版）
+  - 广告簇详细分析（位置、时长、置信度、规则类别）
+  - 逐片段详细分析（匹配规则、置信度、标记信息）
+  - 自动学习规则集成
+  - 支持域名规则自动创建和更新
+
+- **M3U8 标签解析增强** - 新增多种广告相关 M3U8 标签解析支持
+  - `#EXT-X-DISCONTINUITY-SEQUENCE` - 不连续序列号
+  - `#EXT-X-CUE-OUT` / `#EXT-X-CUE-IN` - 广告插播标记
+  - `#EXT-OATCLS-SCTE35` - SCTE-35 数字广告信令
+  - `#EXT-X-SCTE35` - SCTE-35 广告信令
+  - `#EXT-X-AD` / `#EXT-X-AD-*` - 自定义广告标签
+  - 自定义 EXT 标签收集
+  - 每个片段携带关联的广告标记信息
+
+- **广告规则引擎升级 (AdRuleEngine v2)** - 全新的权重置信度系统
+  - **规则权重机制** - 每条规则都有权重值，累加计算置信度
+  - **规则类别系统** - 分为 duration / keyword / pattern / marker / cluster / position 六大类
+  - **新增 6 种检测规则**：
+    - `cue-marker` - CUE-OUT/CUE-IN 广告标记检测 (权重95)
+    - `scte35-marker` - SCTE-35 广告信令检测 (权重95)
+    - `ad-tag-marker` - EXT-X-AD 广告标签检测 (权重90)
+    - `ad-cluster-boundary` - 广告簇边界检测 (权重70)
+    - `pre-roll-position` - 前贴片广告位置检测 (权重40)
+    - `post-roll-position` - 后贴片广告位置检测 (权重40)
+  - **可配置广告阈值** - 通过 adThreshold 配置广告判定阈值
+  - 每个片段返回置信度分数和匹配规则类别统计
+
+- **增强广告分析 (EnhancedAdRuleEngine)** - 全方位深度分析
+  - **插播点分析 (insertionPoints)** - 自动识别片头/片中/片尾插播
+    - pre_roll - 前贴片广告详细信息（起止位置、时长、片段数）
+    - mid_roll - 片中插播列表（每处位置、时长、占比）
+    - post_roll - 后贴片广告详细信息
+  - **广告类型统计 (adTypes)** - 多维度广告分类
+    - 按位置分：pre_roll_ad / mid_roll_ad / post_roll_ad
+    - 按检测方式分：marker_based / pattern_based / duration_based
+  - **心理特征分析 (psychologicalFeatures)** - 心理学视角分析
+    - interruption_pattern - 插播模式（无广告/仅片头/单处/多处/频繁）
+    - ad_density - 广告密度百分比
+    - attention_grab_score - 注意力抓取指数 (0-100)
+    - frequency_score - 插播频率指数 (0-100)
+    - user_experience_impact - 用户体验影响评级
+    - watchability_score - 可观看性评分 (0-100)
+  - **整体置信度计算** - 基于高/中/低置信度分布 + 簇一致性
+
+- **自动学习规则增强 (DomainRuleManager)** - 更智能的规则学习
+  - **插播模式学习** - 记录并统计片头/片中/片尾插播模式
+  - **广告类型学习** - 统计各类型广告出现频率和时长
+  - **心理画像学习** - 构建域名的广告心理特征画像
+  - **置信度评分** - 每次学习迭代优化置信度分数
+  - **广告标记统计** - 累计统计各类型标记出现次数
+  - **自动启用标记检测** - 检测到标记时自动启用对应检测
+
+### ⚡ 优化
+
+- **规则判定更精准** - 从单一规则匹配改为多规则权重累加判定
+- **学习结果更丰富** - 规则文件包含插播模式、心理画像等详细数据
+- **分析报告更专业** - 新增 generateReport() 生成专业级文字分析报告
+
+### 📁 文件变更
+
+- 新增 `src/AdAnalyzer.php` - 专业视频广告分析器
+- 修改 `src/M3U8Parser.php` - 增强广告标签解析
+- 修改 `src/AdRuleEngine.php` - 权重置信度系统 + 新规则
+- 修改 `gz/EnhancedAdRuleEngine.php` - 深度分析功能
+- 修改 `gz/DomainRuleManager.php` - 增强自动学习机制
+
 ## [1.22.0] - 2026-06-30
 
 ### ✨ 新增功能
