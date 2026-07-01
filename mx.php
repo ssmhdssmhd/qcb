@@ -1215,6 +1215,11 @@ try {
             break;
 
         case 'official_replace/info':
+            // 禁止缓存，每次都重新解析
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
             $url = $_GET['url'] ?? '';
             if (empty($url)) {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
@@ -1245,7 +1250,8 @@ try {
                     'target_episode' => $result['target_episode'] ?? '',
                     'ad_skip_url' => $mxjxUrl,
                     'all_urls' => $result['all_urls'],
-                    'episodes' => $result['episodes'] ?? count($result['all_urls'])
+                    'episodes' => $result['episodes'] ?? count($result['all_urls']),
+                    'timestamp' => time() // 添加时间戳便于追踪
                 ]);
             } else {
                 sendJsonResponse($result, 404);
