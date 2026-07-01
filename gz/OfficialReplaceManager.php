@@ -130,23 +130,31 @@ class OfficialReplaceManager {
             return ['success' => false, 'message' => '不支持的视频平台'];
         }
 
+        $videoId = $this->extractVideoId($url, $platform);
         $videoInfo = $this->fetchVideoInfo($url, $platform);
-        if (!$videoInfo || empty($videoInfo['title'])) {
+        $videoTitle = '';
+
+        if ($videoInfo && !empty($videoInfo['title'])) {
+            $videoTitle = $videoInfo['title'];
+        } elseif ($videoId) {
+            $videoTitle = $videoId;
+        } else {
             return ['success' => false, 'message' => '无法获取视频信息', 'platform' => $platform['name']];
         }
 
-        $parsedInfo = $this->parseVideoTitle($videoInfo['title']);
+        $parsedInfo = $this->parseVideoTitle($videoTitle);
         $videoInfo['parsed'] = $parsedInfo;
         $videoInfo['base_title'] = $parsedInfo['base_title'];
         $videoInfo['season'] = $parsedInfo['season'];
         $videoInfo['episode'] = $parsedInfo['episode'];
         $videoInfo['part'] = $parsedInfo['part'];
         $videoInfo['version'] = $parsedInfo['version'];
+        $videoInfo['video_id'] = $videoId;
 
         $searchKeyword = $parsedInfo['base_title'];
         $searchResult = $this->searchInSites($searchKeyword);
         if (!$searchResult['success'] || empty($searchResult['videos'])) {
-            $searchKeyword = $videoInfo['title'];
+            $searchKeyword = $videoTitle;
             $searchResult = $this->searchInSites($searchKeyword);
         }
 
@@ -155,10 +163,11 @@ class OfficialReplaceManager {
                 'success' => false,
                 'message' => '未找到匹配的资源',
                 'platform' => $platform['name'],
-                'video_title' => $videoInfo['title'],
+                'video_title' => $videoTitle,
                 'base_title' => $videoInfo['base_title'],
                 'season' => $videoInfo['season'],
-                'episode' => $videoInfo['episode']
+                'episode' => $videoInfo['episode'],
+                'video_id' => $videoId
             ];
         }
 
@@ -168,21 +177,34 @@ class OfficialReplaceManager {
                 'success' => false,
                 'message' => '未找到匹配度足够的资源',
                 'platform' => $platform['name'],
-                'video_title' => $videoInfo['title'],
+                'video_title' => $videoTitle,
                 'base_title' => $videoInfo['base_title'],
                 'season' => $videoInfo['season'],
                 'episode' => $videoInfo['episode'],
+                'video_id' => $videoId,
                 'candidates' => array_slice($searchResult['videos'], 0, 5)
             ];
         }
 
         $targetEpisodeUrl = $bestMatch['video']['first_url'] ?? $bestMatch['video']['url'] ?? '';
         $targetEpisodeName = '';
-        if (!empty($videoInfo['episode']) && !empty($bestMatch['video']['urls'])) {
-            $epResult = $this->findEpisodeUrl($bestMatch['video']['urls'], $videoInfo['episode']);
+        $allUrls = $bestMatch['video']['urls'] ?? [];
+
+        if (!empty($videoInfo['episode']) && !empty($allUrls)) {
+            $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode']);
             if ($epResult) {
                 $targetEpisodeUrl = $epResult['url'];
                 $targetEpisodeName = $epResult['name'];
+            }
+        }
+
+        if (empty($targetEpisodeUrl) && !empty($allUrls)) {
+            $firstEpisode = reset($allUrls);
+            if (is_array($firstEpisode) && isset($firstEpisode['url'])) {
+                $targetEpisodeUrl = $firstEpisode['url'];
+                $targetEpisodeName = $firstEpisode['name'] ?? '';
+            } elseif (is_string($firstEpisode)) {
+                $targetEpisodeUrl = $firstEpisode;
             }
         }
 
@@ -190,16 +212,17 @@ class OfficialReplaceManager {
             'success' => true,
             'platform' => $platform['name'],
             'original_url' => $url,
-            'video_title' => $bestMatch['video']['name'] ?: $videoInfo['title'],
+            'video_title' => $bestMatch['video']['name'] ?: $videoTitle,
             'video_name' => $bestMatch['video']['name'] ?? '',
             'video_pic' => $bestMatch['video']['pic'] ?? '',
             'video_remarks' => $bestMatch['video']['remarks'] ?? '',
-            'original_title' => $videoInfo['title'],
+            'original_title' => $videoTitle,
             'base_title' => $videoInfo['base_title'],
             'season' => $videoInfo['season'],
             'episode' => $videoInfo['episode'],
             'part' => $videoInfo['part'],
             'version' => $videoInfo['version'],
+            'video_id' => $videoId,
             'match_score' => $bestMatch['score'],
             'base_score' => $bestMatch['base_score'],
             'season_match' => $bestMatch['season_match'],
@@ -207,10 +230,56 @@ class OfficialReplaceManager {
             'video' => $bestMatch['video'],
             'm3u8_url' => $targetEpisodeUrl,
             'target_episode' => $targetEpisodeName,
-            'all_urls' => $bestMatch['video']['urls'] ?? [],
-            'episodes' => count($bestMatch['video']['urls'] ?? []),
-            'alternatives' => $searchResult['videos']
+            'all_urls' => $allUrls,
+            'episodes' => count($allUrls),
+            'alternatives' => $searchResult['videos'],
+            'request_time' => time()
         ];
+    }
+
+    private function extractVideoId($url, $platform) {
+        $videoId = null;
+        $domain = $platform['domain'] ?? '';
+
+        if ($domain === 'v.qq.com') {
+            if (preg_match('/\/([a-zA-Z0-9]+)\.html?$/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/vid=([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/cover\/([a-zA-Z0-9]+)\/([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $videoId = $matches[2];
+            }
+        } elseif ($domain === 'iqiyi.com') {
+            if (preg_match('/\/([a-zA-Z0-9]{16,})\.html?$/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/v_([a-zA-Z0-9_]+)\.html/i', $url, $matches)) {
+                $videoId = $matches[1];
+            }
+        } elseif ($domain === 'youku.com') {
+            if (preg_match('/id_([a-zA-Z0-9=]+)\.html/i', $url, $matches)) {
+                $videoId = $matches[1];
+            }
+        } elseif ($domain === 'mgtv.com') {
+            if (preg_match('/\/([a-zA-Z0-9]+)\.html?$/i', $url, $matches)) {
+                $videoId = $matches[1];
+            }
+        } elseif ($domain === 'bilibili.com') {
+            if (preg_match('/(BV[a-zA-Z0-9]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/av(\d+)/i', $url, $matches)) {
+                $videoId = 'av' . $matches[1];
+            }
+        } elseif ($domain === 'sohu.com') {
+            if (preg_match('/(\d+)\.shtml$/i', $url, $matches)) {
+                $videoId = $matches[1];
+            }
+        } elseif ($domain === 'pptv.com') {
+            if (preg_match('/showpage\/([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            }
+        }
+
+        return $videoId;
     }
 
     private function detectPlatform($url) {
@@ -660,33 +729,69 @@ class OfficialReplaceManager {
         $bestMatch = null;
         $bestDiff = PHP_INT_MAX;
 
-        foreach ($urls as $urlItem) {
-            $epName = $urlItem['name'] ?? '';
-            $epUrl = $urlItem['url'] ?? '';
+        foreach ($urls as $index => $urlItem) {
+            $epName = '';
+            $epUrl = '';
 
+            if (is_string($urlItem)) {
+                $epUrl = $urlItem;
+                $epName = '第' . ($index + 1) . '集';
+            } elseif (is_array($urlItem)) {
+                $epName = $urlItem['name'] ?? $urlItem['title'] ?? '';
+                $epUrl = $urlItem['url'] ?? $urlItem['link'] ?? '';
+            }
+
+            if (empty($epUrl)) {
+                continue;
+            }
+
+            $epNum = null;
             $parsed = $this->parseVideoTitle($epName);
-            $epNum = $parsed['episode_num'];
-
-            if ($epNum === null) {
-                if (preg_match('/^(\d{1,4})/', $epName, $matches)) {
+            if ($parsed['episode_num'] !== null) {
+                $epNum = $parsed['episode_num'];
+            } else {
+                if (preg_match('/第\s*(\d+)\s*集/i', $epName, $matches)) {
+                    $epNum = intval($matches[1]);
+                } elseif (preg_match('/^(\d{1,4})/', $epName, $matches)) {
+                    $epNum = intval($matches[1]);
+                } elseif (preg_match('/EP\s*(\d+)/i', $epName, $matches)) {
                     $epNum = intval($matches[1]);
                 }
             }
 
-            if ($epNum !== null) {
-                $diff = abs($epNum - $targetEpNum);
-                if ($diff < $bestDiff) {
-                    $bestDiff = $diff;
+            if ($epNum === null) {
+                if ($index + 1 == $targetEpNum) {
                     $bestMatch = [
                         'name' => $epName,
                         'url' => $epUrl,
-                        'episode_num' => $epNum
+                        'episode_num' => $index + 1
                     ];
+                    break;
                 }
+                continue;
+            }
+
+            if ($epNum == $targetEpNum) {
+                $bestMatch = [
+                    'name' => $epName,
+                    'url' => $epUrl,
+                    'episode_num' => $epNum
+                ];
+                break;
+            }
+
+            $diff = abs($epNum - $targetEpNum);
+            if ($diff < $bestDiff) {
+                $bestDiff = $diff;
+                $bestMatch = [
+                    'name' => $epName,
+                    'url' => $epUrl,
+                    'episode_num' => $epNum
+                ];
             }
         }
 
-        if ($bestMatch && $bestDiff <= 5) {
+        if ($bestMatch && $bestDiff <= 10) {
             return $bestMatch;
         }
 
