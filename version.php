@@ -1,2 +1,2 @@
 <?php
-return 'v2.1.0-a1c3e5f7b9d2f4h6j8k0m2n4p6r8t0v2';
+return 'v2.2.0-b5d7f9a1c3e5h7j9k1m3n5p7r9t1v3x5';

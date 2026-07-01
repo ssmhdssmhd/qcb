@@ -1362,6 +1362,234 @@ header('Expires: 0');
 
     <div id="toastContainer"></div>
 
+    <div id="updateModal" class="update-modal-overlay" style="display:none" onclick="if(event.target===this)hideUpdateModal()">
+        <div class="update-modal">
+            <div class="update-modal-header">
+                <div class="update-modal-icon">🎉</div>
+                <div class="update-modal-title">发现新版本</div>
+                <button class="update-modal-close" onclick="hideUpdateModal()">✕</button>
+            </div>
+            <div class="update-modal-body">
+                <div class="update-version-info">
+                    <div class="version-row">
+                        <span class="version-label">当前版本</span>
+                        <span class="version-value current" id="modalCurrentVersion">-</span>
+                    </div>
+                    <div class="version-arrow">↓</div>
+                    <div class="version-row">
+                        <span class="version-label">最新版本</span>
+                        <span class="version-value latest" id="modalLatestVersion">-</span>
+                    </div>
+                </div>
+                <div class="update-meta" id="modalUpdateMeta"></div>
+                <div class="update-changelog-title">
+                    <span>📋 更新内容</span>
+                    <span class="changelog-count" id="changelogCount"></span>
+                </div>
+                <div class="update-changelog" id="modalChangelog">
+                    <div style="text-align:center;color:#909399;padding:20px">加载中...</div>
+                </div>
+            </div>
+            <div class="update-modal-footer">
+                <button class="btn btn-secondary" onclick="hideUpdateModal()">稍后再说</button>
+                <button class="btn btn-primary" onclick="doUpdateFromModal()">立即更新</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .update-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .update-modal {
+            background: #fff;
+            border-radius: 16px;
+            width: 480px;
+            max-width: 90vw;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+        .update-modal-header {
+            background: var(--primary-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+            color: white;
+            padding: 24px 24px 20px;
+            position: relative;
+        }
+        .update-modal-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+        .update-modal-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .update-modal-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .update-modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .update-modal-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .update-version-info {
+            background: #f5f7fa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .version-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .version-label {
+            color: #909399;
+            font-size: 13px;
+        }
+        .version-value {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .version-value.current {
+            color: #909399;
+            background: #e4e7ed;
+        }
+        .version-value.latest {
+            color: #67c23a;
+            background: #f0f9eb;
+        }
+        .version-arrow {
+            text-align: center;
+            color: #c0c4cc;
+            font-size: 14px;
+            margin: 4px 0;
+        }
+        .update-meta {
+            color: #909399;
+            font-size: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .update-meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .update-changelog-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #303133;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ebeef5;
+        }
+        .changelog-count {
+            font-size: 12px;
+            color: #909399;
+            font-weight: normal;
+            background: #ecf5ff;
+            color: #409eff;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .update-changelog {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .changelog-item {
+            display: flex;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f2f6fc;
+        }
+        .changelog-item:last-child {
+            border-bottom: none;
+        }
+        .changelog-type {
+            flex-shrink: 0;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+            height: fit-content;
+            margin-top: 1px;
+        }
+        .changelog-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .changelog-msg {
+            font-size: 13px;
+            color: #303133;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+        .changelog-meta {
+            font-size: 11px;
+            color: #c0c4cc;
+            margin-top: 2px;
+        }
+        .changelog-meta span + span::before {
+            content: '·';
+            margin: 0 4px;
+        }
+        .update-modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #ebeef5;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+    </style>
+
     <script>
         const API_BASE = (function() {
             const protocol = window.location.protocol;
@@ -2258,7 +2486,68 @@ header('Expires: 0');
             }
         }
 
-        async function checkUpdate() {
+        let latestUpdateData = null;
+
+        function showUpdateModal(data) {
+            latestUpdateData = data;
+            const modal = document.getElementById('updateModal');
+            const currentShort = (data.current_commit || '').substring(0, 7);
+            const latestShort = (data.latest_commit || '').substring(0, 7);
+
+            document.getElementById('modalCurrentVersion').textContent = data.current_version + ' (' + currentShort + ')';
+            document.getElementById('modalLatestVersion').textContent = data.current_version + ' (' + latestShort + ')';
+
+            const metaEl = document.getElementById('modalUpdateMeta');
+            const metaItems = [];
+            if (data.latest_date) {
+                metaItems.push('<span>🕐 ' + new Date(data.latest_date).toLocaleString('zh-CN') + '</span>');
+            }
+            if (data.latest_message) {
+                metaItems.push('<span>📝 ' + escapeHtml(data.latest_message.substring(0, 30)) + '</span>');
+            }
+            metaEl.innerHTML = metaItems.join('');
+
+            const changelog = data.changelog || [];
+            const changelogEl = document.getElementById('modalChangelog');
+            document.getElementById('changelogCount').textContent = changelog.length + ' 项更新';
+
+            if (changelog.length === 0) {
+                changelogEl.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂无更新记录</div>';
+            } else {
+                changelogEl.innerHTML = changelog.map(item => `
+                    <div class="changelog-item">
+                        <span class="changelog-type" style="background:${item.type_color}22;color:${item.type_color}">${item.type_label}</span>
+                        <div class="changelog-content">
+                            <div class="changelog-msg">${escapeHtml(item.message)}</div>
+                            <div class="changelog-meta">
+                                <span>${item.sha}</span>
+                                <span>${item.date_formatted || ''}</span>
+                                <span>${escapeHtml(item.author || '')}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function hideUpdateModal() {
+            document.getElementById('updateModal').style.display = 'none';
+        }
+
+        function doUpdateFromModal() {
+            hideUpdateModal();
+            if (!document.getElementById('page-update').classList.contains('active')) {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.querySelector('[data-page="update"]').classList.add('active');
+                document.getElementById('page-update').classList.add('active');
+            }
+            setTimeout(() => doUpdate(), 300);
+        }
+
+        async function checkUpdate(autoShowModal = false) {
             try {
                 const res = await fetch(API_BASE + '?action=update/check');
                 const data = await res.json();
@@ -2274,17 +2563,25 @@ header('Expires: 0');
                     statusEl.textContent = '有新版本';
                     statusEl.className = 'stat-value warning';
                     updateBtn.disabled = false;
+                    latestUpdateData = data;
+                    if (autoShowModal) {
+                        setTimeout(() => showUpdateModal(data), 500);
+                    }
                 } else {
                     statusEl.textContent = '已是最新';
                     statusEl.className = 'stat-value success';
                     updateBtn.disabled = true;
                 }
                 
-                showToast('检查更新完成', 'success');
+                if (!autoShowModal) {
+                    showToast('检查更新完成', 'success');
+                }
             } catch (e) {
                 document.getElementById('updateStatus').textContent = '检查失败';
                 document.getElementById('updateStatus').className = 'stat-value danger';
-                showToast('检查更新失败: ' + e.message, 'error');
+                if (!autoShowModal) {
+                    showToast('检查更新失败: ' + e.message, 'error');
+                }
             }
         }
 
@@ -2466,7 +2763,19 @@ header('Expires: 0');
         }
 
         async function doUpdate() {
-            if (!confirm('确定要更新系统吗？更新前会自动创建备份，并自动清理差异文件。')) return;
+            if (!latestUpdateData) {
+                try {
+                    const res = await fetch(API_BASE + '?action=update/check');
+                    const data = await res.json();
+                    if (data.success && data.has_update) {
+                        latestUpdateData = data;
+                    }
+                } catch (e) {}
+            }
+
+            const confirmed = await showUpdateConfirm(latestUpdateData);
+            if (!confirmed) return;
+
             const btn = document.getElementById('updateBtn');
             btn.disabled = true;
             btn.textContent = '更新中...';
@@ -2511,6 +2820,45 @@ header('Expires: 0');
                 btn.disabled = false;
                 btn.textContent = '立即更新';
             }
+        }
+
+        function showUpdateConfirm(updateData) {
+            return new Promise((resolve) => {
+                const modalHtml = `
+                    <div id="updateConfirmModal" class="update-modal-overlay" onclick="if(event.target===this)document.getElementById('updateConfirmModal').remove();resolve(false);">
+                        <div class="update-modal" style="width:440px">
+                            <div class="update-modal-header">
+                                <div class="update-modal-icon">⚠️</div>
+                                <div class="update-modal-title">确认更新</div>
+                                <button class="update-modal-close" onclick="document.getElementById('updateConfirmModal').remove();resolve(false);">✕</button>
+                            </div>
+                            <div class="update-modal-body">
+                                <p style="color:#606266;font-size:13px;margin-bottom:16px;line-height:1.6">
+                                    确定要更新系统吗？更新前会自动创建备份，并自动清理差异文件。
+                                </p>
+                                ${updateData ? `
+                                <div style="background:#f5f7fa;border-radius:8px;padding:12px;font-size:12px">
+                                    <div style="margin-bottom:8px"><strong>更新摘要：</strong></div>
+                                    <div style="color:#67c23a;margin-bottom:4px">
+                                        共 ${updateData.changelog?.length || 0} 项更新
+                                    </div>
+                                    <div style="color:#909399">
+                                        最新版本: ${(updateData.latest_commit || '').substring(0, 7)}
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="update-modal-footer">
+                                <button class="btn btn-secondary" onclick="document.getElementById('updateConfirmModal').remove();resolve(false);">取消</button>
+                                <button class="btn btn-primary" onclick="document.getElementById('updateConfirmModal').remove();resolve(true);">确认更新</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = modalHtml;
+                document.body.appendChild(tempDiv.firstElementChild);
+            });
         }
 
         async function checkIntegrity() {
@@ -4089,6 +4437,7 @@ header('Expires: 0');
             loadOfficialSites();
             loadOfficialReplaceConfig();
             loadPlayerConfig();
+            setTimeout(() => checkUpdate(true), 2000);
         });
     </script>
 </body>
