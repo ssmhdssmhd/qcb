@@ -4,6 +4,8 @@ class M3U8Parser {
     private $baseUrl = '';
     private $maxSegments = 5000;
     private $saveRaw = false;
+    private $proxyManager = null;
+    private $useProxy = true;
 
     public function setMaxSegments($max) {
         $this->maxSegments = intval($max);
@@ -11,6 +13,21 @@ class M3U8Parser {
 
     public function setSaveRaw($save) {
         $this->saveRaw = (bool)$save;
+    }
+
+    public function setUseProxy($useProxy) {
+        $this->useProxy = (bool)$useProxy;
+    }
+
+    private function getProxyManager() {
+        if ($this->proxyManager === null && $this->useProxy) {
+            $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
+            if (file_exists($proxyFile)) {
+                require_once $proxyFile;
+                $this->proxyManager = new ProxyManager();
+            }
+        }
+        return $this->proxyManager;
     }
 
     public function parse($input) {
@@ -47,39 +64,82 @@ class M3U8Parser {
     }
 
     private function fetchUrl($url) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        curl_setopt($ch, CURLOPT_ENCODING, 'gzip, deflate');
-        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-        curl_setopt($ch, CURLOPT_TCP_FASTOPEN, true);
-        curl_setopt($ch, CURLOPT_TCP_NODELAY, true);
-        curl_setopt($ch, CURLOPT_BUFFERSIZE, 262144);
-        curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 1024);
-        curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 30);
+        $proxyMgr = $this->getProxyManager();
+        $maxRetries = 3;
+        $lastError = '';
+        $userAgents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+        ];
 
-        $result = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
+        for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
+            curl_setopt($ch, CURLOPT_ENCODING, 'gzip, deflate');
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            curl_setopt($ch, CURLOPT_TCP_FASTOPEN, true);
+            curl_setopt($ch, CURLOPT_TCP_NODELAY, true);
+            curl_setopt($ch, CURLOPT_BUFFERSIZE, 262144);
+            curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 1024);
+            curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 30);
 
-        if ($error) {
+            $currentProxy = null;
+            if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
+                $currentProxy = $proxyMgr->applyProxyToCurl($ch);
+            }
+
+            $startTime = microtime(true);
+            $result = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            $responseTime = round((microtime(true) - $startTime) * 1000, 2);
             curl_close($ch);
-            throw new Exception('请求失败: ' . $error);
+
+            if ($currentProxy) {
+                if ($httpCode >= 200 && $httpCode < 300 && $result !== false) {
+                    $proxyMgr->markProxySuccess($currentProxy['id'], $responseTime);
+                    return $result;
+                } else {
+                    $proxyMgr->markProxyFailed($currentProxy['id']);
+                }
+            }
+
+            if ($error) {
+                $lastError = $error;
+                if (strpos($error, 'Could not resolve') !== false || 
+                    strpos($error, 'Connection timed out') !== false ||
+                    strpos($error, 'Failed to connect') !== false) {
+                    if ($attempt < $maxRetries) {
+                        usleep(500000);
+                        continue;
+                    }
+                }
+                throw new Exception('请求失败: ' . $error);
+            }
+
+            if ($httpCode < 200 || $httpCode >= 300) {
+                $lastError = 'HTTP ' . $httpCode;
+                if ($httpCode >= 500 || $httpCode == 429) {
+                    if ($attempt < $maxRetries) {
+                        usleep(1000000);
+                        continue;
+                    }
+                }
+                throw new Exception('HTTP ' . $httpCode);
+            }
+
+            return $result;
         }
 
-        if ($httpCode < 200 || $httpCode >= 300) {
-            curl_close($ch);
-            throw new Exception('HTTP ' . $httpCode);
-        }
-
-        curl_close($ch);
-        return $result;
+        throw new Exception('请求失败: ' . $lastError);
     }
 
     public function parseContent($content) {

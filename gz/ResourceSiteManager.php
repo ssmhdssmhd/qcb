@@ -818,12 +818,19 @@ class ResourceSiteManager {
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
         ];
 
+        $proxyMgr = null;
+        $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
+        if (file_exists($proxyFile)) {
+            require_once $proxyFile;
+            $proxyMgr = new ProxyManager();
+        }
+
         for ($attempt = 0; $attempt <= $retry; $attempt++) {
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
@@ -836,18 +843,42 @@ class ResourceSiteManager {
             ]);
             curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
+            $currentProxy = null;
+            if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
+                $currentProxy = $proxyMgr->applyProxyToCurl($ch);
+            }
+
+            $startTime = microtime(true);
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $error = curl_error($ch);
+            $responseTime = round((microtime(true) - $startTime) * 1000, 2);
             curl_close($ch);
+
+            if ($currentProxy) {
+                if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+                    $proxyMgr->markProxySuccess($currentProxy['id'], $responseTime);
+                    return $response;
+                } else {
+                    $proxyMgr->markProxyFailed($currentProxy['id']);
+                }
+            }
 
             if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
                 return $response;
             }
 
             $lastError = $error ? $error : ('HTTP ' . $httpCode);
-            if ($attempt < $retry) {
-                usleep(300000);
+            
+            $isRetryable = $error && (
+                strpos($error, 'Could not resolve') !== false ||
+                strpos($error, 'Connection timed out') !== false ||
+                strpos($error, 'Failed to connect') !== false ||
+                strpos($error, 'Operation timed out') !== false
+            ) || ($httpCode >= 500 || $httpCode == 429);
+
+            if ($attempt < $retry && $isRetryable) {
+                usleep(300000 + $attempt * 200000);
             }
         }
 

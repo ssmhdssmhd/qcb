@@ -629,6 +629,7 @@ header('Expires: 0');
         <div class="nav-item" data-page="sites">资源站管理</div>
         <div class="nav-item" data-page="official_sites">推荐采集</div>
         <div class="nav-item" data-page="official_replace">官替管理</div>
+        <div class="nav-item" onclick="location.href='proxy/proxy_admin.php'" style="cursor:pointer">代理池管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
         <div class="nav-item" data-page="auth">授权管理</div>
