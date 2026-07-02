@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.5.0] - 2026-07-02
+
+### 🐛 智能学习与视频获取修复（核心修复）
+- **API URL 自动适配** - 新增 `generateApiUrlVariants` 方法，自动尝试多种URL变体：
+  - 去掉 `from/xxxm3u8/` 路径（天影、6度资源等站点修复）
+  - 去掉 `www.` 前缀（暴风资源站修复）
+  - 去掉已有的 `ac=list` 查询参数
+- **统一视频解析** - 新增 `parseVideoList` 方法，统一处理视频列表解析逻辑
+- **fetchVideos 重写** - 支持多URL变体和多API参数策略自动尝试
+- **searchVideos 重写** - 同上，搜索也能自动适配不同URL格式
+- **DomainRuleManager Bug 修复** - 修复 `mergeAdTypeStats` 中 `total_count`/`total_duration` 未定义键的 PHP Warning
+
+### 📊 修复效果
+修复前（7个活跃站点）：成功 3 个，失败 4 个
+修复后（7个活跃站点）：成功 6 个，失败 1 个（360酷已完全失效）
+
+---
+
 ## [2.4.0] - 2026-07-01
 
 ### 🔍 视频搜索功能修复与增强（核心修复）

@@ -411,15 +411,21 @@ class DomainRuleManager {
             if (!isset($result[$key])) {
                 $result[$key] = ['total_count' => 0, 'total_duration' => 0, 'avg_count_per_video' => 0, 'sample_count' => 0];
             }
+            // 确保所有必要的键都存在
+            $result[$key]['total_count'] = $result[$key]['total_count'] ?? 0;
+            $result[$key]['total_duration'] = $result[$key]['total_duration'] ?? 0;
+            $result[$key]['avg_count_per_video'] = $result[$key]['avg_count_per_video'] ?? 0;
+            $result[$key]['sample_count'] = $result[$key]['sample_count'] ?? 0;
+
             if (isset($new[$key])) {
-                $prevSamples = $result[$key]['sample_count'] ?? 0;
+                $prevSamples = $result[$key]['sample_count'];
                 $result[$key]['sample_count'] = $prevSamples + 1;
                 $result[$key]['total_count'] += $new[$key]['count'] ?? 0;
                 $result[$key]['total_duration'] += $new[$key]['duration'] ?? 0;
-                $result[$key]['avg_count_per_video'] = round(
+                $result[$key]['avg_count_per_video'] = $result[$key]['sample_count'] > 0 ? round(
                     $result[$key]['total_count'] / $result[$key]['sample_count'],
                     2
-                );
+                ) : 0;
             }
         }
 

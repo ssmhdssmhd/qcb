@@ -124,143 +124,192 @@ class ResourceSiteManager {
     }
 
     public function fetchVideos($apiUrl, $page = 1, $limit = 20) {
+        $urlsToTry = $this->generateApiUrlVariants($apiUrl);
         $fetchStrategies = [
             ['ac' => 'detail'],
             ['ac' => 'videolist'],
         ];
 
         $lastError = '';
-        foreach ($fetchStrategies as $strategy) {
-            $params = array_merge($strategy, [
-                'pg' => intval($page),
-                'limit' => intval($limit)
-            ]);
-            $url = $this->buildApiUrl($apiUrl, $params);
+        foreach ($urlsToTry as $tryUrl) {
+            foreach ($fetchStrategies as $strategy) {
+                $params = array_merge($strategy, [
+                    'pg' => intval($page),
+                    'limit' => intval($limit)
+                ]);
+                $url = $this->buildApiUrl($tryUrl, $params);
 
-            $response = $this->httpGet($url);
-            if ($response === false) {
-                $lastError = $this->lastHttpError ?? '未知错误';
-                continue;
-            }
-
-            $data = json_decode($response, true);
-            if (!$data) {
-                $lastError = '解析JSON失败';
-                continue;
-            }
-
-            $videos = [];
-            $list = $data['list'] ?? $data['data'] ?? [];
-            foreach ($list as $item) {
-                $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
-                $vodName = $item['vod_name'] ?? $item['name'] ?? '';
-                $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
-                $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
-                $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
-
-                if (empty($vodPlayUrl)) continue;
-
-                $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
-                if (!empty($allM3u8Urls)) {
-                    $videos[] = [
-                        'id' => $vodId,
-                        'name' => $vodName,
-                        'pic' => $vodPic,
-                        'remarks' => $vodRemarks,
-                        'urls' => $allM3u8Urls,
-                        'first_url' => $allM3u8Urls[0]['url'] ?? '',
-                        'raw_play_url' => $vodPlayUrl
-                    ];
+                $response = $this->httpGet($url);
+                if ($response === false) {
+                    $lastError = $this->lastHttpError ?? '未知错误';
+                    continue;
                 }
-            }
 
-            if (!empty($videos)) {
-                return [
-                    'success' => true,
-                    'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
-                    'page' => $page,
-                    'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
-                    'videos' => $videos
-                ];
+                $data = json_decode($response, true);
+                if (!$data) {
+                    $lastError = '解析JSON失败';
+                    continue;
+                }
+
+                $result = $this->parseVideoList($data);
+                if ($result['success']) {
+                    $result['page'] = $page;
+                    return $result;
+                }
+                $lastError = $result['message'] ?? '无视频数据';
             }
-            $lastError = '无视频数据';
         }
 
         return ['success' => false, 'message' => '获取失败: ' . $lastError];
     }
 
     public function searchVideos($apiUrl, $keyword, $page = 1, $limit = 20) {
+        $urlsToTry = $this->generateApiUrlVariants($apiUrl);
         $searchStrategies = [
             ['ac' => 'detail', 'wd' => $keyword],
             ['ac' => 'videolist', 'wd' => $keyword],
         ];
 
         $lastError = '';
-        foreach ($searchStrategies as $strategy) {
-            $params = array_merge($strategy, [
-                'pg' => intval($page),
-                'limit' => intval($limit)
-            ]);
-            $url = $this->buildApiUrl($apiUrl, $params);
+        foreach ($urlsToTry as $tryUrl) {
+            foreach ($searchStrategies as $strategy) {
+                $params = array_merge($strategy, [
+                    'pg' => intval($page),
+                    'limit' => intval($limit)
+                ]);
+                $url = $this->buildApiUrl($tryUrl, $params);
 
-            $response = $this->httpGet($url);
-            if ($response === false) {
-                $lastError = $this->lastHttpError ?? '未知错误';
-                continue;
-            }
-
-            $data = json_decode($response, true);
-            if (!$data) {
-                $lastError = '解析JSON失败';
-                continue;
-            }
-
-            $code = $data['code'] ?? $data['status'] ?? 0;
-            if ($code != 200 && $code != 1 && !empty($data['msg']) && empty($data['list']) && empty($data['data'])) {
-                $lastError = $data['msg'] ?? '接口返回错误';
-                continue;
-            }
-
-            $videos = [];
-            $list = $data['list'] ?? $data['data'] ?? [];
-            if (empty($list)) {
-                $lastError = '搜索无结果';
-                continue;
-            }
-
-            foreach ($list as $item) {
-                $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
-                $vodName = $item['vod_name'] ?? $item['name'] ?? '';
-                $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
-                $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
-                $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
-
-                if (empty($vodPlayUrl)) continue;
-
-                $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
-                if (!empty($allM3u8Urls)) {
-                    $videos[] = [
-                        'id' => $vodId,
-                        'name' => $vodName,
-                        'pic' => $vodPic,
-                        'remarks' => $vodRemarks,
-                        'urls' => $allM3u8Urls,
-                        'first_url' => $allM3u8Urls[0]['url'] ?? '',
-                        'raw_play_url' => $vodPlayUrl
-                    ];
+                $response = $this->httpGet($url);
+                if ($response === false) {
+                    $lastError = $this->lastHttpError ?? '未知错误';
+                    continue;
                 }
-            }
 
-            return [
-                'success' => true,
-                'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
-                'page' => $page,
-                'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
-                'videos' => $videos
-            ];
+                $data = json_decode($response, true);
+                if (!$data) {
+                    $lastError = '解析JSON失败';
+                    continue;
+                }
+
+                $code = $data['code'] ?? $data['status'] ?? 0;
+                if ($code != 200 && $code != 1 && !empty($data['msg']) && empty($data['list']) && empty($data['data'])) {
+                    $lastError = $data['msg'] ?? '接口返回错误';
+                    continue;
+                }
+
+                $result = $this->parseVideoList($data);
+                if ($result['success']) {
+                    $result['page'] = $page;
+                    return $result;
+                }
+                $lastError = $result['message'] ?? '搜索无结果';
+            }
         }
 
         return ['success' => false, 'message' => '搜索失败: ' . $lastError];
+    }
+
+    private function generateApiUrlVariants($apiUrl) {
+        $urls = [$apiUrl];
+        $parsed = parse_url($apiUrl);
+        if (!$parsed) return $urls;
+
+        $path = $parsed['path'] ?? '';
+
+        // 去掉 from/xxxm3u8/ 路径
+        if (preg_match('#^(.*)/from/[^/]+/?$#', $path, $m)) {
+            $newPath = $m[1];
+            $newUrl = $this->buildUrl($parsed, $newPath);
+            if ($newUrl !== $apiUrl) {
+                $urls[] = $newUrl;
+            }
+        }
+
+        // 去掉末尾的 ?ac=list 或 ?ac=detail
+        $existingParams = [];
+        if (!empty($parsed['query'])) {
+            parse_str($parsed['query'], $existingParams);
+            if (isset($existingParams['ac'])) {
+                unset($existingParams['ac']);
+                $newUrl = $this->buildUrl($parsed, $path, $existingParams);
+                if ($newUrl !== $apiUrl && !in_array($newUrl, $urls)) {
+                    $urls[] = $newUrl;
+                }
+            }
+        }
+
+        // www.xxx.com -> xxx.com
+        $host = $parsed['host'] ?? '';
+        if (strpos($host, 'www.') === 0) {
+            $newHost = substr($host, 4);
+            $newParsed = $parsed;
+            $newParsed['host'] = $newHost;
+            $newUrl = $this->buildUrl($newParsed, $path, $existingParams);
+            if (!in_array($newUrl, $urls)) {
+                $urls[] = $newUrl;
+            }
+        }
+
+        return array_unique($urls);
+    }
+
+    private function buildUrl($parsed, $path = null, $params = null) {
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host = $parsed['host'] ?? '';
+        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $path = $path ?? ($parsed['path'] ?? '/');
+
+        $url = $scheme . '://' . $host . $port . $path;
+        if (!empty($params)) {
+            $url .= '?' . http_build_query($params);
+        } elseif (!empty($parsed['query']) && $params === null) {
+            $url .= '?' . $parsed['query'];
+        }
+
+        return $url;
+    }
+
+    private function parseVideoList($data) {
+        $videos = [];
+        $list = $data['list'] ?? $data['data'] ?? [];
+
+        if (empty($list)) {
+            return ['success' => false, 'message' => '无视频数据'];
+        }
+
+        foreach ($list as $item) {
+            $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
+            $vodName = $item['vod_name'] ?? $item['name'] ?? '';
+            $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
+
+            if (empty($vodPlayUrl)) continue;
+
+            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
+            if (!empty($allM3u8Urls)) {
+                $videos[] = [
+                    'id' => $vodId,
+                    'name' => $vodName,
+                    'pic' => $vodPic,
+                    'remarks' => $vodRemarks,
+                    'urls' => $allM3u8Urls,
+                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
+                    'raw_play_url' => $vodPlayUrl
+                ];
+            }
+        }
+
+        if (empty($videos)) {
+            return ['success' => false, 'message' => '无有效M3U8视频'];
+        }
+
+        return [
+            'success' => true,
+            'total' => $data['total'] ?? $data['page']['pagecount'] ?? count($videos),
+            'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
+            'videos' => $videos
+        ];
     }
 
     public function searchAllSites($keyword, $maxSites = 5, $limitPerSite = 10) {
