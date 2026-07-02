@@ -6,7 +6,7 @@
  */
 
 return [
-    'version' => '1.1',
+    'version' => '1.2',
     'update_date' => '2026-07-02',
     'sites' => [
         [
@@ -158,9 +158,9 @@ return [
             'site_url' => 'https://www.niuniuzy.vip',
             'api_url' => 'https://api.niuniuzy.com/api.php/provide/vod/from/nnm3u8/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 4
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '快车',
@@ -203,17 +203,17 @@ return [
             'site_url' => 'https://www.xinlangzy.net',
             'api_url' => 'https://www.xinlangapi.com/xinlangapi.php/provide/vod/from/xlm3u8/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '无插播，只缓存去除片头，中间跑马灯、大：印',
-            'priority' => 5
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '速播',
             'site_url' => 'https://www.subozy.com',
-            'api_url' => 'https://suboci.com/api.php/provide/vod/from/subm3u8/at/json',
+            'api_url' => 'https://www.subozy.com/api.php/provide/vod/',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '新浪和速播链接相同',
+            'note' => '',
             'priority' => 5
         ],
         [
@@ -230,9 +230,9 @@ return [
             'site_url' => 'https://www.jisusy.com',
             'api_url' => 'https://jsszyapi.com/api.php/provide/vod/from/jsm3u8/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 5
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '豪华',
@@ -257,18 +257,18 @@ return [
             'site_url' => 'https://www.taopianzy.com/index.php',
             'api_url' => 'https://taopianapi.com/cjapi/mc10/vod/json/m3u8.html',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 5
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '百度',
-            'site_url' => 'https://api.baidubz.com/',
-            'api_url' => 'https://api.baidubz.com/api.php/provide/vod/?ac=list',
+            'site_url' => 'https://baidubz.com/',
+            'api_url' => 'https://baidubz.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '地区限制，有些无法打开',
-            'priority' => 6
+            'status' => 'paused',
+            'note' => 'API已关闭',
+            'priority' => 99
         ],
         [
             'name' => '茅台',
@@ -284,26 +284,26 @@ return [
             'site_url' => 'https://www.huayuapi.com',
             'api_url' => 'https://m3u8.apihyzy.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 6
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '虎牙',
             'site_url' => 'https://jinyangzy.com',
             'api_url' => 'https://jyzypy.com/provide/vod/from/jinyangm3u8/at/json',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 6
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '13大众',
             'site_url' => 'https://www.dzzy.com',
-            'api_url' => 'https://cdn.dzzyapi.com/api.php/provide/vod/?ac=list',
+            'api_url' => 'http://cdn.dzzyapi.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '',
+            'note' => '仅支持HTTP',
             'priority' => 6
         ],
         [
@@ -311,17 +311,17 @@ return [
             'site_url' => 'https://ikunzyapi.com',
             'api_url' => 'https://ikunzypi.com/api.php/provide/vod/',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 6
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '如意',
             'site_url' => 'https://www.ryzy5.tv',
-            'api_url' => 'https://cj.rycapi.com/api.php/provide/vod/from/rym3u8/?ac=list',
+            'api_url' => 'https://www.ryzy5.tv/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '停更：因规则变动太频繁，某些每天都在变',
+            'note' => '规则变动频繁',
             'priority' => 7
         ],
         [
@@ -334,18 +334,9 @@ return [
             'priority' => 7
         ],
         [
-            'name' => '非凡',
-            'site_url' => 'http://ffzy3.tv',
-            'api_url' => 'http://cj.ffzyapi.com/api.php/provide/vod/from/ffm3u8/?ac=list',
-            'type' => 'maccms',
-            'status' => 'active',
-            'note' => '停更',
-            'priority' => 7
-        ],
-        [
             'name' => '西瓜',
             'site_url' => 'https://xgzy.tv',
-            'api_url' => 'https://caiji.xgzyapi.com/api.php/provide/vod/from/xiquam3u8/?ac=list',
+            'api_url' => 'https://xgzy.tv/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
             'note' => '',
