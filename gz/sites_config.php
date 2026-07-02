@@ -6,8 +6,8 @@
  */
 
 return [
-    'version' => '1.0',
-    'update_date' => '2026-06-30',
+    'version' => '1.1',
+    'update_date' => '2026-07-02',
     'sites' => [
         [
             'name' => '量子',
@@ -21,7 +21,16 @@ return [
         [
             'name' => '暴风',
             'site_url' => 'http://bfzv8.lv',
-            'api_url' => 'https://www.bfzyapi.com/api.php/provide/vod/',
+            'api_url' => 'https://bfzyapi.com/api.php/provide/vod/from/bfzym3u8/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '推荐',
+            'priority' => 1
+        ],
+        [
+            'name' => '非凡',
+            'site_url' => 'http://ffzy3.tv',
+            'api_url' => 'https://cj.ffzyapi.com/api.php/provide/vod/from/ffm3u8/',
             'type' => 'maccms',
             'status' => 'active',
             'note' => '推荐',
@@ -32,9 +41,9 @@ return [
             'site_url' => 'https://www.yzzy-app.com',
             'api_url' => 'https://api.yzzy-app.com/mc.php/provide/vod/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '推荐',
-            'priority' => 1
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '天影',
@@ -59,18 +68,18 @@ return [
             'site_url' => 'https://www.360ku.com',
             'api_url' => 'https://360ku.com/api.php/provide/vod/from/360ku/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 2
+            'status' => 'paused',
+            'note' => '已失效',
+            'priority' => 99
         ],
         [
             'name' => '八豆',
             'site_url' => 'https://badouzy.com',
             'api_url' => 'https://api.akuapi.com/api.php/provide/vod/from/ukm3u8/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 2
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '豆包',
@@ -95,27 +104,27 @@ return [
             'site_url' => 'https://yhznyy.com',
             'api_url' => 'https://yhznyy.com/api.php/provide/vod/from/hm3u8/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 3
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '爱奇艺',
             'site_url' => 'https://iqiyiapi.w1612.cc',
             'api_url' => 'https://iqiyiapi.w1612.cc/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 3
+            'status' => 'paused',
+            'note' => 'SSL连接失败',
+            'priority' => 99
         ],
         [
             'name' => '12官方',
             'site_url' => 'https://www.gfzyw.com',
             'api_url' => 'https://api.gfzyw.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
-            'status' => 'active',
-            'note' => '',
-            'priority' => 3
+            'status' => 'paused',
+            'note' => '404失效',
+            'priority' => 99
         ],
         [
             'name' => '索尼',

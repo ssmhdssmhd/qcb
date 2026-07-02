@@ -975,6 +975,24 @@ try {
             sendJsonResponse($result, $result['success'] ? 200 : 400);
             break;
 
+        case 'sites/health_check':
+            $maxSites = isset($_GET['max']) ? intval($_GET['max']) : null;
+            $result = $siteManager->batchCheckHealth($maxSites);
+            sendJsonResponse(['success' => true] + $result);
+            break;
+
+        case 'sites/update_status':
+            $input = getInputJson();
+            $name = $input['name'] ?? '';
+            $status = $input['status'] ?? 'active';
+            $note = $input['note'] ?? '';
+            if (empty($name)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 name 参数'], 400);
+            }
+            $result = $siteManager->updateSiteStatus($name, $status, $note);
+            sendJsonResponse(['success' => $result, 'message' => $result ? '更新成功' : '更新失败']);
+            break;
+
         case 'sites/fetch_videos':
             $name = $_GET['name'] ?? '';
             $apiUrl = $_GET['api_url'] ?? '';

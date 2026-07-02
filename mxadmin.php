@@ -905,6 +905,7 @@ header('Expires: 0');
                 </div>
                 <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
                     <button class="btn btn-primary" onclick="showAddSite()">+ 新增资源站</button>
+                    <button class="btn btn-secondary" onclick="checkSitesHealth()" id="healthCheckBtn">🔍 健康检测</button>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                         <input type="checkbox" id="showPaused" onchange="refreshSites()"> 显示已暂停
                     </label>
@@ -3089,15 +3090,64 @@ header('Expires: 0');
 
         function filterSites() {
             const keyword = document.getElementById('siteSearch').value.trim().toLowerCase();
-            if (!keyword) {
-                renderSitesTable(currentSites);
-                return;
+            const showPaused = document.getElementById('showPaused').checked;
+            let filtered = currentSites.filter(site => {
+                if (!showPaused && site.status !== 'active') return false;
+                return true;
+            });
+            if (keyword) {
+                filtered = filtered.filter(s =>
+                    s.name.toLowerCase().includes(keyword) ||
+                    (s.note || '').toLowerCase().includes(keyword)
+                );
             }
-            const filtered = currentSites.filter(s =>
-                s.name.toLowerCase().includes(keyword) ||
-                (s.note || '').toLowerCase().includes(keyword)
-            );
             renderSitesTable(filtered);
+        }
+
+        let healthCheckData = {};
+
+        async function checkSitesHealth() {
+            const btn = document.getElementById('healthCheckBtn');
+            btn.disabled = true;
+            btn.textContent = '检测中...';
+            
+            try {
+                const res = await fetch(API_BASE + '?action=sites/health_check&_t=' + Date.now());
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                
+                healthCheckData = {};
+                data.results.forEach(r => {
+                    healthCheckData[r.name] = r;
+                });
+                
+                filterSites();
+                showToast('检测完成：' + data.healthy + '/' + data.total + ' 个可用', 'success');
+            } catch (e) {
+                showToast('检测失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔍 健康检测';
+            }
+        }
+
+        async function toggleSiteStatus(name, currentStatus) {
+            const newStatus = currentStatus === 'active' ? 'paused' : 'active';
+            const note = newStatus === 'paused' ? '手动暂停' : '';
+            
+            try {
+                const res = await fetch(API_BASE + '?action=sites/update_status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, status: newStatus, note })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast('更新成功', 'success');
+                refreshSites();
+            } catch (e) {
+                showToast('更新失败: ' + e.message, 'error');
+            }
         }
 
         function renderSitesTable(sites) {
@@ -3106,15 +3156,27 @@ header('Expires: 0');
                 container.innerHTML = '<div class="empty">暂无资源站</div>';
                 return;
             }
-            let html = '<table class="rules-table"><thead><tr><th>优先级</th><th>名称</th><th>官网</th><th>采集接口</th><th>状态</th><th>扩展备注</th><th>操作</th></tr></thead><tbody>';
+            let html = '<table class="rules-table"><thead><tr><th>优先级</th><th>名称</th><th>官网</th><th>采集接口</th><th>状态</th><th>响应时间</th><th>扩展备注</th><th>操作</th></tr></thead><tbody>';
             for (const site of sites) {
                 const priority = site.priority || 99;
-                const statusTag = site.status === 'active'
+                const health = healthCheckData[site.name];
+                let statusTag = site.status === 'active'
                     ? '<span class="tag tag-green">正常</span>'
                     : '<span class="tag tag-orange">暂停</span>';
+                let responseTime = '-';
+                
+                if (health) {
+                    if (site.status === 'active' && !health.healthy) {
+                        statusTag = '<span class="tag tag-red">异常</span>';
+                    } else if (health.healthy) {
+                        responseTime = health.response_time + 'ms';
+                    }
+                }
+                
                 const siteUrl = site.site_url || '#';
                 const apiUrl = site.api_url || '';
                 const note = escapeHtml(site.note || '');
+                const healthNote = health && !health.healthy ? escapeHtml(health.message) : note;
                 html += `
                     <tr>
                         <td><span class="tag tag-blue">${priority}</span></td>
@@ -3122,15 +3184,16 @@ header('Expires: 0');
                         <td>
                             ${site.site_url ? `<a href="${escapeHtml(siteUrl)}" target="_blank" style="color:#409eff;text-decoration:none;font-size:12px">访问官网 ↗</a>` : '-'}
                         </td>
-                        <td style="font-size:12px;color:#909399;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(apiUrl)}">
+                        <td style="font-size:12px;color:#909399;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(apiUrl)}">
                             ${escapeHtml(apiUrl)}
                         </td>
                         <td>${statusTag}</td>
-                        <td style="font-size:12px;color:#606266;max-width:150px">${note || '-'}</td>
+                        <td style="font-size:12px;color:#67c23a">${responseTime}</td>
+                        <td style="font-size:12px;color:#606266;max-width:130px" title="${healthNote}">${healthNote || '-'}</td>
                         <td>
                             <button class="btn btn-sm btn-secondary" onclick="fetchSiteVideos('${escapeHtml(site.name)}')">视频</button>
+                            <button class="btn btn-sm btn-secondary" onclick="toggleSiteStatus('${escapeHtml(site.name)}', '${site.status}')">${site.status === 'active' ? '暂停' : '启用'}</button>
                             <button class="btn btn-sm btn-secondary" onclick="editSite('${escapeHtml(site.name)}')">编辑</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteSite('${escapeHtml(site.name)}')">删除</button>
                         </td>
                     </tr>
                 `;

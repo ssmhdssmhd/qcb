@@ -43,6 +43,82 @@ class ResourceSiteManager {
         return $sites;
     }
 
+    public function checkSiteHealth($site, $timeout = 8) {
+        $apiUrl = $site['api_url'] ?? '';
+        if (empty($apiUrl)) {
+            return ['healthy' => false, 'message' => '无API地址', 'response_time' => 0];
+        }
+
+        $startTime = microtime(true);
+        $result = $this->fetchVideos($apiUrl, 1, 1);
+        $responseTime = round((microtime(true) - $startTime) * 1000, 0);
+
+        if ($result['success'] && !empty($result['videos'])) {
+            return [
+                'healthy' => true,
+                'message' => '正常',
+                'video_count' => count($result['videos']),
+                'response_time' => $responseTime
+            ];
+        }
+
+        return [
+            'healthy' => false,
+            'message' => $result['message'] ?? '未知错误',
+            'video_count' => 0,
+            'response_time' => $responseTime
+        ];
+    }
+
+    public function batchCheckHealth($maxSites = null, $timeoutPerSite = 8) {
+        $sites = $this->getAllSites(true);
+        $results = [];
+        $activeCount = 0;
+        $failedCount = 0;
+
+        foreach ($sites as $idx => $site) {
+            if ($maxSites !== null && $idx >= $maxSites) break;
+
+            $health = $this->checkSiteHealth($site, $timeoutPerSite);
+            $results[] = [
+                'name' => $site['name'],
+                'api_url' => $site['api_url'],
+                'status' => $site['status'] ?? 'active',
+                'priority' => $site['priority'] ?? 99,
+                'healthy' => $health['healthy'],
+                'message' => $health['message'],
+                'response_time' => $health['response_time']
+            ];
+
+            if ($health['healthy']) {
+                $activeCount++;
+            } else {
+                $failedCount++;
+            }
+        }
+
+        return [
+            'total' => count($results),
+            'healthy' => $activeCount,
+            'failed' => $failedCount,
+            'results' => $results
+        ];
+    }
+
+    public function updateSiteStatus($siteName, $status, $note = '') {
+        foreach ($this->config['sites'] as &$site) {
+            if ($site['name'] === $siteName) {
+                $site['status'] = $status;
+                if ($note) {
+                    $site['note'] = $note;
+                }
+                $this->saveConfig();
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function getSiteByName($name) {
         foreach ($this->config['sites'] as $site) {
             if ($site['name'] === $name) {
