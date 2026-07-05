@@ -236,6 +236,10 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             height: 50px !important;
         }
 
+        #videoPlayer .dplayer-bar-wrap {
+            position: relative !important;
+        }
+
         .info-panel {
             background: #1a1a2e;
             border-radius: 16px;
@@ -562,8 +566,16 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             liveSyncDurationCount: 3,
             liveMaxLatencyDurationCount: 10,
             fragLoadingTimeOut: 20000,
-            manifestLoadingTimeOut: 10000,
-            levelLoadingTimeOut: 10000,
+            manifestLoadingTimeOut: 15000,
+            levelLoadingTimeOut: 15000,
+            backBufferLength: 30,
+            startFragPrefetch: true,
+            enableSoftwareAES: true,
+            abrEwmaDefaultEstimate: 500000,
+            abrBandWidthFactor: 0.8,
+            xhrSetup: function(xhr) {
+                xhr.withCredentials = false;
+            }
         };
 
         function showToast(message, type = 'success') {
@@ -861,6 +873,20 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             }
             clearLoadTimeout();
 
+            let firstFrameReady = false;
+            let playAttempted = false;
+
+            const tryPlay = function(video) {
+                if (playAttempted) return;
+                if (firstFrameReady && video && video.paused) {
+                    playAttempted = true;
+                    video.play().catch(function(e) {
+                        console.warn('自动播放被阻止:', e);
+                        showToast('点击播放按钮开始播放', 'warning');
+                    });
+                }
+            };
+
             player = new DPlayer({
                 container: container,
                 video: {
@@ -872,32 +898,48 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                                 hls = new Hls(hlsConfig);
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
+                                dp.hls = hls;
                                 
                                 loadTimeout = setTimeout(function() {
                                     if (video.readyState < 2) {
                                         showToast('视频加载较慢，请耐心等待...', 'warning');
                                         updatePlayStatus('loading', '视频加载中，请耐心等待...');
                                     }
-                                }, 10000);
+                                }, 8000);
                                 
-                                hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                                    console.log('HLS 加载完成');
+                                hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+                                    console.log('HLS 清单解析完成, 共', data.levels.length, '个清晰度');
                                     clearLoadTimeout();
-                                    updatePlayStatus('success', '视频加载成功');
+                                    updatePlayStatus('loading', '视频解析完成，正在缓冲首帧...');
+                                });
+
+                                hls.on(Hls.Events.FRAG_LOADED, function (event, data) {
+                                    console.log('片段加载完成, 索引:', data.frag.sn, '时长:', data.frag.duration.toFixed(2) + 's');
+                                    clearLoadTimeout();
+                                    firstFrameReady = true;
+                                    if (!playAttempted) {
+                                        updatePlayStatus('success', '首帧加载完成，即将播放...');
+                                    }
                                     if (autoplay) {
-                                        video.play().catch(function(e) {
-                                            console.warn('自动播放被阻止:', e);
-                                        });
+                                        tryPlay(video);
                                     }
                                 });
                                 
+                                hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
+                                    console.log('清晰度切换到:', data.level);
+                                });
+
+                                let seekRetryCount = 0;
+                                const MAX_SEEK_RETRIES = 3;
+                                
                                 hls.on(Hls.Events.ERROR, function (event, data) {
-                                    console.error('HLS 错误:', data);
+                                    console.error('HLS 错误:', data.type, data.details, data.fatal ? '(致命)' : '');
                                     if (data.fatal) {
                                         clearLoadTimeout();
                                         switch (data.type) {
                                             case Hls.ErrorTypes.NETWORK_ERROR:
                                                 console.log('网络错误，尝试恢复...');
+                                                updatePlayStatus('loading', '网络波动，正在恢复...');
                                                 try {
                                                     hls.startLoad();
                                                 } catch(e) {
@@ -907,17 +949,36 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                                                 break;
                                             case Hls.ErrorTypes.MEDIA_ERROR:
                                                 console.log('媒体错误，尝试恢复...');
+                                                updatePlayStatus('loading', '媒体错误，正在恢复...');
                                                 try {
                                                     hls.recoverMediaError();
                                                 } catch(e) {
-                                                    showToast('媒体错误，正在尝试恢复...', 'error');
-                                                    updatePlayStatus('error', '媒体格式错误，正在尝试恢复...');
-                                                    setTimeout(function() {
-                                                        if (player && player.destroy) {
-                                                            try { player.destroy(); } catch(e) {}
+                                                    try {
+                                                        hls.swapAudioCodec();
+                                                        hls.recoverMediaError();
+                                                    } catch(e2) {
+                                                        if (seekRetryCount < MAX_SEEK_RETRIES) {
+                                                            seekRetryCount++;
+                                                            console.log('seek 后媒体错误，第' + seekRetryCount + '次重试...');
+                                                            setTimeout(function() {
+                                                                const currentTime = video.currentTime;
+                                                                hls.destroy();
+                                                                hls = new Hls(hlsConfig);
+                                                                hls.loadSource(url);
+                                                                hls.attachMedia(video);
+                                                                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                                                    video.currentTime = currentTime;
+                                                                    video.play().catch(function() {});
+                                                                });
+                                                            }, 300);
+                                                        } else {
+                                                            showToast('媒体错误，正在重新加载...', 'error');
+                                                            updatePlayStatus('error', '媒体格式错误，正在重新加载...');
+                                                            setTimeout(function() {
+                                                                initDPlayer(container, url);
+                                                            }, 1000);
                                                         }
-                                                        initDPlayer(container, url);
-                                                    }, 1000);
+                                                    }
                                                 }
                                                 break;
                                             default:
@@ -926,6 +987,26 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                                                 break;
                                         }
                                     }
+                                });
+
+                                video.addEventListener('seeking', function() {
+                                    console.log('跳转到:', video.currentTime.toFixed(2) + 's');
+                                });
+
+                                video.addEventListener('seeked', function() {
+                                    console.log('跳转完成');
+                                    seekRetryCount = 0;
+                                    if (video.paused && autoplay) {
+                                        video.play().catch(function() {});
+                                    }
+                                });
+
+                                video.addEventListener('waiting', function() {
+                                    updatePlayStatus('loading', '缓冲中...');
+                                });
+
+                                video.addEventListener('playing', function() {
+                                    seekRetryCount = 0;
                                 });
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
@@ -938,7 +1019,7 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                         }
                     }
                 },
-                autoplay: autoplay,
+                autoplay: false,
                 theme: '#00d4ff',
                 loop: false,
                 lang: 'zh-cn',
@@ -948,6 +1029,7 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                 volume: 0.7,
                 mutex: true,
                 airplay: true,
+                playbackSpeed: [0.5, 0.75, 1, 1.25, 1.5, 2],
             });
 
             player.on('error', function () {
@@ -959,6 +1041,122 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                 clearLoadTimeout();
                 updatePlayStatus('success', '正在播放');
             });
+
+            player.on('pause', function() {
+                updatePlayStatus('success', '已暂停');
+            });
+
+            player.on('waiting', function() {
+                updatePlayStatus('loading', '缓冲中...');
+            });
+
+            player.on('canplay', function() {
+                updatePlayStatus('success', '视频已就绪');
+            });
+
+            initThumbnailPreview(container, player);
+        }
+
+        function initThumbnailPreview(container, dp) {
+            if (!dp || !dp.video) return;
+
+            const barWrap = container.querySelector('.dplayer-bar-wrap');
+            if (!barWrap) return;
+
+            const thumbnailEl = document.createElement('div');
+            thumbnailEl.className = 'dplayer-thumbnail-preview';
+            thumbnailEl.style.cssText = `
+                position: absolute;
+                bottom: 40px;
+                transform: translateX(-50%);
+                width: 160px;
+                background: rgba(0,0,0,0.9);
+                border-radius: 6px;
+                overflow: hidden;
+                display: none;
+                pointer-events: none;
+                z-index: 20;
+                border: 1px solid rgba(255,255,255,0.15);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            `;
+
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = 160;
+            thumbCanvas.height = 90;
+            thumbCanvas.style.cssText = 'width:100%;height:auto;display:block;background:#000;';
+            thumbnailEl.appendChild(thumbCanvas);
+
+            const timeLabel = document.createElement('div');
+            timeLabel.style.cssText = 'padding:4px 8px;text-align:center;font-size:12px;color:#fff;background:rgba(0,0,0,0.7);font-family:monospace;';
+            timeLabel.textContent = '00:00';
+            thumbnailEl.appendChild(timeLabel);
+
+            const thumbCtx = thumbCanvas.getContext('2d');
+            let isHovering = false;
+            let lastSnapTime = -1;
+
+            function formatTime(seconds) {
+                if (!seconds || seconds < 0) seconds = 0;
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = Math.floor(seconds % 60);
+                if (h > 0) {
+                    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+                }
+                return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            }
+
+            function tryCaptureCurrentFrame() {
+                try {
+                    if (dp.video && dp.video.readyState >= 2 && dp.video.videoWidth > 0) {
+                        thumbCtx.drawImage(dp.video, 0, 0, 160, 90);
+                        lastSnapTime = dp.video.currentTime;
+                        return true;
+                    }
+                } catch(e) {}
+                return false;
+            }
+
+            function updateThumbnail(percentage) {
+                if (!dp.duration) return;
+                const targetTime = percentage * dp.duration;
+                timeLabel.textContent = formatTime(targetTime);
+
+                if (Math.abs(targetTime - (dp.video?.currentTime || 0)) < 2) {
+                    tryCaptureCurrentFrame();
+                }
+            }
+
+            barWrap.addEventListener('mouseenter', function() {
+                isHovering = true;
+                thumbnailEl.style.display = 'block';
+                tryCaptureCurrentFrame();
+            });
+
+            barWrap.addEventListener('mouseleave', function() {
+                isHovering = false;
+                thumbnailEl.style.display = 'none';
+            });
+
+            barWrap.addEventListener('mousemove', function(e) {
+                if (!isHovering) return;
+                const rect = barWrap.getBoundingClientRect();
+                const percentage = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+                const thumbX = e.clientX - rect.left;
+                const thumbWidth = 160;
+                const maxLeft = rect.width - thumbWidth / 2;
+                const minLeft = thumbWidth / 2;
+                const finalLeft = Math.max(minLeft, Math.min(maxLeft, thumbX));
+                thumbnailEl.style.left = finalLeft + 'px';
+                updateThumbnail(percentage);
+            });
+
+            setInterval(function() {
+                if (!isHovering) return;
+                tryCaptureCurrentFrame();
+            }, 500);
+
+            barWrap.appendChild(thumbnailEl);
         }
 
         function initVideoJs(container, url) {
