@@ -904,13 +904,17 @@ header('Expires: 0');
                         <button class="btn btn-sm btn-primary" onclick="window.open(document.getElementById('analyzeMxjxUrl').textContent, '_blank')">新窗口播放</button>
                         <button class="btn btn-sm btn-success" onclick="playAnalyzeVideo()">内置播放器播放</button>
                     </div>
-                    <div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
                             <input type="checkbox" id="analyzeUseProxy" onchange="updateAnalyzeMxjxUrl()"> 使用代理播放
                         </label>
-                        <select id="analyzeProxyServer" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;display:none" onchange="updateAnalyzeMxjxUrl()">
-                            <option value="">选择代理服务器</option>
+                        <label id="analyzeAutoProxyLabel" style="display:none;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                            <input type="checkbox" id="analyzeAutoProxy" checked onchange="toggleAutoProxy()"> 自动选最快
+                        </label>
+                        <select id="analyzeProxyServer" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;display:none;min-width:200px" onchange="onProxySelectChange()">
+                            <option value="">选择代理服务器（按延迟排序）</option>
                         </select>
+                        <button class="btn btn-sm btn-secondary" id="checkProxyBtn" onclick="checkAllProxies()" style="display:none">🔄 测速</button>
                     </div>
                     <div id="analyzePlayerContainer" style="display:none;margin-top:16px">
                         <div id="analyzeVideoPlayer" style="width:100%;border-radius:8px;overflow:hidden"></div>
@@ -2365,6 +2369,29 @@ header('Expires: 0');
             return analyzeBaseUrl;
         }
 
+        function toggleAutoProxy() {
+            autoSwitchProxy = document.getElementById('analyzeAutoProxy')?.checked ?? true;
+            if (autoSwitchProxy) {
+                autoSelectFastestProxy();
+            }
+            updateAnalyzeMxjxUrl();
+        }
+
+        function onProxySelectChange() {
+            updateAnalyzeMxjxUrl();
+        }
+
+        async function autoSelectFastestProxy() {
+            const autoChecked = document.getElementById('analyzeAutoProxy')?.checked;
+            if (!autoChecked) return;
+            const proxySel = document.getElementById('analyzeProxyServer');
+            if (!proxySel) return;
+            const fastest = await getFastestProxy();
+            if (fastest && proxySel.value !== fastest) {
+                proxySel.value = fastest;
+            }
+        }
+
         function updateAnalyzeMxjxUrl() {
             const url = getAnalyzeMxjxUrl();
             const el = document.getElementById('analyzeMxjxUrl');
@@ -2373,12 +2400,21 @@ header('Expires: 0');
             }
             const proxySel = document.getElementById('analyzeProxyServer');
             const useProxy = document.getElementById('analyzeUseProxy')?.checked;
+            const checkBtn = document.getElementById('checkProxyBtn');
+            const autoProxyLabel = document.getElementById('analyzeAutoProxyLabel');
             if (proxySel) {
                 proxySel.style.display = useProxy ? 'inline-block' : 'none';
+            }
+            if (checkBtn) {
+                checkBtn.style.display = useProxy ? 'inline-block' : 'none';
+            }
+            if (autoProxyLabel) {
+                autoProxyLabel.style.display = useProxy ? 'flex' : 'none';
             }
         }
 
         function playAnalyzeVideo() {
+            analyzeProxyRetryCount = 0;
             const url = getAnalyzeMxjxUrl();
             if (!url) {
                 showToast('请先分析视频', 'error');
@@ -2502,9 +2538,22 @@ header('Expires: 0');
                                             switch (data.type) {
                                                 case Hls.ErrorTypes.NETWORK_ERROR:
                                                     if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">网络错误，正在尝试恢复...</span>';
+                                                    let recovered = false;
                                                     try {
                                                         analyzeHls.startLoad();
-                                                    } catch(e) {
+                                                        recovered = true;
+                                                    } catch(e) {}
+                                                    if (!recovered && trySwitchProxyForAnalyze()) {
+                                                        if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">当前代理不可用，正在切换代理...</span>';
+                                                        showToast('代理不可用，正在自动切换...', 'warning');
+                                                        setTimeout(function() {
+                                                            if (analyzeDp) {
+                                                                try { analyzeDp.destroy(); } catch(e) {}
+                                                                analyzeDp = null;
+                                                            }
+                                                            playAnalyzeVideo();
+                                                        }, 500);
+                                                    } else if (!recovered) {
                                                         if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">网络错误，请检查网络或尝试刷新</span>';
                                                         showToast('网络错误，视频加载失败', 'error');
                                                     }
@@ -2676,24 +2725,122 @@ header('Expires: 0');
                 const res = await fetch(API_BASE + '?action=proxy/list&_t=' + Date.now());
                 const data = await res.json();
                 if (data.success && data.proxies && data.proxies.length > 0) {
+                    proxyListCache = data.proxies;
                     const analyzeSel = document.getElementById('analyzeProxyServer');
                     if (analyzeSel) {
                         const currentVal = analyzeSel.value;
-                        analyzeSel.innerHTML = '<option value="">选择代理服务器</option>';
+                        analyzeSel.innerHTML = '<option value="">选择代理服务器（按延迟排序）</option>';
                         data.proxies.forEach(function(p) {
                             const opt = document.createElement('option');
                             opt.value = p.url;
-                            opt.textContent = p.name + ' (' + p.type + ')';
+                            opt.dataset.id = p.id || '';
+                            opt.dataset.responseTime = p.response_time || 0;
+                            let latencyStr = '';
+                            if (p.response_time && p.response_time > 0) {
+                                latencyStr = ' ' + formatLatency(p.response_time);
+                            } else {
+                                latencyStr = ' ⏳未测速';
+                            }
+                            opt.textContent = p.name + latencyStr + ' (' + p.type.toUpperCase() + ')';
                             analyzeSel.appendChild(opt);
                         });
                         if (currentVal) {
                             analyzeSel.value = currentVal;
+                        } else if (document.getElementById('analyzeAutoProxy')?.checked) {
+                            autoSelectFastestProxy();
                         }
                     }
                 }
             } catch (e) {
                 console.warn('加载代理列表失败:', e);
             }
+        }
+
+        function formatLatency(ms) {
+            if (!ms || ms <= 0) return '—';
+            if (ms < 300) return ' 🟢' + Math.round(ms) + 'ms';
+            if (ms < 1000) return ' 🟡' + Math.round(ms) + 'ms';
+            return ' 🔴' + (ms / 1000).toFixed(1) + 's';
+        }
+
+        function getLatencyColor(ms) {
+            if (!ms || ms <= 0) return '#909399';
+            if (ms < 300) return '#67c23a';
+            if (ms < 1000) return '#e6a23c';
+            return '#f56c6c';
+        }
+
+        async function checkAllProxies() {
+            const btn = document.getElementById('checkProxyBtn');
+            if (btn) {
+                btn.disabled = true;
+                const oldText = btn.textContent;
+                btn.textContent = '测速中...';
+            }
+            try {
+                const res = await fetch(API_BASE + '?action=proxy/check&_t=' + Date.now());
+                const data = await res.json();
+                if (data.success && data.results) {
+                    await loadProxyList();
+                    showToast('测速完成，共检测 ' + data.results.length + ' 个代理', 'success');
+                } else {
+                    showToast(data.message || '测速失败', 'error');
+                }
+            } catch (e) {
+                console.error('代理测速失败:', e);
+                showToast('测速失败: ' + e.message, 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🔄 测速';
+                }
+            }
+        }
+
+        let currentProxyIndex = 0;
+        let proxyListCache = [];
+        let autoSwitchProxy = true;
+
+        async function getFastestProxy() {
+            if (proxyListCache.length === 0) {
+                try {
+                    const res = await fetch(API_BASE + '?action=proxy/list&_t=' + Date.now());
+                    const data = await res.json();
+                    if (data.success && data.proxies && data.proxies.length > 0) {
+                        proxyListCache = data.proxies;
+                    }
+                } catch (e) {
+                    console.warn('获取代理列表失败:', e);
+                }
+            }
+            if (proxyListCache.length > 0) {
+                const fast = proxyListCache.find(p => p.response_time && p.response_time > 0 && p.response_time < 3000);
+                if (fast) return fast.url;
+                return proxyListCache[0].url;
+            }
+            return '';
+        }
+
+        let analyzeProxyRetryCount = 0;
+        const MAX_PROXY_RETRIES = 3;
+
+        function trySwitchProxyForAnalyze() {
+            const useProxy = document.getElementById('analyzeUseProxy')?.checked;
+            const autoSwitch = document.getElementById('analyzeAutoProxy')?.checked;
+            if (!useProxy || !autoSwitch) return false;
+            if (analyzeProxyRetryCount >= MAX_PROXY_RETRIES) return false;
+
+            const proxySel = document.getElementById('analyzeProxyServer');
+            if (!proxySel || !proxySel.value) return false;
+
+            const nextProxy = switchToNextProxy(proxySel.value);
+            if (nextProxy && nextProxy !== proxySel.value) {
+                analyzeProxyRetryCount++;
+                proxySel.value = nextProxy;
+                console.log('自动切换代理到:', nextProxy, '(第' + analyzeProxyRetryCount + '次切换)');
+                return true;
+            }
+            return false;
         }
 
         async function refreshRules() {

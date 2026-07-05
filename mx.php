@@ -1381,30 +1381,87 @@ try {
             break;
 
         case 'proxy/list':
-            $proxyFile = $rootDir . '/proxy/proxy_config.php';
+            require_once $rootDir . '/proxy/ProxyManager.php';
+            $proxyManager = new ProxyManager($rootDir . '/proxy/proxy_config.php');
+            $activeProxies = $proxyManager->getActiveProxies();
             $proxies = [];
-            if (file_exists($proxyFile)) {
-                $proxyConfig = @require $proxyFile;
-                if (is_array($proxyConfig) && !empty($proxyConfig['proxies']) && is_array($proxyConfig['proxies'])) {
-                    foreach ($proxyConfig['proxies'] as $p) {
-                        if (($p['status'] ?? 'active') === 'active' && !empty($p['host']) && !empty($p['port'])) {
-                            $proxyUrl = $p['type'] . '://' . $p['host'] . ':' . $p['port'];
-                            if (!empty($p['username']) && !empty($p['password'])) {
-                                $proxyUrl = $p['type'] . '://' . $p['username'] . ':' . $p['password'] . '@' . $p['host'] . ':' . $p['port'];
-                            }
-                            $proxies[] = [
-                                'id' => $p['id'] ?? '',
-                                'name' => $p['name'] ?: ($p['host'] . ':' . $p['port']),
-                                'type' => $p['type'] ?? 'http',
-                                'url' => $proxyUrl,
-                                'host' => $p['host'],
-                                'port' => $p['port'],
-                            ];
-                        }
+
+            foreach ($activeProxies as $p) {
+                $proxyUrl = $p['type'] . '://' . $p['host'] . ':' . $p['port'];
+                if (!empty($p['username']) && !empty($p['password'])) {
+                    $proxyUrl = $p['type'] . '://' . $p['username'] . ':' . $p['password'] . '@' . $p['host'] . ':' . $p['port'];
+                }
+                $responseTime = isset($p['response_time']) ? round(floatval($p['response_time']), 2) : 0;
+                $proxies[] = [
+                    'id' => $p['id'] ?? '',
+                    'name' => $p['name'] ?: ($p['host'] . ':' . $p['port']),
+                    'type' => $p['type'] ?? 'http',
+                    'url' => $proxyUrl,
+                    'host' => $p['host'],
+                    'port' => $p['port'],
+                    'response_time' => $responseTime,
+                    'success_count' => $p['success_count'] ?? 0,
+                    'fail_count' => $p['fail_count'] ?? 0,
+                    'priority' => $p['priority'] ?? 100,
+                    'last_check' => $p['last_check'] ?? null,
+                    'last_success' => $p['last_success'] ?? null,
+                ];
+            }
+
+            usort($proxies, function($a, $b) {
+                $aHas = $a['response_time'] > 0;
+                $bHas = $b['response_time'] > 0;
+                if ($aHas && !$bHas) return -1;
+                if (!$aHas && $bHas) return 1;
+                if ($aHas && $bHas) {
+                    if ($a['response_time'] != $b['response_time']) {
+                        return $a['response_time'] < $b['response_time'] ? -1 : 1;
                     }
                 }
+                if ($a['priority'] != $b['priority']) {
+                    return $a['priority'] - $b['priority'];
+                }
+                $fa = $a['fail_count'] ?? 0;
+                $fb = $b['fail_count'] ?? 0;
+                return $fa - $fb;
+            });
+
+            $stats = $proxyManager->getStats();
+            sendJsonResponse([
+                'success' => true,
+                'proxies' => $proxies,
+                'count' => count($proxies),
+                'stats' => $stats,
+                'auto_switch' => !empty($stats['auto_switch'])
+            ]);
+            break;
+
+        case 'proxy/check':
+            require_once $rootDir . '/proxy/ProxyManager.php';
+            $proxyManager = new ProxyManager($rootDir . '/proxy/proxy_config.php');
+            $proxyId = $_GET['id'] ?? '';
+
+            if ($proxyId) {
+                $result = $proxyManager->testProxy($proxyId);
+                sendJsonResponse($result);
+            } else {
+                $results = $proxyManager->checkAllProxies();
+                usort($results, function($a, $b) {
+                    $aOk = $a['success'];
+                    $bOk = $b['success'];
+                    if ($aOk && !$bOk) return -1;
+                    if (!$aOk && $bOk) return 1;
+                    if ($aOk && $bOk) {
+                        return $a['response_time'] < $b['response_time'] ? -1 : 1;
+                    }
+                    return 0;
+                });
+                sendJsonResponse([
+                    'success' => true,
+                    'results' => $results,
+                    'count' => count($results)
+                ]);
             }
-            sendJsonResponse(['success' => true, 'proxies' => $proxies, 'count' => count($proxies)]);
             break;
 
         case 'player/config/save':

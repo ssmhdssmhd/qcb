@@ -1,6 +1,6 @@
 <?php
 return [
-    'version' => 'v2.15.1',
-    'commit' => 'b8a526ecba5fbad7e9c2d1dc438f0b51b88eaed4',
-    'updated_at' => '2026-07-06 01:58:00',
+    'version' => 'v2.16.0',
+    'commit' => 'ab46235ad40da4c003b5dd35d740ea7af7dbc377',
+    'updated_at' => '2026-07-06 02:20:00',
 ];
