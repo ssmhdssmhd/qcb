@@ -166,25 +166,31 @@ class UpdateManager
 
     private function fetchLatestVersionFromGitHub()
     {
-        $url = 'https://raw.githubusercontent.com/' . $this->githubRepo . '/' . $this->githubBranch . '/version.php';
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $urls = [
+            'https://raw.githubusercontent.com/' . $this->githubRepo . '/' . $this->githubBranch . '/version.php',
+            'https://cdn.jsdelivr.net/gh/' . $this->githubRepo . '@' . $this->githubBranch . '/version.php',
+            'https://fastly.jsdelivr.net/gh/' . $this->githubRepo . '@' . $this->githubBranch . '/version.php',
+            'https://gcore.jsdelivr.net/gh/' . $this->githubRepo . '@' . $this->githubBranch . '/version.php'
+        ];
 
-        if ($httpCode !== 200 || !$response) {
-            return null;
-        }
+        foreach ($urls as $url) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+            curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
 
-        if (preg_match('/[\'"]version[\'"]\s*=>\s*[\'"](v?\d+\.\d+\.\d+)[\'"]/', $response, $m)) {
-            return $m[1];
+            if ($httpCode === 200 && $response) {
+                if (preg_match('/[\'"]version[\'"]\s*=>\s*[\'"](v?\d+\.\d+\.\d+)[\'"]/', $response, $m)) {
+                    return $m[1];
+                }
+            }
         }
 
         return null;
@@ -321,53 +327,50 @@ class UpdateManager
 
     public function checkUpdate()
     {
-        $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
+        $currentVersion = $this->getCurrentVersion();
+        $currentCommit = $this->getCurrentCommit();
+        $latestVersion = null;
+        $latestCommit = '';
+        $commitMessage = '无描述';
+        $commitDate = '';
+        $githubConnected = false;
 
+        $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $apiUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
 
-        if ($httpCode !== 200 || !$response) {
-            return [
-                'success' => false,
-                'message' => '无法连接到 GitHub 服务器'
-            ];
+        if ($httpCode === 200 && $response) {
+            $data = json_decode($response, true);
+            if ($data) {
+                $githubConnected = true;
+                $latestCommit = $data['sha'] ?? '';
+                $commitMessage = $data['commit']['message'] ?? '无描述';
+                $commitDate = $data['commit']['committer']['date'] ?? '';
+            }
         }
-
-        $data = json_decode($response, true);
-        if (!$data) {
-            return [
-                'success' => false,
-                'message' => '解析版本信息失败'
-            ];
-        }
-
-        $latestCommit = $data['sha'] ?? '';
-        $commitMessage = $data['commit']['message'] ?? '无描述';
-        $commitDate = $data['commit']['committer']['date'] ?? '';
-
-        $currentVersion = $this->getCurrentVersion();
-        $currentCommit = $this->getCurrentCommit();
 
         $latestVersion = $this->fetchLatestVersionFromGitHub();
-        if (!$latestVersion) {
+        if (!$latestVersion && $githubConnected) {
             $latestVersion = $this->parseVersionFromMessage($commitMessage);
         }
-        if (!$latestVersion) {
+        if (!$latestVersion && $latestCommit) {
             $latestVersion = substr($latestCommit, 0, 7);
         }
 
-        $hasUpdate = !empty($currentCommit) && strpos($latestCommit, $currentCommit) !== 0;
-        if (empty($currentCommit)) {
+        $hasUpdate = false;
+        if (!empty($currentCommit) && $latestCommit && strpos($latestCommit, $currentCommit) !== 0) {
+            $hasUpdate = true;
+        }
+        if (empty($currentCommit) && $latestVersion) {
             $hasUpdate = true;
         }
 
@@ -376,20 +379,23 @@ class UpdateManager
             $hasUpdate = false;
         }
 
-        $changelog = $this->getRecentCommits($currentCommit);
+        $changelog = [];
+        if ($githubConnected) {
+            $changelog = $this->getRecentCommits($currentCommit);
+        }
 
         return [
             'success' => true,
             'current_version' => $currentVersion,
             'current_commit' => $currentCommit,
-            'latest_version' => $latestVersion,
+            'latest_version' => $latestVersion ?: '未知',
             'latest_commit' => $latestCommit,
             'latest_message' => $commitMessage,
             'latest_date' => $commitDate,
             'has_update' => $hasUpdate,
+            'github_connected' => $githubConnected,
             'repo_url' => 'https://github.com/' . $this->githubRepo,
-            'changelog' => $changelog,
-            'mirror_used' => $effectiveUrl
+            'changelog' => $changelog
         ];
     }
 

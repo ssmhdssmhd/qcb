@@ -33,6 +33,8 @@ $downloadMirrors = [
 
 $apiMirrors = [
     'https://api.github.com/repos/' . $githubRepo . '/commits/' . $branch,
+    'https://gh.api.99988866.xyz/https://api.github.com/repos/' . $githubRepo . '/commits/' . $branch,
+    'https://mirror.ghproxy.com/https://api.github.com/repos/' . $githubRepo . '/commits/' . $branch,
 ];
 
 $excludeFiles = [
@@ -252,33 +254,55 @@ function curlRequest($url, $options = []) {
 }
 
 function checkLatestVersion() {
-    global $apiMirrors;
+    global $apiMirrors, $githubRepo, $branch;
+    
+    $versionUrls = [
+        'https://raw.githubusercontent.com/' . $githubRepo . '/' . $branch . '/version.php',
+        'https://cdn.jsdelivr.net/gh/' . $githubRepo . '@' . $branch . '/version.php',
+        'https://fastly.jsdelivr.net/gh/' . $githubRepo . '@' . $branch . '/version.php',
+    ];
+    
+    $latestVersion = null;
+    $latestCommit = '';
+    $latestMessage = '无描述';
+    $latestDate = '';
     
     $result = curlRequest($apiMirrors[0], [
         'mirrors' => $apiMirrors,
-        'timeout' => 15,
+        'timeout' => 10,
     ]);
     
-    if (!$result['success']) {
-        return [
-            'success' => false,
-            'error' => $result['error'],
-        ];
+    if ($result['success']) {
+        $data = json_decode($result['response'], true);
+        if ($data) {
+            $latestCommit = $data['sha'] ?? '';
+            $latestMessage = $data['commit']['message'] ?? '无描述';
+            $latestDate = $data['commit']['committer']['date'] ?? '';
+            $latestVersion = parseVersionFromMessage($latestMessage);
+        }
     }
     
-    $data = json_decode($result['response'], true);
-    if (!$data) {
-        return [
-            'success' => false,
-            'error' => '解析版本信息失败',
-        ];
-    }
-    
-    $latestCommit = $data['sha'] ?? '';
-    $latestMessage = $data['commit']['message'] ?? '无描述';
-    $latestVersion = parseVersionFromMessage($latestMessage);
     if (!$latestVersion) {
+        foreach ($versionUrls as $vUrl) {
+            $vResult = curlRequest($vUrl, ['timeout' => 8]);
+            if ($vResult['success'] && $vResult['response']) {
+                if (preg_match('/[\'"]version[\'"]\s*=>\s*[\'"](v?\d+\.\d+\.\d+)[\'"]/', $vResult['response'], $m)) {
+                    $latestVersion = $m[1];
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (!$latestVersion && $latestCommit) {
         $latestVersion = substr($latestCommit, 0, 7);
+    }
+    
+    if (!$latestVersion) {
+        return [
+            'success' => false,
+            'error' => '无法获取最新版本信息',
+        ];
     }
     
     return [
@@ -286,8 +310,8 @@ function checkLatestVersion() {
         'latest_commit' => $latestCommit,
         'latest_version' => $latestVersion,
         'latest_message' => $latestMessage,
-        'latest_date' => $data['commit']['committer']['date'] ?? '',
-        'mirror_used' => $result['mirror'],
+        'latest_date' => $latestDate,
+        'mirror_used' => $result['mirror'] ?? '',
     ];
 }
 

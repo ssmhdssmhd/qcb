@@ -2977,11 +2977,22 @@ header('Expires: 0');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 
-                document.getElementById('currentVersion').textContent = data.current_version;
+                document.getElementById('currentVersion').textContent = data.current_version || '-';
                 document.getElementById('latestVersion').textContent = data.latest_version || '-';
                 
                 const statusEl = document.getElementById('updateStatus');
                 const updateBtn = document.getElementById('updateBtn');
+                const githubStatusEl = document.getElementById('githubStatus');
+                
+                if (githubStatusEl) {
+                    if (data.github_connected) {
+                        githubStatusEl.textContent = '连接成功';
+                        githubStatusEl.className = 'stat-value success';
+                    } else {
+                        githubStatusEl.textContent = '连接失败';
+                        githubStatusEl.className = 'stat-value danger';
+                    }
+                }
                 
                 if (data.has_update) {
                     statusEl.textContent = '有新版本';
@@ -3003,6 +3014,12 @@ header('Expires: 0');
             } catch (e) {
                 document.getElementById('updateStatus').textContent = '检查失败';
                 document.getElementById('updateStatus').className = 'stat-value danger';
+                const githubStatusEl = document.getElementById('githubStatus');
+                if (githubStatusEl) {
+                    githubStatusEl.textContent = '连接失败';
+                    githubStatusEl.className = 'stat-value danger';
+                }
+                loadVersion();
                 if (!autoShowModal) {
                     showToast('检查更新失败: ' + e.message, 'error');
                 }
@@ -3014,7 +3031,10 @@ header('Expires: 0');
                 const res = await fetch(API_BASE + '?action=update/version');
                 const data = await res.json();
                 if (data.success) {
-                    document.getElementById('currentVersion').textContent = data.current_version;
+                    const curEl = document.getElementById('currentVersion');
+                    if (curEl && (curEl.textContent === '-' || curEl.textContent === '')) {
+                        curEl.textContent = data.current_version;
+                    }
                 }
             } catch (e) {}
             loadBackupList();
