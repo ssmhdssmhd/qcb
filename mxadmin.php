@@ -2972,15 +2972,29 @@ header('Expires: 0');
         }
 
         async function checkUpdate(autoShowModal = false) {
+            const checkBtn = document.querySelector('button[onclick="checkUpdate()"]');
+            const originalBtnText = checkBtn ? checkBtn.textContent : '';
+            if (checkBtn) {
+                checkBtn.disabled = true;
+                checkBtn.textContent = '检查中...';
+            }
+
+            const statusEl = document.getElementById('updateStatus');
+            if (statusEl) {
+                statusEl.textContent = '检查中...';
+                statusEl.className = 'stat-value';
+            }
+
             try {
                 const res = await fetch(API_BASE + '?action=update/check');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 
-                document.getElementById('currentVersion').textContent = data.current_version || '-';
-                document.getElementById('latestVersion').textContent = data.latest_version || '-';
+                const curVerEl = document.getElementById('currentVersion');
+                const latestVerEl = document.getElementById('latestVersion');
+                if (curVerEl) curVerEl.textContent = data.current_version || '-';
+                if (latestVerEl) latestVerEl.textContent = data.latest_version || '-';
                 
-                const statusEl = document.getElementById('updateStatus');
                 const updateBtn = document.getElementById('updateBtn');
                 const githubStatusEl = document.getElementById('githubStatus');
                 
@@ -2995,25 +3009,28 @@ header('Expires: 0');
                 }
                 
                 if (data.has_update) {
-                    statusEl.textContent = '有新版本';
-                    statusEl.className = 'stat-value warning';
-                    updateBtn.disabled = false;
-                    latestUpdateData = data;
-                    if (autoShowModal) {
-                        setTimeout(() => showUpdateModal(data), 500);
+                    if (statusEl) {
+                        statusEl.textContent = '有新版本';
+                        statusEl.className = 'stat-value warning';
                     }
+                    if (updateBtn) updateBtn.disabled = false;
+                    latestUpdateData = data;
+                    setTimeout(() => showUpdateModal(data), 300);
                 } else {
-                    statusEl.textContent = '已是最新';
-                    statusEl.className = 'stat-value success';
-                    updateBtn.disabled = true;
-                }
-                
-                if (!autoShowModal) {
-                    showToast('检查更新完成', 'success');
+                    if (statusEl) {
+                        statusEl.textContent = '已是最新';
+                        statusEl.className = 'stat-value success';
+                    }
+                    if (updateBtn) updateBtn.disabled = true;
+                    if (!autoShowModal) {
+                        showToast('已是最新版本', 'success');
+                    }
                 }
             } catch (e) {
-                document.getElementById('updateStatus').textContent = '检查失败';
-                document.getElementById('updateStatus').className = 'stat-value danger';
+                if (statusEl) {
+                    statusEl.textContent = '检查失败';
+                    statusEl.className = 'stat-value danger';
+                }
                 const githubStatusEl = document.getElementById('githubStatus');
                 if (githubStatusEl) {
                     githubStatusEl.textContent = '连接失败';
@@ -3022,6 +3039,11 @@ header('Expires: 0');
                 loadVersion();
                 if (!autoShowModal) {
                     showToast('检查更新失败: ' + e.message, 'error');
+                }
+            } finally {
+                if (checkBtn) {
+                    checkBtn.disabled = false;
+                    checkBtn.textContent = originalBtnText || '检查更新';
                 }
             }
         }

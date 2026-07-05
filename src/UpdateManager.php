@@ -367,16 +367,24 @@ class UpdateManager
         }
 
         $hasUpdate = false;
+        $commitDiffers = false;
         if (!empty($currentCommit) && $latestCommit && strpos($latestCommit, $currentCommit) !== 0) {
             $hasUpdate = true;
+            $commitDiffers = true;
         }
         if (empty($currentCommit) && $latestVersion) {
             $hasUpdate = true;
         }
 
         $versionCompare = $this->compareVersions($currentVersion, $latestVersion);
-        if ($versionCompare !== null && $versionCompare >= 0) {
-            $hasUpdate = false;
+        if ($versionCompare !== null) {
+            if ($versionCompare < 0) {
+                $hasUpdate = true;
+            } elseif ($versionCompare > 0) {
+                $hasUpdate = false;
+            } elseif ($commitDiffers) {
+                $hasUpdate = true;
+            }
         }
 
         $changelog = [];
