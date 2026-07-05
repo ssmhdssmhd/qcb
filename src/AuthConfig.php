@@ -29,8 +29,8 @@ class AuthConfig
                 $jsonConfig = json_decode($content, true);
                 if (is_array($jsonConfig)) {
                     $this->config = $jsonConfig;
-                    $this->config['auth_file'] = 'sq.php';
-                    $this->config['auth_file_compare'] = 'sqm.php';
+                    $this->config['auth_file'] = 'sq.txt';
+                    $this->config['auth_file_compare'] = 'sq.txt';
                     $this->saveConfig();
                     $loaded = true;
                 }
@@ -41,8 +41,8 @@ class AuthConfig
             $this->config = [
                 'auth_server_ip' => '114.134.184.91',
                 'auth_server_port' => '9001',
-                'auth_file' => 'sq.php',
-                'auth_file_compare' => 'sqm.php',
+                'auth_file' => 'sq.txt',
+                'auth_file_compare' => 'sq.txt',
                 'enable_remote_verify' => true,
                 'enable_timestamp_check' => true,
                 'timestamp_tolerance' => 86400
