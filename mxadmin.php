@@ -917,7 +917,7 @@ header('Expires: 0');
                         <button class="btn btn-sm btn-secondary" id="checkProxyBtn" onclick="checkAllProxies()" style="display:none">🔄 测速</button>
                     </div>
                     <div id="analyzePlayerContainer" style="display:none;margin-top:16px">
-                        <div id="analyzeVideoPlayer" style="width:100%;border-radius:8px;overflow:hidden"></div>
+                        <div id="analyzeVideoPlayer" style="width:100%;height:360px;border-radius:8px;overflow:hidden;background:#000"></div>
                         <div style="margin-top:8px;font-size:12px;color:#909399" id="analyzePlayStatus"></div>
                     </div>
                 </div>
@@ -2096,7 +2096,8 @@ header('Expires: 0');
             btn.disabled = true;
             btn.textContent = '学习中...';
             try {
-                const res = await fetch(API_BASE + '?action=rules/learn&url=' + encodeURIComponent(currentAnalysis.url));
+                const learnUrl = currentAnalysis.mediaUrl || currentAnalysis.url;
+                const res = await fetch(API_BASE + '?action=rules/learn&url=' + encodeURIComponent(learnUrl));
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 const learnStatusEl = document.getElementById('learnStatus');
