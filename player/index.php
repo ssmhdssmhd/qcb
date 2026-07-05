@@ -7,12 +7,24 @@ $url = $_GET['url'] ?? '';
 $playerType = $_GET['player'] ?? '';
 
 $configFile = __DIR__ . '/../gz/player_config.php';
+$localConfigFile = __DIR__ . '/player_config.php';
+
 $playerConfig = [
     'player' => 'dplayer',
     'autoplay' => false,
     'preload' => 'auto',
     'api_base_url' => '',
+    'default_player' => 'dplayer',
+    'commercial_players' => [],
+    'players' => [],
 ];
+
+if (file_exists($localConfigFile)) {
+    $localConfig = require $localConfigFile;
+    if (is_array($localConfig)) {
+        $playerConfig = array_merge($playerConfig, $localConfig);
+    }
+}
 
 if (file_exists($configFile)) {
     $fileConfig = require $configFile;
@@ -27,13 +39,13 @@ if (!empty($playerConfig['api_base_url'])) {
     $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    $basePath = dirname(dirname($requestUri));
+    $basePath = dirname($requestUri);
     $basePath = $basePath === '/' || $basePath === '\\' ? '' : $basePath;
     $baseUrl = $scheme . '://' . $host . $basePath;
 }
 
-$apiUrl = $baseUrl . '/mx.php?action=mxjx&url=';
-$officialReplaceUrl = $baseUrl . '/mx.php?action=official_replace/info&url=';
+$apiUrl = $baseUrl . '/../mx.php?action=mxjx&url=';
+$officialReplaceUrl = $baseUrl . '/../mx.php?action=official_replace/info&url=';
 
 if (!empty($playerType)) {
     $playerConfig['player'] = $playerType;
@@ -71,15 +83,33 @@ if (!empty($url)) {
     }
 }
 
-$playerNameMap = [
-    'dplayer' => 'DPlayer',
-    'videojs' => 'Video.js',
-    'muiplayer' => 'MuiPlayer',
-    'artplayer' => 'ArtPlayer',
-    'nplayer' => 'NPlayer',
-];
+$allPlayers = $playerConfig['players'] ?? [];
+if (empty($allPlayers)) {
+    $allPlayers = [
+        'dplayer' => ['name' => 'DPlayer', 'category' => '开源'],
+        'videojs' => ['name' => 'Video.js', 'category' => '开源'],
+        'shaka' => ['name' => 'Shaka Player', 'category' => '开源'],
+        'clappr' => ['name' => 'Clappr', 'category' => '开源'],
+        'dashjs' => ['name' => 'dash.js', 'category' => '开源'],
+        'hlsjs' => ['name' => 'hls.js 原生', 'category' => '开源'],
+        'muiplayer' => ['name' => 'MuiPlayer', 'category' => '开源'],
+        'artplayer' => ['name' => 'ArtPlayer', 'category' => '开源'],
+        'nplayer' => ['name' => 'NPlayer', 'category' => '开源'],
+        'native' => ['name' => '原生 Video', 'category' => '系统'],
+        'jwplayer' => ['name' => 'JW Player', 'category' => '商业', 'license_required' => true],
+        'bitmovin' => ['name' => 'Bitmovin', 'category' => '商业', 'license_required' => true],
+        'theoplayer' => ['name' => 'THEOplayer', 'category' => '商业', 'license_required' => true],
+        'flowplayer' => ['name' => 'Flowplayer', 'category' => '商业', 'license_required' => true],
+        'radiant' => ['name' => 'Radiant Media Player', 'category' => '商业', 'license_required' => true],
+        'nexplayer' => ['name' => 'NexPlayer', 'category' => '商业', 'license_required' => true],
+        'castlabs' => ['name' => 'castLabs PRESTOplay', 'category' => '商业', 'license_required' => true],
+        'visualon' => ['name' => 'VisualON', 'category' => '商业', 'license_required' => true],
+    ];
+}
 
-$currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
+$currentPlayer = $playerConfig['player'] ?? 'dplayer';
+$currentPlayerName = $allPlayers[$currentPlayer]['name'] ?? $currentPlayer;
+$commercialConfig = $playerConfig['commercial_players'] ?? [];
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -88,19 +118,41 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>在线视频播放器 - <?php echo $currentPlayerName; ?></title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-    <?php if ($playerConfig['player'] === 'dplayer'): ?>
+    <?php if ($currentPlayer === 'dplayer'): ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dplayer@1.27.1/dist/DPlayer.min.css">
     <script src="https://cdn.jsdelivr.net/npm/dplayer@1.27.1/dist/DPlayer.min.js"></script>
-    <?php elseif ($playerConfig['player'] === 'videojs'): ?>
+    <?php elseif ($currentPlayer === 'videojs'): ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/video.js@8.12.0/dist/video-js.min.css">
     <script src="https://cdn.jsdelivr.net/npm/video.js@8.12.0/dist/video.min.js"></script>
-    <?php elseif ($playerConfig['player'] === 'muiplayer'): ?>
+    <?php elseif ($currentPlayer === 'shaka'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.10.8/dist/shaka-player.compiled.js"></script>
+    <?php elseif ($currentPlayer === 'clappr'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/clappr@0.4.26/dist/clappr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+    <?php elseif ($currentPlayer === 'dashjs'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js"></script>
+    <?php elseif ($currentPlayer === 'hlsjs'): ?>
+    <?php elseif ($currentPlayer === 'muiplayer'): ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mui-player@1.8.2/dist/mui-player.min.css">
     <script src="https://cdn.jsdelivr.net/npm/mui-player@1.8.2/dist/mui-player.min.js"></script>
-    <?php elseif ($playerConfig['player'] === 'artplayer'): ?>
+    <?php elseif ($currentPlayer === 'artplayer'): ?>
     <script src="https://cdn.jsdelivr.net/npm/artplayer@5.1.4/dist/artplayer.min.js"></script>
-    <?php elseif ($playerConfig['player'] === 'nplayer'): ?>
+    <?php elseif ($currentPlayer === 'nplayer'): ?>
     <script src="https://cdn.jsdelivr.net/npm/nplayer@1.0.15/dist/NPlayer.min.js"></script>
+    <?php elseif ($currentPlayer === 'jwplayer'): ?>
+    <script src="https://cdn.jwplayer.com/libraries/<?php echo $commercialConfig['jwplayer']['license_key'] ?? 'demo'; ?>.js"></script>
+    <?php elseif ($currentPlayer === 'bitmovin'): ?>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bitmovin-player@8.152.0/bitmovinplayer-ui.css">
+    <script src="https://cdn.jsdelivr.net/npm/bitmovin-player@8.152.0/bitmovinplayer.min.js"></script>
+    <?php elseif ($currentPlayer === 'theoplayer'): ?>
+    <link rel="stylesheet" href="https://cdn.theoplayer.com/dash/theoplayer/ui.css">
+    <script type="text/javascript" src="https://cdn.theoplayer.com/dash/theoplayer/THEOplayer.js"></script>
+    <?php elseif ($currentPlayer === 'flowplayer'): ?>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flowplayer@7.2.7/dist/skin/skin.css">
+    <script src="https://cdn.jsdelivr.net/npm/flowplayer@7.2.7/dist/flowplayer.min.js"></script>
+    <?php elseif ($currentPlayer === 'radiant'): ?>
+    <script src="https://cdn.radiantmediaplayer.com/latest/8/rmp.min.js"></script>
+    <?php elseif ($currentPlayer === 'native'): ?>
     <?php endif; ?>
     <style>
         * {
@@ -450,11 +502,30 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
         <div class="player-switch">
             <label for="playerSelect">切换播放器:</label>
             <select id="playerSelect" onchange="switchPlayer(this.value)">
-                <option value="dplayer" <?php echo $playerConfig['player'] === 'dplayer' ? 'selected' : ''; ?>>DPlayer（推荐）</option>
-                <option value="videojs" <?php echo $playerConfig['player'] === 'videojs' ? 'selected' : ''; ?>>Video.js</option>
-                <option value="muiplayer" <?php echo $playerConfig['player'] === 'muiplayer' ? 'selected' : ''; ?>>MuiPlayer</option>
-                <option value="artplayer" <?php echo $playerConfig['player'] === 'artplayer' ? 'selected' : ''; ?>>ArtPlayer</option>
-                <option value="nplayer" <?php echo $playerConfig['player'] === 'nplayer' ? 'selected' : ''; ?>>NPlayer</option>
+                <optgroup label="🔥 推荐">
+                    <option value="dplayer" <?php echo $currentPlayer === 'dplayer' ? 'selected' : ''; ?>>DPlayer</option>
+                    <option value="videojs" <?php echo $currentPlayer === 'videojs' ? 'selected' : ''; ?>>Video.js</option>
+                </optgroup>
+                <optgroup label="📦 开源播放器">
+                    <option value="shaka" <?php echo $currentPlayer === 'shaka' ? 'selected' : ''; ?>>Shaka Player (Google)</option>
+                    <option value="clappr" <?php echo $currentPlayer === 'clappr' ? 'selected' : ''; ?>>Clappr</option>
+                    <option value="dashjs" <?php echo $currentPlayer === 'dashjs' ? 'selected' : ''; ?>>dash.js (DASH)</option>
+                    <option value="hlsjs" <?php echo $currentPlayer === 'hlsjs' ? 'selected' : ''; ?>>hls.js 原生</option>
+                    <option value="muiplayer" <?php echo $currentPlayer === 'muiplayer' ? 'selected' : ''; ?>>MuiPlayer</option>
+                    <option value="artplayer" <?php echo $currentPlayer === 'artplayer' ? 'selected' : ''; ?>>ArtPlayer</option>
+                    <option value="nplayer" <?php echo $currentPlayer === 'nplayer' ? 'selected' : ''; ?>>NPlayer</option>
+                    <option value="native" <?php echo $currentPlayer === 'native' ? 'selected' : ''; ?>>原生 Video 标签</option>
+                </optgroup>
+                <optgroup label="💎 商业播放器 (需License)">
+                    <option value="jwplayer" <?php echo $currentPlayer === 'jwplayer' ? 'selected' : ''; ?>>JW Player</option>
+                    <option value="bitmovin" <?php echo $currentPlayer === 'bitmovin' ? 'selected' : ''; ?>>Bitmovin</option>
+                    <option value="theoplayer" <?php echo $currentPlayer === 'theoplayer' ? 'selected' : ''; ?>>THEOplayer</option>
+                    <option value="flowplayer" <?php echo $currentPlayer === 'flowplayer' ? 'selected' : ''; ?>>Flowplayer</option>
+                    <option value="radiant" <?php echo $currentPlayer === 'radiant' ? 'selected' : ''; ?>>Radiant Media Player</option>
+                    <option value="nexplayer" <?php echo $currentPlayer === 'nexplayer' ? 'selected' : ''; ?>>NexPlayer</option>
+                    <option value="castlabs" <?php echo $currentPlayer === 'castlabs' ? 'selected' : ''; ?>>castLabs PRESTOplay</option>
+                    <option value="visualon" <?php echo $currentPlayer === 'visualon' ? 'selected' : ''; ?>>VisualON</option>
+                </optgroup>
             </select>
         </div>
     </div>
@@ -548,7 +619,7 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
         const isOfficialUrl = <?php echo json_encode($isOfficialUrl); ?>;
         const officialReplaceUrl = <?php echo json_encode($officialReplaceUrl); ?>;
         const apiUrl = <?php echo json_encode($apiUrl); ?>;
-        const currentPlayer = <?php echo json_encode($playerConfig['player']); ?>;
+        const currentPlayer = <?php echo json_encode($currentPlayer); ?>;
         const autoplay = <?php echo json_encode($playerConfig['autoplay']); ?>;
         const preload = <?php echo json_encode($playerConfig['preload']); ?>;
 
@@ -616,17 +687,57 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
 
         function destroyPlayer() {
             if (hls) {
-                hls.destroy();
+                try { hls.destroy(); } catch(e) {}
                 hls = null;
             }
             if (player) {
                 try {
-                    if (currentPlayer === 'dplayer' && player.destroy) player.destroy();
-                    if (currentPlayer === 'videojs' && player.dispose) player.dispose();
-                    if (currentPlayer === 'artplayer' && player.destroy) player.destroy();
-                    if (currentPlayer === 'nplayer' && player.dispose) player.dispose();
-                } catch (e) {}
+                    switch (currentPlayer) {
+                        case 'dplayer':
+                        case 'artplayer':
+                            if (player.destroy) player.destroy();
+                            break;
+                        case 'videojs':
+                        case 'nplayer':
+                            if (player.dispose) player.dispose();
+                            break;
+                        case 'shaka':
+                            if (player.destroy) player.destroy();
+                            break;
+                        case 'clappr':
+                            if (player.destroy) player.destroy();
+                            break;
+                        case 'dashjs':
+                            if (player.reset) player.reset();
+                            break;
+                        case 'muiplayer':
+                            if (player.destroy) player.destroy();
+                            break;
+                        case 'jwplayer':
+                            if (player.remove) player.remove();
+                            break;
+                        case 'bitmovin':
+                            if (player.destroy) player.destroy();
+                            break;
+                        case 'theoplayer':
+                            if (player.destroy) player.destroy();
+                            break;
+                        case 'flowplayer':
+                            if (player.shutdown) player.shutdown();
+                            break;
+                        case 'radiant':
+                            if (player.dispose) player.dispose();
+                            break;
+                        case 'hlsjs':
+                        case 'native':
+                            break;
+                    }
+                } catch (e) { console.warn('销毁播放器出错:', e); }
                 player = null;
+            }
+            const container = document.getElementById('videoPlayer');
+            if (container) {
+                container.innerHTML = '';
             }
         }
 
@@ -841,21 +952,82 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
             if (!url) return;
 
             const container = document.getElementById('videoPlayer');
-            container.innerHTML = '';
+            destroyPlayer();
 
-            if (currentPlayer === 'dplayer') {
-                initDPlayer(container, url);
-            } else if (currentPlayer === 'videojs') {
-                initVideoJs(container, url);
-            } else if (currentPlayer === 'muiplayer') {
-                initMuiPlayer(container, url);
-            } else if (currentPlayer === 'artplayer') {
-                initArtPlayer(container, url);
-            } else if (currentPlayer === 'nplayer') {
-                initNPlayer(container, url);
-            } else {
-                initDPlayer(container, url);
+            updatePlayStatus('loading', '正在加载播放器...');
+
+            switch (currentPlayer) {
+                case 'dplayer':
+                    initDPlayer(container, url);
+                    break;
+                case 'videojs':
+                    initVideoJs(container, url);
+                    break;
+                case 'shaka':
+                    initShakaPlayer(container, url);
+                    break;
+                case 'clappr':
+                    initClappr(container, url);
+                    break;
+                case 'dashjs':
+                    initDashJs(container, url);
+                    break;
+                case 'hlsjs':
+                    initHlsJs(container, url);
+                    break;
+                case 'muiplayer':
+                    initMuiPlayer(container, url);
+                    break;
+                case 'artplayer':
+                    initArtPlayer(container, url);
+                    break;
+                case 'nplayer':
+                    initNPlayer(container, url);
+                    break;
+                case 'native':
+                    initNativePlayer(container, url);
+                    break;
+                case 'jwplayer':
+                    initJWPlayer(container, url);
+                    break;
+                case 'bitmovin':
+                    initBitmovin(container, url);
+                    break;
+                case 'theoplayer':
+                    initTHEOplayer(container, url);
+                    break;
+                case 'flowplayer':
+                    initFlowplayer(container, url);
+                    break;
+                case 'radiant':
+                    initRadiant(container, url);
+                    break;
+                case 'nexplayer':
+                case 'castlabs':
+                case 'visualon':
+                    showCommercialPlayerNotice();
+                    break;
+                default:
+                    initDPlayer(container, url);
             }
+        }
+
+        function showCommercialPlayerNotice() {
+            const container = document.getElementById('videoPlayer');
+            container.innerHTML = `
+                <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px;padding:40px;text-align:center;">
+                    <div style="font-size:48px;">🔐</div>
+                    <div style="font-size:18px;font-weight:600;">商业播放器授权提示</div>
+                    <div style="font-size:14px;color:rgba(255,255,255,0.6);max-width:400px;line-height:1.6;">
+                        该播放器为商业产品，需要 License Key 才能使用。<br>
+                        请在 <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;">player/player_config.php</code> 中配置授权信息。
+                    </div>
+                    <button onclick="switchPlayer('dplayer')" style="padding:10px 24px;background:#00d4ff;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:600;">
+                        切换到 DPlayer
+                    </button>
+                </div>
+            `;
+            updatePlayStatus('error', '商业播放器需要配置 License Key');
         }
 
         function initDPlayer(container, url) {
@@ -1315,6 +1487,435 @@ $currentPlayerName = $playerNameMap[$playerConfig['player']] ?? 'DPlayer';
                     console.log('NPlayer HLS 加载完成');
                 });
             }
+        }
+
+        function initNativePlayer(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.id = 'native-video';
+            videoEl.controls = true;
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.autoplay = autoplay;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            videoEl.style.background = '#000';
+            videoEl.style.objectFit = 'contain';
+            container.appendChild(videoEl);
+
+            if (url.indexOf('.m3u8') !== -1 || url.indexOf('m3u8') !== -1) {
+                if (Hls.isSupported()) {
+                    createHls(videoEl, url);
+                    videoEl.addEventListener('loadeddata', function() {
+                        updatePlayStatus('success', '视频加载成功');
+                        if (autoplay) videoEl.play().catch(() => {});
+                    });
+                } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoEl.src = url;
+                    updatePlayStatus('success', '视频加载成功');
+                } else {
+                    updatePlayStatus('error', '当前浏览器不支持 HLS 播放');
+                }
+            } else {
+                videoEl.src = url;
+                videoEl.addEventListener('loadeddata', function() {
+                    updatePlayStatus('success', '视频加载成功');
+                });
+            }
+
+            videoEl.addEventListener('error', function() {
+                updatePlayStatus('error', '视频加载失败');
+            });
+        }
+
+        function initHlsJs(container, url) {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'position:relative;width:100%;height:100%;background:#000;';
+
+            const videoEl = document.createElement('video');
+            videoEl.controls = true;
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            videoEl.style.objectFit = 'contain';
+            videoEl.style.background = '#000';
+            wrap.appendChild(videoEl);
+            container.appendChild(wrap);
+
+            if (Hls.isSupported()) {
+                hls = new Hls(hlsConfig);
+                hls.loadSource(url);
+                hls.attachMedia(videoEl);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('hls.js 清单解析完成');
+                    updatePlayStatus('success', '视频加载成功');
+                    if (autoplay) videoEl.play().catch(() => {});
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                updatePlayStatus('error', '视频播放错误');
+                                break;
+                        }
+                    }
+                });
+            } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+                videoEl.src = url;
+                updatePlayStatus('success', '视频加载成功');
+                if (autoplay) videoEl.play().catch(() => {});
+            } else {
+                updatePlayStatus('error', '当前浏览器不支持 HLS 播放');
+            }
+
+            player = { video: videoEl, destroy: function() { hls && hls.destroy(); } };
+        }
+
+        function initShakaPlayer(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.controls = true;
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            videoEl.style.objectFit = 'contain';
+            videoEl.style.background = '#000';
+            container.appendChild(videoEl);
+
+            if (typeof shaka === 'undefined') {
+                updatePlayStatus('error', 'Shaka Player 加载失败');
+                return;
+            }
+
+            shaka.polyfill.installAll();
+
+            if (shaka.Player.isBrowserSupported()) {
+                const shakaPlayer = new shaka.Player(videoEl);
+                player = shakaPlayer;
+
+                shakaPlayer.configure({
+                    abr: {
+                        enabled: true,
+                        defaultBandwidthEstimate: 500000
+                    },
+                    streaming: {
+                        bufferingGoal: 30,
+                        rebufferingGoal: 2,
+                        bufferBehind: 30
+                    }
+                });
+
+                shakaPlayer.addEventListener('error', function(event) {
+                    console.error('Shaka 错误:', event.detail);
+                    updatePlayStatus('error', '播放错误: ' + event.detail.code);
+                });
+
+                shakaPlayer.addEventListener('buffering', function(e) {
+                    if (e.buffering) {
+                        updatePlayStatus('loading', '缓冲中...');
+                    } else {
+                        updatePlayStatus('success', '正在播放');
+                    }
+                });
+
+                shakaPlayer.load(url).then(function() {
+                    console.log('Shaka Player 加载完成');
+                    updatePlayStatus('success', '视频加载成功');
+                    if (autoplay) videoEl.play().catch(() => {});
+                }).catch(function(error) {
+                    console.error('Shaka 加载错误:', error);
+                    updatePlayStatus('error', '视频加载失败');
+                });
+            } else {
+                updatePlayStatus('error', '当前浏览器不支持 Shaka Player');
+            }
+        }
+
+        function initClappr(container, url) {
+            const playerEl = document.createElement('div');
+            playerEl.id = 'clappr-player';
+            playerEl.style.width = '100%';
+            playerEl.style.height = '100%';
+            container.appendChild(playerEl);
+
+            if (typeof Clappr === 'undefined') {
+                updatePlayStatus('error', 'Clappr 加载失败');
+                return;
+            }
+
+            player = new Clappr.Player({
+                source: url,
+                parentId: '#clappr-player',
+                width: '100%',
+                height: '100%',
+                autoPlay: autoplay,
+                preload: preload,
+                poster: '',
+                mediacontrol: {
+                    seekbar: '#00d4ff',
+                    buttons: '#00d4ff'
+                },
+                hlsjsConfig: hlsConfig
+            });
+
+            player.on(Clappr.Events.PLAYER_READY, function() {
+                console.log('Clappr 加载完成');
+                updatePlayStatus('success', '视频加载成功');
+            });
+
+            player.on(Clappr.Events.PLAYER_ERROR, function() {
+                updatePlayStatus('error', '视频加载失败');
+            });
+        }
+
+        function initDashJs(container, url) {
+            const videoEl = document.createElement('video');
+            videoEl.controls = true;
+            videoEl.playsInline = true;
+            videoEl.webkitPlaysInline = true;
+            videoEl.preload = preload;
+            videoEl.style.width = '100%';
+            videoEl.style.height = '100%';
+            videoEl.style.objectFit = 'contain';
+            videoEl.style.background = '#000';
+            container.appendChild(videoEl);
+
+            if (typeof dashjs === 'undefined') {
+                updatePlayStatus('error', 'dash.js 加载失败');
+                return;
+            }
+
+            const dashPlayer = dashjs.MediaPlayer().create();
+            player = dashPlayer;
+
+            dashPlayer.updateSettings({
+                streaming: {
+                    abr: {
+                        autoSwitchBitrate: {
+                            video: true,
+                            audio: true
+                        }
+                    },
+                    buffer: {
+                        fastSwitchEnabled: true
+                    }
+                }
+            });
+
+            dashPlayer.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, function() {
+                console.log('dash.js 流初始化完成');
+                updatePlayStatus('success', '视频加载成功');
+                if (autoplay) videoEl.play().catch(() => {});
+            });
+
+            dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function(e) {
+                console.error('dash.js 错误:', e);
+                updatePlayStatus('error', '播放错误');
+            });
+
+            if (url.indexOf('.m3u8') !== -1) {
+                videoEl.src = url;
+                updatePlayStatus('success', '视频加载成功');
+                if (autoplay) videoEl.play().catch(() => {});
+            } else {
+                dashPlayer.initialize(videoEl, url, autoplay);
+            }
+        }
+
+        function initJWPlayer(container, url) {
+            if (typeof jwplayer === 'undefined') {
+                showCommercialPlayerNotice();
+                return;
+            }
+
+            const playerEl = document.createElement('div');
+            playerEl.id = 'jwplayer-container';
+            playerEl.style.width = '100%';
+            playerEl.style.height = '100%';
+            container.appendChild(playerEl);
+
+            player = jwplayer('jwplayer-container').setup({
+                file: url,
+                width: '100%',
+                height: '100%',
+                autoplay: autoplay,
+                preload: preload,
+                skin: {
+                    name: 'dark'
+                }
+            });
+
+            player.on('ready', function() {
+                console.log('JW Player 就绪');
+                updatePlayStatus('success', '视频加载成功');
+            });
+
+            player.on('error', function(e) {
+                updatePlayStatus('error', '播放错误: ' + (e.message || ''));
+            });
+        }
+
+        function initBitmovin(container, url) {
+            if (typeof bitmovin === 'undefined') {
+                showCommercialPlayerNotice();
+                return;
+            }
+
+            const playerEl = document.createElement('div');
+            playerEl.id = 'bitmovin-player';
+            playerEl.style.width = '100%';
+            playerEl.style.height = '100%';
+            container.appendChild(playerEl);
+
+            const source = {
+                hls: url.indexOf('.m3u8') !== -1 ? url : undefined,
+                dash: url.indexOf('.mpd') !== -1 ? url : undefined,
+                progressive: (url.indexOf('.mp4') !== -1 || url.indexOf('.webm') !== -1) ? url : undefined
+            };
+
+            if (!source.hls && !source.dash && !source.progressive) {
+                source.hls = url;
+            }
+
+            const config = {
+                key: '',
+                source: source,
+                playback: {
+                    autoplay: autoplay,
+                    muted: false
+                },
+                ui: {
+                    enabled: true
+                }
+            };
+
+            player = new bitmovin.player.Player(playerEl, config);
+
+            player.on(bitmovin.player.PlayerEvent.Ready, function() {
+                console.log('Bitmovin 就绪');
+                updatePlayStatus('success', '视频加载成功');
+            });
+
+            player.on(bitmovin.player.PlayerEvent.Error, function(e) {
+                updatePlayStatus('error', '播放错误: ' + (e.message || ''));
+            });
+        }
+
+        function initTHEOplayer(container, url) {
+            if (typeof THEOplayer === 'undefined') {
+                showCommercialPlayerNotice();
+                return;
+            }
+
+            const playerEl = document.createElement('div');
+            playerEl.className = 'theoplayer-container';
+            playerEl.style.width = '100%';
+            playerEl.style.height = '100%';
+            playerEl.style.background = '#000';
+            container.appendChild(playerEl);
+
+            const element = new THEOplayer.Player(playerEl, {
+                libraryLocation: 'https://cdn.theoplayer.com/dash/theoplayer/',
+                license: ''
+            });
+
+            player = element;
+
+            const source = {
+                sources: [{
+                    src: url,
+                    type: url.indexOf('.m3u8') !== -1 ? 'application/x-mpegurl' : (url.indexOf('.mpd') !== -1 ? 'application/dash+xml' : 'video/mp4')
+                }]
+            };
+
+            element.source = source;
+            element.autoplay = autoplay;
+
+            element.addEventListener('playing', function() {
+                updatePlayStatus('success', '正在播放');
+            });
+
+            element.addEventListener('error', function(e) {
+                updatePlayStatus('error', '播放错误');
+            });
+        }
+
+        function initFlowplayer(container, url) {
+            if (typeof flowplayer === 'undefined') {
+                showCommercialPlayerNotice();
+                return;
+            }
+
+            const playerEl = document.createElement('div');
+            playerEl.id = 'flowplayer-container';
+            playerEl.style.width = '100%';
+            playerEl.style.height = '100%';
+            container.appendChild(playerEl);
+
+            player = flowplayer('#flowplayer-container', {
+                src: url,
+                autoplay: autoplay,
+                preload: preload,
+                token: '',
+                skin: 'minimalist'
+            });
+
+            player.on('ready', function() {
+                console.log('Flowplayer 就绪');
+                updatePlayStatus('success', '视频加载成功');
+            });
+
+            player.on('error', function(e) {
+                updatePlayStatus('error', '播放错误');
+            });
+        }
+
+        function initRadiant(container, url) {
+            if (typeof RadiantMP === 'undefined') {
+                showCommercialPlayerNotice();
+                return;
+            }
+
+            const playerEl = document.createElement('div');
+            playerEl.id = 'rmpPlayer';
+            playerEl.style.width = '100%';
+            playerEl.style.height = '100%';
+            container.appendChild(playerEl);
+
+            const settings = {
+                licenseKey: '',
+                src: {
+                    hls: url
+                },
+                autoplay: autoplay,
+                width: '100%',
+                height: '100%',
+                skin: 'dark'
+            };
+
+            const rmp = new RadiantMP('rmpPlayer');
+            rmp.init(settings);
+            player = { player: rmp, dispose: function() { rmp.destroy(); } };
+
+            rmp.addEventListener('ready', function() {
+                console.log('Radiant Media Player 就绪');
+                updatePlayStatus('success', '视频加载成功');
+            });
+
+            rmp.addEventListener('error', function() {
+                updatePlayStatus('error', '播放错误');
+            });
         }
 
         document.getElementById('urlInput')?.addEventListener('keypress', function (e) {
