@@ -2135,6 +2135,27 @@ header('Expires: 0');
             }
 
             try {
+                const hlsConfig = {
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 600,
+                    minBufferLength: 2,
+                    maxBufferSize: 60 * 1000 * 1000,
+                    maxBufferHole: 0.5,
+                    highBufferWatchdogPeriod: 2,
+                    startLevel: -1,
+                    capLevelToPlayerSize: false,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 10,
+                    fragLoadingTimeOut: 20000,
+                    manifestLoadingTimeOut: 10000,
+                    levelLoadingTimeOut: 10000,
+                    xhrSetup: function(xhr) {
+                        xhr.withCredentials = false;
+                    }
+                };
+
                 const containerEl = document.getElementById('dplayer') || document.getElementById('videoPlayer');
                 dp = new DPlayer({
                     container: containerEl,
@@ -2144,26 +2165,16 @@ header('Expires: 0');
                         customType: {
                             customHls: function(video, player) {
                                 if (Hls.isSupported()) {
-                                    const hls = new Hls({
-                                        xhrSetup: function(xhr, url) {
-                                            xhr.withCredentials = false;
-                                        },
-                                        startLevel: -1,
-                                        preloadFile: 3,
-                                        lowLatencyMode: false,
-                                        backBufferLength: 30,
-                                        maxBufferLength: 60,
-                                        maxMaxBufferLength: 120,
-                                        enableWorker: true,
-                                        fragLoadingTimeOut: 20000,
-                                        manifestLoadingTimeOut: 10000
-                                    });
+                                    const hls = new Hls(hlsConfig);
                                     hls.loadSource(video.src);
                                     hls.attachMedia(video);
                                     player.hls = hls;
 
                                     hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频解析完成，正在加载...</span>';
+                                        console.log('HLS 加载完成');
+                                        if (!statusUpdated) {
+                                            document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频解析完成，正在加载...</span>';
+                                        }
                                         if (player.video && player.video.paused) {
                                             player.video.play().catch(function() {
                                                 document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
@@ -2172,25 +2183,45 @@ header('Expires: 0');
                                     });
 
                                     hls.on(Hls.Events.ERROR, function(event, data) {
+                                        console.error('HLS 错误:', data);
                                         if (data.fatal) {
-                                            let errMsg = '视频加载失败';
                                             switch (data.type) {
                                                 case Hls.ErrorTypes.NETWORK_ERROR:
-                                                    errMsg = '网络错误: ' + (data.details || '无法加载视频资源');
+                                                    if (!statusUpdated) {
+                                                        document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">网络错误，正在尝试恢复...</span>';
+                                                    }
+                                                    try {
+                                                        hls.startLoad();
+                                                    } catch(e) {
+                                                        if (!statusUpdated) {
+                                                            document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">网络错误，请检查网络或尝试刷新</span>';
+                                                        }
+                                                        showToast('网络错误，视频加载失败', 'error');
+                                                    }
                                                     break;
                                                 case Hls.ErrorTypes.MEDIA_ERROR:
-                                                    errMsg = '媒体错误: ' + (data.details || '视频解码失败');
+                                                    if (!statusUpdated) {
+                                                        document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">媒体错误，正在尝试恢复...</span>';
+                                                    }
                                                     try {
                                                         hls.recoverMediaError();
-                                                        errMsg += '，正在尝试恢复...';
-                                                    } catch(e) {}
+                                                    } catch(e) {
+                                                        setTimeout(function() {
+                                                            if (dp) {
+                                                                try { dp.destroy(); } catch(e) {}
+                                                                dp = null;
+                                                            }
+                                                            playVideo();
+                                                        }, 1000);
+                                                    }
                                                     break;
                                                 default:
-                                                    errMsg = '播放错误: ' + (data.details || data.type);
+                                                    if (!statusUpdated) {
+                                                        document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">视频加载失败，请尝试重新加载</span>';
+                                                    }
+                                                    showToast('视频加载失败', 'error');
+                                                    break;
                                             }
-                                            statusUpdated = true;
-                                            document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">' + errMsg + '</span>';
-                                            showToast(errMsg, 'error');
                                         }
                                     });
                                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -2280,6 +2311,15 @@ header('Expires: 0');
         }
 
         let analyzeDp = null;
+        let analyzeHls = null;
+        let analyzeLoadTimeout = null;
+
+        function clearAnalyzeLoadTimeout() {
+            if (analyzeLoadTimeout) {
+                clearTimeout(analyzeLoadTimeout);
+                analyzeLoadTimeout = null;
+            }
+        }
 
         function getAnalyzeMxjxUrl() {
             if (!analyzeBaseUrl) return '';
@@ -2327,6 +2367,11 @@ header('Expires: 0');
                 try { analyzeDp.destroy(); } catch(e) {}
                 analyzeDp = null;
             }
+            if (analyzeHls) {
+                try { analyzeHls.destroy(); } catch(e) {}
+                analyzeHls = null;
+            }
+            clearAnalyzeLoadTimeout();
 
             if (typeof DPlayer === 'undefined' || typeof Hls === 'undefined') {
                 if (statusEl) {
@@ -2337,6 +2382,27 @@ header('Expires: 0');
             }
 
             try {
+                const hlsConfig = {
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 600,
+                    minBufferLength: 2,
+                    maxBufferSize: 60 * 1000 * 1000,
+                    maxBufferHole: 0.5,
+                    highBufferWatchdogPeriod: 2,
+                    startLevel: -1,
+                    capLevelToPlayerSize: false,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 10,
+                    fragLoadingTimeOut: 20000,
+                    manifestLoadingTimeOut: 10000,
+                    levelLoadingTimeOut: 10000,
+                    xhrSetup: function(xhr) {
+                        xhr.withCredentials = false;
+                    }
+                };
+
                 const containerEl = document.getElementById('analyzeVideoPlayer');
                 analyzeDp = new DPlayer({
                     container: containerEl,
@@ -2346,31 +2412,72 @@ header('Expires: 0');
                         customType: {
                             customHls: function(video, player) {
                                 if (Hls.isSupported()) {
-                                    const hls = new Hls({
-                                        xhrSetup: function(xhr) { xhr.withCredentials = false; },
-                                        startLevel: -1,
-                                        preloadFile: 3,
-                                        lowLatencyMode: false,
-                                        backBufferLength: 30,
-                                        maxBufferLength: 60,
-                                        maxMaxBufferLength: 120,
-                                        enableWorker: true,
-                                        fragLoadingTimeOut: 20000,
-                                        manifestLoadingTimeOut: 10000
+                                    analyzeHls = new Hls(hlsConfig);
+                                    analyzeHls.loadSource(video.src);
+                                    analyzeHls.attachMedia(video);
+                                    player.hls = analyzeHls;
+
+                                    analyzeLoadTimeout = setTimeout(function() {
+                                        if (video.readyState < 2) {
+                                            if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频加载较慢，请耐心等待...</span>';
+                                            showToast('视频加载较慢，请耐心等待...', 'warning');
+                                        }
+                                    }, 10000);
+
+                                    analyzeHls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                        console.log('HLS 加载完成');
+                                        clearAnalyzeLoadTimeout();
+                                        if (statusEl) statusEl.innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
+                                        if (video.paused) {
+                                            video.play().catch(function(e) {
+                                                console.warn('自动播放被阻止:', e);
+                                                if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
+                                            });
+                                        }
                                     });
-                                    hls.loadSource(video.src);
-                                    hls.attachMedia(video);
-                                    player.hls = hls;
-                                    hls.on(Hls.Events.ERROR, function(ev, data) {
+
+                                    analyzeHls.on(Hls.Events.ERROR, function(event, data) {
+                                        console.error('HLS 错误:', data);
                                         if (data.fatal) {
-                                            let msg = '播放错误';
-                                            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) msg = '网络错误: ' + (data.details || '');
-                                            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { msg = '媒体错误: ' + (data.details || ''); try { hls.recoverMediaError(); } catch(e) {} }
-                                            if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">' + msg + '</span>';
+                                            clearAnalyzeLoadTimeout();
+                                            switch (data.type) {
+                                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                                    if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">网络错误，正在尝试恢复...</span>';
+                                                    try {
+                                                        analyzeHls.startLoad();
+                                                    } catch(e) {
+                                                        if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">网络错误，请检查网络或尝试刷新</span>';
+                                                        showToast('网络错误，视频加载失败', 'error');
+                                                    }
+                                                    break;
+                                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                                    if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">媒体错误，正在尝试恢复...</span>';
+                                                    try {
+                                                        analyzeHls.recoverMediaError();
+                                                    } catch(e) {
+                                                        setTimeout(function() {
+                                                            if (analyzeDp) {
+                                                                try { analyzeDp.destroy(); } catch(e) {}
+                                                                analyzeDp = null;
+                                                            }
+                                                            playAnalyzeVideo();
+                                                        }, 1000);
+                                                    }
+                                                    break;
+                                                default:
+                                                    if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">视频加载失败，请尝试重新加载</span>';
+                                                    showToast('视频加载失败', 'error');
+                                                    break;
+                                            }
                                         }
                                     });
                                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                     video.src = url;
+                                    if (video.paused) {
+                                        video.play().catch(function(e) {
+                                            console.warn('自动播放被阻止:', e);
+                                        });
+                                    }
                                 }
                             }
                         },
