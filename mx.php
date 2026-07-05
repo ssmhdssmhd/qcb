@@ -150,8 +150,11 @@ function getInputJson() {
     return json_decode($input, true) ?: [];
 }
 
-function resolveMasterPlaylist($url) {
+function resolveMasterPlaylist($url, $proxy = '') {
     $parser = new M3U8Parser();
+    if ($proxy) {
+        $parser->setForceProxy($proxy);
+    }
     try {
         $playlist = $parser->parse($url);
         if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
@@ -558,6 +561,7 @@ try {
             header('Expires: 0');
             
             $url = $_GET['url'] ?? '';
+            $proxy = $_GET['proxy'] ?? '';
             if (empty($url)) {
                 header('Content-Type: application/json; charset=utf-8');
                 sendJsonResponse(['success' => false, 'code' => 400, 'message' => '缺少 url 参数'], 400);
@@ -570,19 +574,22 @@ try {
                 
                 // 添加时间戳避免相同URL缓存问题
                 $timestamp = $_GET['_t'] ?? '';
-                $cacheKey = 'mxjx_' . md5($url . '_' . $domain . '_' . $timestamp);
+                $cacheKey = 'mxjx_' . md5($url . '_' . $domain . '_' . $timestamp . '_' . $proxy);
                 $cachedContent = $cacheManager->get($cacheKey);
 
                 if ($cachedContent !== null && is_string($cachedContent) && empty($timestamp)) {
                     header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
                     header('Content-Disposition: inline; filename="playlist.m3u8"');
                     header('X-Cache: HIT');
+                    if ($proxy) {
+                        header('X-Proxy: ' . $proxy);
+                    }
                     ob_clean();
                     echo $cachedContent;
                     exit;
                 }
 
-                $mediaUrl = resolveMasterPlaylist($url);
+                $mediaUrl = resolveMasterPlaylist($url, $proxy);
                 if ($mediaUrl !== $url) {
                     $parsedUrl = parse_url($mediaUrl);
                     $domain = $parsedUrl['host'] ?? '';
@@ -590,6 +597,9 @@ try {
                 $url = $mediaUrl;
 
                 $skipper = new M3U8AdSkipper();
+                if ($proxy) {
+                    $skipper->getParser()->setForceProxy($proxy);
+                }
                 $reflection = new ReflectionClass($skipper);
                 $ruleEngineProp = $reflection->getProperty('ruleEngine');
                 $ruleEngineProp->setAccessible(true);
@@ -1368,6 +1378,33 @@ try {
                 }
             }
             sendJsonResponse(['success' => true, 'config' => $config]);
+            break;
+
+        case 'proxy/list':
+            $proxyFile = $rootDir . '/proxy/proxy_config.php';
+            $proxies = [];
+            if (file_exists($proxyFile)) {
+                $proxyConfig = @require $proxyFile;
+                if (is_array($proxyConfig) && !empty($proxyConfig['proxies']) && is_array($proxyConfig['proxies'])) {
+                    foreach ($proxyConfig['proxies'] as $p) {
+                        if (($p['status'] ?? 'active') === 'active' && !empty($p['host']) && !empty($p['port'])) {
+                            $proxyUrl = $p['type'] . '://' . $p['host'] . ':' . $p['port'];
+                            if (!empty($p['username']) && !empty($p['password'])) {
+                                $proxyUrl = $p['type'] . '://' . $p['username'] . ':' . $p['password'] . '@' . $p['host'] . ':' . $p['port'];
+                            }
+                            $proxies[] = [
+                                'id' => $p['id'] ?? '',
+                                'name' => $p['name'] ?: ($p['host'] . ':' . $p['port']),
+                                'type' => $p['type'] ?? 'http',
+                                'url' => $proxyUrl,
+                                'host' => $p['host'],
+                                'port' => $p['port'],
+                            ];
+                        }
+                    }
+                }
+            }
+            sendJsonResponse(['success' => true, 'proxies' => $proxies, 'count' => count($proxies)]);
             break;
 
         case 'player/config/save':

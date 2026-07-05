@@ -6,6 +6,7 @@ class M3U8Parser {
     private $saveRaw = false;
     private $proxyManager = null;
     private $useProxy = true;
+    private $forceProxy = null;
 
     public function setMaxSegments($max) {
         $this->maxSegments = intval($max);
@@ -17,6 +18,10 @@ class M3U8Parser {
 
     public function setUseProxy($useProxy) {
         $this->useProxy = (bool)$useProxy;
+    }
+
+    public function setForceProxy($proxyUrl) {
+        $this->forceProxy = $proxyUrl;
     }
 
     private function getProxyManager() {
@@ -92,7 +97,28 @@ class M3U8Parser {
             curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 30);
 
             $currentProxy = null;
-            if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
+            if ($this->forceProxy) {
+                $proxyUrl = $this->forceProxy;
+                $parsedProxy = parse_url($proxyUrl);
+                if ($parsedProxy && !empty($parsedProxy['host'])) {
+                    $proxyType = $parsedProxy['scheme'] ?? 'http';
+                    $proxyHost = $parsedProxy['host'];
+                    $proxyPort = $parsedProxy['port'] ?? 80;
+                    $proxyUser = $parsedProxy['user'] ?? '';
+                    $proxyPass = $parsedProxy['pass'] ?? '';
+                    
+                    if ($proxyType === 'socks5') {
+                        curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+                    } else {
+                        curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+                    }
+                    curl_setopt($ch, CURLOPT_PROXY, $proxyHost . ':' . $proxyPort);
+                    if ($proxyUser !== '' || $proxyPass !== '') {
+                        curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxyUser . ':' . $proxyPass);
+                    }
+                    $currentProxy = ['id' => 'force_proxy', 'url' => $proxyUrl];
+                }
+            } elseif ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
                 $currentProxy = $proxyMgr->applyProxyToCurl($ch);
             }
 
