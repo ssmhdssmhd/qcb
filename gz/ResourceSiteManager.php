@@ -355,6 +355,7 @@ class ResourceSiteManager {
 
         foreach ($list as $item) {
             $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
+            $vodPlayFrom = $item['vod_play_from'] ?? $item['play_from'] ?? '';
             $vodName = $item['vod_name'] ?? $item['name'] ?? '';
             $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
             $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
@@ -362,22 +363,43 @@ class ResourceSiteManager {
 
             if (empty($vodPlayUrl)) continue;
 
-            $allM3u8Urls = $this->extractAllM3u8Urls($vodPlayUrl);
-            if (!empty($allM3u8Urls)) {
+            $allUrls = $this->extractAllPlayUrls($vodPlayUrl, $vodPlayFrom);
+            $m3u8Urls = array_filter($allUrls, function($u) {
+                return stripos($u['url'] ?? '', '.m3u8') !== false;
+            });
+            $m3u8Urls = array_values($m3u8Urls);
+
+            if (!empty($m3u8Urls)) {
                 $videos[] = [
                     'id' => $vodId,
                     'name' => $vodName,
                     'pic' => $vodPic,
                     'remarks' => $vodRemarks,
-                    'urls' => $allM3u8Urls,
-                    'first_url' => $allM3u8Urls[0]['url'] ?? '',
-                    'raw_play_url' => $vodPlayUrl
+                    'urls' => $m3u8Urls,
+                    'first_url' => $m3u8Urls[0]['url'] ?? '',
+                    'raw_play_url' => $vodPlayUrl,
+                    'play_from' => $vodPlayFrom,
+                    'has_non_m3u8' => count($allUrls) > count($m3u8Urls),
+                    'all_urls_count' => count($allUrls)
+                ];
+            } elseif (!empty($allUrls)) {
+                $videos[] = [
+                    'id' => $vodId,
+                    'name' => $vodName,
+                    'pic' => $vodPic,
+                    'remarks' => $vodRemarks,
+                    'urls' => $allUrls,
+                    'first_url' => $allUrls[0]['url'] ?? '',
+                    'raw_play_url' => $vodPlayUrl,
+                    'play_from' => $vodPlayFrom,
+                    'is_non_m3u8' => true,
+                    'all_urls_count' => count($allUrls)
                 ];
             }
         }
 
         if (empty($videos)) {
-            return ['success' => false, 'message' => '无有效M3U8视频'];
+            return ['success' => false, 'message' => '无有效视频'];
         }
 
         return [
@@ -386,6 +408,126 @@ class ResourceSiteManager {
             'pagecount' => $data['pagecount'] ?? $data['page']['pagecount'] ?? 1,
             'videos' => $videos
         ];
+    }
+
+    private function extractAllPlayUrls($playUrl, $playFrom = '') {
+        if (empty($playUrl)) return [];
+
+        $fromGroups = [];
+        if (!empty($playFrom) && strpos($playFrom, '$$$') !== false && strpos($playUrl, '$$$') !== false) {
+            $fromParts = explode('$$$', $playFrom);
+            $urlParts = explode('$$$', $playUrl);
+            $count = min(count($fromParts), count($urlParts));
+            for ($i = 0; $i < $count; $i++) {
+                $fromGroups[] = [
+                    'from' => trim($fromParts[$i]),
+                    'url' => trim($urlParts[$i])
+                ];
+            }
+        } else {
+            $fromGroups[] = [
+                'from' => trim($playFrom) ?: 'default',
+                'url' => $playUrl
+            ];
+        }
+
+        $allUrls = [];
+        $seen = [];
+
+        foreach ($fromGroups as $group) {
+            $fromName = $group['from'];
+            $groupUrlStr = $group['url'];
+            $groupUrls = $this->parsePlayUrlGroup($groupUrlStr, $fromName);
+
+            foreach ($groupUrls as $u) {
+                $cleanUrl = preg_replace('/#.*$/', '', $u['url']);
+                $key = $fromName . '|' . $cleanUrl;
+                if (!isset($seen[$key])) {
+                    $seen[$key] = true;
+                    $u['play_from'] = $fromName;
+                    $allUrls[] = $u;
+                }
+            }
+        }
+
+        return $allUrls;
+    }
+
+    private function parsePlayUrlGroup($playUrl, $fromName = '') {
+        $urls = [];
+        if (empty($playUrl)) return $urls;
+
+        $lines = [];
+        if (strpos($playUrl, "\r\n") !== false || strpos($playUrl, "\n") !== false) {
+            $lines = preg_split('/\r\n|\n/', $playUrl);
+        } else {
+            $lines = [$playUrl];
+        }
+
+        $lineNum = 0;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) continue;
+            $lineNum++;
+
+            if (strpos($line, '$') !== false) {
+                $parts = explode('$', $line);
+                $urlIndices = [];
+                foreach ($parts as $i => $part) {
+                    $part = trim($part);
+                    if (preg_match('/^https?:\/\//i', $part)) {
+                        $urlIndices[] = $i;
+                    }
+                }
+                foreach ($urlIndices as $idx) {
+                    $url = $parts[$idx];
+                    $name = '';
+
+                    if ($idx > 0) {
+                        $prev = trim($parts[$idx - 1] ?? '');
+                        if (!preg_match('/^https?:\/\//i', $prev) && !empty($prev)) {
+                            if (preg_match('/^\d+$/', $prev)) {
+                                $name = '第' . $prev . '集';
+                            } else {
+                                $name = $prev;
+                            }
+                        }
+                    }
+
+                    if (empty($name)) {
+                        $epFromUrl = $this->extractEpisodeFromUrl($url);
+                        if ($epFromUrl) {
+                            if (preg_match('/^\d+$/', $epFromUrl)) {
+                                $name = '第' . $epFromUrl . '集';
+                            } else {
+                                $name = $epFromUrl;
+                            }
+                        }
+                    }
+
+                    if (empty($name)) {
+                        $frag = parse_url($url, PHP_URL_FRAGMENT);
+                        if ($frag && preg_match('/^\d+$/', $frag)) {
+                            $name = '第' . $frag . '集';
+                        }
+                    }
+
+                    if (empty($name)) {
+                        $num = count($urls) + 1;
+                        $name = '第' . $num . '集';
+                    }
+
+                    $urls[] = ['name' => $name, 'url' => $url];
+                }
+            } else {
+                if (preg_match('/^https?:\/\//i', $line)) {
+                    $name = $fromName ? ($fromName . ' 第' . $lineNum . '集') : ('第' . $lineNum . '集');
+                    $urls[] = ['name' => $name, 'url' => $line];
+                }
+            }
+        }
+
+        return $urls;
     }
 
     public function searchAllSites($keyword, $maxSites = 5, $limitPerSite = 10) {
@@ -888,6 +1030,9 @@ class ResourceSiteManager {
     }
 
     private function resolveMasterPlaylist($url) {
+        if (!class_exists('M3U8Parser')) {
+            require_once __DIR__ . '/../src/M3U8Parser.php';
+        }
         $parser = new M3U8Parser();
         try {
             $playlist = $parser->parse($url);

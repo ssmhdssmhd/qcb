@@ -902,7 +902,19 @@ header('Expires: 0');
                         <code id="analyzeMxjxUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;flex:1;min-width:200px;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
                         <button class="btn btn-sm btn-secondary" onclick="copyText(document.getElementById('analyzeMxjxUrl').textContent)">复制链接</button>
                         <button class="btn btn-sm btn-primary" onclick="window.open(document.getElementById('analyzeMxjxUrl').textContent, '_blank')">新窗口播放</button>
-                        <button class="btn btn-sm btn-success" onclick="playVideo()">内置播放器播放</button>
+                        <button class="btn btn-sm btn-success" onclick="playAnalyzeVideo()">内置播放器播放</button>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                            <input type="checkbox" id="analyzeUseProxy" onchange="updateAnalyzeMxjxUrl()"> 使用代理播放
+                        </label>
+                        <select id="analyzeProxyServer" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;display:none" onchange="updateAnalyzeMxjxUrl()">
+                            <option value="">选择代理服务器</option>
+                        </select>
+                    </div>
+                    <div id="analyzePlayerContainer" style="display:none;margin-top:16px">
+                        <div id="analyzeVideoPlayer" style="width:100%;border-radius:8px;overflow:hidden"></div>
+                        <div style="margin-top:8px;font-size:12px;color:#909399" id="analyzePlayStatus"></div>
                     </div>
                 </div>
 
@@ -1836,13 +1848,12 @@ header('Expires: 0');
             }
         }
 
+        let analyzeBaseUrl = '';
+
         function renderAnalysis(data) {
             const url = document.getElementById('analyzeUrl').value.trim();
-            const mxjxUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
-            const analyzeMxjxEl = document.getElementById('analyzeMxjxUrl');
-            if (analyzeMxjxEl) {
-                analyzeMxjxEl.textContent = mxjxUrl;
-            }
+            analyzeBaseUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
+            updateAnalyzeMxjxUrl();
 
             const bannerEl = document.getElementById('fastModeBanner');
             const detailGrid = document.getElementById('detailGrid');
@@ -2124,8 +2135,9 @@ header('Expires: 0');
             }
 
             try {
+                const containerEl = document.getElementById('dplayer') || document.getElementById('videoPlayer');
                 dp = new DPlayer({
-                    container: document.getElementById('dplayer'),
+                    container: containerEl,
                     video: {
                         url: mxjxUrl,
                         type: 'customHls',
@@ -2263,6 +2275,131 @@ header('Expires: 0');
                 }, 3000);
             } catch (e) {
                 document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
+                showToast('播放失败: ' + e.message, 'error');
+            }
+        }
+
+        let analyzeDp = null;
+
+        function getAnalyzeMxjxUrl() {
+            if (!analyzeBaseUrl) return '';
+            const useProxy = document.getElementById('analyzeUseProxy')?.checked;
+            if (useProxy) {
+                const proxySel = document.getElementById('analyzeProxyServer');
+                const proxy = proxySel?.value;
+                if (proxy) {
+                    const sep = analyzeBaseUrl.includes('?') ? '&' : '?';
+                    return analyzeBaseUrl + sep + 'proxy=' + encodeURIComponent(proxy);
+                }
+            }
+            return analyzeBaseUrl;
+        }
+
+        function updateAnalyzeMxjxUrl() {
+            const url = getAnalyzeMxjxUrl();
+            const el = document.getElementById('analyzeMxjxUrl');
+            if (el && url) {
+                el.textContent = url;
+            }
+            const proxySel = document.getElementById('analyzeProxyServer');
+            const useProxy = document.getElementById('analyzeUseProxy')?.checked;
+            if (proxySel) {
+                proxySel.style.display = useProxy ? 'inline-block' : 'none';
+            }
+        }
+
+        function playAnalyzeVideo() {
+            const url = getAnalyzeMxjxUrl();
+            if (!url) {
+                showToast('请先分析视频', 'error');
+                return;
+            }
+            const container = document.getElementById('analyzePlayerContainer');
+            const statusEl = document.getElementById('analyzePlayStatus');
+            if (container) {
+                container.style.display = 'block';
+            }
+            if (statusEl) {
+                statusEl.innerHTML = '<span style="color:#e6a23c">正在加载播放器...</span>';
+            }
+
+            if (analyzeDp) {
+                try { analyzeDp.destroy(); } catch(e) {}
+                analyzeDp = null;
+            }
+
+            if (typeof DPlayer === 'undefined' || typeof Hls === 'undefined') {
+                if (statusEl) {
+                    statusEl.innerHTML = '<span style="color:#f56c6c">播放器库加载失败，请刷新页面</span>';
+                }
+                showToast('播放器库加载失败', 'error');
+                return;
+            }
+
+            try {
+                const containerEl = document.getElementById('analyzeVideoPlayer');
+                analyzeDp = new DPlayer({
+                    container: containerEl,
+                    video: {
+                        url: url,
+                        type: 'customHls',
+                        customType: {
+                            customHls: function(video, player) {
+                                if (Hls.isSupported()) {
+                                    const hls = new Hls({
+                                        xhrSetup: function(xhr) { xhr.withCredentials = false; },
+                                        startLevel: -1,
+                                        preloadFile: 3,
+                                        lowLatencyMode: false,
+                                        backBufferLength: 30,
+                                        maxBufferLength: 60,
+                                        maxMaxBufferLength: 120,
+                                        enableWorker: true,
+                                        fragLoadingTimeOut: 20000,
+                                        manifestLoadingTimeOut: 10000
+                                    });
+                                    hls.loadSource(video.src);
+                                    hls.attachMedia(video);
+                                    player.hls = hls;
+                                    hls.on(Hls.Events.ERROR, function(ev, data) {
+                                        if (data.fatal) {
+                                            let msg = '播放错误';
+                                            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) msg = '网络错误: ' + (data.details || '');
+                                            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { msg = '媒体错误: ' + (data.details || ''); try { hls.recoverMediaError(); } catch(e) {} }
+                                            if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">' + msg + '</span>';
+                                        }
+                                    });
+                                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                                    video.src = url;
+                                }
+                            }
+                        },
+                        preload: 'auto'
+                    },
+                    autoplay: true,
+                    muted: false,
+                    theme: '#667eea',
+                    lang: 'zh-cn',
+                    screenshot: true,
+                    volume: 0.7,
+                    playbackSpeed: [0.5, 0.75, 1, 1.25, 1.5, 2],
+                    mutex: true
+                });
+
+                analyzeDp.on('canplay', function() {
+                    if (statusEl) statusEl.innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
+                    if (analyzeDp && analyzeDp.video && analyzeDp.video.paused) {
+                        analyzeDp.video.play().catch(() => {
+                            if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
+                        });
+                    }
+                });
+
+                analyzeDp.on('playing', function() {
+                    if (statusEl) statusEl.innerHTML = '<span style="color:#67c23a">正在播放...</span>';
+                });
+            } catch (e) {
+                if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
                 showToast('播放失败: ' + e.message, 'error');
             }
         }
@@ -3850,16 +3987,30 @@ header('Expires: 0');
                     </div>`;
 
             if (urls.length > 0) {
-                html += '<div style="margin-top:8px;font-size:12px">';
-                urls.slice(0, 3).forEach((u, idx) => {
+                const videoId = 'vid_' + Math.random().toString(36).slice(2, 10);
+                const total = urls.length;
+                html += `<div style="margin-top:8px;font-size:12px" id="${videoId}_container">
+                    <div id="${videoId}_visible">`;
+                const showCount = Math.min(3, total);
+                urls.slice(0, showCount).forEach((u, idx) => {
                     html += `<div style="padding:4px 0;display:flex;align-items:center;gap:8px">
                         <span style="color:#909399;white-space:nowrap">${escapeHtml(u.name || '剧集' + (idx + 1))}:</span>
                         <code style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#f5f7fa;padding:2px 6px;border-radius:4px;font-size:11px" title="${escapeHtml(u.url)}">${escapeHtml(u.url)}</code>
                         <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(u.url)}')" style="padding:2px 8px;font-size:11px">复制</button>
                     </div>`;
                 });
-                if (urls.length > 3) {
-                    html += `<div style="color:#909399;padding:4px 0">... 还有 ${urls.length - 3} 个播放源</div>`;
+                html += `</div>
+                    <div id="${videoId}_hidden" style="display:none">`;
+                urls.slice(showCount).forEach((u, idx) => {
+                    html += `<div style="padding:4px 0;display:flex;align-items:center;gap:8px">
+                        <span style="color:#909399;white-space:nowrap">${escapeHtml(u.name || '剧集' + (showCount + idx + 1))}:</span>
+                        <code style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#f5f7fa;padding:2px 6px;border-radius:4px;font-size:11px" title="${escapeHtml(u.url)}">${escapeHtml(u.url)}</code>
+                        <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(u.url)}')" style="padding:2px 8px;font-size:11px">复制</button>
+                    </div>`;
+                });
+                html += `</div>`;
+                if (total > 3) {
+                    html += `<button class="btn btn-sm btn-secondary" onclick="toggleVideoUrls('${videoId}', ${total})" id="${videoId}_btn" style="margin-top:6px;padding:2px 10px;font-size:11px">展开全部 ${total} 个播放源</button>`;
                 }
                 html += '</div>';
             }
@@ -3868,6 +4019,25 @@ header('Expires: 0');
             </div>`;
 
             return html;
+        }
+
+        let toggleVideoUrlsState = {};
+
+        function toggleVideoUrls(videoId, total) {
+            const hiddenEl = document.getElementById(videoId + '_hidden');
+            const btnEl = document.getElementById(videoId + '_btn');
+            const visibleEl = document.getElementById(videoId + '_visible');
+            const expanded = toggleVideoUrlsState[videoId] || false;
+
+            if (expanded) {
+                hiddenEl.style.display = 'none';
+                btnEl.textContent = '展开全部 ' + total + ' 个播放源';
+                toggleVideoUrlsState[videoId] = false;
+            } else {
+                hiddenEl.style.display = 'block';
+                btnEl.textContent = '收起播放源';
+                toggleVideoUrlsState[videoId] = true;
+            }
         }
 
         async function learnFromVideoUrl(url, videoName) {
