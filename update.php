@@ -56,6 +56,96 @@ $protectedPatterns = [
 
 $action = $_GET['action'] ?? 'check';
 
+function getSystemInfo() {
+    global $rootDir;
+    
+    $info = [
+        'server' => [
+            'php_version' => PHP_VERSION,
+            'os' => PHP_OS,
+            'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown',
+            'server_name' => $_SERVER['SERVER_NAME'] ?? 'Unknown',
+            'server_ip' => $_SERVER['SERVER_ADDR'] ?? 'Unknown',
+            'document_root' => $_SERVER['DOCUMENT_ROOT'] ?? 'Unknown',
+            'memory_limit' => ini_get('memory_limit'),
+            'max_execution_time' => ini_get('max_execution_time'),
+        ],
+        'permissions' => [],
+        'github' => [],
+    ];
+    
+    $checkDirs = [
+        $rootDir,
+        $rootDir . '/backups',
+        $rootDir . '/cache',
+        $rootDir . '/gz',
+    ];
+    
+    foreach ($checkDirs as $dir) {
+        $exists = is_dir($dir);
+        $writable = $exists ? is_writable($dir) : false;
+        $info['permissions'][] = [
+            'path' => $dir,
+            'exists' => $exists,
+            'writable' => $writable,
+            'permission' => $exists ? substr(sprintf('%o', fileperms($dir)), -4) : 'N/A',
+        ];
+    }
+    
+    $githubTest = curlRequest('https://api.github.com/repos/ssmhdssmhd/qcb/commits/main', ['timeout' => 5]);
+    $info['github'] = [
+        'reachable' => $githubTest['success'],
+        'error' => $githubTest['error'] ?? '',
+        'mirror' => $githubTest['mirror'] ?? '',
+    ];
+    
+    return ['success' => true, 'data' => $info];
+}
+
+function getAuthInfo() {
+    global $rootDir;
+    
+    $authFile = $rootDir . '/sq.php';
+    $configFile = $rootDir . '/auth_config.php';
+    
+    $info = [
+        'local' => [
+            'file_exists' => file_exists($authFile),
+            'file_size' => file_exists($authFile) ? filesize($authFile) : 0,
+            'auth_code' => '',
+        ],
+        'config' => [],
+        'remote' => [],
+    ];
+    
+    if (file_exists($authFile)) {
+        $content = file_get_contents($authFile);
+        if (preg_match('/return \'(.*?)\';/', $content, $m)) {
+            $info['local']['auth_code'] = $m[1];
+        }
+    }
+    
+    if (file_exists($configFile)) {
+        $config = @include $configFile;
+        if (is_array($config)) {
+            $info['config'] = $config;
+        }
+    }
+    
+    if (!empty($info['config']['auth_server_ip']) && !empty($info['config']['auth_file'])) {
+        $remoteUrl = 'http://' . $info['config']['auth_server_ip'] . ':' . ($info['config']['auth_server_port'] ?? '9001') . '/' . $info['config']['auth_file'];
+        $remoteResult = curlRequest($remoteUrl, ['timeout' => 5]);
+        $info['remote'] = [
+            'url' => $remoteUrl,
+            'reachable' => $remoteResult['success'],
+            'content' => $remoteResult['response'] ?? '',
+            'error' => $remoteResult['error'] ?? '',
+        ];
+    }
+    
+    return ['success' => true, 'data' => $info];
+}
+
 function getCurrentVersion() {
     global $rootDir;
     $versionFile = $rootDir . '/version.php';
@@ -431,6 +521,20 @@ if ($action === 'check' && !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER
     header('Content-Type: application/json; charset=utf-8');
     $latest = checkLatestVersion();
     echo json_encode($latest, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'system_info' && !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json; charset=utf-8');
+    $info = getSystemInfo();
+    echo json_encode($info, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'auth_info' && !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json; charset=utf-8');
+    $info = getAuthInfo();
+    echo json_encode($info, JSON_UNESCAPED_UNICODE);
     exit;
 }
 

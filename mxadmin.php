@@ -125,16 +125,46 @@ header('Expires: 0');
         .header {
             background: var(--primary-gradient);
             color: white;
-            padding: 20px 30px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            padding: 24px 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            position: relative;
+            overflow: hidden;
         }
-        .header h1 { font-size: 24px; font-weight: 600; }
-        .header p { opacity: 0.9; margin-top: 5px; font-size: 14px; }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        }
+        .header-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .header-left {
+            flex: 1;
+        }
+        .header h1 { 
+            font-size: 26px; 
+            font-weight: 700; 
+            letter-spacing: -0.5px;
+        }
+        .header p { 
+            opacity: 0.9; 
+            margin-top: 6px; 
+            font-size: 14px; 
+        }
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-top: 12px;
+            gap: 16px;
             flex-wrap: wrap;
         }
         .theme-switcher {
@@ -181,45 +211,80 @@ header('Expires: 0');
             background: var(--bg-card);
             padding: 0 30px;
             display: flex;
-            gap: 5px;
+            gap: 0;
             border-bottom: 1px solid var(--border-light);
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
         .nav::-webkit-scrollbar { display: none; }
         .nav-item {
-            padding: 15px 20px;
+            padding: 18px 24px;
             cursor: pointer;
             border-bottom: 3px solid transparent;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
             font-size: 14px;
+            font-weight: 500;
             color: var(--text-regular);
             white-space: nowrap;
             flex-shrink: 0;
+            position: relative;
         }
-        .nav-item:hover { color: var(--primary); }
+        .nav-item:hover { 
+            color: var(--primary); 
+            background: var(--primary-bg);
+        }
         .nav-item.active {
             color: var(--primary);
             border-bottom-color: var(--primary);
-            font-weight: 500;
+            font-weight: 600;
+            background: var(--primary-bg);
+        }
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary-gradient);
         }
         .container { padding: 30px; }
         .page { display: none; }
-        .page.active { display: block; }
+        .page.active { display: block; animation: fadeInPage 0.3s ease; }
+        @keyframes fadeInPage {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .card {
             background: var(--bg-card);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 24px;
             margin-bottom: 20px;
             box-shadow: var(--shadow-base);
-            transition: background 0.3s;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-lighter);
+        }
+        .card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-1px);
         }
         .card-title {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
-            margin-bottom: 16px;
+            margin-bottom: 20px;
             color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-title::before {
+            content: '';
+            width: 4px;
+            height: 18px;
+            background: var(--primary-gradient);
+            border-radius: 2px;
         }
         .input-group {
             display: flex;
@@ -239,12 +304,32 @@ header('Expires: 0');
         }
         .input-group input:focus { border-color: var(--primary); }
         .btn {
-            padding: 10px 20px;
+            padding: 12px 24px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
-            transition: all 0.3s;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+        }
+        .btn:hover::before {
+            left: 100%;
         }
         .btn-sm {
             padding: 6px 14px;
@@ -253,51 +338,116 @@ header('Expires: 0');
         .btn-primary {
             background: var(--primary-gradient);
             color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
-        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-primary:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn-primary:active { transform: translateY(-1px); }
+        .btn-primary:disabled { 
+            opacity: 0.6; 
+            cursor: not-allowed; 
+            transform: none; 
+            box-shadow: none;
+        }
         .btn-secondary {
-            background: var(--primary-bg);
-            color: var(--primary-text);
+            background: var(--bg-card);
+            color: var(--text-regular);
+            border: 1px solid var(--border-base);
         }
-        .btn-secondary:hover { opacity: 0.85; }
-        .btn-success { background: var(--success); color: white; }
-        .btn-success:hover { opacity: 0.9; }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-danger:hover { opacity: 0.9; }
-        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn-secondary:hover { 
+            border-color: var(--primary); 
+            color: var(--primary);
+            transform: translateY(-1px);
+        }
+        .btn-success { 
+            background: var(--success); 
+            color: white; 
+            box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
+        }
+        .btn-success:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(103, 194, 58, 0.4);
+        }
+        .btn-danger { 
+            background: var(--danger); 
+            color: white; 
+            box-shadow: 0 4px 12px rgba(245, 108, 108, 0.3);
+        }
+        .btn-danger:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(245, 108, 108, 0.4);
+        }
+        .btn-warning { 
+            background: var(--warning); 
+            color: white; 
+            box-shadow: 0 4px 12px rgba(230, 162, 60, 0.3);
+        }
+        .btn-warning:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(230, 162, 60, 0.4);
+        }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 16px;
             margin-bottom: 20px;
         }
         .stat-card {
             background: var(--bg-card);
-            border-radius: 8px;
-            padding: 20px;
+            border-radius: 12px;
+            padding: 24px;
             box-shadow: var(--shadow-base);
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-lighter);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary-gradient);
         }
         .stat-card:hover {
-            transform: translateY(-2px);
+            transform: translateY(-3px);
             box-shadow: var(--shadow-hover);
         }
         .stat-value {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: 700;
             background: var(--primary-gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            line-height: 1.2;
         }
-        .stat-value.warning { color: var(--warning); -webkit-text-fill-color: var(--warning); background: none; }
-        .stat-value.danger { color: var(--danger); -webkit-text-fill-color: var(--danger); background: none; }
-        .stat-value.success { color: var(--success); -webkit-text-fill-color: var(--success); background: none; }
+        .stat-value.warning { 
+            color: var(--warning); 
+            -webkit-text-fill-color: var(--warning); 
+            background: none; 
+        }
+        .stat-value.danger { 
+            color: var(--danger); 
+            -webkit-text-fill-color: var(--danger); 
+            background: none; 
+        }
+        .stat-value.success { 
+            color: var(--success); 
+            -webkit-text-fill-color: var(--success); 
+            background: none; 
+        }
         .stat-label {
             color: var(--text-secondary);
-            font-size: 13px;
-            margin-top: 6px;
+            font-size: 14px;
+            margin-top: 8px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .loading {
             text-align: center;
@@ -607,18 +757,22 @@ header('Expires: 0');
 </head>
 <body>
     <div class="header">
-        <h1>M3U8 广告分析与规则管理后台</h1>
-        <p>靶机测试工具 - 分析视频广告特征，管理域名去广告规则</p>
-        <div class="header-actions">
-            <div class="theme-switcher">
-                <span class="theme-label">主题:</span>
-                <div class="theme-dot active" data-theme-name="default" title="默认紫" onclick="switchTheme('default')"></div>
-                <div class="theme-dot" data-theme-name="gold" title="金色" onclick="switchTheme('gold')"></div>
-                <div class="theme-dot" data-theme-name="green" title="绿色" onclick="switchTheme('green')"></div>
-                <div class="theme-dot" data-theme-name="blue" title="蓝色" onclick="switchTheme('blue')"></div>
-                <div class="theme-dot" data-theme-name="cyan" title="青色" onclick="switchTheme('cyan')"></div>
-                <div class="theme-dot" data-theme-name="red" title="红色" onclick="switchTheme('red')"></div>
-                <div class="theme-dot" data-theme-name="dark" title="深色" onclick="switchTheme('dark')"></div>
+        <div class="header-content">
+            <div class="header-left">
+                <h1>M3U8 广告分析与规则管理后台</h1>
+                <p>靶机测试工具 - 分析视频广告特征，管理域名去广告规则</p>
+            </div>
+            <div class="header-actions">
+                <div class="theme-switcher">
+                    <span class="theme-label">主题:</span>
+                    <div class="theme-dot active" data-theme-name="default" title="默认紫" onclick="switchTheme('default')"></div>
+                    <div class="theme-dot" data-theme-name="gold" title="金色" onclick="switchTheme('gold')"></div>
+                    <div class="theme-dot" data-theme-name="green" title="绿色" onclick="switchTheme('green')"></div>
+                    <div class="theme-dot" data-theme-name="blue" title="蓝色" onclick="switchTheme('blue')"></div>
+                    <div class="theme-dot" data-theme-name="cyan" title="青色" onclick="switchTheme('cyan')"></div>
+                    <div class="theme-dot" data-theme-name="red" title="红色" onclick="switchTheme('red')"></div>
+                    <div class="theme-dot" data-theme-name="dark" title="深色" onclick="switchTheme('dark')"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1250,8 +1404,12 @@ header('Expires: 0');
                         <div class="stat-label">最新版本</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value success" id="updateStatus">检查中...</div>
+                        <div class="stat-value" id="updateStatus">检查中...</div>
                         <div class="stat-label">更新状态</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="githubStatus">检查中...</div>
+                        <div class="stat-label">GitHub连接</div>
                     </div>
                 </div>
                 <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
@@ -1259,6 +1417,16 @@ header('Expires: 0');
                     <button class="btn btn-success" id="updateBtn" onclick="doUpdate()" disabled>立即更新</button>
                     <button class="btn btn-secondary" onclick="createBackup()">创建备份</button>
                 </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">服务器信息</div>
+                <div id="serverInfo" style="font-size:13px;color:#606266">加载中...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">文件夹权限</div>
+                <div id="permissionInfo" style="font-size:13px;color:#606266">加载中...</div>
             </div>
 
             <div class="card">
@@ -1292,7 +1460,7 @@ header('Expires: 0');
 
         <div class="page" id="page-auth">
             <div class="card">
-                <div class="card-title">授权状态</div>
+                <div class="card-title">授权状态概览</div>
                 <div class="stats-grid" id="authStats">
                     <div class="stat-card">
                         <div class="stat-value" id="sqFileStatus">检查中...</div>
@@ -1306,8 +1474,21 @@ header('Expires: 0');
                         <div class="stat-value" id="remoteAuthStatus">检查中...</div>
                         <div class="stat-label">远程验证</div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="authVersion">-</div>
+                        <div class="stat-label">当前版本</div>
+                    </div>
                 </div>
-                <div id="authDetails" style="margin-top:16px;font-size:13px;color:#606266"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">本地授权信息</div>
+                <div id="localAuthInfo" style="font-size:13px;color:#606266">加载中...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">远程服务器信息</div>
+                <div id="remoteAuthInfo" style="font-size:13px;color:#606266">加载中...</div>
             </div>
 
             <div class="card">
@@ -1322,11 +1503,11 @@ header('Expires: 0');
                 </div>
                 <div class="form-group">
                     <label>授权文件名</label>
-                    <input type="text" id="authFile" placeholder="例如：sq.php">
+                    <input type="text" id="authFile" placeholder="例如：sq.txt">
                 </div>
                 <div class="form-group">
                     <label>对比文件名</label>
-                    <input type="text" id="authFileCompare" placeholder="例如：sqm.php">
+                    <input type="text" id="authFileCompare" placeholder="例如：sq.txt">
                 </div>
                 <div class="form-group">
                     <label style="display:flex;align-items:center;gap:8px">
@@ -2578,6 +2759,59 @@ header('Expires: 0');
                 }
             } catch (e) {}
             loadBackupList();
+            loadSystemInfo();
+        }
+
+        async function loadSystemInfo() {
+            try {
+                const res = await fetch('update.php?action=system_info');
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                
+                const info = data.data;
+                
+                document.getElementById('githubStatus').textContent = info.github.reachable ? '连接成功' : '连接失败';
+                document.getElementById('githubStatus').className = 'stat-value ' + (info.github.reachable ? 'success' : 'danger');
+                
+                document.getElementById('serverInfo').innerHTML = `
+                    <div class="detail-grid">
+                        <div><strong>PHP版本:</strong> ${escapeHtml(info.server.php_version)}</div>
+                        <div><strong>操作系统:</strong> ${escapeHtml(info.server.os)}</div>
+                        <div><strong>服务器软件:</strong> ${escapeHtml(info.server.server_software)}</div>
+                        <div><strong>服务器名称:</strong> ${escapeHtml(info.server.server_name)}</div>
+                        <div><strong>服务器IP:</strong> ${escapeHtml(info.server.server_ip)}</div>
+                        <div><strong>内存限制:</strong> ${escapeHtml(info.server.memory_limit)}</div>
+                        <div><strong>最大执行时间:</strong> ${escapeHtml(info.server.max_execution_time)}秒</div>
+                        <div><strong>文档根目录:</strong> ${escapeHtml(info.server.document_root)}</div>
+                    </div>
+                `;
+                
+                document.getElementById('permissionInfo').innerHTML = `
+                    <table class="rules-table">
+                        <thead>
+                            <tr>
+                                <th>路径</th>
+                                <th>状态</th>
+                                <th>权限</th>
+                                <th>可写</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${info.permissions.map(p => `
+                                <tr>
+                                    <td>${escapeHtml(p.path)}</td>
+                                    <td>${p.exists ? '<span class="tag tag-green">存在</span>' : '<span class="tag tag-red">不存在</span>'}</td>
+                                    <td>${escapeHtml(p.permission)}</td>
+                                    <td>${p.writable ? '<span class="tag tag-green">是</span>' : '<span class="tag tag-red">否</span>'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (e) {
+                document.getElementById('serverInfo').innerHTML = '<span class="tag tag-red">加载失败:</span> ' + e.message;
+                document.getElementById('permissionInfo').innerHTML = '<span class="tag tag-red">加载失败:</span> ' + e.message;
+            }
         }
 
         async function createBackup() {
@@ -2910,15 +3144,23 @@ header('Expires: 0');
 
         async function refreshAuthInfo() {
             try {
-                const res = await fetch(API_BASE + '?action=auth/info');
-                const data = await res.json();
-                if (!data.success) throw new Error(data.message);
+                const [authRes, versionRes, authInfoRes] = await Promise.all([
+                    fetch(API_BASE + '?action=auth/info'),
+                    fetch(API_BASE + '?action=update/version'),
+                    fetch('update.php?action=auth_info')
+                ]);
+                
+                const authData = await authRes.json();
+                const versionData = await versionRes.json();
+                const authInfoData = await authInfoRes.json();
+                
+                if (!authData.success) throw new Error(authData.message);
                 
                 const sqStatusEl = document.getElementById('sqFileStatus');
                 const localStatusEl = document.getElementById('localAuthStatus');
                 const remoteStatusEl = document.getElementById('remoteAuthStatus');
                 
-                if (data.sq_file_exists) {
+                if (authData.sq_file_exists) {
                     sqStatusEl.textContent = '存在';
                     sqStatusEl.className = 'stat-value success';
                 } else {
@@ -2926,7 +3168,7 @@ header('Expires: 0');
                     sqStatusEl.className = 'stat-value danger';
                 }
                 
-                if (data.local_valid) {
+                if (authData.local_valid) {
                     localStatusEl.textContent = '通过';
                     localStatusEl.className = 'stat-value success';
                 } else {
@@ -2934,25 +3176,55 @@ header('Expires: 0');
                     localStatusEl.className = 'stat-value danger';
                 }
                 
-                remoteStatusEl.textContent = '未检查';
-                remoteStatusEl.className = 'stat-value warning';
-                
-                let details = '';
-                if (data.domain) {
-                    details += `<div>授权域名: <strong>${data.domain}</strong></div>`;
+                if (authInfoData.success && authInfoData.data.remote) {
+                    if (authInfoData.data.remote.reachable) {
+                        remoteStatusEl.textContent = '连接成功';
+                        remoteStatusEl.className = 'stat-value success';
+                    } else {
+                        remoteStatusEl.textContent = '连接失败';
+                        remoteStatusEl.className = 'stat-value danger';
+                    }
+                } else {
+                    remoteStatusEl.textContent = '未检查';
+                    remoteStatusEl.className = 'stat-value warning';
                 }
-                if (data.timestamp_formatted) {
-                    details += `<div>授权时间: ${data.timestamp_formatted}</div>`;
-                }
-                document.getElementById('authDetails').innerHTML = details;
                 
-                if (data.auth_config) {
-                    document.getElementById('authServerIp').value = data.auth_config.auth_server_ip || '';
-                    document.getElementById('authServerPort').value = data.auth_config.auth_server_port || '';
-                    document.getElementById('authFile').value = data.auth_config.auth_file || '';
-                    document.getElementById('authFileCompare').value = data.auth_config.auth_file_compare || '';
-                    document.getElementById('enableRemoteVerify').checked = data.auth_config.enable_remote_verify ?? true;
-                    document.getElementById('enableTimestampCheck').checked = data.auth_config.enable_timestamp_check ?? true;
+                if (versionData.success) {
+                    document.getElementById('authVersion').textContent = versionData.current_version;
+                }
+                
+                if (authInfoData.success) {
+                    const info = authInfoData.data;
+                    
+                    document.getElementById('localAuthInfo').innerHTML = `
+                        <div class="detail-grid">
+                            <div><strong>授权文件:</strong> ${info.local.file_exists ? '<span class="tag tag-green">存在</span>' : '<span class="tag tag-red">不存在</span>'}</div>
+                            <div><strong>文件大小:</strong> ${info.local.file_size} 字节</div>
+                            <div><strong>授权码:</strong> <code>${info.local.auth_code ? info.local.auth_code.substring(0, 20) + '...' : '未设置'}</code></div>
+                        </div>
+                    `;
+                    
+                    if (info.remote && info.remote.url) {
+                        document.getElementById('remoteAuthInfo').innerHTML = `
+                            <div class="detail-grid">
+                                <div><strong>服务器地址:</strong> ${escapeHtml(info.remote.url)}</div>
+                                <div><strong>连接状态:</strong> ${info.remote.reachable ? '<span class="tag tag-green">可连接</span>' : '<span class="tag tag-red">不可连接</span>'}</div>
+                                <div><strong>响应内容:</strong> <code>${info.remote.content ? escapeHtml(info.remote.content).substring(0, 50) + '...' : '无'}</code></div>
+                                ${info.remote.error ? `<div><strong>错误信息:</strong> <span class="tag tag-red">${escapeHtml(info.remote.error)}</span></div>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        document.getElementById('remoteAuthInfo').innerHTML = '<div class="empty">远程服务器信息未配置</div>';
+                    }
+                }
+                
+                if (authData.auth_config) {
+                    document.getElementById('authServerIp').value = authData.auth_config.auth_server_ip || '';
+                    document.getElementById('authServerPort').value = authData.auth_config.auth_server_port || '';
+                    document.getElementById('authFile').value = authData.auth_config.auth_file || '';
+                    document.getElementById('authFileCompare').value = authData.auth_config.auth_file_compare || '';
+                    document.getElementById('enableRemoteVerify').checked = authData.auth_config.enable_remote_verify ?? true;
+                    document.getElementById('enableTimestampCheck').checked = authData.auth_config.enable_timestamp_check ?? true;
                 }
             } catch (e) {
                 showToast('获取授权信息失败: ' + e.message, 'error');
