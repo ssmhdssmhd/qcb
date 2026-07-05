@@ -1,2 +1,6 @@
 <?php
-return 'v2.3.0-c7e9a1b3d5f7h9j1k3m5n7p9r1t3v5x7';
+return [
+    'version' => 'v2.11.0',
+    'commit' => 'b29bcf8',
+    'updated_at' => '2026-07-05 00:00:00',
+];

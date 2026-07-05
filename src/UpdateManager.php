@@ -128,7 +128,55 @@ class UpdateManager
 
     public function getCurrentVersion()
     {
+        $versionFile = $this->rootDir . '/version.php';
+        if (file_exists($versionFile)) {
+            $ver = @include $versionFile;
+            if (is_array($ver) && !empty($ver['version'])) {
+                return $ver['version'];
+            }
+            if (is_string($ver)) {
+                if (preg_match('/^v?\d+\.\d+\.\d+/', $ver, $m)) {
+                    return $m[0];
+                }
+                return $ver;
+            }
+        }
         return $this->currentVersion;
+    }
+
+    public function getCurrentCommit()
+    {
+        $versionFile = $this->rootDir . '/version.php';
+        if (file_exists($versionFile)) {
+            $ver = @include $versionFile;
+            if (is_array($ver) && !empty($ver['commit'])) {
+                return $ver['commit'];
+            }
+            if (is_string($ver)) {
+                if (preg_match('/-([a-f0-9]{7,})/', $ver, $m)) {
+                    return $m[1];
+                }
+                if (preg_match('/^[a-f0-9]{7,}$/', $ver)) {
+                    return $ver;
+                }
+            }
+        }
+        return '';
+    }
+
+    private function parseVersionFromMessage($message)
+    {
+        if (preg_match('/v?(\d+\.\d+\.\d+)/', $message, $m)) {
+            return 'v' . ltrim($m[1], 'v');
+        }
+        return null;
+    }
+
+    private function writeVersionFile($version, $commit)
+    {
+        $versionFile = $this->rootDir . '/version.php';
+        $content = "<?php\nreturn [\n    'version' => '" . addslashes($version) . "',\n    'commit' => '" . addslashes($commit) . "',\n    'updated_at' => '" . date('Y-m-d H:i:s') . "',\n];\n";
+        return file_put_contents($versionFile, $content) !== false;
     }
 
     public function getBackupList()
@@ -194,31 +242,33 @@ class UpdateManager
         $commitMessage = $data['commit']['message'] ?? '无描述';
         $commitDate = $data['commit']['committer']['date'] ?? '';
 
-        $versionFile = $this->rootDir . '/version.php';
-        $currentCommit = '';
-        if (file_exists($versionFile)) {
-            $ver = @include $versionFile;
-            if (is_string($ver)) {
-                $currentCommit = trim($ver);
-            } else {
-                $currentCommit = trim(file_get_contents($versionFile));
-            }
+        $currentVersion = $this->getCurrentVersion();
+        $currentCommit = $this->getCurrentCommit();
+
+        $latestVersion = $this->parseVersionFromMessage($commitMessage);
+        if (!$latestVersion) {
+            $latestVersion = substr($latestCommit, 0, 7);
         }
 
-        $hasUpdate = $latestCommit !== $currentCommit;
+        $hasUpdate = !empty($currentCommit) && strpos($latestCommit, $currentCommit) !== 0;
+        if (empty($currentCommit)) {
+            $hasUpdate = true;
+        }
 
         $changelog = $this->getRecentCommits($currentCommit);
 
         return [
             'success' => true,
-            'current_version' => $this->currentVersion,
+            'current_version' => $currentVersion,
             'current_commit' => $currentCommit,
+            'latest_version' => $latestVersion,
             'latest_commit' => $latestCommit,
             'latest_message' => $commitMessage,
             'latest_date' => $commitDate,
             'has_update' => $hasUpdate,
             'repo_url' => 'https://github.com/' . $this->githubRepo,
-            'changelog' => $changelog
+            'changelog' => $changelog,
+            'mirror_used' => $result['url'] ?? ''
         ];
     }
 
@@ -511,9 +561,13 @@ class UpdateManager
         $cleanedFiles = $this->cleanOrphanedFiles($sourceDir);
         $this->copyDirectory($sourceDir, $this->rootDir);
 
-        $versionFile = $this->rootDir . '/version.php';
-        $versionContent = "<?php\nreturn '" . $checkResult['latest_commit'] . "';\n";
-        file_put_contents($versionFile, $versionContent);
+        $latestCommit = $checkResult['latest_commit'] ?? '';
+        $latestMessage = $checkResult['latest_message'] ?? '';
+        $latestVersion = $this->parseVersionFromMessage($latestMessage);
+        if (!$latestVersion) {
+            $latestVersion = substr($latestCommit, 0, 7);
+        }
+        $this->writeVersionFile($latestVersion, $latestCommit);
 
         $this->clearAllCaches();
 
@@ -526,7 +580,8 @@ class UpdateManager
             'success' => true,
             'message' => '更新成功',
             'backup_file' => $backupResult['filename'],
-            'new_version' => $checkResult['latest_commit'],
+            'new_version' => $latestVersion,
+            'new_commit' => $latestCommit,
             'cleaned_files' => $cleanedFiles,
             'integrity_check' => $integrityCheck
         ];
