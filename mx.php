@@ -813,6 +813,7 @@ try {
             sendJsonResponse([
                 'success' => true,
                 'current_version' => $updateManager->getCurrentVersion(),
+                'current_commit' => $updateManager->getCurrentCommit(),
                 'version_file' => file_exists(__DIR__ . '/version.php') ? trim(include __DIR__ . '/version.php') : ''
             ]);
             break;

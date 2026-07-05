@@ -1431,6 +1431,10 @@ header('Expires: 0');
                         <div class="stat-label">当前版本</div>
                     </div>
                     <div class="stat-card">
+                        <div class="stat-value" id="currentCommit">-</div>
+                        <div class="stat-label">版本编码</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-value" id="latestVersion">-</div>
                         <div class="stat-label">最新版本</div>
                     </div>
@@ -3263,8 +3267,15 @@ header('Expires: 0');
                 
                 const curVerEl = document.getElementById('currentVersion');
                 const latestVerEl = document.getElementById('latestVersion');
+                const curCommitEl = document.getElementById('currentCommit');
                 if (curVerEl) curVerEl.textContent = data.current_version || '-';
                 if (latestVerEl) latestVerEl.textContent = data.latest_version || '-';
+                if (curCommitEl && data.current_commit) {
+                    curCommitEl.textContent = data.current_commit.substring(0, 7);
+                    curCommitEl.style.fontFamily = 'Monaco, Consolas, monospace';
+                    curCommitEl.style.fontSize = '18px';
+                    curCommitEl.style.letterSpacing = '1px';
+                }
                 
                 const updateBtn = document.getElementById('updateBtn');
                 const githubStatusEl = document.getElementById('githubStatus');
@@ -3327,6 +3338,13 @@ header('Expires: 0');
                     const curEl = document.getElementById('currentVersion');
                     if (curEl && (curEl.textContent === '-' || curEl.textContent === '')) {
                         curEl.textContent = data.current_version;
+                    }
+                    const curCommitEl = document.getElementById('currentCommit');
+                    if (curCommitEl && data.current_commit && (curCommitEl.textContent === '-' || curCommitEl.textContent === '')) {
+                        curCommitEl.textContent = data.current_commit.substring(0, 7);
+                        curCommitEl.style.fontFamily = 'Monaco, Consolas, monospace';
+                        curCommitEl.style.fontSize = '18px';
+                        curCommitEl.style.letterSpacing = '1px';
                     }
                 }
             } catch (e) {}
