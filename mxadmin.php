@@ -1373,11 +1373,6 @@ header('Expires: 0');
             <div class="update-modal-body">
                 <div class="update-version-info">
                     <div class="version-row">
-                        <span class="version-label">当前版本</span>
-                        <span class="version-value current" id="modalCurrentVersion">-</span>
-                    </div>
-                    <div class="version-arrow">↓</div>
-                    <div class="version-row">
                         <span class="version-label">最新版本</span>
                         <span class="version-value latest" id="modalLatestVersion">-</span>
                     </div>
@@ -1494,19 +1489,9 @@ header('Expires: 0');
             padding: 2px 8px;
             border-radius: 4px;
         }
-        .version-value.current {
-            color: #909399;
-            background: #e4e7ed;
-        }
         .version-value.latest {
             color: #67c23a;
             background: #f0f9eb;
-        }
-        .version-arrow {
-            text-align: center;
-            color: #c0c4cc;
-            font-size: 14px;
-            margin: 4px 0;
         }
         .update-meta {
             color: #909399;
@@ -2492,11 +2477,9 @@ header('Expires: 0');
         function showUpdateModal(data) {
             latestUpdateData = data;
             const modal = document.getElementById('updateModal');
-            const currentShort = (data.current_commit || '').substring(0, 7);
             const latestShort = (data.latest_commit || '').substring(0, 7);
 
-            document.getElementById('modalCurrentVersion').textContent = data.current_version + ' (' + currentShort + ')';
-            document.getElementById('modalLatestVersion').textContent = data.current_version + ' (' + latestShort + ')';
+            document.getElementById('modalLatestVersion').textContent = data.latest_version + ' (' + latestShort + ')';
 
             const metaEl = document.getElementById('modalUpdateMeta');
             const metaItems = [];
