@@ -533,27 +533,42 @@ header('Expires: 0');
             font-weight: 500;
         }
         .rules-table tr:hover { background: var(--fill-light); }
-        .form-group { margin-bottom: 16px; }
+        .form-group { margin-bottom: 20px; }
         .form-group label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
             font-size: 14px;
+            font-weight: 500;
             color: var(--text-regular);
+        }
+        .form-group input[type="checkbox"] + span,
+        .form-group label input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+        .form-group label:has(input[type="checkbox"]) {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 8px 0;
         }
         .form-group input, .form-group textarea, .form-group select {
             width: 100%;
-            padding: 10px 12px;
+            padding: 12px 14px;
             border: 1px solid var(--border-base);
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 14px;
             outline: none;
             background: var(--bg-card);
             color: var(--text-primary);
+            transition: all 0.3s ease;
         }
-        .form-group textarea { min-height: 100px; font-family: monospace; }
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
             border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-bg);
         }
+        .form-group textarea { min-height: 100px; font-family: monospace; }
         .form-group input:disabled, .form-group textarea:disabled {
             background: var(--fill-lighter);
             color: var(--text-secondary);
@@ -2719,7 +2734,7 @@ header('Expires: 0');
                 if (!data.success) throw new Error(data.message);
                 
                 document.getElementById('currentVersion').textContent = data.current_version;
-                document.getElementById('latestVersion').textContent = data.latest_commit?.substring(0, 7) || '-';
+                document.getElementById('latestVersion').textContent = data.latest_version || '-';
                 
                 const statusEl = document.getElementById('updateStatus');
                 const updateBtn = document.getElementById('updateBtn');
@@ -2764,7 +2779,7 @@ header('Expires: 0');
 
         async function loadSystemInfo() {
             try {
-                const res = await fetch('update.php?action=system_info');
+                const res = await fetch(API_BASE + '?action=update/system_info');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 
@@ -3083,7 +3098,7 @@ header('Expires: 0');
                                         共 ${updateData.changelog?.length || 0} 项更新
                                     </div>
                                     <div style="color:#909399">
-                                        最新版本: ${(updateData.latest_commit || '').substring(0, 7)}
+                                        最新版本: ${escapeHtml(updateData.latest_version || '-')}
                                     </div>
                                 </div>
                                 ` : ''}
@@ -3144,15 +3159,13 @@ header('Expires: 0');
 
         async function refreshAuthInfo() {
             try {
-                const [authRes, versionRes, authInfoRes] = await Promise.all([
+                const [authRes, versionRes] = await Promise.all([
                     fetch(API_BASE + '?action=auth/info'),
-                    fetch(API_BASE + '?action=update/version'),
-                    fetch('update.php?action=auth_info')
+                    fetch(API_BASE + '?action=update/version')
                 ]);
                 
                 const authData = await authRes.json();
                 const versionData = await versionRes.json();
-                const authInfoData = await authInfoRes.json();
                 
                 if (!authData.success) throw new Error(authData.message);
                 
@@ -3176,8 +3189,8 @@ header('Expires: 0');
                     localStatusEl.className = 'stat-value danger';
                 }
                 
-                if (authInfoData.success && authInfoData.data.remote) {
-                    if (authInfoData.data.remote.reachable) {
+                if (authData.remote && authData.remote.url) {
+                    if (authData.remote.reachable) {
                         remoteStatusEl.textContent = '连接成功';
                         remoteStatusEl.className = 'stat-value success';
                     } else {
@@ -3193,8 +3206,8 @@ header('Expires: 0');
                     document.getElementById('authVersion').textContent = versionData.current_version;
                 }
                 
-                if (authInfoData.success) {
-                    const info = authInfoData.data;
+                if (authData.local) {
+                    const info = authData;
                     
                     document.getElementById('localAuthInfo').innerHTML = `
                         <div class="detail-grid">

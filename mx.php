@@ -861,6 +861,10 @@ try {
             ]);
             break;
 
+        case 'update/system_info':
+            sendJsonResponse($updateManager->getSystemInfo());
+            break;
+
         case 'auth/info':
             $info = $authValidator->getAuthInfo();
             $info['success'] = true;

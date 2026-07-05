@@ -164,12 +164,48 @@ class UpdateManager
         return '';
     }
 
+    private function fetchLatestVersionFromGitHub()
+    {
+        $url = 'https://raw.githubusercontent.com/' . $this->githubRepo . '/' . $this->githubBranch . '/version.php';
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || !$response) {
+            return null;
+        }
+
+        if (preg_match('/[\'"]version[\'"]\s*=>\s*[\'"](v?\d+\.\d+\.\d+)[\'"]/', $response, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
     private function parseVersionFromMessage($message)
     {
         if (preg_match('/v?(\d+\.\d+\.\d+)/', $message, $m)) {
             return 'v' . ltrim($m[1], 'v');
         }
         return null;
+    }
+
+    private function compareVersions($v1, $v2)
+    {
+        $v1 = ltrim($v1 ?? '', 'v');
+        $v2 = ltrim($v2 ?? '', 'v');
+        if (!preg_match('/^\d+\.\d+\.\d+$/', $v1) || !preg_match('/^\d+\.\d+\.\d+$/', $v2)) {
+            return null;
+        }
+        return version_compare($v1, $v2);
     }
 
     private function writeVersionFile($version, $commit)
@@ -211,17 +247,94 @@ class UpdateManager
         return round($bytes, 2) . ' ' . $units[$i];
     }
 
+    public function getSystemInfo()
+    {
+        $info = [
+            'server' => [
+                'php_version' => PHP_VERSION,
+                'os' => PHP_OS,
+                'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown',
+                'server_name' => $_SERVER['SERVER_NAME'] ?? 'Unknown',
+                'server_ip' => $_SERVER['SERVER_ADDR'] ?? 'Unknown',
+                'document_root' => $_SERVER['DOCUMENT_ROOT'] ?? 'Unknown',
+                'memory_limit' => ini_get('memory_limit'),
+                'max_execution_time' => ini_get('max_execution_time'),
+            ],
+            'permissions' => [],
+            'github' => [],
+        ];
+
+        $checkDirs = [
+            $this->rootDir,
+            $this->rootDir . '/backups',
+            $this->rootDir . '/cache',
+            $this->rootDir . '/gz',
+        ];
+
+        foreach ($checkDirs as $dir) {
+            $exists = is_dir($dir);
+            $writable = $exists ? is_writable($dir) : false;
+            $info['permissions'][] = [
+                'path' => $dir,
+                'exists' => $exists,
+                'writable' => $writable,
+                'permission' => $exists ? substr(sprintf('%o', fileperms($dir)), -4) : 'N/A',
+            ];
+        }
+
+        $githubTest = $this->curlTest('https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch, 5);
+        $info['github'] = [
+            'reachable' => $githubTest['success'],
+            'error' => $githubTest['error'] ?? '',
+            'mirror' => $githubTest['mirror'] ?? '',
+        ];
+
+        return ['success' => true, 'data' => $info];
+    }
+
+    private function curlTest($url, $timeout = 30)
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($httpCode === 200 && $response !== false) {
+            return ['success' => true, 'mirror' => $url];
+        }
+
+        return [
+            'success' => false,
+            'error' => $error ?: ('HTTP ' . $httpCode),
+            'mirror' => $url,
+        ];
+    }
+
     public function checkUpdate()
     {
         $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
-        
+
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $apiUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        curl_close($ch);
 
         if ($httpCode !== 200 || !$response) {
             return [
@@ -245,7 +358,10 @@ class UpdateManager
         $currentVersion = $this->getCurrentVersion();
         $currentCommit = $this->getCurrentCommit();
 
-        $latestVersion = $this->parseVersionFromMessage($commitMessage);
+        $latestVersion = $this->fetchLatestVersionFromGitHub();
+        if (!$latestVersion) {
+            $latestVersion = $this->parseVersionFromMessage($commitMessage);
+        }
         if (!$latestVersion) {
             $latestVersion = substr($latestCommit, 0, 7);
         }
@@ -253,6 +369,11 @@ class UpdateManager
         $hasUpdate = !empty($currentCommit) && strpos($latestCommit, $currentCommit) !== 0;
         if (empty($currentCommit)) {
             $hasUpdate = true;
+        }
+
+        $versionCompare = $this->compareVersions($currentVersion, $latestVersion);
+        if ($versionCompare !== null && $versionCompare >= 0) {
+            $hasUpdate = false;
         }
 
         $changelog = $this->getRecentCommits($currentCommit);
@@ -268,7 +389,7 @@ class UpdateManager
             'has_update' => $hasUpdate,
             'repo_url' => 'https://github.com/' . $this->githubRepo,
             'changelog' => $changelog,
-            'mirror_used' => $result['url'] ?? ''
+            'mirror_used' => $effectiveUrl
         ];
     }
 
@@ -280,8 +401,11 @@ class UpdateManager
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $apiUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -562,8 +686,14 @@ class UpdateManager
         $this->copyDirectory($sourceDir, $this->rootDir);
 
         $latestCommit = $checkResult['latest_commit'] ?? '';
-        $latestMessage = $checkResult['latest_message'] ?? '';
-        $latestVersion = $this->parseVersionFromMessage($latestMessage);
+        $latestVersion = $checkResult['latest_version'] ?? '';
+        if (!$latestVersion || !preg_match('/^v?\d+\.\d+\.\d+$/', $latestVersion)) {
+            $latestVersion = $this->fetchLatestVersionFromGitHub();
+        }
+        if (!$latestVersion) {
+            $latestMessage = $checkResult['latest_message'] ?? '';
+            $latestVersion = $this->parseVersionFromMessage($latestMessage);
+        }
         if (!$latestVersion) {
             $latestVersion = substr($latestCommit, 0, 7);
         }

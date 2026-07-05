@@ -8,10 +8,12 @@ class AuthValidator
     private $sqFile;
     private $authConfig;
     private $lastError = '';
+    private $rootDir;
 
     public function __construct()
     {
-        $this->sqFile = dirname(__DIR__) . '/sq.php';
+        $this->rootDir = dirname(__DIR__);
+        $this->sqFile = $this->rootDir . '/sq.php';
         $this->authConfig = new AuthConfig();
     }
 
@@ -149,8 +151,24 @@ class AuthValidator
             'sq_file_exists' => $this->checkSqFileExists(),
             'local_valid' => false,
             'remote_valid' => false,
-            'auth_config' => $this->authConfig->getConfig()
+            'auth_config' => $this->authConfig->getConfig(),
+            'local' => [
+                'file_exists' => false,
+                'file_size' => 0,
+                'auth_code' => '',
+            ],
+            'remote' => [],
         ];
+
+        $sqFile = $this->rootDir . '/sq.php';
+        if (file_exists($sqFile)) {
+            $info['local']['file_exists'] = true;
+            $info['local']['file_size'] = filesize($sqFile);
+            $content = file_get_contents($sqFile);
+            if (preg_match('/return \'(.*?)\';/', $content, $m)) {
+                $info['local']['auth_code'] = $m[1];
+            }
+        }
 
         if ($info['sq_file_exists']) {
             $authCode = $this->getLocalAuthCode();
@@ -164,6 +182,42 @@ class AuthValidator
             }
         }
 
+        $config = $this->authConfig->getConfig();
+        if (!empty($config['auth_server_ip']) && !empty($config['auth_file'])) {
+            $remoteUrl = 'http://' . $config['auth_server_ip'] . ':' . ($config['auth_server_port'] ?? '9001') . '/' . $config['auth_file'];
+            $remoteResult = $this->curlTest($remoteUrl, 5);
+            $info['remote'] = [
+                'url' => $remoteUrl,
+                'reachable' => $remoteResult['success'],
+                'content' => $remoteResult['response'] ?? '',
+                'error' => $remoteResult['error'] ?? '',
+            ];
+        }
+
         return $info;
+    }
+
+    private function curlTest($url, $timeout = 30)
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($httpCode === 200 && $response !== false) {
+            return ['success' => true, 'response' => $response];
+        }
+
+        return [
+            'success' => false,
+            'error' => $error ?: ('HTTP ' . $httpCode),
+        ];
     }
 }
