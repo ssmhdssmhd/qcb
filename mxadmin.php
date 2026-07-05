@@ -1581,6 +1581,11 @@ header('Expires: 0');
             <div class="update-modal-body">
                 <div class="update-version-info">
                     <div class="version-row">
+                        <span class="version-label">当前版本</span>
+                        <span class="version-value current" id="modalCurrentVersion">-</span>
+                    </div>
+                    <div class="version-arrow">↓</div>
+                    <div class="version-row">
                         <span class="version-label">最新版本</span>
                         <span class="version-value latest" id="modalLatestVersion">-</span>
                     </div>
@@ -1697,9 +1702,19 @@ header('Expires: 0');
             padding: 2px 8px;
             border-radius: 4px;
         }
+        .version-value.current {
+            color: #909399;
+            background: #f4f4f5;
+        }
         .version-value.latest {
             color: #67c23a;
             background: #f0f9eb;
+        }
+        .version-arrow {
+            text-align: center;
+            color: #67c23a;
+            font-size: 18px;
+            margin: 2px 0;
         }
         .update-meta {
             color: #909399;
@@ -2918,8 +2933,16 @@ header('Expires: 0');
             latestUpdateData = data;
             const modal = document.getElementById('updateModal');
             const latestShort = (data.latest_commit || '').substring(0, 7);
+            const currentShort = (data.current_commit || '').substring(0, 7);
 
-            document.getElementById('modalLatestVersion').textContent = data.latest_version + ' (' + latestShort + ')';
+            const curVerEl = document.getElementById('modalCurrentVersion');
+            const latestVerEl = document.getElementById('modalLatestVersion');
+            if (curVerEl) {
+                curVerEl.textContent = (data.current_version || '-') + (currentShort ? ' (' + currentShort + ')' : '');
+            }
+            if (latestVerEl) {
+                latestVerEl.textContent = (data.latest_version || '-') + (latestShort ? ' (' + latestShort + ')' : '');
+            }
 
             const metaEl = document.getElementById('modalUpdateMeta');
             const metaItems = [];
@@ -2927,9 +2950,9 @@ header('Expires: 0');
                 metaItems.push('<span>🕐 ' + new Date(data.latest_date).toLocaleString('zh-CN') + '</span>');
             }
             if (data.latest_message) {
-                metaItems.push('<span>📝 ' + escapeHtml(data.latest_message.substring(0, 30)) + '</span>');
+                metaItems.push('<span>📝 ' + escapeHtml(data.latest_message.substring(0, 50)) + '</span>');
             }
-            metaEl.innerHTML = metaItems.join('');
+            if (metaEl) metaEl.innerHTML = metaItems.join('');
 
             const changelog = data.changelog || [];
             const changelogEl = document.getElementById('modalChangelog');
