@@ -2155,11 +2155,11 @@ header('Expires: 0');
                     lowLatencyMode: false,
                     maxBufferLength: 30,
                     maxMaxBufferLength: 600,
-                    minBufferLength: 4,
+                    minBufferLength: 1,
                     maxBufferSize: 60 * 1000 * 1000,
                     maxBufferHole: 0.5,
                     highBufferWatchdogPeriod: 2,
-                    startLevel: -1,
+                    startLevel: 0,
                     capLevelToPlayerSize: false,
                     liveSyncDurationCount: 3,
                     liveMaxLatencyDurationCount: 10,
@@ -2169,18 +2169,20 @@ header('Expires: 0');
                     backBufferLength: 30,
                     startFragPrefetch: true,
                     enableSoftwareAES: true,
-                    abrEwmaDefaultEstimate: 500000,
-                    abrBandWidthFactor: 0.8,
+                    abrEwmaDefaultEstimate: 200000,
+                    abrBandWidthFactor: 0.7,
                     xhrSetup: function(xhr) {
                         xhr.withCredentials = false;
                     }
                 };
 
-                let hlsReady = false;
-                let dpReady = false;
+                let firstFrameReady = false;
+                let playAttempted = false;
 
                 const tryPlay = function() {
-                    if (hlsReady && dpReady && dp && dp.video && dp.video.paused) {
+                    if (playAttempted) return;
+                    if (firstFrameReady && dp && dp.video && dp.video.paused) {
+                        playAttempted = true;
                         dp.video.play().catch(function(e) {
                             console.warn('自动播放被阻止:', e);
                             document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
@@ -2205,15 +2207,16 @@ header('Expires: 0');
 
                                     hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
                                         console.log('HLS 清单解析完成, 共', data.levels.length, '个清晰度');
-                                        hlsReady = true;
-                                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频解析完成，正在缓冲...</span>';
-                                        tryPlay();
+                                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频解析完成，正在缓冲首帧...</span>';
                                     });
 
-                                    hls.on(Hls.Events.FRAG_LOADED, function() {
-                                        if (dp && !dp.video.paused) {
-                                            document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">正在播放...</span>';
+                                    hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
+                                        console.log('片段加载完成, 索引:', data.frag.sn, '时长:', data.frag.duration.toFixed(2) + 's');
+                                        firstFrameReady = true;
+                                        if (!playAttempted) {
+                                            document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">首帧加载完成，即将播放...</span>';
                                         }
+                                        tryPlay();
                                     });
 
                                     hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
@@ -2262,8 +2265,8 @@ header('Expires: 0');
                                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                     video.src = mxjxUrl;
                                     video.addEventListener('loadedmetadata', function() {
-                                        hlsReady = true;
-                                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频解析完成，正在缓冲...</span>';
+                                        firstFrameReady = true;
+                                        document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载完成，即将播放...</span>';
                                         tryPlay();
                                     });
                                     video.addEventListener('playing', function() {
@@ -2292,21 +2295,6 @@ header('Expires: 0');
                     if (!statusUpdated) {
                         document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">开始加载视频...</span>';
                     }
-                });
-
-                dp.on('loadedmetadata', function() {
-                    dpReady = true;
-                    tryPlay();
-                });
-
-                dp.on('canplay', function() {
-                    statusUpdated = true;
-                    if (dp.video.paused) {
-                        document.getElementById('playStatus').innerHTML = '<span style="color:#e6a23c">视频已就绪，点击播放按钮开始</span>';
-                    } else {
-                        document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，正在播放...</span>';
-                    }
-                    tryPlay();
                 });
 
                 dp.on('playing', function() {
@@ -2339,14 +2327,13 @@ header('Expires: 0');
                 });
 
                 setTimeout(function() {
-                    if (!statusUpdated && dp && dp.video && dp.video.readyState >= 2) {
+                    if (!playAttempted && dp && dp.video && dp.video.readyState >= 2 && dp.video.paused) {
+                        playAttempted = true;
                         statusUpdated = true;
                         document.getElementById('playStatus').innerHTML = '<span style="color:#67c23a">视频加载成功，点击播放按钮开始播放</span>';
-                        if (dp.video.paused) {
-                            dp.video.play().catch(function() {});
-                        }
+                        dp.video.play().catch(function() {});
                     }
-                }, 12000);
+                }, 10000);
             } catch (e) {
                 document.getElementById('playStatus').innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
                 showToast('播放失败: ' + e.message, 'error');
@@ -2430,11 +2417,11 @@ header('Expires: 0');
                     lowLatencyMode: false,
                     maxBufferLength: 30,
                     maxMaxBufferLength: 600,
-                    minBufferLength: 4,
+                    minBufferLength: 1,
                     maxBufferSize: 60 * 1000 * 1000,
                     maxBufferHole: 0.5,
                     highBufferWatchdogPeriod: 2,
-                    startLevel: -1,
+                    startLevel: 0,
                     capLevelToPlayerSize: false,
                     liveSyncDurationCount: 3,
                     liveMaxLatencyDurationCount: 10,
@@ -2444,18 +2431,21 @@ header('Expires: 0');
                     backBufferLength: 30,
                     startFragPrefetch: true,
                     enableSoftwareAES: true,
-                    abrEwmaDefaultEstimate: 500000,
-                    abrBandWidthFactor: 0.8,
+                    abrEwmaDefaultEstimate: 200000,
+                    abrBandWidthFactor: 0.7,
                     xhrSetup: function(xhr) {
                         xhr.withCredentials = false;
                     }
                 };
 
                 let hlsReady = false;
-                let dpReady = false;
+                let firstFrameReady = false;
+                let playAttempted = false;
 
                 const tryPlay = function() {
-                    if (hlsReady && dpReady && analyzeDp && analyzeDp.video && analyzeDp.video.paused) {
+                    if (playAttempted) return;
+                    if (firstFrameReady && analyzeDp && analyzeDp.video && analyzeDp.video.paused) {
+                        playAttempted = true;
                         analyzeDp.video.play().catch(function(e) {
                             console.warn('自动播放被阻止:', e);
                             if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频已加载，点击播放按钮开始播放</span>';
@@ -2483,20 +2473,22 @@ header('Expires: 0');
                                             if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频加载较慢，正在努力加载中...</span>';
                                             showToast('视频加载较慢，请耐心等待...', 'warning');
                                         }
-                                    }, 8000);
+                                    }, 6000);
 
                                     analyzeHls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
                                         console.log('HLS 清单解析完成, 共', data.levels.length, '个清晰度');
-                                        clearAnalyzeLoadTimeout();
                                         hlsReady = true;
-                                        if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频解析完成，正在缓冲...</span>';
-                                        tryPlay();
+                                        if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频解析完成，正在缓冲首帧...</span>';
                                     });
 
-                                    analyzeHls.on(Hls.Events.FRAG_LOADED, function() {
-                                        if (statusEl && !analyzeDp?.video?.paused) {
-                                            statusEl.innerHTML = '<span style="color:#67c23a">正在播放...</span>';
+                                    analyzeHls.on(Hls.Events.FRAG_LOADED, function(event, data) {
+                                        console.log('片段加载完成, 索引:', data.frag.sn, '时长:', data.frag.duration.toFixed(2) + 's');
+                                        clearAnalyzeLoadTimeout();
+                                        firstFrameReady = true;
+                                        if (statusEl && !playAttempted) {
+                                            statusEl.innerHTML = '<span style="color:#67c23a">首帧加载完成，即将播放...</span>';
                                         }
+                                        tryPlay();
                                     });
 
                                     analyzeHls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
@@ -2547,7 +2539,8 @@ header('Expires: 0');
                                     video.src = url;
                                     video.addEventListener('loadedmetadata', function() {
                                         hlsReady = true;
-                                        if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频解析完成，正在缓冲...</span>';
+                                        firstFrameReady = true;
+                                        if (statusEl) statusEl.innerHTML = '<span style="color:#67c23a">视频加载完成，即将播放...</span>';
                                         tryPlay();
                                     });
                                     video.addEventListener('playing', function() {
@@ -2572,19 +2565,6 @@ header('Expires: 0');
 
                 analyzeDp.on('loadstart', function() {
                     if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">开始加载视频...</span>';
-                });
-
-                analyzeDp.on('loadedmetadata', function() {
-                    dpReady = true;
-                    tryPlay();
-                });
-
-                analyzeDp.on('canplay', function() {
-                    clearAnalyzeLoadTimeout();
-                    if (statusEl && analyzeDp.video.paused) {
-                        statusEl.innerHTML = '<span style="color:#e6a23c">视频已就绪，点击播放按钮开始</span>';
-                    }
-                    tryPlay();
                 });
 
                 analyzeDp.on('playing', function() {
@@ -2612,10 +2592,10 @@ header('Expires: 0');
                 });
 
                 setTimeout(function() {
-                    if (analyzeDp && analyzeDp.video && analyzeDp.video.readyState >= 2 && analyzeDp.video.paused) {
+                    if (analyzeDp && analyzeDp.video && analyzeDp.video.readyState >= 2 && analyzeDp.video.paused && !playAttempted) {
                         if (statusEl) statusEl.innerHTML = '<span style="color:#e6a23c">视频已就绪，点击播放按钮开始播放</span>';
                     }
-                }, 12000);
+                }, 10000);
             } catch (e) {
                 if (statusEl) statusEl.innerHTML = '<span style="color:#f56c6c">播放器初始化失败: ' + e.message + '</span>';
                 showToast('播放失败: ' + e.message, 'error');
