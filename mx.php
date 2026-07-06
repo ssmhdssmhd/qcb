@@ -362,7 +362,7 @@ try {
             break;
 
         case 'rules/list':
-            $rules = $ruleManager->getAllRules();
+            $rules = $ruleManager->getAllRulesLite();
             sendJsonResponse(['success' => true, 'rules' => $rules]);
             break;
 

@@ -2909,9 +2909,30 @@ header('Expires: 0');
             for (const domain of domains) {
                 const r = rules[domain];
                 const name = escapeHtml(r.name || domain);
-                const durCount = Array.isArray(r.duration_rules) ? r.duration_rules.filter(x => x.enabled).length : 0;
-                const disCount = Array.isArray(r.discontinuity_rules) ? r.discontinuity_rules.filter(x => x.enabled).length : 0;
-                const seqCount = Array.isArray(r.sequence_jump_rules) ? r.sequence_jump_rules.filter(x => x.enabled).length : 0;
+                let durCount;
+                if (typeof r.duration_rule_count === 'number') {
+                    durCount = r.duration_rule_count;
+                } else if (Array.isArray(r.duration_rules)) {
+                    durCount = r.duration_rules.filter(x => x.enabled).length;
+                } else {
+                    durCount = 0;
+                }
+                let disCount;
+                if (typeof r.discontinuity_rule_count === 'number') {
+                    disCount = r.discontinuity_rule_count;
+                } else if (Array.isArray(r.discontinuity_rules)) {
+                    disCount = r.discontinuity_rules.filter(x => x.enabled).length;
+                } else {
+                    disCount = 0;
+                }
+                let seqCount;
+                if (typeof r.sequence_jump_rule_count === 'number') {
+                    seqCount = r.sequence_jump_rule_count;
+                } else if (Array.isArray(r.sequence_jump_rules)) {
+                    seqCount = r.sequence_jump_rules.filter(x => x.enabled).length;
+                } else {
+                    seqCount = 0;
+                }
                 const learnCount = r.learn_count || 0;
                 const mtime = r.last_learn_date || r.analysis_date || (r._filemtime ? new Date(r._filemtime * 1000).toLocaleString() : '-');
                 html += `

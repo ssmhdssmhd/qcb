@@ -29,6 +29,67 @@ class DomainRuleManager {
         return $rules;
     }
 
+    public function getAllRulesLite() {
+        $rules = [];
+        $files = glob($this->gzDir . '/rules_*.php');
+        if (!is_array($files)) return $rules;
+        foreach ($files as $file) {
+            try {
+                $domainRules = @require $file;
+                if (is_array($domainRules) && !empty($domainRules['domain']) && is_string($domainRules['domain'])) {
+                    $domainRules = $this->normalizeRules($domainRules);
+                    $lite = [
+                        'domain' => $domainRules['domain'],
+                        'name' => $domainRules['name'] ?? $domainRules['domain'],
+                        'note' => $domainRules['note'] ?? '',
+                        'learn_count' => intval($domainRules['learn_count'] ?? 0),
+                        'ad_threshold' => intval($domainRules['ad_threshold'] ?? 50),
+                        'confidence_score' => intval($domainRules['confidence_score'] ?? 0),
+                        'analysis_date' => $domainRules['analysis_date'] ?? '',
+                        'last_learn_date' => $domainRules['last_learn_date'] ?? '',
+                        '_filename' => basename($file),
+                        '_filemtime' => filemtime($file),
+                        'duration_rule_count' => isset($domainRules['duration_rules']) && is_array($domainRules['duration_rules']) ? count($domainRules['duration_rules']) : 0,
+                        'discontinuity_rule_count' => isset($domainRules['discontinuity_rules']) && is_array($domainRules['discontinuity_rules']) ? count($domainRules['discontinuity_rules']) : 0,
+                        'sequence_jump_rule_count' => isset($domainRules['sequence_jump_rules']) && is_array($domainRules['sequence_jump_rules']) ? count($domainRules['sequence_jump_rules']) : 0,
+                        'filename_pattern_count' => isset($domainRules['filename_patterns']) && is_array($domainRules['filename_patterns']) ? count($domainRules['filename_patterns']) : 0,
+                        'has_history' => !empty($domainRules['history_stats']) && is_array($domainRules['history_stats']) && count($domainRules['history_stats']) > 0,
+                        'history_count' => isset($domainRules['history_stats']) && is_array($domainRules['history_stats']) ? count($domainRules['history_stats']) : 0,
+                    ];
+                    if (isset($domainRules['analysis_stats']) && is_array($domainRules['analysis_stats'])) {
+                        $stats = $domainRules['analysis_stats'];
+                        $lite['total_segments'] = $stats['totalSegments'] ?? 0;
+                        $lite['ad_segments'] = $stats['adSegments'] ?? 0;
+                        $lite['ad_percentage'] = $stats['adPercentage'] ?? 0;
+                    } else {
+                        $lite['total_segments'] = 0;
+                        $lite['ad_segments'] = 0;
+                        $lite['ad_percentage'] = 0;
+                    }
+                    if (isset($domainRules['marker_stats']) && is_array($domainRules['marker_stats'])) {
+                        $lite['marker_stats'] = [
+                            'discontinuity_count' => $domainRules['marker_stats']['discontinuity_count'] ?? 0,
+                            'cue_marker_count' => $domainRules['marker_stats']['cue_marker_count'] ?? 0,
+                            'scte35_count' => $domainRules['marker_stats']['scte35_count'] ?? 0,
+                            'ad_tag_count' => $domainRules['marker_stats']['ad_tag_count'] ?? 0,
+                        ];
+                    } else {
+                        $lite['marker_stats'] = [
+                            'discontinuity_count' => 0,
+                            'cue_marker_count' => 0,
+                            'scte35_count' => 0,
+                            'ad_tag_count' => 0,
+                        ];
+                    }
+                    $rules[$domainRules['domain']] = $lite;
+                }
+            } catch (Throwable $e) {
+                error_log('加载规则文件失败: ' . basename($file) . ' - ' . $e->getMessage());
+            }
+        }
+        return $rules;
+    }
+
     public function getRules($domain) {
         $file = $this->getRuleFilePath($domain);
         if (file_exists($file)) {
