@@ -943,6 +943,7 @@ header('Expires: 0');
                     <button class="btn btn-secondary" onclick="exportAllRules()">导出全部规则</button>
                     <button class="btn btn-secondary" onclick="document.getElementById('importFileInput').click()">导入规则</button>
                     <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importRulesFromFile(event)">
+                    <button class="btn btn-danger" onclick="clearAllRules()">🗑️ 一键清理所有规则</button>
                 </div>
                 <div id="rulesTable"></div>
             </div>
@@ -1046,6 +1047,23 @@ header('Expires: 0');
                     <div class="form-group" style="margin-bottom:0">
                         <label>最大广告占比 (%)</label>
                         <input type="number" id="maxAdPercentage" min="10" max="100" value="90">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>多线程加速</label>
+                        <select id="autoLearnMultiThread">
+                            <option value="true">启用</option>
+                            <option value="false">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>并发数</label>
+                        <select id="autoLearnConcurrency">
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="5" selected>5</option>
+                            <option value="8">8</option>
+                            <option value="10">10</option>
+                        </select>
                     </div>
                 </div>
                 <div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -3133,6 +3151,24 @@ header('Expires: 0');
             }
         }
 
+        async function clearAllRules() {
+            if (!confirm('⚠️ 确定要清理所有域名规则吗？\n\n此操作不可恢复，建议先导出备份！')) return;
+            if (!confirm('再次确认：真的要删除全部规则吗？')) return;
+            try {
+                const res = await fetch(API_BASE + '?action=rules/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast('已清理 ' + (data.cleared_count || 0) + ' 条规则', 'success');
+                refreshRules();
+            } catch (e) {
+                showToast('清理失败: ' + e.message, 'error');
+            }
+        }
+
         async function exportAllRules() {
             try {
                 const res = await fetch(API_BASE + '?action=rules/export&download=1&_t=' + Date.now());
@@ -4248,14 +4284,19 @@ header('Expires: 0');
 
         async function runAutoLearn() {
             if (!confirm('确定要立即执行自动学习吗？这可能需要一些时间。')) return;
+            const useMultiThread = document.getElementById('autoLearnMultiThread').value === 'true';
+            const concurrency = parseInt(document.getElementById('autoLearnConcurrency').value) || 5;
             const resultEl = document.getElementById('autoLearnResult');
             resultEl.style.display = 'block';
-            resultEl.innerHTML = '<div class="loading">正在执行自动学习，请稍候...</div>';
+            resultEl.innerHTML = '<div class="loading">正在执行自动学习，请稍候... (' + (useMultiThread ? '多线程模式，并发 ' + concurrency : '串行模式') + ')</div>';
             try {
                 const res = await fetch(API_BASE + '?action=sites/auto_learn/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
+                    body: JSON.stringify({
+                        multi_thread: useMultiThread,
+                        concurrency: concurrency
+                    })
                 });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
@@ -4265,7 +4306,16 @@ header('Expires: 0');
                 html += '处理站点: ' + data.sites_processed + ' 个 | ';
                 html += '学习成功: <span style="color:#67c23a">' + data.total_learned + '</span> 个 | ';
                 html += '失败: <span style="color:#f56c6c">' + data.total_failed + '</span> 个';
+                if (data.total_time) {
+                    html += ' | 耗时: <span style="color:#e6a23c">' + (data.total_time / 1000).toFixed(1) + 's</span>';
+                }
+                if (data.mode) {
+                    html += ' | 模式: <span style="color:#909399">' + data.mode + '</span>';
+                }
                 html += '</div>';
+                if (data.learned_domains && data.learned_domains.length > 0) {
+                    html += '<div style="font-size:12px;color:#909399;margin-top:8px">更新域名: ' + data.learned_domains.join(', ') + '</div>';
+                }
                 if (data.details && data.details.length > 0) {
                     html += '<div style="margin-top:12px">';
                     data.details.forEach(d => {
@@ -4795,22 +4845,107 @@ header('Expires: 0');
             document.getElementById('searchStats').textContent = `完成 - 成功 ${successCount}，失败 ${failCount}，更新 ${learnedDomains.size} 个域名`;
         }
 
+        let batchAnalyzing = false;
+
         async function batchAnalyzeAll() {
+            if (batchAnalyzing) {
+                showToast('正在批量分析中，请稍候...', 'warning');
+                return;
+            }
+
             const videos = collectAllVideoUrls();
             if (videos.length === 0) {
                 showToast('没有可分析的视频', 'warning');
                 return;
             }
 
-            if (!confirm(`确定要批量分析 ${videos.length} 个视频吗？`)) return;
+            const useMultiThread = document.getElementById('enableMultiThread').checked;
+            const concurrency = parseInt(document.getElementById('concurrencyNum').value) || 5;
 
-            const firstVideo = videos[0];
-            if (firstVideo && firstVideo.url) {
-                switchPage('analyze');
-                document.getElementById('videoUrl').value = firstVideo.url;
-                await analyzeVideo();
-                showToast('已跳转到分析页面并分析第一个视频', 'info');
+            let modeText = useMultiThread ? '后端多线程加速' : '串行分析';
+            if (!confirm(`确定要批量分析 ${videos.length} 个视频吗？\n\n模式: ${modeText}\n并发数: ${concurrency} 个`)) return;
+
+            batchAnalyzing = true;
+            const resultEl = document.getElementById('batchResult');
+            resultEl.style.display = 'block';
+            resultEl.style.background = '#fffbe6';
+            resultEl.style.border = '1px solid #ffe58f';
+            resultEl.innerHTML = '<div class="loading">正在批量分析中，请稍候... (0/' + videos.length + ') 并发: ' + concurrency + ' (' + modeText + ')</div>';
+
+            const startTime = Date.now();
+
+            try {
+                const urls = videos.map(v => v.url);
+                const res = await fetch(API_BASE + '?action=sites/analyze_batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        urls: urls,
+                        concurrency: concurrency,
+                        multi_thread: useMultiThread
+                    })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    const successCount = data.success_count || 0;
+                    const failCount = data.fail_count || 0;
+                    const totalTime = data.total_time ? (data.total_time / 1000).toFixed(1) : '?';
+                    const results = data.results || [];
+
+                    let html = '<div style="margin-bottom:8px;font-weight:600">';
+                    if (successCount > 0) {
+                        html += '<span style="color:#67c23a">✅ 批量分析完成</span>';
+                        resultEl.style.background = '#f0f9eb';
+                        resultEl.style.border = '1px solid #c2e7b0';
+                    } else {
+                        html += '<span style="color:#f56c6c">❌ 批量分析失败</span>';
+                        resultEl.style.background = '#fef0f0';
+                        resultEl.style.border = '1px solid #fbc4c4';
+                    }
+                    html += '</div>';
+                    html += '<div style="font-size:13px;color:#606266;margin-bottom:8px">';
+                    html += `总计: ${videos.length} 个 | 成功: <span style="color:#67c23a">${successCount}</span> | 失败: <span style="color:#f56c6c">${failCount}</span>`;
+                    html += ` | 耗时: <span style="color:#e6a23c">${totalTime}s</span>`;
+                    html += ` | 模式: <span style="color:#909399">${data.mode || 'unknown'}</span>`;
+                    html += '</div>';
+
+                    if (results.length > 0 && results.length <= 20) {
+                        html += '<div style="font-size:12px"><details open><summary style="cursor:pointer;color:#909399">查看分析详情</summary><div style="margin-top:8px">';
+                        results.forEach((r, idx) => {
+                            const v = videos[idx] || {};
+                            if (r.success) {
+                                const stats = r.stats || {};
+                                html += `<div style="padding:6px 0;border-bottom:1px solid #ebeef5">`;
+                                html += `<div style="font-weight:500">${escapeHtml(v.name || '未知')}</div>`;
+                                html += `<div style="font-size:11px;color:#909399;word-break:break-all;font-family:monospace">${escapeHtml(r.url || '')}</div>`;
+                                html += `<div style="font-size:12px;color:#606266;margin-top:4px">`;
+                                html += `总片段: ${stats.totalSegments || 0} | 广告: <span style="color:#f56c6c">${stats.adSegments || 0}</span>`;
+                                if (r.fast_mode) html += ' <span class="tag tag-blue" style="font-size:10px">快速模式</span>';
+                                html += `</div></div>`;
+                            } else {
+                                html += `<div style="padding:6px 0;color:#f56c6c;font-size:12px;border-bottom:1px solid #ebeef5">`;
+                                html += `${escapeHtml(v.name || '未知')} - ${escapeHtml(r.message || '未知错误')}`;
+                                html += `</div>`;
+                            }
+                        });
+                        html += '</div></details></div>';
+                    }
+
+                    resultEl.innerHTML = html;
+                    document.getElementById('searchStats').textContent = `完成 - 成功 ${successCount}，失败 ${failCount}，耗时 ${totalTime}s`;
+                    showToast(`批量分析完成：成功 ${successCount}，失败 ${failCount}`, successCount > 0 ? 'success' : 'error');
+                } else {
+                    throw new Error(data.message || '批量分析失败');
+                }
+            } catch (e) {
+                resultEl.style.background = '#fef0f0';
+                resultEl.style.border = '1px solid #fbc4c4';
+                resultEl.innerHTML = '<div style="color:#f56c6c">批量分析失败: ' + escapeHtml(e.message) + '</div>';
+                showToast('批量分析失败: ' + e.message, 'error');
             }
+
+            batchAnalyzing = false;
         }
 
         function clearSearchResults() {
