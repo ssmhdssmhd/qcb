@@ -58,31 +58,31 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
     }
 
     private function applyDomainRules($rules) {
-        if (isset($rules['duration_rules'])) {
+        if (!empty($rules['duration_rules']) && is_array($rules['duration_rules'])) {
             foreach ($rules['duration_rules'] as $rule) {
-                if ($rule['enabled']) {
+                if (!empty($rule['enabled'])) {
                     $this->addDurationRule($rule);
                 }
             }
         }
 
-        if (isset($rules['discontinuity_rules'])) {
+        if (!empty($rules['discontinuity_rules']) && is_array($rules['discontinuity_rules'])) {
             foreach ($rules['discontinuity_rules'] as $rule) {
-                if ($rule['enabled']) {
+                if (!empty($rule['enabled'])) {
                     $this->addDiscontinuityRule($rule);
                 }
             }
         }
 
-        if (isset($rules['sequence_jump_rules'])) {
+        if (!empty($rules['sequence_jump_rules']) && is_array($rules['sequence_jump_rules'])) {
             foreach ($rules['sequence_jump_rules'] as $rule) {
-                if ($rule['enabled']) {
+                if (!empty($rule['enabled'])) {
                     $this->addSequenceJumpRule($rule);
                 }
             }
         }
 
-        if (isset($rules['filename_patterns'])) {
+        if (!empty($rules['filename_patterns']) && is_array($rules['filename_patterns'])) {
             foreach ($rules['filename_patterns'] as $pattern) {
                 if (!empty($pattern)) {
                     $this->addFilenamePatternRule($pattern);

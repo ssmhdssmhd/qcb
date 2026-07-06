@@ -358,11 +358,13 @@ class DomainRuleManager {
         $result = is_array($existing) ? $existing : [];
 
         if (!empty($new['pre_roll']['found'])) {
-            $result['pre_roll'] = $result['pre_roll'] ?? [
-                'detected_count' => 0,
-                'avg_duration' => 0,
-                'avg_segment_count' => 0
-            ];
+            if (!isset($result['pre_roll']) || !is_array($result['pre_roll'])) {
+                $result['pre_roll'] = [
+                    'detected_count' => 0,
+                    'avg_duration' => 0,
+                    'avg_segment_count' => 0
+                ];
+            }
             $prevCount = $result['pre_roll']['detected_count'] ?? 0;
             $result['pre_roll']['detected_count'] = $prevCount + 1;
             $result['pre_roll']['avg_duration'] = round(
@@ -376,12 +378,14 @@ class DomainRuleManager {
         }
 
         if (!empty($new['mid_roll']['found'])) {
-            $result['mid_roll'] = $result['mid_roll'] ?? [
-                'detected_count' => 0,
-                'avg_clip_count' => 0,
-                'avg_duration_per_clip' => 0,
-                'positions' => []
-            ];
+            if (!isset($result['mid_roll']) || !is_array($result['mid_roll'])) {
+                $result['mid_roll'] = [
+                    'detected_count' => 0,
+                    'avg_clip_count' => 0,
+                    'avg_duration_per_clip' => 0,
+                    'positions' => []
+                ];
+            }
             $prevCount = $result['mid_roll']['detected_count'] ?? 0;
             $result['mid_roll']['detected_count'] = $prevCount + 1;
             $result['mid_roll']['avg_clip_count'] = round(
@@ -400,11 +404,13 @@ class DomainRuleManager {
         }
 
         if (!empty($new['post_roll']['found'])) {
-            $result['post_roll'] = $result['post_roll'] ?? [
-                'detected_count' => 0,
-                'avg_duration' => 0,
-                'avg_segment_count' => 0
-            ];
+            if (!isset($result['post_roll']) || !is_array($result['post_roll'])) {
+                $result['post_roll'] = [
+                    'detected_count' => 0,
+                    'avg_duration' => 0,
+                    'avg_segment_count' => 0
+                ];
+            }
             $prevCount = $result['post_roll']['detected_count'] ?? 0;
             $result['post_roll']['detected_count'] = $prevCount + 1;
             $result['post_roll']['avg_duration'] = round(
@@ -425,7 +431,7 @@ class DomainRuleManager {
         $typeKeys = ['pre_roll_ad', 'mid_roll_ad', 'post_roll_ad', 'marker_based_ad', 'pattern_based_ad', 'duration_based_ad'];
 
         foreach ($typeKeys as $key) {
-            if (!isset($result[$key])) {
+            if (!isset($result[$key]) || !is_array($result[$key])) {
                 $result[$key] = ['total_count' => 0, 'total_duration' => 0, 'avg_count_per_video' => 0, 'sample_count' => 0];
             }
             // 确保所有必要的键都存在
@@ -455,7 +461,7 @@ class DomainRuleManager {
         $fields = ['ad_density', 'attention_grab_score', 'frequency_score', 'watchability_score'];
         foreach ($fields as $field) {
             if (isset($new[$field])) {
-                if (!isset($result[$field])) {
+                if (!isset($result[$field]) || !is_array($result[$field])) {
                     $result[$field] = ['avg' => 0, 'sample_count' => 0, 'min' => 100, 'max' => 0];
                 }
                 $prevSamples = $result[$field]['sample_count'] ?? 0;
@@ -471,7 +477,9 @@ class DomainRuleManager {
         }
 
         if (!empty($new['interruption_pattern'])) {
-            $result['pattern_distribution'] = $result['pattern_distribution'] ?? [];
+            if (!isset($result['pattern_distribution']) || !is_array($result['pattern_distribution'])) {
+                $result['pattern_distribution'] = [];
+            }
             $pattern = $new['interruption_pattern'];
             if (!isset($result['pattern_distribution'][$pattern])) {
                 $result['pattern_distribution'][$pattern] = 0;
@@ -480,7 +488,9 @@ class DomainRuleManager {
         }
 
         if (!empty($new['user_experience_impact'])) {
-            $result['ux_impact_distribution'] = $result['ux_impact_distribution'] ?? [];
+            if (!isset($result['ux_impact_distribution']) || !is_array($result['ux_impact_distribution'])) {
+                $result['ux_impact_distribution'] = [];
+            }
             $impact = $new['user_experience_impact'];
             if (!isset($result['ux_impact_distribution'][$impact])) {
                 $result['ux_impact_distribution'][$impact] = 0;
@@ -672,8 +682,8 @@ class DomainRuleManager {
                 'cueMarkerCount' => $cueMarkerCount,
                 'scte35Count' => $scte35Count,
                 'adTagCount' => $adTagCount,
-                'sequenceJumps' => count($analysisResult['sequenceJumps']),
-                'adClusters' => count($analysisResult['adClusters']),
+                'sequenceJumps' => is_array($analysisResult['sequenceJumps'] ?? null) ? count($analysisResult['sequenceJumps']) : 0,
+                'adClusters' => is_array($analysisResult['adClusters'] ?? null) ? count($analysisResult['adClusters']) : 0,
                 'confidence' => $analysisResult['confidence'] ?? 0
             ]
         ];
