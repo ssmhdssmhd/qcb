@@ -117,7 +117,7 @@ class DomainRuleManager {
     private function mergeRules($existing, $new, $analysisResult) {
         $merged = $existing;
 
-        // 确保所有需要是数组的字段确实是数组
+        // 确保所有需要是数组的字段确实是数组（同时处理 $existing 和 $merged）
         $arrayFields = ['duration_rules', 'discontinuity_rules', 'sequence_jump_rules',
                         'filename_patterns', 'insertion_patterns', 'ad_type_stats',
                         'psychological_profile', 'history_stats', 'marker_stats'];
@@ -125,12 +125,15 @@ class DomainRuleManager {
             if (!isset($merged[$field]) || !is_array($merged[$field])) {
                 $merged[$field] = [];
             }
+            if (!isset($existing[$field]) || !is_array($existing[$field])) {
+                $existing[$field] = [];
+            }
         }
 
         $adDurationStats = $this->extractAdDurationStats($analysisResult);
         if (!empty($adDurationStats)) {
             $merged['duration_rules'] = $this->mergeDurationRules(
-                $existing['duration_rules'] ?? [],
+                $existing['duration_rules'],
                 $adDurationStats
             );
         }
@@ -138,7 +141,7 @@ class DomainRuleManager {
         $discoCount = $analysisResult['discontinuityCount'] ?? 0;
         if ($discoCount > 3) {
             $hasDiscoRule = false;
-            foreach ($merged['discontinuity_rules'] ?? [] as $rule) {
+            foreach ($merged['discontinuity_rules'] as $rule) {
                 if (!empty($rule['enabled'])) {
                     $hasDiscoRule = true;
                     break;
@@ -158,7 +161,7 @@ class DomainRuleManager {
         $seqJumps = $analysisResult['sequenceJumps'] ?? [];
         if (count($seqJumps) > 0) {
             $merged['sequence_jump_rules'] = $this->mergeSeqJumpRules(
-                $existing['sequence_jump_rules'] ?? [],
+                $existing['sequence_jump_rules'],
                 $seqJumps
             );
         }
@@ -166,7 +169,7 @@ class DomainRuleManager {
         $adFilenames = $this->extractAdFilenamePatterns($analysisResult);
         if (!empty($adFilenames)) {
             $merged['filename_patterns'] = array_unique(array_merge(
-                $existing['filename_patterns'] ?? [],
+                $existing['filename_patterns'],
                 $adFilenames
             ));
         }
@@ -188,7 +191,7 @@ class DomainRuleManager {
         $insertionPoints = $analysisResult['insertionPoints'] ?? null;
         if ($insertionPoints) {
             $merged['insertion_patterns'] = $this->mergeInsertionPatterns(
-                $existing['insertion_patterns'] ?? [],
+                $existing['insertion_patterns'],
                 $insertionPoints
             );
         }
@@ -196,7 +199,7 @@ class DomainRuleManager {
         $adTypes = $analysisResult['adTypes'] ?? null;
         if ($adTypes) {
             $merged['ad_type_stats'] = $this->mergeAdTypeStats(
-                $existing['ad_type_stats'] ?? [],
+                $existing['ad_type_stats'],
                 $adTypes
             );
         }
@@ -204,7 +207,7 @@ class DomainRuleManager {
         $psychFeatures = $analysisResult['psychologicalFeatures'] ?? null;
         if ($psychFeatures) {
             $merged['psychological_profile'] = $this->mergePsychologicalProfile(
-                $existing['psychological_profile'] ?? [],
+                $existing['psychological_profile'],
                 $psychFeatures
             );
         }
@@ -220,11 +223,12 @@ class DomainRuleManager {
         $scte35Count = $analysisResult['scte35Count'] ?? 0;
         $adTagCount = $analysisResult['adTagCount'] ?? 0;
 
+        $existingMarkerStats = is_array($merged['marker_stats']) ? $merged['marker_stats'] : [];
         $merged['marker_stats'] = [
-            'discontinuity_count' => ($merged['marker_stats']['discontinuity_count'] ?? 0) + $discoCount,
-            'cue_marker_count' => ($merged['marker_stats']['cue_marker_count'] ?? 0) + $cueMarkerCount,
-            'scte35_count' => ($merged['marker_stats']['scte35_count'] ?? 0) + $scte35Count,
-            'ad_tag_count' => ($merged['marker_stats']['ad_tag_count'] ?? 0) + $adTagCount
+            'discontinuity_count' => ($existingMarkerStats['discontinuity_count'] ?? 0) + $discoCount,
+            'cue_marker_count' => ($existingMarkerStats['cue_marker_count'] ?? 0) + $cueMarkerCount,
+            'scte35_count' => ($existingMarkerStats['scte35_count'] ?? 0) + $scte35Count,
+            'ad_tag_count' => ($existingMarkerStats['ad_tag_count'] ?? 0) + $adTagCount
         ];
 
         if ($cueMarkerCount > 0 || $scte35Count > 0 || $adTagCount > 0) {
