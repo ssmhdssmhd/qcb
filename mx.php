@@ -2357,6 +2357,51 @@ try {
             }
             break;
 
+        case 'db/test_connection':
+            $input = getInputJson();
+            $dbType = $input['type'] ?? 'sqlite';
+            $config = [
+                'type' => $dbType,
+                'sqlite_path' => $input['sqlite_path'] ?? (__DIR__ . '/db/data.db'),
+                'mysql_host' => $input['mysql_host'] ?? '127.0.0.1',
+                'mysql_port' => intval($input['mysql_port'] ?? 3306),
+                'mysql_dbname' => $input['mysql_dbname'] ?? 'm3u8_ad',
+                'mysql_username' => $input['mysql_username'] ?? 'root',
+                'mysql_password' => $input['mysql_password'] ?? '',
+                'mysql_charset' => $input['mysql_charset'] ?? 'utf8mb4',
+            ];
+            try {
+                $testDb = new Database($config);
+                $pdo = $testDb->getPdo();
+                $info = [
+                    'type' => $dbType,
+                    'connected' => true,
+                ];
+                if ($dbType === 'mysql') {
+                    $stmt = $pdo->query("SELECT VERSION() as v");
+                    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $info['version'] = $row['v'] ?? 'unknown';
+                    $stmt = $pdo->query("SHOW TABLES");
+                    $info['table_count'] = $stmt->rowCount();
+                } else {
+                    $info['version'] = 'SQLite ' . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
+                    $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+                    $info['table_count'] = $stmt->rowCount();
+                }
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '数据库连接成功！',
+                    'info' => $info
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '连接失败: ' . $e->getMessage(),
+                    'error' => $e->getMessage()
+                ], 400);
+            }
+            break;
+
         case 'db/migrate':
             if (!$useDb) {
                 sendJsonResponse(['success' => false, 'message' => '数据库未启用，无法迁移'], 400);

@@ -1534,8 +1534,10 @@ header('Expires: 0');
                             <input type="text" id="mysqlCharset" value="utf8mb4" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
                         </div>
                     </div>
-                    <div style="margin-top:16px">
+                    <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
                         <button class="btn btn-primary" onclick="saveDbConfig()">保存配置</button>
+                        <button class="btn btn-secondary" onclick="testDbConnection()">测试连接</button>
+                        <span id="testConnResult" style="font-size:13px;color:#909399"></span>
                     </div>
                 </div>
             </div>
@@ -5865,6 +5867,54 @@ header('Expires: 0');
                 }
             } catch (e) {
                 showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function testDbConnection() {
+            const resultEl = document.getElementById('testConnResult');
+            const dbType = document.querySelector('input[name="dbType"]:checked').value;
+            const config = { type: dbType };
+            if (dbType === 'sqlite') {
+                config.sqlite_path = document.getElementById('sqlitePath').value;
+            } else {
+                config.mysql_host = document.getElementById('mysqlHost').value;
+                config.mysql_port = parseInt(document.getElementById('mysqlPort').value) || 3306;
+                config.mysql_dbname = document.getElementById('mysqlDbname').value;
+                config.mysql_username = document.getElementById('mysqlUsername').value;
+                config.mysql_password = document.getElementById('mysqlPassword').value;
+                config.mysql_charset = document.getElementById('mysqlCharset').value;
+            }
+
+            resultEl.textContent = '测试中...';
+            resultEl.style.color = '#909399';
+
+            try {
+                const res = await fetch(API_BASE + '?action=db/test_connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    let msg = '✓ 连接成功';
+                    if (data.info) {
+                        msg += ' - ' + data.info.version;
+                        if (data.info.table_count !== undefined) {
+                            msg += '，' + data.info.table_count + ' 张表';
+                        }
+                    }
+                    resultEl.textContent = msg;
+                    resultEl.style.color = '#67c23a';
+                    showToast('数据库连接成功！', 'success');
+                } else {
+                    resultEl.textContent = '✗ ' + data.message;
+                    resultEl.style.color = '#f56c6c';
+                    showToast('连接失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                resultEl.textContent = '✗ 测试失败: ' + e.message;
+                resultEl.style.color = '#f56c6c';
+                showToast('测试失败: ' + e.message, 'error');
             }
         }
 
