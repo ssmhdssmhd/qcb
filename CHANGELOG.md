@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.22.2] - 2026-07-06
+
+### 🐛 修复 MySQL 低版本建表失败
+
+**问题**: MySQL 版本低于 5.7.8 时，建表报 SQL 语法错误，因为 `JSON` 数据类型是 MySQL 5.7.8 才引入的，低版本不支持。
+
+**错误信息**:
+```
+SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; 
+check the manual that corresponds to your MySQL server version for the right syntax 
+to use near 'JSON, discontinuity_rules JSON, sequence_jump_ru' at line 11
+```
+
+**修复**:
+- 将 [schema_mysql.sql](file:///workspace/db/schema_mysql.sql) 中所有 `JSON` 字段类型改为 `TEXT`
+- 共涉及 5 张表、16 个 JSON 字段
+- PHP 代码无需修改，原有 jsonEncode/jsonDecode 逻辑继续有效
+- 兼容 MySQL 5.5、5.6、5.7、8.0+ 所有版本
+
+**受影响的表和字段**:
+| 表名 | 字段数 | 字段示例 |
+|------|--------|----------|
+| domain_rules | 12 | duration_rules, discontinuity_rules, ad_type_stats 等 |
+| resource_sites | 1 | config |
+| official_sites | 2 | domains, config |
+| official_platforms | 1 | config |
+| auto_learn_logs | 1 | details |
+
+---
+
 ## [2.22.1] - 2026-07-06
 
 ### 🐛 修复数据库连接测试报错
