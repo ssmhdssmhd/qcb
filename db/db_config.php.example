@@ -1,0 +1,25 @@
+<?php
+/**
+ * 数据库配置文件
+ * 请根据实际情况修改以下配置
+ *
+ * type: mysql 或 sqlite
+ * - mysql: 使用 MySQL 数据库，需要配置 mysql_* 相关选项
+ * - sqlite: 使用 SQLite 文件数据库，无需额外服务，仅需配置 sqlite_path
+ */
+
+return [
+    // 数据库类型: mysql | sqlite
+    'type' => 'mysql',
+
+    // ========== MySQL 配置 (type=mysql 时生效) ==========
+    'mysql_host' => '127.0.0.1',
+    'mysql_port' => 3306,
+    'mysql_dbname' => 'm3u8_ad',
+    'mysql_username' => 'root',
+    'mysql_password' => '',
+    'mysql_charset' => 'utf8mb4',
+
+    // ========== SQLite 配置 (type=sqlite 时生效) ==========
+    'sqlite_path' => __DIR__ . '/data.db',
+];

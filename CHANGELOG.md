@@ -5,6 +5,87 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.22.0] - 2026-07-06
+
+### 🚀 全新数据库存储支持（里程碑版本）
+
+将所有数据从文件存储迁移到数据库存储，支持 **MySQL** 和 **SQLite** 两种数据库，可灵活切换。
+
+### 📁 新增 db/ 数据库模块
+
+**核心文件：**
+- [db/Database.php](file:///workspace/db/Database.php) - 数据库核心类，支持 MySQL / SQLite，统一封装 CRUD 操作
+- [db/autoload.php](file:///workspace/db/autoload.php) - 数据库模块自动加载器
+- [db/db_config.php](file:///workspace/db/db_config.php) - 数据库配置（默认 SQLite，开箱即用）
+- [db/db_config.php.example](file:///workspace/db/db_config.php.example) - 配置示例
+- [db/schema_mysql.sql](file:///workspace/db/schema_mysql.sql) - MySQL 表结构
+- [db/schema_sqlite.sql](file:///workspace/db/schema_sqlite.sql) - SQLite 表结构
+
+**数据库版管理器：**
+- [db/DbDomainRuleManager.php](file:///workspace/db/DbDomainRuleManager.php) - 数据库版域名规则管理器
+- [db/DbResourceSiteManager.php](file:///workspace/db/DbResourceSiteManager.php) - 数据库版资源站管理器
+- [db/DbProxyManager.php](file:///workspace/db/DbProxyManager.php) - 数据库版代理池管理器
+- [db/DbOfficialSiteManager.php](file:///workspace/db/DbOfficialSiteManager.php) - 数据库版推荐采集站管理器
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php) - 数据库版官替 API 管理器
+- [db/DbConfigManager.php](file:///workspace/db/DbConfigManager.php) - 数据库配置键值对管理器
+
+**数据迁移工具：**
+- [db/DataMigration.php](file:///workspace/db/DataMigration.php) - 文件 → 数据库数据迁移工具
+
+### 🗃️ 数据库表结构（8 张表）
+
+| 表名 | 说明 |
+|------|------|
+| `sys_config` | 系统配置表（键值对，JSON 存储） |
+| `domain_rules` | 域名广告规则表 |
+| `resource_sites` | 资源站配置表 |
+| `official_sites` | 推荐采集资源站表 |
+| `official_platforms` | 官替平台配置表 |
+| `proxies` | 代理池表 |
+| `auto_learn_logs` | 自动学习运行记录表 |
+| `player_config` | 播放器配置表 |
+
+### 🔄 无缝迁移与兼容
+
+- **自动检测**：存在 `db/db_config.php` 配置文件时自动启用数据库模式
+- **自动降级**：数据库连接失败时自动降级为文件存储，不影响使用
+- **接口兼容**：所有数据库版管理器方法签名、返回值格式与原文件版完全一致
+- **一键迁移**：后台数据库管理页面提供一键数据迁移功能
+- **不删原数据**：迁移过程不会删除原有文件数据，安全可靠
+
+### 🖥️ 后台新增数据库管理页面
+
+**位置**：后台导航 → 数据库管理
+
+**功能：**
+- 数据库状态总览（类型、状态、规则数、资源站数）
+- 表结构检查（8 张表逐一检测状态）
+- 数据库配置（SQLite / MySQL 切换，在线配置）
+- 一键数据迁移（文件 → 数据库）
+- 表结构初始化
+
+### 🔧 新增 API 接口
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `db/status` | GET | 获取数据库状态和表信息 |
+| `db/config/save` | POST | 保存数据库配置 |
+| `db/migrate` | POST | 执行数据迁移 |
+| `db/init` | POST | 初始化数据库表结构 |
+
+### 📊 数据库存储优势
+
+| 特性 | 文件存储 | 数据库存储 |
+|------|----------|------------|
+| 查询性能 | 需遍历所有文件 | SQL 索引，毫秒级 |
+| 并发安全 | 文件锁不稳定 | 事务机制，可靠 |
+| 数据量 | 千条以内合适 | 百万级无压力 |
+| 备份恢复 | 复制文件夹 | SQL 导出 / 导入 |
+| 关系查询 | 需手动关联 | JOIN 一键查询 |
+| 内存占用 | 全部加载到内存 | 按需查询 |
+
+---
+
 ## [2.21.1] - 2026-07-06
 
 ### 🐛 修复规则列表内存溢出（紧急修复）

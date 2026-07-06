@@ -114,6 +114,22 @@ try {
         require_once $file;
     }
 
+    $useDb = false;
+    $dbConfigFile = $rootDir . '/db/db_config.php';
+    if (file_exists($dbConfigFile)) {
+        require_once $rootDir . '/db/autoload.php';
+        try {
+            $db = Database::getInstance();
+            if (!$db->tableExists('sys_config')) {
+                $db->initTables();
+            }
+            $useDb = true;
+        } catch (Throwable $e) {
+            $useDb = false;
+            error_log('数据库初始化失败，降级使用文件存储: ' . $e->getMessage());
+        }
+    }
+
     ob_clean();
 
 } catch (Throwable $e) {
@@ -128,11 +144,24 @@ try {
 }
 
 try {
-    $ruleManager = new DomainRuleManager();
+    if ($useDb) {
+        $ruleManager = new DbDomainRuleManager();
+        $siteManager = new DbResourceSiteManager();
+        $officialReplaceMgr = new DbOfficialReplaceManager();
+        $officialMgr = new DbOfficialSiteManager();
+        $proxyManager = new DbProxyManager();
+    } else {
+        $ruleManager = new DomainRuleManager();
+        $siteManager = new ResourceSiteManager();
+        $officialReplaceMgr = new OfficialReplaceManager();
+        $officialMgr = new OfficialSiteManager();
+        if (file_exists($rootDir . '/proxy/ProxyManager.php')) {
+            require_once $rootDir . '/proxy/ProxyManager.php';
+            $proxyManager = new ProxyManager($rootDir . '/proxy/proxy_config.php');
+        }
+    }
     $updateManager = new UpdateManager();
     $authValidator = new AuthValidator();
-    $siteManager = new ResourceSiteManager();
-    $officialReplaceMgr = new OfficialReplaceManager();
 } catch (Throwable $e) {
     sendJsonResponse([
         'success' => false,
@@ -1602,7 +1631,7 @@ try {
             break;
 
         case 'official_sites/status':
-            $officialMgr = new OfficialSiteManager();
+
             sendJsonResponse([
                 'success' => true,
                 'enabled' => $officialMgr->isEnabled(),
@@ -1611,7 +1640,7 @@ try {
             break;
 
         case 'official_sites/list':
-            $officialMgr = new OfficialSiteManager();
+
             $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
             $sites = $officialMgr->getAllSites($includePaused);
             sendJsonResponse([
@@ -1624,7 +1653,7 @@ try {
             break;
 
         case 'official_sites/get':
-            $officialMgr = new OfficialSiteManager();
+
             $name = $_GET['name'] ?? '';
             $site = $officialMgr->getSiteByName($name);
             if ($site) {
@@ -1635,14 +1664,14 @@ try {
             break;
 
         case 'official_sites/add':
-            $officialMgr = new OfficialSiteManager();
+
             $input = getInputJson();
             $result = $officialMgr->addSite($input);
             sendJsonResponse($result, $result['success'] ? 200 : 400);
             break;
 
         case 'official_sites/update':
-            $officialMgr = new OfficialSiteManager();
+
             $input = getInputJson();
             $name = $input['name'] ?? '';
             unset($input['name']);
@@ -1651,7 +1680,7 @@ try {
             break;
 
         case 'official_sites/delete':
-            $officialMgr = new OfficialSiteManager();
+
             $input = getInputJson();
             $name = $input['name'] ?? '';
             $result = $officialMgr->deleteSite($name);
@@ -1659,7 +1688,7 @@ try {
             break;
 
         case 'official_sites/fetch_videos':
-            $officialMgr = new OfficialSiteManager();
+
             $name = $_GET['name'] ?? '';
             $page = intval($_GET['page'] ?? 1);
             $limit = intval($_GET['limit'] ?? 20);
@@ -1668,7 +1697,7 @@ try {
             break;
 
         case 'official_sites/search':
-            $officialMgr = new OfficialSiteManager();
+
             $name = $_GET['name'] ?? '';
             $keyword = $_GET['keyword'] ?? '';
             $page = intval($_GET['page'] ?? 1);
@@ -1678,7 +1707,7 @@ try {
             break;
 
         case 'official_sites/search_all':
-            $officialMgr = new OfficialSiteManager();
+
             $keyword = $_GET['keyword'] ?? '';
             $maxSites = intval($_GET['max_sites'] ?? 5);
             $limitPerSite = intval($_GET['limit_per_site'] ?? 10);
@@ -1687,7 +1716,7 @@ try {
             break;
 
         case 'official_sites/set_domain':
-            $officialMgr = new OfficialSiteManager();
+
             $input = getInputJson();
             $name = $input['name'] ?? '';
             $domainIndex = intval($input['domain_index'] ?? 0);
@@ -1696,14 +1725,14 @@ try {
             break;
 
         case 'official_sites/settings/save':
-            $officialMgr = new OfficialSiteManager();
+
             $input = getInputJson();
             $result = $officialMgr->updateSettings($input);
             sendJsonResponse($result, $result['success'] ? 200 : 400);
             break;
 
         case 'official_sites/toggle':
-            $officialMgr = new OfficialSiteManager();
+
             $input = getInputJson();
             $enabled = !empty($input['enabled']);
             $result = $officialMgr->setEnabled($enabled);
@@ -1855,8 +1884,10 @@ try {
             break;
 
         case 'proxy/list':
-            require_once $rootDir . '/proxy/ProxyManager.php';
-            $proxyManager = new ProxyManager($rootDir . '/proxy/proxy_config.php');
+            if (!isset($proxyManager)) {
+                sendJsonResponse(['success' => false, 'message' => '代理模块未初始化'], 500);
+                break;
+            }
             $activeProxies = $proxyManager->getActiveProxies();
             $proxies = [];
 
@@ -1911,8 +1942,10 @@ try {
             break;
 
         case 'proxy/check':
-            require_once $rootDir . '/proxy/ProxyManager.php';
-            $proxyManager = new ProxyManager($rootDir . '/proxy/proxy_config.php');
+            if (!isset($proxyManager)) {
+                sendJsonResponse(['success' => false, 'message' => '代理模块未初始化'], 500);
+                break;
+            }
             $proxyId = $_GET['id'] ?? '';
 
             if ($proxyId) {
@@ -2269,6 +2302,82 @@ try {
             
             echo json_encode($response, JSON_UNESCAPED_UNICODE);
             exit;
+            break;
+
+        case 'db/status':
+            $status = [
+                'use_db' => $useDb,
+                'db_type' => $useDb ? $db->getDbType() : 'none',
+                'tables' => []
+            ];
+            if ($useDb) {
+                $checkTables = ['sys_config', 'domain_rules', 'resource_sites', 'proxies', 'official_sites', 'official_platforms'];
+                foreach ($checkTables as $t) {
+                    $status['tables'][$t] = $db->tableExists($t);
+                }
+                try {
+                    $status['rule_count'] = $db->count('domain_rules', 'status = 1');
+                    $status['site_count'] = $db->count('resource_sites', 'status = "active"');
+                    $status['proxy_count'] = $db->count('proxies', 'status = "active"');
+                } catch (Throwable $e) {
+                    $status['error'] = $e->getMessage();
+                }
+                $migration = new DataMigration();
+                $status['migrated'] = $migration->isMigrated();
+            }
+            sendJsonResponse(['success' => true, 'status' => $status]);
+            break;
+
+        case 'db/config/save':
+            $input = getInputJson();
+            $dbType = $input['type'] ?? 'sqlite';
+            $config = [
+                'type' => $dbType,
+                'sqlite_path' => $input['sqlite_path'] ?? (__DIR__ . '/db/data.db'),
+                'mysql_host' => $input['mysql_host'] ?? '127.0.0.1',
+                'mysql_port' => intval($input['mysql_port'] ?? 3306),
+                'mysql_dbname' => $input['mysql_dbname'] ?? 'm3u8_ad',
+                'mysql_username' => $input['mysql_username'] ?? 'root',
+                'mysql_password' => $input['mysql_password'] ?? '',
+                'mysql_charset' => $input['mysql_charset'] ?? 'utf8mb4',
+            ];
+            $configFile = $rootDir . '/db/db_config.php';
+            $content = '<?php' . "\n";
+            $content .= 'return ' . var_export($config, true) . ';' . "\n";
+            $result = file_put_contents($configFile, $content);
+            if ($result === false) {
+                sendJsonResponse(['success' => false, 'message' => '写入配置文件失败，请检查权限']);
+            }
+            try {
+                $testDb = new Database($config);
+                $testDb->initTables();
+                sendJsonResponse(['success' => true, 'message' => '配置保存成功，数据库连接正常']);
+            } catch (Throwable $e) {
+                sendJsonResponse(['success' => false, 'message' => '配置已保存，但数据库连接失败: ' . $e->getMessage()], 400);
+            }
+            break;
+
+        case 'db/migrate':
+            if (!$useDb) {
+                sendJsonResponse(['success' => false, 'message' => '数据库未启用，无法迁移'], 400);
+                break;
+            }
+            $migration = new DataMigration();
+            $result = $migration->migrateAll();
+            sendJsonResponse($result, $result['success'] ? 200 : 500);
+            break;
+
+        case 'db/init':
+            if (!$useDb) {
+                sendJsonResponse(['success' => false, 'message' => '数据库未启用'], 400);
+                break;
+            }
+            try {
+                $db->initTables();
+                sendJsonResponse(['success' => true, 'message' => '数据库表初始化完成']);
+            } catch (Throwable $e) {
+                sendJsonResponse(['success' => false, 'message' => '初始化失败: ' . $e->getMessage()], 500);
+            }
             break;
 
         default:

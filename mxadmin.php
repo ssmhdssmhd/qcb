@@ -800,6 +800,7 @@ header('Expires: 0');
         <div class="nav-item" data-page="official_replace">官替管理</div>
         <div class="nav-item" data-page="moxi_api">沫兮API</div>
         <div class="nav-item" onclick="location.href='proxy/proxy_admin.php'" style="cursor:pointer">代理池管理</div>
+        <div class="nav-item" data-page="database">数据库管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
         <div class="nav-item" data-page="update">系统更新</div>
         <div class="nav-item" data-page="auth">授权管理</div>
@@ -1455,6 +1456,105 @@ header('Expires: 0');
             </div>
         </div>
 
+        <div class="page" id="page-database">
+            <div class="card">
+                <div class="card-title">数据库状态</div>
+                <div class="stats-grid" id="dbStats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="dbType">-</div>
+                        <div class="stat-label">数据库类型</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dbStatus">-</div>
+                        <div class="stat-label">运行状态</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dbRuleCount">-</div>
+                        <div class="stat-label">规则数量</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dbSiteCount">-</div>
+                        <div class="stat-label">资源站数量</div>
+                    </div>
+                </div>
+                <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="checkDbStatus()">刷新状态</button>
+                    <button class="btn btn-success" onclick="showDbConfig()">数据库配置</button>
+                    <button class="btn btn-warning" onclick="migrateData()">迁移数据</button>
+                    <button class="btn btn-secondary" onclick="initDbTables()">初始化表结构</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">表结构检查</div>
+                <div id="dbTables" style="font-size:13px;color:#606266">加载中...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">数据库配置</div>
+                <div id="dbConfigPanel">
+                    <p style="color:#606266;font-size:13px;margin-bottom:12px">
+                        配置数据库连接信息。支持 SQLite（文件型，无需安装服务）和 MySQL（需 MySQL 服务）。
+                    </p>
+                    <div style="display:flex;gap:12px;margin-bottom:12px">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                            <input type="radio" name="dbType" value="sqlite" checked onchange="toggleDbType('sqlite')"> SQLite
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                            <input type="radio" name="dbType" value="mysql" onchange="toggleDbType('mysql')"> MySQL
+                        </label>
+                    </div>
+                    <div id="sqliteConfig" style="margin-bottom:12px">
+                        <div style="margin-bottom:8px;font-size:13px;color:#606266">数据库文件路径:</div>
+                        <input type="text" id="sqlitePath" value="db/data.db" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                    </div>
+                    <div id="mysqlConfig" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div>
+                            <div style="margin-bottom:4px;font-size:13px;color:#606266">主机</div>
+                            <input type="text" id="mysqlHost" value="127.0.0.1" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        </div>
+                        <div>
+                            <div style="margin-bottom:4px;font-size:13px;color:#606266">端口</div>
+                            <input type="number" id="mysqlPort" value="3306" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        </div>
+                        <div>
+                            <div style="margin-bottom:4px;font-size:13px;color:#606266">数据库名</div>
+                            <input type="text" id="mysqlDbname" value="m3u8_ad" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        </div>
+                        <div>
+                            <div style="margin-bottom:4px;font-size:13px;color:#606266">用户名</div>
+                            <input type="text" id="mysqlUsername" value="root" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        </div>
+                        <div>
+                            <div style="margin-bottom:4px;font-size:13px;color:#606266">密码</div>
+                            <input type="password" id="mysqlPassword" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        </div>
+                        <div>
+                            <div style="margin-bottom:4px;font-size:13px;color:#606266">字符集</div>
+                            <input type="text" id="mysqlCharset" value="utf8mb4" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        </div>
+                    </div>
+                    <div style="margin-top:16px">
+                        <button class="btn btn-primary" onclick="saveDbConfig()">保存配置</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">数据迁移</div>
+                <p style="color:#606266;font-size:13px;margin-bottom:12px">
+                    将原有文件存储的数据（规则、资源站、代理等）迁移到数据库中。迁移不会删除原有文件数据。
+                </p>
+                <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                    <button class="btn btn-warning" onclick="migrateData()">开始迁移</button>
+                    <span id="migrateStatus" style="font-size:13px;color:#909399"></span>
+                </div>
+                <div id="migrateResult" style="margin-top:16px;display:none">
+                    <pre style="background:#f5f7fa;padding:12px;border-radius:4px;font-size:12px;white-space:pre-wrap;word-wrap:break-word"></pre>
+                </div>
+            </div>
+        </div>
+
         <div class="page" id="page-update">
             <div class="card">
                 <div class="card-title">系统版本信息</div>
@@ -1874,6 +1974,7 @@ header('Expires: 0');
                 if (page === 'rules') refreshRules();
                 if (page === 'auth') refreshAuthInfo();
                 if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
+                if (page === 'database') checkDbStatus();
             });
         });
 
@@ -5696,6 +5797,124 @@ header('Expires: 0');
                 showToast('学习成功，广告占比: ' + (data.stats?.adPercentage || 0).toFixed(1) + '%', 'success');
             } else {
                 showToast(data.message || '学习失败', 'error');
+            }
+        }
+
+        function toggleDbType(type) {
+            document.getElementById('sqliteConfig').style.display = type === 'sqlite' ? 'block' : 'none';
+            document.getElementById('mysqlConfig').style.display = type === 'mysql' ? 'grid' : 'none';
+        }
+
+        function showDbConfig() {
+            document.getElementById('dbConfigPanel').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function checkDbStatus() {
+            try {
+                const res = await fetch(API_BASE + '?action=db/status');
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                const status = data.status;
+                document.getElementById('dbType').textContent = status.use_db ? status.db_type.toUpperCase() : '未启用';
+                document.getElementById('dbStatus').textContent = status.use_db ? '运行中' : '未启用';
+                document.getElementById('dbStatus').style.color = status.use_db ? '#67c23a' : '#e6a23c';
+                document.getElementById('dbRuleCount').textContent = status.rule_count ?? '-';
+                document.getElementById('dbSiteCount').textContent = status.site_count ?? '-';
+
+                let tablesHtml = '<table style="width:100%;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">表名</th><th style="text-align:left;padding:6px">状态</th></tr></thead><tbody>';
+                if (status.tables) {
+                    for (const [table, exists] of Object.entries(status.tables)) {
+                        tablesHtml += `<tr><td style="padding:6px">${table}</td><td style="padding:6px">${exists ? '<span style="color:#67c23a">✓ 正常</span>' : '<span style="color:#f56c6c">✗ 缺失</span>'}</td></tr>`;
+                    }
+                }
+                tablesHtml += '</tbody></table>';
+                document.getElementById('dbTables').innerHTML = tablesHtml;
+            } catch (e) {
+                document.getElementById('dbStatus').textContent = '连接失败';
+                document.getElementById('dbStatus').style.color = '#f56c6c';
+                document.getElementById('dbTables').textContent = '获取失败: ' + e.message;
+            }
+        }
+
+        async function saveDbConfig() {
+            const dbType = document.querySelector('input[name="dbType"]:checked').value;
+            const config = { type: dbType };
+            if (dbType === 'sqlite') {
+                config.sqlite_path = document.getElementById('sqlitePath').value;
+            } else {
+                config.mysql_host = document.getElementById('mysqlHost').value;
+                config.mysql_port = parseInt(document.getElementById('mysqlPort').value) || 3306;
+                config.mysql_dbname = document.getElementById('mysqlDbname').value;
+                config.mysql_username = document.getElementById('mysqlUsername').value;
+                config.mysql_password = document.getElementById('mysqlPassword').value;
+                config.mysql_charset = document.getElementById('mysqlCharset').value;
+            }
+
+            try {
+                const res = await fetch(API_BASE + '?action=db/config/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('配置保存成功，页面将刷新', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast('保存失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function migrateData() {
+            const statusEl = document.getElementById('migrateStatus');
+            const resultEl = document.getElementById('migrateResult');
+            statusEl.textContent = '迁移中...';
+            resultEl.style.display = 'none';
+
+            try {
+                const res = await fetch(API_BASE + '?action=db/migrate', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    statusEl.textContent = '迁移成功！';
+                    let summaryHtml = '迁移统计:\n';
+                    for (const [key, info] of Object.entries(data.summary)) {
+                        summaryHtml += `  ${key}: 迁移 ${info.migrated} 条, 跳过 ${info.skipped} 条\n`;
+                    }
+                    if (data.errors && data.errors.length > 0) {
+                        summaryHtml += '\n错误:\n';
+                        data.errors.forEach(err => {
+                            summaryHtml += `  [${err.category}] ${err.message}\n`;
+                        });
+                    }
+                    resultEl.querySelector('pre').textContent = summaryHtml;
+                    resultEl.style.display = 'block';
+                    showToast('数据迁移成功', 'success');
+                    checkDbStatus();
+                } else {
+                    statusEl.textContent = '迁移失败';
+                    showToast('迁移失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                statusEl.textContent = '迁移失败';
+                showToast('迁移失败: ' + e.message, 'error');
+            }
+        }
+
+        async function initDbTables() {
+            try {
+                const res = await fetch(API_BASE + '?action=db/init', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('表结构初始化成功', 'success');
+                    checkDbStatus();
+                } else {
+                    showToast('初始化失败: ' + data.message, 'error');
+                }
+            } catch (e) {
+                showToast('初始化失败: ' + e.message, 'error');
             }
         }
 
