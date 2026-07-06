@@ -2353,7 +2353,7 @@ try {
                 $testDb->initTables();
                 sendJsonResponse(['success' => true, 'message' => '配置保存成功，数据库连接正常']);
             } catch (Throwable $e) {
-                sendJsonResponse(['success' => false, 'message' => '配置已保存，但数据库连接失败: ' . $e->getMessage()], 400);
+                sendJsonResponse(['success' => false, 'message' => '配置已保存，但连接失败：' . $e->getMessage()], 400);
             }
             break;
 
@@ -2383,6 +2383,9 @@ try {
                     $info['version'] = $row['v'] ?? 'unknown';
                     $stmt = $pdo->query("SHOW TABLES");
                     $info['table_count'] = $stmt->rowCount();
+                    $stmt = $pdo->query("SELECT COUNT(*) as c FROM information_schema.tables WHERE table_schema = DATABASE()");
+                    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $info['table_count'] = intval($row['c'] ?? 0);
                 } else {
                     $info['version'] = 'SQLite ' . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
                     $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
@@ -2396,7 +2399,7 @@ try {
             } catch (Throwable $e) {
                 sendJsonResponse([
                     'success' => false,
-                    'message' => '连接失败: ' . $e->getMessage(),
+                    'message' => $e->getMessage(),
                     'error' => $e->getMessage()
                 ], 400);
             }

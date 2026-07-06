@@ -61,10 +61,15 @@ class Database {
                         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                         PDO::ATTR_EMULATE_PREPARES => false,
+                        PDO::ATTR_TIMEOUT => 10,
                     ]
                 );
             } else {
                 $dbPath = $this->config['sqlite_path'] ?? __DIR__ . '/data.db';
+                $dbDir = dirname($dbPath);
+                if (!is_dir($dbDir)) {
+                    mkdir($dbDir, 0755, true);
+                }
                 $this->pdo = new PDO('sqlite:' . $dbPath);
                 $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -72,7 +77,50 @@ class Database {
                 $this->pdo->exec('PRAGMA foreign_keys=ON;');
             }
         } catch (Exception $e) {
-            throw new Exception('数据库连接失败: ' . $e->getMessage());
+            $errorMsg = $e->getMessage();
+            $friendlyMsg = $this->getFriendlyError($errorMsg, $this->dbType, $this->config);
+            throw new Exception($friendlyMsg, 0, $e);
+        }
+    }
+
+    private function getFriendlyError($errorMsg, $dbType, $config) {
+        if ($dbType === 'mysql') {
+            $host = $config['mysql_host'] ?? '127.0.0.1';
+            $port = $config['mysql_port'] ?? 3306;
+            $user = $config['mysql_username'] ?? 'root';
+            $dbname = $config['mysql_dbname'] ?? 'm3u8_ad';
+
+            if (strpos($errorMsg, 'Access denied') !== false) {
+                return "MySQL 连接失败：用户名或密码错误。请检查用户名（{$user}）和密码是否正确。";
+            }
+            if (strpos($errorMsg, 'Connection refused') !== false || strpos($errorMsg, 'HY000') !== false && strpos($errorMsg, '2002') !== false) {
+                return "MySQL 连接失败：无法连接到服务器 {$host}:{$port}。请检查 MySQL 服务是否启动，以及主机和端口是否正确。";
+            }
+            if (strpos($errorMsg, 'Unknown database') !== false) {
+                return "MySQL 连接失败：数据库「{$dbname}」不存在。请先创建数据库或检查数据库名是否正确。";
+            }
+            if (strpos($errorMsg, 'No such file or directory') !== false || strpos($errorMsg, 'could not find driver') !== false) {
+                return "MySQL 连接失败：PHP 未安装 MySQL 扩展（pdo_mysql）。请在 php.ini 中启用 extension=pdo_mysql。";
+            }
+            if (strpos($errorMsg, 'getaddrinfo failed') !== false || strpos($errorMsg, 'php_network_getaddresses') !== false) {
+                return "MySQL 连接失败：主机名「{$host}」无法解析。请检查主机地址是否正确。";
+            }
+            if (strpos($errorMsg, 'timeout') !== false || strpos($errorMsg, 'Timeout') !== false) {
+                return "MySQL 连接超时：服务器 {$host}:{$port} 响应超时。请检查网络连接和防火墙设置。";
+            }
+            return "MySQL 连接失败：{$errorMsg}";
+        } else {
+            $path = $config['sqlite_path'] ?? '';
+            if (strpos($errorMsg, 'could not find driver') !== false) {
+                return "SQLite 连接失败：PHP 未安装 SQLite 扩展（pdo_sqlite）。请在 php.ini 中启用 extension=pdo_sqlite。";
+            }
+            if (strpos($errorMsg, 'permission denied') !== false || strpos($errorMsg, 'Permission denied') !== false) {
+                return "SQLite 连接失败：数据库文件「{$path}」无读写权限。请检查目录和文件权限。";
+            }
+            if (strpos($errorMsg, 'No such file') !== false || strpos($errorMsg, 'unable to open') !== false) {
+                return "SQLite 连接失败：数据库文件路径不存在或无法创建。请检查路径「{$path}」是否正确。";
+            }
+            return "SQLite 连接失败：{$errorMsg}";
         }
     }
 
