@@ -14,6 +14,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+function gzgxJsonErrorHandler($errno, $errstr, $errfile, $errline) {
+    if (!(error_reporting() & $errno)) {
+        return;
+    }
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (in_array($errno, $fatalTypes)) {
+        @http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => $errstr,
+            'error_detail' => [
+                'file' => basename($errfile),
+                'line' => $errline
+            ]
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    return true;
+}
+set_error_handler('gzgxJsonErrorHandler');
+
+function gzgxFatalHandler() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        @http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => $error['message'],
+            'error_detail' => [
+                'file' => basename($error['file']),
+                'line' => $error['line']
+            ],
+            'fatal_error' => true
+        ], JSON_UNESCAPED_UNICODE);
+    }
+}
+register_shutdown_function('gzgxFatalHandler');
+
 require_once __DIR__ . '/DomainRuleManager.php';
 require_once __DIR__ . '/EnhancedAdRuleEngine.php';
 require_once __DIR__ . '/ResourceSiteManager.php';

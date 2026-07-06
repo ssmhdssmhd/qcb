@@ -53,7 +53,7 @@ function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
     }
     $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
     if (in_array($errno, $fatalTypes)) {
-        sendJsonResponse([
+        @sendJsonResponse([
             'success' => false,
             'message' => $errstr,
             'error_detail' => [

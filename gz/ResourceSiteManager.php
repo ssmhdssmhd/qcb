@@ -834,103 +834,118 @@ class ResourceSiteManager {
     }
 
     public function runAutoLearn($domainRuleManager, $options = []) {
-        $config = $this->getAutoLearnConfig();
-        if (empty($config['enabled'])) {
-            return ['success' => false, 'message' => '自动学习未启用'];
-        }
-
-        $maxSites = $options['max_sites'] ?? $config['max_sites_per_run'] ?? 5;
-        $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
-        $minSegments = $config['min_segments'] ?? 50;
-        $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
-        $keyword = $options['keyword'] ?? '';
-
-        $sites = $this->getAllSites(false);
-        $sites = array_slice($sites, 0, $maxSites);
-
-        $results = [];
-        $totalLearned = 0;
-        $totalFailed = 0;
-
-        foreach ($sites as $site) {
-            $siteResult = [
-                'site' => $site['name'],
-                'videos_checked' => 0,
-                'videos_learned' => 0,
-                'videos_failed' => 0,
-                'domains' => []
-            ];
-
-            if (!empty($keyword)) {
-                $fetchResult = $this->searchVideos($site['api_url'], $keyword, 1, $videosPerSite * 3);
-            } else {
-                $fetchResult = $this->fetchVideos($site['api_url'], 1, $videosPerSite * 3);
+        try {
+            $config = $this->getAutoLearnConfig();
+            if (empty($config['enabled'])) {
+                return ['success' => false, 'message' => '自动学习未启用'];
             }
 
-            if (!$fetchResult['success']) {
-                $siteResult['error'] = $fetchResult['message'];
-                $results[] = $siteResult;
-                continue;
-            }
+            $maxSites = $options['max_sites'] ?? $config['max_sites_per_run'] ?? 5;
+            $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
+            $minSegments = $config['min_segments'] ?? 50;
+            $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
+            $keyword = $options['keyword'] ?? '';
 
-            $videos = $fetchResult['videos'] ?? [];
-            $learnedCount = 0;
+            $sites = $this->getAllSites(false);
+            $sites = array_slice($sites, 0, $maxSites);
 
-            foreach ($videos as $video) {
-                if ($learnedCount >= $videosPerSite) break;
+            $results = [];
+            $totalLearned = 0;
+            $totalFailed = 0;
 
-                $siteResult['videos_checked']++;
+            foreach ($sites as $site) {
+                $siteResult = [
+                    'site' => $site['name'],
+                    'videos_checked' => 0,
+                    'videos_learned' => 0,
+                    'videos_failed' => 0,
+                    'domains' => []
+                ];
 
-                $videoUrl = $video['url'] ?? $video['first_url'] ?? '';
-                if (empty($videoUrl)) continue;
-
-                $learnResult = $this->learnFromVideoUrl($videoUrl, $domainRuleManager, [
-                    'min_segments' => $minSegments,
-                    'max_ad_percentage' => $maxAdPercentage
-                ]);
-
-                if ($learnResult['success']) {
-                    $videoDomain = $learnResult['domain'] ?? '';
-                    if ($videoDomain) {
-                        if (!isset($siteResult['domains'][$videoDomain])) {
-                            $siteResult['domains'][$videoDomain] = 0;
-                        }
-                        $siteResult['domains'][$videoDomain]++;
+                try {
+                    if (!empty($keyword)) {
+                        $fetchResult = $this->searchVideos($site['api_url'], $keyword, 1, $videosPerSite * 3);
+                    } else {
+                        $fetchResult = $this->fetchVideos($site['api_url'], 1, $videosPerSite * 3);
                     }
-                    $siteResult['videos_learned']++;
-                    $totalLearned++;
-                    $learnedCount++;
-                } else {
+
+                    if (!$fetchResult['success']) {
+                        $siteResult['error'] = $fetchResult['message'];
+                        $results[] = $siteResult;
+                        continue;
+                    }
+
+                    $videos = $fetchResult['videos'] ?? [];
+                    $learnedCount = 0;
+
+                    foreach ($videos as $video) {
+                        if ($learnedCount >= $videosPerSite) break;
+
+                        $siteResult['videos_checked']++;
+
+                        $videoUrl = $video['url'] ?? $video['first_url'] ?? '';
+                        if (empty($videoUrl)) continue;
+
+                        $learnResult = $this->learnFromVideoUrl($videoUrl, $domainRuleManager, [
+                            'min_segments' => $minSegments,
+                            'max_ad_percentage' => $maxAdPercentage
+                        ]);
+
+                        if ($learnResult['success']) {
+                            $videoDomain = $learnResult['domain'] ?? '';
+                            if ($videoDomain) {
+                                if (!isset($siteResult['domains'][$videoDomain])) {
+                                    $siteResult['domains'][$videoDomain] = 0;
+                                }
+                                $siteResult['domains'][$videoDomain]++;
+                            }
+                            $siteResult['videos_learned']++;
+                            $totalLearned++;
+                            $learnedCount++;
+                        } else {
+                            $siteResult['videos_failed']++;
+                            $totalFailed++;
+                        }
+
+                        unset($learnResult);
+                        if (function_exists('gc_collect_cycles')) {
+                            gc_collect_cycles();
+                        }
+                    }
+
+                    unset($videos);
+                    unset($fetchResult);
+                    if (function_exists('gc_collect_cycles')) {
+                        gc_collect_cycles();
+                    }
+                } catch (Throwable $e) {
+                    $siteResult['error'] = $e->getMessage();
                     $siteResult['videos_failed']++;
                     $totalFailed++;
                 }
 
-                unset($learnResult);
-                if (function_exists('gc_collect_cycles')) {
-                    gc_collect_cycles();
-                }
+                $results[] = $siteResult;
             }
 
-            unset($videos);
-            unset($fetchResult);
-            if (function_exists('gc_collect_cycles')) {
-                gc_collect_cycles();
-            }
+            $this->setLastLearnTime();
 
-            $results[] = $siteResult;
+            return [
+                'success' => true,
+                'message' => '自动学习完成',
+                'keyword' => $keyword,
+                'sites_processed' => count($sites),
+                'total_learned' => $totalLearned,
+                'total_failed' => $totalFailed,
+                'details' => $results
+            ];
+        } catch (Throwable $e) {
+            return [
+                'success' => false,
+                'message' => '自动学习异常: ' . $e->getMessage(),
+                'error_file' => basename($e->getFile()),
+                'error_line' => $e->getLine()
+            ];
         }
-
-        $this->setLastLearnTime();
-
-        return [
-            'success' => true,
-            'message' => '自动学习完成',
-            'keyword' => $keyword,
-            'sites_processed' => count($sites),
-            'total_learned' => $totalLearned,
-            'total_failed' => $totalFailed,
-            'details' => $results
-        ];
     }
 
     public function learnFromVideoUrl($videoUrl, $domainRuleManager, $options = []) {
@@ -1005,7 +1020,7 @@ class ResourceSiteManager {
             } else {
                 return ['success' => false, 'message' => '规则学习失败', 'domain' => $videoDomain];
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (isset($playlist)) unset($playlist);
             if (isset($engine)) unset($engine);
             if (isset($analysis)) unset($analysis);
@@ -1053,7 +1068,7 @@ class ResourceSiteManager {
                     }
                 }
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
         }
         return $url;
     }
