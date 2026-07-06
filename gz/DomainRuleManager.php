@@ -11,14 +11,19 @@ class DomainRuleManager {
     public function getAllRules() {
         $rules = [];
         $files = glob($this->gzDir . '/rules_*.php');
+        if (!is_array($files)) return $rules;
         foreach ($files as $file) {
-            $domainRules = require $file;
-            if (is_array($domainRules) && isset($domainRules['domain'])) {
-                $domainRules = $this->normalizeRules($domainRules);
-                $filename = basename($file);
-                $domainRules['_filename'] = $filename;
-                $domainRules['_filemtime'] = filemtime($file);
-                $rules[$domainRules['domain']] = $domainRules;
+            try {
+                $domainRules = @require $file;
+                if (is_array($domainRules) && !empty($domainRules['domain']) && is_string($domainRules['domain'])) {
+                    $domainRules = $this->normalizeRules($domainRules);
+                    $filename = basename($file);
+                    $domainRules['_filename'] = $filename;
+                    $domainRules['_filemtime'] = filemtime($file);
+                    $rules[$domainRules['domain']] = $domainRules;
+                }
+            } catch (Throwable $e) {
+                error_log('加载规则文件失败: ' . basename($file) . ' - ' . $e->getMessage());
             }
         }
         return $rules;
@@ -36,6 +41,8 @@ class DomainRuleManager {
     }
 
     private function normalizeRules($rules) {
+        if (!is_array($rules)) $rules = [];
+
         $arrayFields = ['duration_rules', 'discontinuity_rules', 'sequence_jump_rules',
                         'filename_patterns', 'insertion_patterns', 'ad_type_stats',
                         'psychological_profile', 'history_stats', 'marker_stats'];
@@ -44,6 +51,33 @@ class DomainRuleManager {
                 $rules[$field] = [];
             }
         }
+
+        if (!isset($rules['learn_count']) || !is_numeric($rules['learn_count'])) {
+            $rules['learn_count'] = 0;
+        } else {
+            $rules['learn_count'] = intval($rules['learn_count']);
+        }
+
+        if (!isset($rules['ad_threshold']) || !is_numeric($rules['ad_threshold'])) {
+            $rules['ad_threshold'] = 50;
+        } else {
+            $rules['ad_threshold'] = intval($rules['ad_threshold']);
+        }
+
+        if (!isset($rules['confidence_score']) || !is_numeric($rules['confidence_score'])) {
+            $rules['confidence_score'] = 0;
+        } else {
+            $rules['confidence_score'] = intval($rules['confidence_score']);
+        }
+
+        if (!isset($rules['name']) || !is_string($rules['name'])) {
+            $rules['name'] = $rules['domain'] ?? '';
+        }
+
+        if (!isset($rules['note']) || !is_string($rules['note'])) {
+            $rules['note'] = '';
+        }
+
         return $rules;
     }
 
@@ -72,6 +106,23 @@ class DomainRuleManager {
             return unlink($file);
         }
         return false;
+    }
+
+    public function clearAllRules() {
+        $count = 0;
+        $files = glob($this->gzDir . '/rules_*.php');
+        if (!is_array($files)) return $count;
+        foreach ($files as $file) {
+            if (unlink($file)) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    public function getRuleCount() {
+        $files = glob($this->gzDir . '/rules_*.php');
+        return is_array($files) ? count($files) : 0;
     }
 
     public function learnFromAnalysis($domain, $analysisResult) {

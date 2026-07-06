@@ -509,6 +509,15 @@ try {
             sendJsonResponse($result, $result['success'] ? 200 : 400);
             break;
 
+        case 'rules/clear':
+            $count = $ruleManager->clearAllRules();
+            sendJsonResponse([
+                'success' => true,
+                'message' => '已清理 ' . $count . ' 条规则',
+                'cleared_count' => $count
+            ]);
+            break;
+
         case 'skip':
             $url = $_GET['url'] ?? '';
             if (empty($url)) {
@@ -1230,6 +1239,165 @@ try {
             }
             break;
 
+        case 'sites/analyze_batch':
+            $input = getInputJson();
+            $urls = $input['urls'] ?? [];
+            $concurrency = isset($input['concurrency']) ? intval($input['concurrency']) : 5;
+            $useMultiThread = !empty($input['multi_thread']);
+
+            if (empty($urls) || !is_array($urls)) {
+                sendJsonResponse(['success' => false, 'message' => '请提供视频URL列表'], 400);
+            }
+
+            $concurrency = max(1, min(10, $concurrency));
+            $total = count($urls);
+
+            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
+            $selfBase = $scheme . '://' . $host . $basePath . '/mx.php?action=analyze';
+
+            $tasks = [];
+            foreach ($urls as $idx => $url) {
+                $tasks[] = [
+                    'id' => $idx,
+                    'url' => $url
+                ];
+            }
+
+            if ($useMultiThread && TaskRunner::isMultiThreadAvailable()) {
+                $runner = TaskRunner::create([
+                    'concurrency' => $concurrency,
+                    'mode' => TaskRunner::MODE_CURL_MULTI,
+                    'timeout' => 120
+                ]);
+
+                $startTime = microtime(true);
+                $results = $runner->run($tasks, function($task) use ($selfBase) {
+                    $apiUrl = $selfBase . '&url=' . urlencode($task['url']);
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $apiUrl);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+                    $response = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($httpCode >= 200 && $httpCode < 300) {
+                        $data = json_decode($response, true);
+                        return $data ?: $response;
+                    }
+                    throw new Exception("HTTP $httpCode");
+                });
+                $totalTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                $successCount = 0;
+                $failCount = 0;
+                $resultDetails = [];
+
+                foreach ($results as $i => $result) {
+                    $data = $result->data;
+                    if ($result->success && is_array($data) && !empty($data['success'])) {
+                        $successCount++;
+                        $resultDetails[] = [
+                            'url' => $urls[$i],
+                            'success' => true,
+                            'domain' => $data['domain'] ?? '',
+                            'fast_mode' => $data['fastMode'] ?? false,
+                            'stats' => $data['stats'] ?? [],
+                            'duration' => $result->duration
+                        ];
+                    } else {
+                        $failCount++;
+                        $resultDetails[] = [
+                            'url' => $urls[$i],
+                            'success' => false,
+                            'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
+                            'duration' => $result->duration
+                        ];
+                    }
+                }
+
+                sendJsonResponse([
+                    'success' => true,
+                    'mode' => $runner->getActualMode(),
+                    'concurrency' => $concurrency,
+                    'total' => $total,
+                    'success_count' => $successCount,
+                    'fail_count' => $failCount,
+                    'total_time' => $totalTime,
+                    'results' => $resultDetails
+                ]);
+            } else {
+                $startTime = microtime(true);
+                $successCount = 0;
+                $failCount = 0;
+                $resultDetails = [];
+
+                foreach ($urls as $i => $url) {
+                    try {
+                        $parsedUrl = parse_url($url);
+                        $domain = $parsedUrl['host'] ?? '';
+                        $mediaUrl = resolveMasterPlaylist($url);
+
+                        $engine = new EnhancedAdRuleEngine([
+                            'checkDiscontinuity' => true,
+                            'checkRepetitiveDuration' => true
+                        ]);
+                        $engine->setDomain($domain);
+
+                        $parser = new M3U8Parser();
+                        $playlist = $parser->parse($mediaUrl);
+
+                        if (empty($playlist['segments'])) {
+                            $failCount++;
+                            $resultDetails[] = ['url' => $url, 'success' => false, 'message' => '无法解析视频片段'];
+                            continue;
+                        }
+
+                        $analysis = $engine->analyzeAllSegments($playlist['segments']);
+                        $successCount++;
+                        $resultDetails[] = [
+                            'url' => $url,
+                            'success' => true,
+                            'domain' => $domain,
+                            'fast_mode' => false,
+                            'stats' => [
+                                'totalSegments' => $analysis['totalCount'],
+                                'adSegments' => $analysis['adCount'],
+                                'discontinuityCount' => $analysis['discontinuityCount'],
+                                'sequenceJumps' => count($analysis['sequenceJumps']),
+                                'adClusters' => count($analysis['adClusters'])
+                            ]
+                        ];
+                    } catch (Throwable $e) {
+                        $failCount++;
+                        $resultDetails[] = ['url' => $url, 'success' => false, 'message' => $e->getMessage()];
+                    }
+                }
+                $totalTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                sendJsonResponse([
+                    'success' => true,
+                    'mode' => 'serial',
+                    'concurrency' => 1,
+                    'total' => $total,
+                    'success_count' => $successCount,
+                    'fail_count' => $failCount,
+                    'total_time' => $totalTime,
+                    'results' => $resultDetails
+                ]);
+            }
+            break;
+
         case 'sites/multi_thread/status':
             $available = TaskRunner::isMultiThreadAvailable();
             $modes = TaskRunner::getAvailableModes();
@@ -1266,13 +1434,159 @@ try {
 
         case 'sites/auto_learn/run':
             $input = getInputJson();
+            $useMultiThread = !empty($input['multi_thread']);
+            $concurrency = isset($input['concurrency']) ? intval($input['concurrency']) : 5;
             $options = [
                 'max_sites' => $input['max_sites'] ?? null,
                 'videos_per_site' => $input['videos_per_site'] ?? null,
                 'keyword' => $input['keyword'] ?? ''
             ];
-            $result = $siteManager->runAutoLearn($ruleManager, $options);
-            sendJsonResponse($result, $result['success'] ? 200 : 400);
+
+            if ($useMultiThread && TaskRunner::isMultiThreadAvailable()) {
+                $config = $siteManager->getAutoLearnConfig();
+                if (empty($config['enabled'])) {
+                    sendJsonResponse(['success' => false, 'message' => '自动学习未启用'], 400);
+                }
+
+                $maxSites = $options['max_sites'] ?? $config['max_sites_per_run'] ?? 5;
+                $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
+                $minSegments = $config['min_segments'] ?? 50;
+                $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
+                $keyword = $options['keyword'] ?? '';
+
+                $sites = $siteManager->getAllSites(false);
+                $sites = array_slice($sites, 0, $maxSites);
+
+                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                $basePath = dirname($requestUri);
+                $basePath = $basePath === '/' ? '' : $basePath;
+                $selfBase = $scheme . '://' . $host . $basePath . '/mx.php?action=sites/learn_video';
+
+                $allVideos = [];
+                $siteVideoMap = [];
+
+                foreach ($sites as $site) {
+                    try {
+                        if (!empty($keyword)) {
+                            $fetchResult = $siteManager->searchVideos($site['api_url'], $keyword, 1, $videosPerSite * 3);
+                        } else {
+                            $fetchResult = $siteManager->fetchVideos($site['api_url'], 1, $videosPerSite * 3);
+                        }
+                        if ($fetchResult['success']) {
+                            $videos = $fetchResult['videos'] ?? [];
+                            $count = 0;
+                            foreach ($videos as $video) {
+                                if ($count >= $videosPerSite) break;
+                                $videoUrl = $video['url'] ?? $video['first_url'] ?? '';
+                                if (!empty($videoUrl)) {
+                                    $allVideos[] = [
+                                        'id' => count($allVideos),
+                                        'url' => $videoUrl,
+                                        'site' => $site['name'],
+                                        'name' => $video['name'] ?? '未知'
+                                    ];
+                                    if (!isset($siteVideoMap[$site['name']])) {
+                                        $siteVideoMap[$site['name']] = 0;
+                                    }
+                                    $count++;
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) {
+                    }
+                }
+
+                $concurrency = max(1, min(10, $concurrency));
+                $runner = TaskRunner::create([
+                    'concurrency' => $concurrency,
+                    'mode' => TaskRunner::MODE_CURL_MULTI,
+                    'timeout' => 120
+                ]);
+
+                $startTime = microtime(true);
+                $results = $runner->run($allVideos, function($task) use ($selfBase) {
+                    $apiUrl = $task['url'] ? $selfBase : '';
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $apiUrl);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['url' => $task['url']]));
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+                    $response = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($httpCode >= 200 && $httpCode < 300) {
+                        $data = json_decode($response, true);
+                        return $data ?: ['success' => false, 'message' => '解析失败'];
+                    }
+                    throw new Exception("HTTP $httpCode");
+                });
+                $totalTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                $successCount = 0;
+                $failCount = 0;
+                $learnedDomains = [];
+                $siteResults = [];
+
+                foreach ($results as $i => $result) {
+                    $video = $allVideos[$i];
+                    $siteName = $video['site'] ?? '';
+                    if (!isset($siteResults[$siteName])) {
+                        $siteResults[$siteName] = [
+                            'site' => $siteName,
+                            'videos_checked' => 0,
+                            'videos_learned' => 0,
+                            'videos_failed' => 0,
+                            'domains' => []
+                        ];
+                    }
+                    $siteResults[$siteName]['videos_checked']++;
+
+                    $data = $result->data;
+                    if ($result->success && is_array($data) && !empty($data['success'])) {
+                        $successCount++;
+                        $siteResults[$siteName]['videos_learned']++;
+                        if (!empty($data['domain'])) {
+                            $learnedDomains[$data['domain']] = true;
+                            if (!isset($siteResults[$siteName]['domains'][$data['domain']])) {
+                                $siteResults[$siteName]['domains'][$data['domain']] = 0;
+                            }
+                            $siteResults[$siteName]['domains'][$data['domain']]++;
+                        }
+                    } else {
+                        $failCount++;
+                        $siteResults[$siteName]['videos_failed']++;
+                    }
+                }
+
+                $siteManager->setLastLearnTime();
+
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '自动学习完成（多线程模式）',
+                    'mode' => $runner->getActualMode(),
+                    'concurrency' => $concurrency,
+                    'keyword' => $keyword,
+                    'sites_processed' => count($sites),
+                    'total_learned' => $successCount,
+                    'total_failed' => $failCount,
+                    'total_time' => $totalTime,
+                    'learned_domains' => array_keys($learnedDomains),
+                    'details' => array_values($siteResults)
+                ]);
+            } else {
+                $result = $siteManager->runAutoLearn($ruleManager, $options);
+                sendJsonResponse($result, $result['success'] ? 200 : 400);
+            }
             break;
 
         case 'sites/auto_learn/status':

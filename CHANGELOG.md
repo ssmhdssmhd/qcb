@@ -5,6 +5,62 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.21.0] - 2026-07-06
+
+### 🔧 修复规则列表加载异常
+
+**问题**: 规则管理页面的规则列表无法正常加载显示，原因是部分损坏的规则文件（字段类型不匹配）导致整个列表加载失败。
+
+**修复内容**:
+- [DomainRuleManager.php](file:///workspace/gz/DomainRuleManager.php) `getAllRules()` 增加 try-catch 容错，单个规则文件损坏时跳过并记录日志，不影响其他规则加载
+- 增强 `normalizeRules()` 方法，确保 `learn_count`、`ad_threshold`、`confidence_score`、`name`、`note` 等字段类型正确
+- 增加 `domain` 字段字符串类型校验，过滤无效规则
+
+### 🗑️ 新增规则管理 - 一键清理所有规则
+
+**后台管理规则页面新增功能**:
+- 红色"🗑️ 一键清理所有规则"按钮
+- 双重确认机制，防止误操作
+- 清理完成后自动刷新列表
+- 显示清理的规则数量
+
+**后端 API**:
+- `rules/clear` - 清理所有域名规则文件
+- 返回清理的规则数量
+
+**新增方法**:
+- `DomainRuleManager::clearAllRules()` - 删除所有规则文件
+- `DomainRuleManager::getRuleCount()` - 获取规则文件数量
+
+### ⚡ 自动学习配置 - 支持多线程加速
+
+**自动学习配置页面新增**:
+- 多线程加速开关（启用/禁用）
+- 并发数选择器（2/3/5/8/10）
+
+**后端 `sites/auto_learn/run` 接口增强**:
+- 支持 `multi_thread` 参数启用多线程模式
+- 支持 `concurrency` 参数设置并发数
+- 多线程模式下使用 `TaskRunner` + `curl_multi` 并发请求学习接口
+- 自动收集所有站点视频后批量并发学习
+- 返回结果包含 `mode`、`concurrency`、`total_time`、`learned_domains` 等详细信息
+- 不支持多线程时自动降级为串行模式
+
+### 🔍 一键分析全部 - 多线程批量分析
+
+**全新实现 `batchAnalyzeAll` 功能**:
+- 之前版本仅跳转分析第一个视频，现改为真正的批量分析
+- 支持后端多线程加速（使用 `sites/analyze_batch` 接口）
+- 使用 `TaskRunner` + `curl_multi` 并发处理
+- 支持并发数配置
+- 分析完成后显示详细统计：总数、成功数、失败数、耗时、模式
+- 支持展开查看每个视频的分析详情（片段数、广告数、是否快速模式等）
+
+**新增后端 API**:
+- `sites/analyze_batch` - 批量分析视频接口
+- 支持多线程和串行两种模式
+- 返回每个视频的分析结果和统计信息
+
 ## [2.20.0] - 2026-07-06
 
 ### 🚀 新增 PHP 多线程/多进程模块 - 独立可调用
