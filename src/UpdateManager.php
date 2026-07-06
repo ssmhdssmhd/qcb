@@ -10,6 +10,32 @@ class UpdateManager
     private $githubRepo = 'ssmhdssmhd/qcb';
     private $githubBranch = 'main';
     private $authValidator;
+    // GitHub API 镜像列表（按优先级排序，直连 + 多个国内代理）
+    private $githubApiMirrors = [
+        'https://api.github.com',
+        'https://ghp.ci/https://api.github.com',
+        'https://ghproxy.net/https://api.github.com',
+        'https://gh-proxy.com/https://api.github.com',
+        'https://mirror.ghproxy.com/https://api.github.com',
+    ];
+    // GitHub Raw 文件镜像列表
+    private $githubRawMirrors = [
+        'https://raw.githubusercontent.com',
+        'https://cdn.jsdelivr.net/gh',
+        'https://fastly.jsdelivr.net/gh',
+        'https://gcore.jsdelivr.net/gh',
+        'https://raw.staticdn.net',
+        'https://ghp.ci/https://raw.githubusercontent.com',
+        'https://ghproxy.net/https://raw.githubusercontent.com',
+    ];
+    // GitHub 下载镜像列表
+    private $githubDownloadMirrors = [
+        'https://github.com',
+        'https://ghp.ci/https://github.com',
+        'https://ghproxy.net/https://github.com',
+        'https://gh-proxy.com/https://github.com',
+        'https://mirror.ghproxy.com/https://github.com',
+    ];
     private $coreFiles = [
         'index.php',
         'mx.php',
@@ -179,33 +205,12 @@ class UpdateManager
 
     private function fetchLatestVersionFromGitHub()
     {
-        $urls = [
-            'https://raw.githubusercontent.com/' . $this->githubRepo . '/' . $this->githubBranch . '/version.php',
-            'https://cdn.jsdelivr.net/gh/' . $this->githubRepo . '@' . $this->githubBranch . '/version.php',
-            'https://fastly.jsdelivr.net/gh/' . $this->githubRepo . '@' . $this->githubBranch . '/version.php',
-            'https://gcore.jsdelivr.net/gh/' . $this->githubRepo . '@' . $this->githubBranch . '/version.php'
-        ];
-
-        foreach ($urls as $url) {
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-            curl_setopt($ch, CURLOPT_TIMEOUT, 8);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($httpCode === 200 && $response) {
-                if (preg_match('/[\'"]version[\'"]\s*=>\s*[\'"](v?\d+\.\d+\.\d+)[\'"]/', $response, $m)) {
-                    return $m[1];
-                }
+        $result = $this->githubRawGet('version.php', 8);
+        if ($result['success'] && $result['data']) {
+            if (preg_match('/[\'"]version[\'"]\s*=>\s*[\'"](v?\d+\.\d+\.\d+)[\'"]/', $result['data'], $m)) {
+                return $m[1];
             }
         }
-
         return null;
     }
 
@@ -301,41 +306,123 @@ class UpdateManager
             ];
         }
 
-        $githubTest = $this->curlTest('https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch, 5);
+        $apiPath = '/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
+        $githubTest = $this->githubCurlGet($apiPath, 5);
         $info['github'] = [
             'reachable' => $githubTest['success'],
             'error' => $githubTest['error'] ?? '',
             'mirror' => $githubTest['mirror'] ?? '',
+            'tested_mirrors' => count($this->githubApiMirrors),
         ];
 
         return ['success' => true, 'data' => $info];
     }
 
-    private function curlTest($url, $timeout = 30)
+    /**
+     * 统一的 GitHub 多镜像 curl GET 请求
+     * 依次尝试多个镜像，返回第一个成功的响应
+     * @param string $path GitHub API 路径（如 /repos/...）
+     * @param int $timeout 单个镜像超时秒数
+     * @return array ['success'=>bool, 'data'=>string, 'mirror'=>string, 'error'=>string]
+     */
+    private function githubCurlGet($path, $timeout = 8)
     {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        $errors = [];
+        foreach ($this->githubApiMirrors as $mirror) {
+            $url = rtrim($mirror, '/') . $path;
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode === 200 && $response !== false) {
-            return ['success' => true, 'mirror' => $url];
+            if ($httpCode === 200 && $response !== false) {
+                return ['success' => true, 'data' => $response, 'mirror' => $url, 'error' => ''];
+            }
+            $errors[] = $mirror . ': ' . ($error ?: 'HTTP ' . $httpCode);
         }
+        return ['success' => false, 'data' => '', 'mirror' => '', 'error' => implode(' | ', $errors)];
+    }
 
-        return [
-            'success' => false,
-            'error' => $error ?: ('HTTP ' . $httpCode),
-            'mirror' => $url,
-        ];
+    /**
+     * 统一的 GitHub Raw 文件多镜像请求
+     * @param string $filePath 仓库内文件路径（如 version.php）
+     * @param int $timeout 单个镜像超时秒数
+     * @return array ['success'=>bool, 'data'=>string, 'mirror'=>string]
+     */
+    private function githubRawGet($filePath, $timeout = 8)
+    {
+        foreach ($this->githubRawMirrors as $i => $mirror) {
+            // jsdelivr 格式: cdn.jsdelivr.net/gh/user/repo@branch/file
+            if (strpos($mirror, 'jsdelivr.net') !== false) {
+                $url = $mirror . '/' . $this->githubRepo . '@' . $this->githubBranch . '/' . $filePath;
+            } elseif (strpos($mirror, 'staticdn.net') !== false) {
+                $url = $mirror . '/' . $this->githubRepo . '/' . $this->githubBranch . '/' . $filePath;
+            } elseif (strpos($mirror, 'ghp.ci') !== false || strpos($mirror, 'ghproxy') !== false) {
+                $url = $mirror . '/https://raw.githubusercontent.com/' . $this->githubRepo . '/' . $this->githubBranch . '/' . $filePath;
+            } else {
+                $url = $mirror . '/' . $this->githubRepo . '/' . $this->githubBranch . '/' . $filePath;
+            }
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200 && $response) {
+                return ['success' => true, 'data' => $response, 'mirror' => $url];
+            }
+        }
+        return ['success' => false, 'data' => '', 'mirror' => ''];
+    }
+
+    /**
+     * 统一的 GitHub 下载文件多镜像请求（用于下载 zip 等大文件）
+     * @param string $downloadPath GitHub 下载路径（如 /user/repo/archive/refs/heads/main.zip）
+     * @param int $timeout 单个镜像超时秒数
+     * @return array ['success'=>bool, 'data'=>string, 'mirror'=>string, 'error'=>string]
+     */
+    private function githubDownloadFile($downloadPath, $timeout = 60)
+    {
+        $errors = [];
+        foreach ($this->githubDownloadMirrors as $mirror) {
+            $url = rtrim($mirror, '/') . $downloadPath;
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($httpCode === 200 && $response !== false && strlen($response) > 1024) {
+                return ['success' => true, 'data' => $response, 'mirror' => $url, 'error' => ''];
+            }
+            $errors[] = $mirror . ': ' . ($error ?: 'HTTP ' . $httpCode);
+        }
+        return ['success' => false, 'data' => '', 'mirror' => '', 'error' => implode(' | ', $errors)];
     }
 
     public function checkUpdate()
@@ -348,23 +435,14 @@ class UpdateManager
         $commitDate = '';
         $githubConnected = false;
 
-        $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $apiUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $apiPath = '/repos/' . $this->githubRepo . '/commits/' . $this->githubBranch;
+        $result = $this->githubCurlGet($apiPath, 8);
 
-        if ($httpCode === 200 && $response) {
-            $data = json_decode($response, true);
+        if ($result['success']) {
+            $data = json_decode($result['data'], true);
             if ($data) {
                 $githubConnected = true;
+                $usedMirror = $result['mirror'];
                 $latestCommit = $data['sha'] ?? '';
                 $commitMessage = $data['commit']['message'] ?? '无描述';
                 $commitDate = $data['commit']['committer']['date'] ?? '';
@@ -415,6 +493,7 @@ class UpdateManager
             'latest_date' => $commitDate,
             'has_update' => $hasUpdate,
             'github_connected' => $githubConnected,
+            'used_mirror' => $githubConnected ? ($usedMirror ?? '') : '',
             'repo_url' => 'https://github.com/' . $this->githubRepo,
             'changelog' => $changelog
         ];
@@ -423,25 +502,14 @@ class UpdateManager
     private function getRecentCommits($sinceCommit = '')
     {
         $changelog = [];
-        $apiUrl = 'https://api.github.com/repos/' . $this->githubRepo . '/commits?sha=' . $this->githubBranch . '&per_page=20';
-        
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $apiUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $apiPath = '/repos/' . $this->githubRepo . '/commits?sha=' . $this->githubBranch . '&per_page=20';
+        $result = $this->githubCurlGet($apiPath, 10);
 
-        if ($httpCode !== 200 || !$response) {
+        if (!$result['success'] || !$result['data']) {
             return $changelog;
         }
 
-        $commits = json_decode($response, true);
+        $commits = json_decode($result['data'], true);
         if (!is_array($commits)) {
             return $changelog;
         }
@@ -655,26 +723,19 @@ class UpdateManager
             ];
         }
 
-        $downloadUrl = 'https://github.com/' . $this->githubRepo . '/archive/refs/heads/' . $this->githubBranch . '.zip';
+        $downloadPath = '/' . $this->githubRepo . '/archive/refs/heads/' . $this->githubBranch . '.zip';
         $tempFile = tempnam(sys_get_temp_dir(), 'update_');
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $downloadUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Ad-Skipper');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-        $fileContent = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $downloadResult = $this->githubDownloadFile($downloadPath, 60);
 
-        if ($httpCode !== 200 || !$fileContent) {
+        if (!$downloadResult['success'] || !$downloadResult['data']) {
             return [
                 'success' => false,
-                'message' => '下载更新包失败'
+                'message' => '下载更新包失败: ' . $downloadResult['error']
             ];
         }
 
-        file_put_contents($tempFile, $fileContent);
+        file_put_contents($tempFile, $downloadResult['data']);
 
         if (!extension_loaded('zip')) {
             unlink($tempFile);
@@ -740,7 +801,8 @@ class UpdateManager
             'new_version' => $latestVersion,
             'new_commit' => $latestCommit,
             'cleaned_files' => $cleanedFiles,
-            'integrity_check' => $integrityCheck
+            'integrity_check' => $integrityCheck,
+            'download_mirror' => $downloadResult['mirror'] ?? ''
         ];
     }
 

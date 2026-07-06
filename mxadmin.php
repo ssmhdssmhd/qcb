@@ -3283,7 +3283,16 @@ header('Expires: 0');
                 
                 if (githubStatusEl) {
                     if (data.github_connected) {
-                        githubStatusEl.textContent = '连接成功';
+                        let mirrorInfo = '';
+                        if (data.used_mirror) {
+                            try {
+                                const m = new URL(data.used_mirror);
+                                mirrorInfo = ' (' + m.host + ')';
+                            } catch (e) {
+                                mirrorInfo = ' (' + data.used_mirror + ')';
+                            }
+                        }
+                        githubStatusEl.textContent = '连接成功' + mirrorInfo;
                         githubStatusEl.className = 'stat-value success';
                     } else {
                         githubStatusEl.textContent = '连接失败';
@@ -3361,8 +3370,21 @@ header('Expires: 0');
                 
                 const info = data.data;
                 
-                document.getElementById('githubStatus').textContent = info.github.reachable ? '连接成功' : '连接失败';
+                let ghMirrorInfo = '';
+                if (info.github.reachable && info.github.mirror) {
+                    try {
+                        const m = new URL(info.github.mirror);
+                        ghMirrorInfo = ' (' + m.host + ')';
+                    } catch (e) {
+                        ghMirrorInfo = ' (' + info.github.mirror + ')';
+                    }
+                }
+                document.getElementById('githubStatus').textContent = info.github.reachable ? ('连接成功' + ghMirrorInfo) : '连接失败';
                 document.getElementById('githubStatus').className = 'stat-value ' + (info.github.reachable ? 'success' : 'danger');
+                const ghStatusTitle = document.getElementById('githubStatus');
+                if (ghStatusTitle) {
+                    ghStatusTitle.title = info.github.error || ('共测试 ' + (info.github.tested_mirrors || 0) + ' 个镜像');
+                }
                 
                 document.getElementById('serverInfo').innerHTML = `
                     <div class="detail-grid">
