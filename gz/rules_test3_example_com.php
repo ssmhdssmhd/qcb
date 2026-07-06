@@ -1,0 +1,15 @@
+<?php return array (
+  'domain' => 'test3.example.com',
+  'duration_rules' => 'corrupted_string',
+  'discontinuity_rules' => 12345,
+  'sequence_jump_rules' => NULL,
+  'filename_patterns' => 'not_array',
+  'insertion_patterns' => 'corrupted',
+  'ad_type_stats' => 'corrupted',
+  'psychological_profile' => 'corrupted',
+  'history_stats' => 'corrupted',
+  'marker_stats' => 'corrupted',
+  'learn_count' => 3,
+  'ad_threshold' => 55,
+  'confidence_score' => 70,
+);
