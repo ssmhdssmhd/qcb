@@ -26,7 +26,10 @@ class DomainRuleManager {
     public function getRules($domain) {
         $file = $this->getRuleFilePath($domain);
         if (file_exists($file)) {
-            return require $file;
+            $rules = require $file;
+            if (is_array($rules)) {
+                return $rules;
+            }
         }
         return null;
     }
@@ -99,7 +102,7 @@ class DomainRuleManager {
 
         $mergedRules = $this->mergeRules($existingRules, $newRules, $analysisResult);
         $mergedRules['learn_count'] = ($existingRules['learn_count'] ?? 0) + 1;
-        if (!isset($mergedRules['history_stats'])) {
+        if (!isset($mergedRules['history_stats']) || !is_array($mergedRules['history_stats'])) {
             $mergedRules['history_stats'] = [];
         }
         $mergedRules['history_stats'][] = $analysisResult;
@@ -113,6 +116,16 @@ class DomainRuleManager {
 
     private function mergeRules($existing, $new, $analysisResult) {
         $merged = $existing;
+
+        // 确保所有需要是数组的字段确实是数组
+        $arrayFields = ['duration_rules', 'discontinuity_rules', 'sequence_jump_rules',
+                        'filename_patterns', 'insertion_patterns', 'ad_type_stats',
+                        'psychological_profile', 'history_stats', 'marker_stats'];
+        foreach ($arrayFields as $field) {
+            if (!isset($merged[$field]) || !is_array($merged[$field])) {
+                $merged[$field] = [];
+            }
+        }
 
         $adDurationStats = $this->extractAdDurationStats($analysisResult);
         if (!empty($adDurationStats)) {
@@ -246,7 +259,7 @@ class DomainRuleManager {
     }
 
     private function mergeDurationRules($existingRules, $stats) {
-        $rules = $existingRules;
+        $rules = is_array($existingRules) ? $existingRules : [];
         $hasShortRule = false;
         $hasLongRule = false;
 
@@ -282,7 +295,7 @@ class DomainRuleManager {
     }
 
     private function mergeSeqJumpRules($existingRules, $seqJumps) {
-        $rules = $existingRules;
+        $rules = is_array($existingRules) ? $existingRules : [];
         $thresholds = [];
         foreach ($seqJumps as $jump) {
             if (isset($jump['jump']) && abs($jump['jump']) > 1000) {
@@ -338,7 +351,7 @@ class DomainRuleManager {
     }
 
     private function mergeInsertionPatterns($existing, $new) {
-        $result = $existing;
+        $result = is_array($existing) ? $existing : [];
 
         if (!empty($new['pre_roll']['found'])) {
             $result['pre_roll'] = $result['pre_roll'] ?? [
@@ -404,7 +417,7 @@ class DomainRuleManager {
     }
 
     private function mergeAdTypeStats($existing, $new) {
-        $result = $existing;
+        $result = is_array($existing) ? $existing : [];
         $typeKeys = ['pre_roll_ad', 'mid_roll_ad', 'post_roll_ad', 'marker_based_ad', 'pattern_based_ad', 'duration_based_ad'];
 
         foreach ($typeKeys as $key) {
@@ -433,7 +446,7 @@ class DomainRuleManager {
     }
 
     private function mergePsychologicalProfile($existing, $new) {
-        $result = $existing;
+        $result = is_array($existing) ? $existing : [];
 
         $fields = ['ad_density', 'attention_grab_score', 'frequency_score', 'watchability_score'];
         foreach ($fields as $field) {
