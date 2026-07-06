@@ -2880,9 +2880,9 @@ header('Expires: 0');
             for (const domain of domains) {
                 const r = rules[domain];
                 const name = escapeHtml(r.name || domain);
-                const durCount = (r.duration_rules || []).filter(x => x.enabled).length;
-                const disCount = (r.discontinuity_rules || []).filter(x => x.enabled).length;
-                const seqCount = (r.sequence_jump_rules || []).filter(x => x.enabled).length;
+                const durCount = Array.isArray(r.duration_rules) ? r.duration_rules.filter(x => x.enabled).length : 0;
+                const disCount = Array.isArray(r.discontinuity_rules) ? r.discontinuity_rules.filter(x => x.enabled).length : 0;
+                const seqCount = Array.isArray(r.sequence_jump_rules) ? r.sequence_jump_rules.filter(x => x.enabled).length : 0;
                 const learnCount = r.learn_count || 0;
                 const mtime = r.last_learn_date || r.analysis_date || (r._filemtime ? new Date(r._filemtime * 1000).toLocaleString() : '-');
                 html += `
@@ -2939,13 +2939,13 @@ header('Expires: 0');
             document.getElementById('ruleDomain').disabled = !isNew;
             document.getElementById('ruleNote').value = rules.note || '';
 
-            const disRules = rules.discontinuity_rules || [];
+            const disRules = Array.isArray(rules.discontinuity_rules) ? rules.discontinuity_rules : [];
             const disEnabled = disRules.length > 0 && disRules[0].enabled;
             document.getElementById('discontinuityEnabled').checked = disEnabled;
 
-            renderDurationRules(rules.duration_rules || []);
-            renderSeqJumpRules(rules.sequence_jump_rules || []);
-            renderFilenamePatterns(rules.filename_patterns || []);
+            renderDurationRules(Array.isArray(rules.duration_rules) ? rules.duration_rules : []);
+            renderSeqJumpRules(Array.isArray(rules.sequence_jump_rules) ? rules.sequence_jump_rules : []);
+            renderFilenamePatterns(Array.isArray(rules.filename_patterns) ? rules.filename_patterns : []);
         }
 
         function cancelRuleEdit() {

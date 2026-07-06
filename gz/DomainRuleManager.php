@@ -14,6 +14,7 @@ class DomainRuleManager {
         foreach ($files as $file) {
             $domainRules = require $file;
             if (is_array($domainRules) && isset($domainRules['domain'])) {
+                $domainRules = $this->normalizeRules($domainRules);
                 $filename = basename($file);
                 $domainRules['_filename'] = $filename;
                 $domainRules['_filemtime'] = filemtime($file);
@@ -28,10 +29,22 @@ class DomainRuleManager {
         if (file_exists($file)) {
             $rules = require $file;
             if (is_array($rules)) {
-                return $rules;
+                return $this->normalizeRules($rules);
             }
         }
         return null;
+    }
+
+    private function normalizeRules($rules) {
+        $arrayFields = ['duration_rules', 'discontinuity_rules', 'sequence_jump_rules',
+                        'filename_patterns', 'insertion_patterns', 'ad_type_stats',
+                        'psychological_profile', 'history_stats', 'marker_stats'];
+        foreach ($arrayFields as $field) {
+            if (!isset($rules[$field]) || !is_array($rules[$field])) {
+                $rules[$field] = [];
+            }
+        }
+        return $rules;
     }
 
     public function saveRules($domain, $ruleData) {
