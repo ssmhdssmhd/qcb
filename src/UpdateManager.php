@@ -146,6 +146,19 @@ class UpdateManager
 
     public function getCurrentCommit()
     {
+        // 优先通过 git 命令动态获取当前 commit 哈希
+        $gitDir = dirname($this->rootDir) . '/.git';
+        if (is_dir($gitDir) || is_file($gitDir)) {
+            $cwd = getcwd();
+            @chdir($this->rootDir);
+            $hash = @trim(shell_exec('git rev-parse HEAD 2>/dev/null') ?? '');
+            @chdir($cwd);
+            if ($hash && preg_match('/^[a-f0-9]{40}$/', $hash)) {
+                return $hash;
+            }
+        }
+
+        // 回退到 version.php 中的静态哈希
         $versionFile = $this->rootDir . '/version.php';
         if (file_exists($versionFile)) {
             $ver = @include $versionFile;
