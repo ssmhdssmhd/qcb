@@ -122,46 +122,50 @@ class AdRuleEngine {
                 'weight' => 55,
                 'check' => function($segment, $index, $segments) {
                     if (count($segments) < 20) return false;
-                    
+
                     $duration = $segment['duration'];
                     $tolerance = $this->options['durationTolerance'];
-                    
-                    $cacheKey = md5(serialize(array_column($segments, 'duration')));
-                    if ($this->durationCacheKey !== $cacheKey || $this->durationCache === null) {
-                        $this->durationCacheKey = $cacheKey;
+
+                    if ($this->durationCache === null) {
                         $this->durationCache = $this->computeDurationStats($segments, $tolerance);
                     }
-                    
+
                     $stats = $this->durationCache;
                     $durationKey = $this->getDurationBucketKey($duration, $tolerance);
-                    
+
                     if (!isset($stats[$durationKey])) {
                         return false;
                     }
-                    
+
                     $bucketStats = $stats[$durationKey];
                     $similarCount = $bucketStats['count'];
                     $maxConsecutive = $bucketStats['maxConsecutive'];
                     $totalCount = count($segments);
-                    
+
                     $isShort = $duration >= 1 && $duration <= 6;
                     $similarRatio = $similarCount / $totalCount;
-                    
+
                     $isVeryShortCluster = $duration <= 4 && $similarRatio >= 0.15 && $similarRatio <= 0.5;
                     $isShortConsecutiveAd = $isShort && $maxConsecutive >= 5 && $similarRatio <= 0.6;
-                    
+
                     $hasOtherDurationClusters = false;
-                    foreach ($stats as $key => $bStats) {
-                        if ($key !== $durationKey && $bStats['count'] / $totalCount >= 0.15) {
-                            $hasOtherDurationClusters = true;
-                            break;
+                    if (!isset($this->durationCache['_hasOtherClusters'])) {
+                        foreach ($stats as $key => $bStats) {
+                            if (is_numeric($key) && $bStats['count'] / $totalCount >= 0.15) {
+                                if ($key !== $durationKey) {
+                                    $hasOtherDurationClusters = true;
+                                    break;
+                                }
+                            }
                         }
+                    } else {
+                        $hasOtherDurationClusters = $this->durationCache['_hasOtherClusters'];
                     }
-                    
+
                     if (!$hasOtherDurationClusters && $similarRatio > 0.7) {
                         return false;
                     }
-                    
+
                     return ($isVeryShortCluster && $hasOtherDurationClusters)
                         || ($isShortConsecutiveAd && $hasOtherDurationClusters);
                 }

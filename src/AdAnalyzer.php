@@ -12,6 +12,7 @@ class AdAnalyzer {
     private $playlist;
     private $analysisResult;
     private $domain;
+    private $prefixSum = [];
 
     public function __construct($options = []) {
         $this->parser = new M3U8Parser();
@@ -45,6 +46,7 @@ class AdAnalyzer {
         }
 
         $segments = $this->playlist['segments'] ?? [];
+        $this->buildPrefixSum($segments);
         $this->analysisResult = $this->engine->analyzeAllSegments($segments);
 
         $result = [
@@ -162,13 +164,18 @@ class AdAnalyzer {
         return $detailed;
     }
 
-    private function calculateStartTime($segmentIndex) {
-        $segments = $this->playlist['segments'] ?? [];
-        $time = 0;
-        for ($i = 0; $i < min($segmentIndex, count($segments)); $i++) {
-            $time += $segments[$i]['duration'] ?? 0;
+    private function buildPrefixSum($segments) {
+        $n = count($segments);
+        $this->prefixSum = array_fill(0, $n + 1, 0.0);
+        for ($i = 0; $i < $n; $i++) {
+            $this->prefixSum[$i + 1] = $this->prefixSum[$i] + ($segments[$i]['duration'] ?? 0);
         }
-        return round($time, 2);
+    }
+
+    private function calculateStartTime($segmentIndex) {
+        $n = count($this->prefixSum) - 1;
+        $idx = max(0, min($segmentIndex, $n));
+        return round($this->prefixSum[$idx], 2);
     }
 
     private function buildDetailedSegments() {

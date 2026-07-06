@@ -185,6 +185,7 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
         $result = $this->analyzeAllSegments($segments);
 
         if (!$this->safeguardEnabled) {
+            $result['adapted'] = false;
             return $result;
         }
 
@@ -215,83 +216,517 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
             return $result;
         }
 
-        $this->adaptiveMode = true;
         $originalThreshold = $this->getAdThreshold();
+        $bestResult = $result;
+        $bestAdPercentage = $adPercentage;
+        $bestContentCount = $result['contentCount'];
+        $bestThreshold = $originalThreshold;
         $attempts = 0;
         $maxAttempts = 5;
-        $bestResult = $result;
+        $currentThreshold = $originalThreshold;
 
         while ($attempts < $maxAttempts) {
             $attempts++;
-            $newThreshold = $this->getAdThreshold() + 20;
-            if ($newThreshold > 200) {
-                $newThreshold = 200;
+            $currentThreshold += 20;
+            if ($currentThreshold > 200) {
+                $currentThreshold = 200;
             }
-            $this->setAdThreshold($newThreshold);
 
-            $tempResult = $this->analyzeAllSegments($segments);
-            $tempAdPercentage = $tempResult['adPercentage'];
-            $tempContentCount = $tempResult['contentCount'];
+            $tempAdCount = 0;
+            $tempAdDuration = 0;
+            $tempContentDuration = 0;
+            $segResults = &$result['segments'];
+            $segCount = count($segResults);
+
+            for ($i = 0; $i < $segCount; $i++) {
+                $conf = $segResults[$i]['confidence'] ?? 0;
+                if ($conf >= $currentThreshold) {
+                    $tempAdCount++;
+                    $tempAdDuration += $segments[$i]['duration'] ?? 0;
+                } else {
+                    $tempContentDuration += $segments[$i]['duration'] ?? 0;
+                }
+            }
+
+            $tempAdPercentage = $total > 0 ? round($tempAdCount / $total * 100, 1) : 0;
+            $tempContentCount = $total - $tempAdCount;
 
             if ($tempAdPercentage <= 70 && $tempContentCount >= $total * 0.3) {
-                $bestResult = $tempResult;
+                $bestThreshold = $currentThreshold;
                 break;
             }
 
-            if ($tempAdPercentage < $adPercentage && $tempContentCount > $result['contentCount']) {
-                $bestResult = $tempResult;
+            if ($tempAdPercentage < $bestAdPercentage && $tempContentCount > $bestContentCount) {
+                $bestAdPercentage = $tempAdPercentage;
+                $bestContentCount = $tempContentCount;
+                $bestThreshold = $currentThreshold;
             }
+        }
+
+        if ($bestThreshold !== $originalThreshold) {
+            $newSegments = [];
+            $newAdCount = 0;
+            $newContentCount = 0;
+            $newAdDuration = 0;
+            $newContentDuration = 0;
+            $segResults = &$result['segments'];
+
+            for ($i = 0; $i < $total; $i++) {
+                $r = $segResults[$i];
+                $isAd = ($r['confidence'] ?? 0) >= $bestThreshold;
+                $r['isAd'] = $isAd;
+                $newSegments[] = $r;
+                if ($isAd) {
+                    $newAdCount++;
+                    $newAdDuration += $segments[$i]['duration'] ?? 0;
+                } else {
+                    $newContentCount++;
+                    $newContentDuration += $segments[$i]['duration'] ?? 0;
+                }
+            }
+
+            $bestResult = $result;
+            $bestResult['segments'] = $newSegments;
+            $bestResult['adCount'] = $newAdCount;
+            $bestResult['contentCount'] = $newContentCount;
+            $bestResult['adDuration'] = round($newAdDuration, 2);
+            $bestResult['contentDuration'] = round($newContentDuration, 2);
+            $bestResult['adPercentage'] = $total > 0 ? round($newAdCount / $total * 100, 1) : 0;
+
+            $newAdClusters = $this->rebuildAdClusters($newSegments, $segments);
+            $bestResult['adClusters'] = $newAdClusters;
+
+            $insertionPoints = $this->rebuildInsertionPoints($newAdClusters, $total, $newAdDuration);
+            $bestResult['insertionPoints'] = $insertionPoints;
+
+            $psychFeatures = $this->calculatePsychologicalFeaturesFast(
+                count($newAdClusters),
+                $bestResult['adPercentage'],
+                $newAdDuration,
+                $newAdDuration + $newContentDuration
+            );
+            $bestResult['psychologicalFeatures'] = $psychFeatures;
+
+            $adTypes = $this->detectAdTypesFast($newAdClusters, $insertionPoints);
+            $bestResult['adTypes'] = $adTypes;
         }
 
         $bestResult['adapted'] = true;
         $bestResult['adaptationReason'] = $reason;
         $bestResult['originalThreshold'] = $originalThreshold;
-        $bestResult['adaptedThreshold'] = $this->getAdThreshold();
+        $bestResult['adaptedThreshold'] = $bestThreshold;
         $bestResult['adaptationAttempts'] = $attempts;
-
-        $this->setAdThreshold($originalThreshold);
-        $this->adaptiveMode = false;
 
         return $bestResult;
     }
 
-    public function analyzeAllSegments($segments) {
-        $results = $this->checkAllSegments($segments);
-        $jumpInfo = $this->detectAllSequenceJumps($segments);
-        $durationDistribution = $this->analyzeDurationDistribution($segments);
-        $adClusters = $this->findAdClusters($results);
-        $insertionPoints = $this->analyzeInsertionPoints($results, $segments);
-        $adTypeStats = $this->analyzeAdTypes($results, $segments, $adClusters);
-        $psychologicalFeatures = $this->analyzePsychologicalFeatures($results, $segments, $adClusters);
+    private function rebuildAdClusters($segResults, $segments) {
+        $clusters = [];
+        $currentCluster = null;
+        $currentClusterDuration = 0;
+        $total = count($segResults);
 
+        for ($i = 0; $i < $total; $i++) {
+            if (!empty($segResults[$i]['isAd'])) {
+                if ($currentCluster === null) {
+                    $currentCluster = [
+                        'start' => $i,
+                        'end' => $i,
+                        'count' => 1,
+                        'firstDiscontinuity' => false
+                    ];
+                    $currentClusterDuration = $segments[$i]['duration'] ?? 0;
+                } else {
+                    $currentCluster['end'] = $i;
+                    $currentCluster['count']++;
+                    $currentClusterDuration += $segments[$i]['duration'] ?? 0;
+                }
+            } else {
+                if ($currentCluster !== null) {
+                    $currentCluster['duration'] = round($currentClusterDuration, 2);
+                    $clusters[] = $currentCluster;
+                    $currentCluster = null;
+                    $currentClusterDuration = 0;
+                }
+            }
+        }
+
+        if ($currentCluster !== null) {
+            $currentCluster['duration'] = round($currentClusterDuration, 2);
+            $clusters[] = $currentCluster;
+        }
+
+        return $clusters;
+    }
+
+    private function rebuildInsertionPoints($adClusters, $totalCount, $totalAdDuration) {
+        $insertionPoints = [
+            'pre_roll' => ['found' => false, 'count' => 0, 'duration' => 0],
+            'mid_roll' => ['found' => false, 'count' => 0, 'total_duration' => 0],
+            'post_roll' => ['found' => false, 'count' => 0, 'duration' => 0]
+        ];
+
+        foreach ($adClusters as $idx => $cluster) {
+            $startRatio = $totalCount > 0 ? $cluster['start'] / $totalCount : 0;
+            $endRatio = $totalCount > 0 ? $cluster['end'] / $totalCount : 0;
+            $duration = $cluster['duration'] ?? 0;
+
+            if ($startRatio < 0.1) {
+                $insertionPoints['pre_roll']['found'] = true;
+                $insertionPoints['pre_roll']['count']++;
+                $insertionPoints['pre_roll']['duration'] += $duration;
+            } elseif ($endRatio > 0.9) {
+                $insertionPoints['post_roll']['found'] = true;
+                $insertionPoints['post_roll']['count']++;
+                $insertionPoints['post_roll']['duration'] += $duration;
+            } else {
+                $insertionPoints['mid_roll']['found'] = true;
+                $insertionPoints['mid_roll']['count']++;
+                $insertionPoints['mid_roll']['total_duration'] += $duration;
+            }
+        }
+
+        return $insertionPoints;
+    }
+
+    private function calculatePsychologicalFeaturesFast($clusterCount, $adPercentage, $adDuration, $totalDuration) {
+        $interruptionPattern = '无广告';
+        if ($clusterCount === 1 && $adPercentage < 15) {
+            $interruptionPattern = '单段插播';
+        } elseif ($clusterCount === 2 && $adPercentage < 30) {
+            $interruptionPattern = '前后双段';
+        } elseif ($clusterCount >= 3) {
+            $interruptionPattern = '多段插播';
+        } elseif ($adPercentage >= 30) {
+            $interruptionPattern = '高频插播';
+        }
+
+        $uxImpact = '轻微';
+        if ($adPercentage >= 50) {
+            $uxImpact = '严重';
+        } elseif ($adPercentage >= 30) {
+            $uxImpact = '中等';
+        } elseif ($adPercentage >= 15) {
+            $uxImpact = '较轻';
+        }
+
+        $attentionGrabScore = min(100, $adPercentage * 1.5 + $clusterCount * 5);
+        $frequencyScore = min(100, $clusterCount * 15 + $adPercentage * 0.8);
+        $watchabilityScore = max(0, 100 - $adPercentage * 0.8 - $clusterCount * 3);
+
+        return [
+            'interruption_pattern' => $interruptionPattern,
+            'user_experience_impact' => $uxImpact,
+            'ad_density' => round($adPercentage, 1),
+            'attention_grab_score' => round($attentionGrabScore, 0),
+            'frequency_score' => round($frequencyScore, 0),
+            'watchability_score' => round($watchabilityScore, 0)
+        ];
+    }
+
+    private function detectAdTypesFast($adClusters, $insertionPoints) {
+        $types = [];
+
+        if (!empty($insertionPoints['pre_roll']['found'])) {
+            $types[] = [
+                'type' => 'pre_roll',
+                'name' => '片头广告',
+                'description' => '视频开始前的广告',
+                'count' => $insertionPoints['pre_roll']['count']
+            ];
+        }
+        if (!empty($insertionPoints['mid_roll']['found'])) {
+            $types[] = [
+                'type' => 'mid_roll',
+                'name' => '片中插播广告',
+                'description' => '视频播放过程中的插播广告',
+                'count' => $insertionPoints['mid_roll']['count']
+            ];
+        }
+        if (!empty($insertionPoints['post_roll']['found'])) {
+            $types[] = [
+                'type' => 'post_roll',
+                'name' => '片尾广告',
+                'description' => '视频结束后的广告',
+                'count' => $insertionPoints['post_roll']['count']
+            ];
+        }
+
+        return $types;
+    }
+
+    public function analyzeAllSegments($segments) {
+        $total = count($segments);
+        if ($total === 0) {
+            return [
+                'segments' => [], 'totalCount' => 0, 'adCount' => 0, 'contentCount' => 0,
+                'totalDuration' => 0, 'adDuration' => 0, 'contentDuration' => 0, 'adPercentage' => 0,
+                'discontinuityCount' => 0, 'cueMarkerCount' => 0, 'scte35Count' => 0, 'adTagCount' => 0,
+                'sequenceJumps' => [], 'durationDistribution' => [], 'adClusters' => [],
+                'insertionPoints' => [], 'adTypes' => [], 'psychologicalFeatures' => [],
+                'confidence' => 0
+            ];
+        }
+
+        $results = [];
+        $adCount = 0;
+        $contentCount = 0;
+        $totalAdDuration = 0;
+        $totalContentDuration = 0;
         $discontinuityCount = 0;
         $cueMarkerCount = 0;
         $scte35Count = 0;
         $adTagCount = 0;
-        $totalAdDuration = 0;
-        $totalContentDuration = 0;
 
-        foreach ($results as $i => $r) {
+        $durationBuckets = [];
+        $minDuration = PHP_FLOAT_MAX;
+        $maxDuration = 0;
+        $sumDuration = 0;
+
+        $adClusters = [];
+        $currentCluster = null;
+        $currentClusterDuration = 0;
+
+        $jumpInfo = [];
+        $prevSeq = null;
+        $prevUri = '';
+
+        $preRoll = ['found' => false, 'start_index' => -1, 'end_index' => -1, 'duration' => 0, 'segment_count' => 0];
+        $postRoll = ['found' => false, 'start_index' => -1, 'end_index' => -1, 'duration' => 0, 'segment_count' => 0];
+        $midRollPoints = [];
+
+        $preRollAdCount = 0;
+        $postRollAdCount = 0;
+        $midRollAdCount = 0;
+        $preRollAdDuration = 0;
+        $postRollAdDuration = 0;
+        $midRollAdDuration = 0;
+
+        $markerAdCount = 0;
+        $patternAdCount = 0;
+        $durationAdCount = 0;
+        $markerAdDuration = 0;
+        $patternAdDuration = 0;
+        $durationAdDuration = 0;
+
+        $totalConfidence = 0;
+        $highConfidenceCount = 0;
+
+        $rules = $this->rules;
+        $adThreshold = $this->options['adThreshold'] ?? 50;
+
+        for ($i = 0; $i < $total; $i++) {
             $seg = $segments[$i];
+            $duration = $seg['duration'] ?? 0;
+
+            $matchedRules = [];
+            $totalWeight = 0;
+            $categories = [];
+            $hasMarker = false;
+            $hasPattern = false;
+            $hasDurationRule = false;
+
+            foreach ($rules as $rule) {
+                try {
+                    if (call_user_func($rule['check'], $seg, $i, $segments)) {
+                        $weight = $rule['weight'] ?? 50;
+                        $category = $rule['category'] ?? 'unknown';
+                        $matchedRules[] = [
+                            'name' => $rule['name'],
+                            'weight' => $weight,
+                            'category' => $category
+                        ];
+                        $totalWeight += $weight;
+                        if (!isset($categories[$category])) {
+                            $categories[$category] = 0;
+                        }
+                        $categories[$category] += $weight;
+                        if ($category === 'marker') $hasMarker = true;
+                        if ($category === 'pattern') $hasPattern = true;
+                        if ($category === 'duration') $hasDurationRule = true;
+                    }
+                } catch (Throwable $e) {
+                }
+            }
+
+            $isAd = $totalWeight >= $adThreshold;
+            $results[] = [
+                'isAd' => $isAd,
+                'matchedRules' => $matchedRules,
+                'confidence' => min(100, $totalWeight),
+                'categories' => $categories,
+                'totalWeight' => $totalWeight
+            ];
+
+            if ($isAd) {
+                $adCount++;
+                $totalAdDuration += $duration;
+                if ($totalWeight >= 70) $highConfidenceCount++;
+                $totalConfidence += min(100, $totalWeight);
+
+                if ($currentCluster === null) {
+                    $currentCluster = ['start' => $i, 'end' => $i, 'count' => 1];
+                    $currentClusterDuration = $duration;
+                    if ($hasMarker) $currentCluster['has_marker'] = true;
+                    if ($hasPattern) $currentCluster['has_pattern'] = true;
+                    if ($hasDurationRule) $currentCluster['has_duration'] = true;
+                } else {
+                    $currentCluster['end'] = $i;
+                    $currentCluster['count']++;
+                    $currentClusterDuration += $duration;
+                    if ($hasMarker) $currentCluster['has_marker'] = true;
+                    if ($hasPattern) $currentCluster['has_pattern'] = true;
+                    if ($hasDurationRule) $currentCluster['has_duration'] = true;
+                }
+            } else {
+                $contentCount++;
+                $totalContentDuration += $duration;
+
+                if ($currentCluster !== null) {
+                    $currentCluster['duration'] = round($currentClusterDuration, 2);
+                    $adClusters[] = $currentCluster;
+                    $currentCluster = null;
+                    $currentClusterDuration = 0;
+                }
+            }
+
             if (!empty($seg['discontinuity'])) $discontinuityCount++;
             if (!empty($seg['cueMarkers'])) $cueMarkerCount += count($seg['cueMarkers']);
             if (!empty($seg['scte35'])) $scte35Count++;
             if (!empty($seg['adMarkers'])) $adTagCount += count($seg['adMarkers']);
-            if ($r['isAd']) {
-                $totalAdDuration += $seg['duration'] ?? 0;
-            } else {
-                $totalContentDuration += $seg['duration'] ?? 0;
+
+            if ($duration < $minDuration) $minDuration = $duration;
+            if ($duration > $maxDuration) $maxDuration = $duration;
+            $sumDuration += $duration;
+            $bucket = (string)(floor($duration * 10) / 10);
+            if (!isset($durationBuckets[$bucket])) $durationBuckets[$bucket] = 0;
+            $durationBuckets[$bucket]++;
+
+            $uri = $seg['uri'] ?? '';
+            $currentSeq = $this->extractSequenceNumber($uri);
+            if ($currentSeq !== null && $prevSeq !== null) {
+                $jump = $currentSeq - $prevSeq;
+                if (abs($jump) > 1) {
+                    $jumpInfo[] = [
+                        'index' => $i,
+                        'prevSeq' => $prevSeq,
+                        'currentSeq' => $currentSeq,
+                        'jump' => $jump,
+                        'prevUri' => $prevUri,
+                        'currentUri' => $uri
+                    ];
+                }
+            }
+            $prevSeq = $currentSeq;
+            $prevUri = $uri;
+        }
+
+        if ($currentCluster !== null) {
+            $currentCluster['duration'] = round($currentClusterDuration, 2);
+            $adClusters[] = $currentCluster;
+        }
+
+        foreach ($adClusters as $idx => $cluster) {
+            $startRatio = $cluster['start'] / $total;
+            $endRatio = $cluster['end'] / $total;
+            $clusterDuration = $cluster['duration'] ?? 0;
+
+            if ($startRatio < 0.15 && $cluster['count'] >= 2) {
+                $preRoll = [
+                    'found' => true,
+                    'start_index' => $cluster['start'],
+                    'end_index' => $cluster['end'],
+                    'duration' => $clusterDuration,
+                    'segment_count' => $cluster['count']
+                ];
+                $preRollAdCount++;
+                $preRollAdDuration += $clusterDuration;
+            } elseif ($endRatio > 0.85 && $cluster['count'] >= 2) {
+                $postRoll = [
+                    'found' => true,
+                    'start_index' => $cluster['start'],
+                    'end_index' => $cluster['end'],
+                    'duration' => $clusterDuration,
+                    'segment_count' => $cluster['count']
+                ];
+                $postRollAdCount++;
+                $postRollAdDuration += $clusterDuration;
+            } elseif ($cluster['count'] >= 2) {
+                $midRollPoints[] = [
+                    'start_index' => $cluster['start'],
+                    'end_index' => $cluster['end'],
+                    'duration' => $clusterDuration,
+                    'segment_count' => $cluster['count'],
+                    'position_ratio' => round($startRatio, 3)
+                ];
+                $midRollAdCount++;
+                $midRollAdDuration += $clusterDuration;
+            }
+
+            if (!empty($cluster['has_marker'])) {
+                $markerAdCount++;
+                $markerAdDuration += $clusterDuration;
+            }
+            if (!empty($cluster['has_pattern'])) {
+                $patternAdCount++;
+                $patternAdDuration += $clusterDuration;
+            }
+            if (!empty($cluster['has_duration'])) {
+                $durationAdCount++;
+                $durationAdDuration += $clusterDuration;
             }
         }
 
         $totalDuration = $totalAdDuration + $totalContentDuration;
         $adPercentage = $totalDuration > 0 ? ($totalAdDuration / $totalDuration * 100) : 0;
+        $adDensity = $total > 0 ? ($adCount / $total) : 0;
+        $clusterCount = count($adClusters);
+
+        $interruptionPattern = '无广告';
+        $uxImpact = '轻微';
+        $attentionGrabScore = 0;
+        $frequencyScore = 0;
+        $watchabilityScore = 100;
+
+        if ($clusterCount > 0) {
+            if ($clusterCount === 1 && $preRoll['found'] && !$postRoll['found']) {
+                $interruptionPattern = '仅片头';
+            } elseif ($clusterCount === 1 && $postRoll['found'] && !$preRoll['found']) {
+                $interruptionPattern = '仅片尾';
+            } elseif ($clusterCount <= 2 && $preRoll['found'] && $postRoll['found']) {
+                $interruptionPattern = '片头+片尾';
+            } elseif ($clusterCount >= 5) {
+                $interruptionPattern = '频繁插播';
+            } else {
+                $interruptionPattern = '中间插播';
+            }
+
+            if ($adPercentage >= 50 || $clusterCount >= 6) {
+                $uxImpact = '严重';
+            } elseif ($adPercentage >= 30 || $clusterCount >= 3) {
+                $uxImpact = '中等';
+            } elseif ($adPercentage >= 15) {
+                $uxImpact = '轻微';
+            }
+
+            $attentionGrabScore = min(100, round($adPercentage * 0.8 + $clusterCount * 8));
+            $frequencyScore = min(100, $clusterCount * 15);
+            $watchabilityScore = max(0, round(100 - $adPercentage * 0.8 - $clusterCount * 5));
+        }
+
+        $overallConfidence = $adCount > 0 ? min(100, round($totalConfidence / $adCount)) : 0;
+        if ($highConfidenceCount < $adCount * 0.3 && $adCount > 10) {
+            $overallConfidence = max(0, $overallConfidence - 20);
+        }
+        if ($discontinuityCount > 5 || $cueMarkerCount > 0 || $scte35Count > 0) {
+            $overallConfidence = min(100, $overallConfidence + 15);
+        }
 
         return [
             'segments' => $results,
-            'totalCount' => count($segments),
-            'adCount' => count(array_filter($results, function($r) { return $r['isAd']; })),
-            'contentCount' => count(array_filter($results, function($r) { return !$r['isAd']; })),
+            'totalCount' => $total,
+            'adCount' => $adCount,
+            'contentCount' => $contentCount,
             'totalDuration' => round($totalDuration, 2),
             'adDuration' => round($totalAdDuration, 2),
             'contentDuration' => round($totalContentDuration, 2),
@@ -301,12 +736,39 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
             'scte35Count' => $scte35Count,
             'adTagCount' => $adTagCount,
             'sequenceJumps' => $jumpInfo,
-            'durationDistribution' => $durationDistribution,
+            'durationDistribution' => [
+                'min' => $minDuration === PHP_FLOAT_MAX ? 0 : $minDuration,
+                'max' => $maxDuration,
+                'avg' => $total > 0 ? $sumDuration / $total : 0,
+                'buckets' => $durationBuckets
+            ],
             'adClusters' => $adClusters,
-            'insertionPoints' => $insertionPoints,
-            'adTypes' => $adTypeStats,
-            'psychologicalFeatures' => $psychologicalFeatures,
-            'confidence' => $this->calculateOverallConfidence($results, $adClusters)
+            'insertionPoints' => [
+                'pre_roll' => $preRoll,
+                'mid_roll' => [
+                    'found' => count($midRollPoints) > 0,
+                    'count' => count($midRollPoints),
+                    'points' => $midRollPoints
+                ],
+                'post_roll' => $postRoll
+            ],
+            'adTypes' => [
+                'pre_roll_ad' => ['count' => $preRollAdCount, 'duration' => round($preRollAdDuration, 2)],
+                'mid_roll_ad' => ['count' => $midRollAdCount, 'duration' => round($midRollAdDuration, 2)],
+                'post_roll_ad' => ['count' => $postRollAdCount, 'duration' => round($postRollAdDuration, 2)],
+                'marker_based_ad' => ['count' => $markerAdCount, 'duration' => round($markerAdDuration, 2)],
+                'pattern_based_ad' => ['count' => $patternAdCount, 'duration' => round($patternAdDuration, 2)],
+                'duration_based_ad' => ['count' => $durationAdCount, 'duration' => round($durationAdDuration, 2)]
+            ],
+            'psychologicalFeatures' => [
+                'interruption_pattern' => $interruptionPattern,
+                'ad_density' => round($adDensity * 100, 2),
+                'attention_grab_score' => $attentionGrabScore,
+                'frequency_score' => $frequencyScore,
+                'user_experience_impact' => $uxImpact,
+                'watchability_score' => $watchabilityScore
+            ],
+            'confidence' => $overallConfidence
         ];
     }
 

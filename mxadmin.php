@@ -4577,22 +4577,23 @@ header('Expires: 0');
                 return;
             }
 
-            if (!confirm(`确定要批量学习 ${videos.length} 个视频吗？\n\n学习成功后将自动更新规则管理中的对应域名规则。`)) return;
+            const concurrency = Math.min(5, Math.max(2, Math.ceil(videos.length / 5)));
+            if (!confirm(`确定要批量学习 ${videos.length} 个视频吗？\n\n并发数: ${concurrency} 个\n学习成功后将自动更新规则管理中的对应域名规则。`)) return;
 
             batchLearning = true;
             const resultEl = document.getElementById('batchResult');
             resultEl.style.display = 'block';
             resultEl.style.background = '#fffbe6';
             resultEl.style.border = '1px solid #ffe58f';
-            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ')</div>';
+            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ') 并发: ' + concurrency + '</div>';
 
+            let completedCount = 0;
             let successCount = 0;
             let failCount = 0;
             const results = [];
             const learnedDomains = new Set();
 
-            for (let i = 0; i < videos.length; i++) {
-                const video = videos[i];
+            async function learnOne(video) {
                 try {
                     const res = await fetch(API_BASE + '?action=sites/learn_video', {
                         method: 'POST',
@@ -4633,9 +4634,22 @@ header('Expires: 0');
                     });
                 }
 
-                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + (i + 1) + '/' + videos.length + ')</div>';
-                document.getElementById('searchStats').textContent = `已完成 ${i + 1}/${videos.length}，成功 ${successCount}，失败 ${failCount}`;
+                completedCount++;
+                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + completedCount + '/' + videos.length + ') 并发: ' + concurrency + '</div>';
+                document.getElementById('searchStats').textContent = `已完成 ${completedCount}/${videos.length}，成功 ${successCount}，失败 ${failCount}`;
             }
+
+            const queue = [...videos];
+            const workers = [];
+            for (let w = 0; w < concurrency; w++) {
+                workers.push((async () => {
+                    while (queue.length > 0 && batchLearning) {
+                        const video = queue.shift();
+                        await learnOne(video);
+                    }
+                })());
+            }
+            await Promise.all(workers);
 
             let html = '<div style="margin-bottom:8px;font-weight:600">';
             if (successCount > 0) {
