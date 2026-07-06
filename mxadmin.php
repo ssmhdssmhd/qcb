@@ -1073,6 +1073,21 @@ header('Expires: 0');
                     <div id="searchActions" style="display:none;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
                         <button class="btn btn-success" onclick="batchLearnAll()">📚 一键学习全部</button>
                         <button class="btn btn-primary" onclick="batchAnalyzeAll()">🔍 一键分析全部</button>
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                            <input type="checkbox" id="enableMultiThread" checked onchange="onMultiThreadToggle()">
+                            <span>⚡ 多线程加速</span>
+                        </label>
+                        <div id="concurrencyWrap" style="display:flex;align-items:center;gap:6px;font-size:13px;color:#606266">
+                            <span>并发数:</span>
+                            <select id="concurrencyNum" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px">
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="5" selected>5</option>
+                                <option value="8">8</option>
+                                <option value="10">10</option>
+                            </select>
+                        </div>
+                        <span id="multiThreadBadge" style="font-size:11px;padding:2px 6px;background:#f0f9eb;color:#67c23a;border-radius:4px;display:none">后端加速</span>
                         <span style="font-size:12px;color:#909399;margin-left:auto" id="searchStats">准备就绪</span>
                     </div>
                     <div id="batchResult" style="display:none;margin-bottom:12px;padding:12px;border-radius:6px"></div>
@@ -4565,6 +4580,33 @@ header('Expires: 0');
             return urls;
         }
 
+        function onMultiThreadToggle() {
+            const enabled = document.getElementById('enableMultiThread').checked;
+            const wrap = document.getElementById('concurrencyWrap');
+            const badge = document.getElementById('multiThreadBadge');
+            if (enabled) {
+                wrap.style.opacity = '1';
+                checkMultiThreadStatus();
+            } else {
+                wrap.style.opacity = '0.5';
+                badge.style.display = 'none';
+            }
+        }
+
+        async function checkMultiThreadStatus() {
+            try {
+                const res = await fetch(API_BASE + '?action=sites/multi_thread/status');
+                const data = await res.json();
+                const badge = document.getElementById('multiThreadBadge');
+                if (data.available) {
+                    badge.style.display = 'inline-block';
+                    badge.textContent = '✓ 后端加速已就绪';
+                } else {
+                    badge.style.display = 'none';
+                }
+            } catch (e) {}
+        }
+
         async function batchLearnAll() {
             if (batchLearning) {
                 showToast('正在批量学习中，请稍候...', 'warning');
@@ -4577,16 +4619,72 @@ header('Expires: 0');
                 return;
             }
 
-            const concurrency = Math.min(5, Math.max(2, Math.ceil(videos.length / 5)));
-            if (!confirm(`确定要批量学习 ${videos.length} 个视频吗？\n\n并发数: ${concurrency} 个\n学习成功后将自动更新规则管理中的对应域名规则。`)) return;
+            const useMultiThread = document.getElementById('enableMultiThread').checked;
+            const concurrency = parseInt(document.getElementById('concurrencyNum').value) || 5;
+
+            let modeText = useMultiThread ? '后端多线程加速' : '前端并发请求';
+            if (!confirm(`确定要批量学习 ${videos.length} 个视频吗？\n\n模式: ${modeText}\n并发数: ${concurrency} 个\n学习成功后将自动更新规则管理中的对应域名规则。`)) return;
 
             batchLearning = true;
             const resultEl = document.getElementById('batchResult');
             resultEl.style.display = 'block';
             resultEl.style.background = '#fffbe6';
             resultEl.style.border = '1px solid #ffe58f';
-            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ') 并发: ' + concurrency + '</div>';
+            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ') 并发: ' + concurrency + ' (' + modeText + ')</div>';
 
+            const startTime = Date.now();
+            let successCount = 0;
+            let failCount = 0;
+            let learnedDomains = new Set();
+            let results = [];
+
+            if (useMultiThread) {
+                try {
+                    const urls = videos.map(v => v.url);
+                    const res = await fetch(API_BASE + '?action=sites/learn_batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            urls: urls,
+                            concurrency: concurrency,
+                            multi_thread: true
+                        })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        successCount = data.success_count || 0;
+                        failCount = data.fail_count || 0;
+                        learnedDomains = new Set(data.learned_domains || []);
+                        results = (data.results || []).map((r, i) => ({
+                            name: videos[i]?.name || '',
+                            site: videos[i]?.site || '',
+                            success: r.success,
+                            domain: r.domain || '',
+                            segments: r.segments_count || 0,
+                            ad_count: r.ad_count || 0,
+                            message: r.message || '',
+                            duration: r.duration || 0
+                        }));
+
+                        const totalTime = data.total_time ? (data.total_time / 1000).toFixed(1) : '?';
+                        renderBatchResults(resultEl, videos, results, successCount, failCount, learnedDomains, totalTime, data.mode || 'backend');
+                    } else {
+                        throw new Error(data.message || '批量学习失败');
+                    }
+                } catch (e) {
+                    resultEl.innerHTML = '<div class="loading">后端批量失败，回退到前端并发模式...</div>';
+                    await batchLearnFrontend(videos, concurrency, resultEl);
+                }
+            } else {
+                await batchLearnFrontend(videos, concurrency, resultEl);
+            }
+
+            batchLearning = false;
+            showToast(`批量学习完成：成功 ${successCount}，失败 ${failCount}`, successCount > 0 ? 'success' : 'error');
+        }
+
+        async function batchLearnFrontend(videos, concurrency, resultEl) {
             let completedCount = 0;
             let successCount = 0;
             let failCount = 0;
@@ -4635,7 +4733,7 @@ header('Expires: 0');
                 }
 
                 completedCount++;
-                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + completedCount + '/' + videos.length + ') 并发: ' + concurrency + '</div>';
+                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + completedCount + '/' + videos.length + ') 并发: ' + concurrency + ' (前端模式)</div>';
                 document.getElementById('searchStats').textContent = `已完成 ${completedCount}/${videos.length}，成功 ${successCount}，失败 ${failCount}`;
             }
 
@@ -4651,6 +4749,11 @@ header('Expires: 0');
             }
             await Promise.all(workers);
 
+            renderBatchResults(resultEl, videos, results, successCount, failCount, learnedDomains, null, 'frontend');
+        }
+
+        function renderBatchResults(resultEl, videos, results, successCount, failCount, learnedDomains, totalTime, mode) {
+            const modeText = mode === 'backend' ? '后端多线程' : '前端并发';
             let html = '<div style="margin-bottom:8px;font-weight:600">';
             if (successCount > 0) {
                 html += '<span style="color:#67c23a">✅ 批量学习完成</span>';
@@ -4667,6 +4770,10 @@ header('Expires: 0');
             if (learnedDomains.size > 0) {
                 html += ` | 更新域名: <span style="color:#409eff">${learnedDomains.size}</span> 个`;
             }
+            if (totalTime) {
+                html += ` | 耗时: <span style="color:#e6a23c">${totalTime}s</span>`;
+            }
+            html += ` | 模式: <span style="color:#909399">${modeText}</span>`;
             html += '</div>';
 
             if (learnedDomains.size > 0) {
@@ -4686,9 +4793,6 @@ header('Expires: 0');
 
             resultEl.innerHTML = html;
             document.getElementById('searchStats').textContent = `完成 - 成功 ${successCount}，失败 ${failCount}，更新 ${learnedDomains.size} 个域名`;
-
-            batchLearning = false;
-            showToast(`批量学习完成：成功 ${successCount}，失败 ${failCount}`, successCount > 0 ? 'success' : 'error');
         }
 
         async function batchAnalyzeAll() {
