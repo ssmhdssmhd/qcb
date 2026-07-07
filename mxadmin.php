@@ -1388,11 +1388,18 @@ header('Expires: 0');
             <div class="card">
                 <div class="card-title">沫兮API 接口测试</div>
                 <div class="input-group">
-                    <input type="text" id="moxiTestUrl" placeholder="输入视频链接，如：https://v.qq.com/x/cover/xxx.html">
+                    <input type="text" id="moxiTestUrl" placeholder="输入视频链接，如：https://v.qq.com/x/cover/xxx.html 或 M3U8链接">
                     <button class="btn btn-primary" onclick="testMoxiApi()">测试解析</button>
+                    <button class="btn btn-secondary" onclick="testMxjxApi()">测试去广告</button>
+                    <button class="btn btn-secondary" onclick="testAnalyzeApi()">测试分析</button>
+                    <button class="btn btn-secondary" onclick="testOfficialInfoApi()">测试官替</button>
                 </div>
-                <div style="font-size:12px;color:#909399;margin-bottom:16px">
-                    支持官方视频链接和直接M3U8链接
+                <div style="font-size:12px;color:#909399;margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <span>支持官方视频链接和直接M3U8链接</span>
+                    <span style="color:#ddd">|</span>
+                    <span>快捷测试URL：</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('moxiTestUrl').value='https://s3.bfllvip.com/video/qingyuniandiyiji/737c2ec959ce/index.m3u8';testMxjxApi()" style="color:#409eff;text-decoration:none" title="测试去广告">庆余年第1季 M3U8</a>
+                    <a href="javascript:void(0)" onclick="document.getElementById('moxiTestUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';testOfficialInfoApi()" style="color:#409eff;text-decoration:none" title="测试官替解析">腾讯视频示例</a>
                 </div>
                 <div id="moxiTestResult" style="display:none">
                     <div id="moxiTestInfo"></div>
@@ -5557,6 +5564,217 @@ header('Expires: 0');
                     html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
                     html += '</div>';
                     
+                    infoEl.innerHTML = html;
+                }
+            } catch (e) {
+                infoEl.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">请求失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function testMxjxApi() {
+            const url = document.getElementById('moxiTestUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+            const resultEl = document.getElementById('moxiTestResult');
+            const infoEl = document.getElementById('moxiTestInfo');
+            resultEl.style.display = 'block';
+            infoEl.innerHTML = '<div style="text-align:center;padding:20px;color:#909399">正在去广告处理...</div>';
+
+            try {
+                const mxjxUrl = API_BASE + '?action=mxjx/info&url=' + encodeURIComponent(url) + '&_t=' + Date.now();
+                const res = await fetch(mxjxUrl);
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    infoEl.innerHTML = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600">✗ 返回非JSON响应</div>
+                        <pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:300px;margin-top:8px">${escapeHtml(text.substring(0, 1000))}</pre>
+                    </div>`;
+                    return;
+                }
+
+                if (data.success || data.code === 200) {
+                    const innerData = data.data || data;
+                    const playUrl = innerData.play_url || (API_BASE + '?action=mxjx&url=' + encodeURIComponent(url));
+                    let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
+                        <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 去广告处理成功</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>原始URL:</strong> <code style="word-break:break-all">${escapeHtml(innerData.original_url || url)}</code></p>
+                            <p><strong>媒体URL:</strong> <code style="word-break:break-all">${escapeHtml(innerData.media_url || '')}</code></p>
+                            <p><strong>域名:</strong> ${escapeHtml(innerData.domain || '')}</p>
+                            <p><strong>有域名规则:</strong> ${innerData.has_domain_rules ? '是' : '否'}</p>
+                            ${innerData.stats ? `<p><strong>统计:</strong> 总${innerData.stats.total_segments || 0} 保留${innerData.stats.kept_segments || 0} 移除${innerData.stats.removed_segments || 0} 广告占比${innerData.stats.ad_percentage || 0}%</p>` : ''}
+                            <p><strong>无广告播放地址:</strong></p>
+                            <div style="background:#fff;padding:8px;border-radius:4px;margin-top:4px;border:1px solid #e1f3d8">
+                                <code style="word-break:break-all;font-size:11px">${escapeHtml(playUrl)}</code>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-sm btn-primary" onclick="window.open('${escapeHtml(playUrl)}', '_blank')">新窗口播放</button>
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(playUrl)}')">复制播放地址</button>
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(mxjxUrl)}')">复制接口URL</button>
+                        </div>
+                    </div>`;
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:400px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
+                    infoEl.innerHTML = html;
+                } else {
+                    let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 去广告处理失败</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>消息:</strong> ${escapeHtml(data.message || data.msg || '未知错误')}</p>
+                        </div>
+                    </div>`;
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:400px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
+                    infoEl.innerHTML = html;
+                }
+            } catch (e) {
+                infoEl.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">请求失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function testAnalyzeApi() {
+            const url = document.getElementById('moxiTestUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+            const resultEl = document.getElementById('moxiTestResult');
+            const infoEl = document.getElementById('moxiTestInfo');
+            resultEl.style.display = 'block';
+            infoEl.innerHTML = '<div style="text-align:center;padding:20px;color:#909399">正在分析视频（可能需要 30-60 秒）...</div>';
+
+            try {
+                const analyzeUrl = API_BASE + '?action=analyze&url=' + encodeURIComponent(url) + '&auto_learn=0&_t=' + Date.now();
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 180000);
+                const res = await fetch(analyzeUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    infoEl.innerHTML = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600">✗ 返回非JSON响应</div>
+                        <pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:300px;margin-top:8px">${escapeHtml(text.substring(0, 1000))}</pre>
+                    </div>`;
+                    return;
+                }
+
+                if (data.success) {
+                    const stats = data.stats || {};
+                    let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
+                        <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 分析成功</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>域名:</strong> ${escapeHtml(data.domain || '')}</p>
+                            <p><strong>是否主播放列表:</strong> ${data.playlist && data.playlist.isMaster ? '是' : '否'}</p>
+                            <p><strong>快速模式:</strong> ${data.fastMode ? '是' : '否'}</p>
+                            <p><strong>有域名规则:</strong> ${data.hasDomainRules ? '是' : '否'}</p>
+                            <p><strong>学习次数:</strong> ${data.learn_count || 0}</p>
+                            <p><strong>片段统计:</strong> 总${stats.totalSegments || 0} 广告${stats.adSegments || 0} 不连续${stats.discontinuityCount || 0} 序列跳跃${stats.sequenceJumpCount || 0} 广告簇${stats.adClusterCount || 0}</p>
+                            ${data.mxjxUrl ? `<p><strong>无广告播放:</strong> <code style="word-break:break-all">${escapeHtml(data.mxjxUrl)}</code></p>` : ''}
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-sm btn-primary" onclick="copyText('${escapeHtml(analyzeUrl)}')">复制接口URL</button>
+                            ${data.mxjxUrl ? `<button class="btn btn-sm btn-secondary" onclick="window.open('${escapeHtml(data.mxjxUrl)}', '_blank')">新窗口播放</button>` : ''}
+                        </div>
+                    </div>`;
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应（已截断）:</div>';
+                    const truncated = JSON.parse(JSON.stringify(data));
+                    if (truncated.allSegments) truncated.allSegments = truncated.allSegments.slice(0, 20) + `... (共 ${truncated.allSegments.length} 项)`;
+                    if (truncated.durationDistribution && truncated.durationDistribution.buckets) {
+                        // keep
+                    }
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:400px">${escapeHtml(JSON.stringify(truncated, null, 2))}</pre>`;
+                    html += '</div>';
+                    infoEl.innerHTML = html;
+                } else {
+                    let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 分析失败</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>消息:</strong> ${escapeHtml(data.message || '未知错误')}</p>
+                        </div>
+                    </div>`;
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:400px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
+                    infoEl.innerHTML = html;
+                }
+            } catch (e) {
+                infoEl.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">请求失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function testOfficialInfoApi() {
+            const url = document.getElementById('moxiTestUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+            const resultEl = document.getElementById('moxiTestResult');
+            const infoEl = document.getElementById('moxiTestInfo');
+            resultEl.style.display = 'block';
+            infoEl.innerHTML = '<div style="text-align:center;padding:20px;color:#909399">正在解析官替地址...</div>';
+
+            try {
+                const resUrl = API_BASE + '?action=official_replace/info&url=' + encodeURIComponent(url) + '&_t=' + Date.now();
+                const res = await fetch(resUrl);
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    infoEl.innerHTML = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600">✗ 返回非JSON响应</div>
+                        <pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:300px;margin-top:8px">${escapeHtml(text.substring(0, 1000))}</pre>
+                    </div>`;
+                    return;
+                }
+
+                if (data.success) {
+                    const playUrl = data.ad_skip_url || (API_BASE + '?action=mxjx&url=' + encodeURIComponent(data.m3u8_url || ''));
+                    let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
+                        <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 官替解析成功</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>平台:</strong> ${escapeHtml(data.platform || '')}</p>
+                            <p><strong>视频标题:</strong> ${escapeHtml(data.video_title || '')}</p>
+                            <p><strong>目标集数:</strong> ${escapeHtml(data.target_episode || '')}</p>
+                            <p><strong>匹配度:</strong> ${data.match_score || 0}%</p>
+                            <p><strong>来源站点:</strong> ${escapeHtml(data.site || '')}</p>
+                            <p><strong>M3U8地址:</strong> <code style="word-break:break-all">${escapeHtml(data.m3u8_url || '')}</code></p>
+                            <p><strong>无广告播放地址:</strong></p>
+                            <div style="background:#fff;padding:8px;border-radius:4px;margin-top:4px;border:1px solid #e1f3d8">
+                                <code style="word-break:break-all;font-size:11px">${escapeHtml(playUrl)}</code>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-sm btn-primary" onclick="window.open('${escapeHtml(playUrl)}', '_blank')">新窗口播放</button>
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(playUrl)}')">复制播放地址</button>
+                            <button class="btn btn-sm btn-secondary" onclick="copyText('${escapeHtml(resUrl)}')">复制接口URL</button>
+                        </div>
+                    </div>`;
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:400px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
+                    infoEl.innerHTML = html;
+                } else {
+                    let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
+                        <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 官替解析失败</div>
+                        <div style="font-size:13px;line-height:2">
+                            <p><strong>消息:</strong> ${escapeHtml(data.message || '未知错误')}</p>
+                        </div>
+                    </div>`;
+                    html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">完整 JSON 响应:</div>';
+                    html += `<pre style="background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow:auto;font-size:11px;max-height:400px">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+                    html += '</div>';
                     infoEl.innerHTML = html;
                 }
             } catch (e) {

@@ -409,10 +409,15 @@ try {
 
             // ===== 提取广告特征码并保存到数据库 =====
             $signatures = [];
-            if (!empty($analysis['durationDistribution'])) {
-                foreach ($analysis['durationDistribution'] as $dur => $count) {
-                    if ((float)$dur < 3.0 && $count > 1) {
-                        $signatures[] = ['type' => 'duration', 'value' => (string)$dur, 'weight' => min(50, $count * 5), 'confidence' => min(80, $count * 10)];
+            if (!empty($analysis['durationDistribution']) && is_array($analysis['durationDistribution'])) {
+                $dist = $analysis['durationDistribution'];
+                if (isset($dist['buckets']) && is_array($dist['buckets'])) {
+                    foreach ($dist['buckets'] as $dur => $count) {
+                        $countVal = is_array($count) ? ($count['count'] ?? 0) : (int)$count;
+                        $durVal = is_array($count) ? ($count['duration'] ?? $dur) : $dur;
+                        if ((float)$durVal < 3.0 && $countVal > 1) {
+                            $signatures[] = ['type' => 'duration', 'value' => (string)$durVal, 'weight' => min(50, $countVal * 5), 'confidence' => min(80, $countVal * 10)];
+                        }
                     }
                 }
             }

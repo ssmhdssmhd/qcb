@@ -359,6 +359,16 @@ MIT License
 
 ## 版本历史
 
+### v2.27.0 (2026-07-07)
+
+- 🔧 修复 analyze 接口报错：durationDistribution 遍历逻辑错误
+- ✅ 后台添加多个接口测试按钮
+  - 测试解析（moxi）
+  - 测试去广告（mxjx/info）
+  - 测试分析（analyze）
+  - 测试官替（official_replace/info）
+- ✅ 庆余年第1季 M3U8 测试通过（移除40个广告片段）
+
 ### v2.26.0 (2026-07-07)
 
 - ✅ 补充缺失的API接口

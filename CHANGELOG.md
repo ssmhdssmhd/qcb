@@ -5,6 +5,40 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.27.0] - 2026-07-07
+
+### ✅ 后台接口测试增强，修复URL连接报错
+
+**问题**: 测试 `https://s3.bfllvip.com/video/qingyuniandiyiji/737c2ec959ce/index.m3u8` 时报错 `Unsupported operand types: array * int`
+
+**根本原因**: 
+`analyze` 接口的 `durationDistribution` 提取广告特征码时，按 `$dur => $count` 遍历关联数组 `['min', 'max', 'avg', 'buckets']`，但误把数组值当成数字用于 `count * 5` 运算。
+
+**修复内容**:
+
+1. **修复 mx.php durationDistribution 遍历逻辑** ([mx.php](file:///workspace/mx.php))
+   - 修正遍历层级，从 `dist['buckets']` 中正确取出 duration 和 count
+   - 兼容 count 为数组或数字的两种格式
+
+2. **后台添加多个接口测试按钮** ([mxadmin.php](file:///workspace/mxadmin.php))
+   - 测试解析（moxi 接口）
+   - 测试去广告（mxjx/info 接口）
+   - 测试分析（analyze 接口）
+   - 测试官替（official_replace/info 接口）
+   - 快捷测试URL链接（庆余年第1季 M3U8、腾讯视频示例）
+
+**测试结果（庆余年第1季 M3U8）**:
+- mxjx/info: ✓ 200 OK, 移除40个广告片段, 节省73.4秒
+- moxi: ✓ 200 OK, 剧名: Qingyuniandiyiji
+- analyze: ✓ 200 OK, 域名: s3.bfllvip.com
+
+**受影响文件**:
+- [mx.php](file:///workspace/mx.php) - 修复 durationDistribution 遍历
+- [mxadmin.php](file:///workspace/mxadmin.php) - 新增接口测试功能
+- [version.php](file:///workspace/version.php) - 版本号
+
+---
+
 ## [2.26.0] - 2026-07-07
 
 ### ✅ 补充缺失的API接口
