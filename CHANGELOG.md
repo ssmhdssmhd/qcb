@@ -5,6 +5,33 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.27.2] - 2026-07-07
+
+### 🐛 修复在线更新覆盖数据库导致数据丢失的问题
+
+**问题**: 每次执行在线更新后，数据库里的数据都会被重置/改变。
+
+**根本原因**:
+[update.php](file:///workspace/update.php) 的 `applyUpdate()` 在应用更新时会用仓库里的文件覆盖本地文件，而排除列表 `$excludeFiles` 中未包含数据库相关文件，导致：
+- `db/data.db`（SQLite 数据库）被仓库里的空库覆盖，用户数据全部丢失
+- `db/db_config.php`（数据库配置）被重置为默认值（root 空密码），导致连接异常
+
+**修复内容**:
+
+1. **将数据库文件加入受保护模式** ([update.php](file:///workspace/update.php))
+   - 新增 `$protectedPatterns` 规则保护 `db/*.db` 及其 WAL/SHM 临时文件
+   - 新增规则保护 `db/db_config.php`，避免本地数据库配置被覆盖
+   - 受保护文件仍会正常参与备份，仅在"应用更新"阶段且本地已存在时才跳过覆盖，确保：
+     - 老用户更新：保留本地数据库与配置不动
+     - 全新安装：仍会从仓库写入初始空库与示例配置
+
+**受影响文件**:
+- [update.php](file:///workspace/update.php) - 扩展 `$protectedPatterns` 保护数据库文件
+- [version.php](file:///workspace/version.php) - 版本号升至 v2.27.2
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) - 记录本次修复
+
+---
+
 ## [2.27.0] - 2026-07-07
 
 ### ✅ 后台接口测试增强，修复URL连接报错

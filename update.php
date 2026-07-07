@@ -52,8 +52,15 @@ $excludeDirs = [
     '.git',
 ];
 
+// 受保护文件模式：这些文件会正常备份，但在应用更新时，
+// 仅当本地已存在该文件才会跳过覆盖（保护用户数据/配置不被仓库默认值覆盖）
 $protectedPatterns = [
     '/^gz\/rules_.*\.php$/',
+    // 保护 SQLite 数据库文件（含 WAL/SHM 临时文件），避免更新时被仓库空库覆盖
+    '/^db\/.*\.db$/',
+    '/^db\/.*\.db-(journal|wal|shm)$/',
+    // 保护数据库配置文件（含 MySQL 账号密码等本地配置），仅首次安装时写入
+    '/^db\/db_config\.php$/',
 ];
 
 $action = $_GET['action'] ?? 'check';
