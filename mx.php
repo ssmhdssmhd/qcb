@@ -225,15 +225,29 @@ try {
             $domain = $parsedUrl['host'] ?? '';
 
             // ===== 数据库缓存查询 =====
-            $analysisCache = new DbAnalysisCache();
-            $domainStats = new DbDomainAnalysisStats();
-            $adSignature = new DbAdSignature();
+            // 数据库不可用时安全降级，不影响核心分析功能
+            $analysisCache = null;
+            $domainStats = null;
+            $adSignature = null;
+            $dbCacheAvailable = $useDb;
+            if ($useDb) {
+                try {
+                    $analysisCache = new DbAnalysisCache();
+                    $domainStats = new DbDomainAnalysisStats();
+                    $adSignature = new DbAdSignature();
+                } catch (Throwable $e) {
+                    $dbCacheAvailable = false;
+                    error_log('分析缓存初始化失败（不影响分析功能）: ' . $e->getMessage());
+                }
+            }
 
-            if (!$skipCache) {
+            if (!$skipCache && $analysisCache) {
                 $cached = $analysisCache->get($url);
                 if ($cached) {
                     // 更新分析统计
-                    $domainStats->recordAnalyze($domain, $cached['total_segments'], $cached['ad_segments'], $cached['ad_percentage']);
+                    if ($domainStats) {
+                        $domainStats->recordAnalyze($domain, $cached['total_segments'], $cached['ad_segments'], $cached['ad_percentage']);
+                    }
 
                     $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
                     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -438,7 +452,13 @@ try {
             if ($analysis['discontinuityCount'] > 0) {
                 $signatures[] = ['type' => 'discontinuity', 'value' => 'true', 'weight' => 30, 'confidence' => 50];
             }
-            $adSignature->addSignatures($domain, $signatures);
+            if ($adSignature && !empty($signatures)) {
+                try {
+                    $adSignature->addSignatures($domain, $signatures);
+                } catch (Throwable $e) {
+                    error_log('保存广告特征码失败（不影响分析结果）: ' . $e->getMessage());
+                }
+            }
 
             // ===== 保存分析结果到数据库缓存 =====
             $cacheResult = [
@@ -453,8 +473,20 @@ try {
                     'adPercentage' => $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0
                 ]
             ];
-            $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, false, false);
-            $domainStats->recordAnalyze($domain, $analysis['totalCount'], $analysis['adCount'], $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0);
+            if ($analysisCache) {
+                try {
+                    $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, false, false);
+                } catch (Throwable $e) {
+                    error_log('保存分析缓存失败（不影响分析结果）: ' . $e->getMessage());
+                }
+            }
+            if ($domainStats) {
+                try {
+                    $domainStats->recordAnalyze($domain, $analysis['totalCount'], $analysis['adCount'], $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0);
+                } catch (Throwable $e) {
+                    error_log('记录分析统计失败（不影响分析结果）: ' . $e->getMessage());
+                }
+            }
 
             $playlistInfo = [
                 'isMaster' => !empty($playlist['isMaster']),
