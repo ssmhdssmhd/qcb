@@ -5,6 +5,32 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.22.4] - 2026-07-07
+
+### 🐛 修复 MySQL 索引过长报错（767 bytes 限制）
+
+**问题**: MySQL 5.6 及以下版本（或未启用 innodb_large_prefix）使用 utf8mb4 字符集时，建表报错：
+```
+SQLSTATE[42000]: Syntax error or access violation: 1071 Specified key was too long; 
+max key length is 767 bytes
+```
+
+**原因**: utf8mb4 每个字符占 4 字节，`VARCHAR(255)` 做索引就是 255×4=1020 字节，超过了 InnoDB 默认的 767 字节索引前缀限制。
+
+**修复**: 将所有有索引的 VARCHAR 字段长度缩减到 191 字符（191×4=764 字节，刚好在限制内）：
+
+| 表名 | 字段 | 原长度 | 新长度 | 索引类型 |
+|------|------|--------|--------|----------|
+| domain_rules | domain | 255 | 191 | UNIQUE KEY |
+| proxies | host | 255 | 191 | KEY (host, port) |
+| official_platforms | domain | 255 | 191 | KEY |
+
+**同时修复两处建表逻辑**：
+- [schema_mysql.sql](file:///workspace/db/schema_mysql.sql) - 批量建表 schema
+- [DbDomainRuleManager.php](file:///workspace/db/DbDomainRuleManager.php) - 单表自动建表
+
+---
+
 ## [2.22.3] - 2026-07-07
 
 ### 🐛 修复 DbDomainRuleManager 建表仍报 JSON 错误

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS `sys_config` (
 -- ============================================
 CREATE TABLE IF NOT EXISTS `domain_rules` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `domain` VARCHAR(255) NOT NULL COMMENT '域名',
+    `domain` VARCHAR(191) NOT NULL COMMENT '域名',
     `name` VARCHAR(255) DEFAULT '' COMMENT '资源名称',
     `note` VARCHAR(500) DEFAULT '' COMMENT '备注',
     `ad_threshold` INT DEFAULT 50 COMMENT '广告判定阈值',
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS `proxies` (
     `proxy_id` VARCHAR(64) NOT NULL COMMENT '代理唯一标识',
     `name` VARCHAR(200) DEFAULT '' COMMENT '代理名称',
     `type` VARCHAR(20) DEFAULT 'http' COMMENT '类型: http, https, socks5',
-    `host` VARCHAR(255) NOT NULL COMMENT '代理主机',
+    `host` VARCHAR(191) NOT NULL COMMENT '代理主机',
     `port` INT NOT NULL COMMENT '代理端口',
     `username` VARCHAR(100) DEFAULT '' COMMENT '用户名',
     `password` VARCHAR(100) DEFAULT '' COMMENT '密码',
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS `proxies` (
 CREATE TABLE IF NOT EXISTS `official_platforms` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `name` VARCHAR(100) NOT NULL COMMENT '平台名称',
-    `domain` VARCHAR(255) NOT NULL COMMENT '平台域名',
+    `domain` VARCHAR(191) NOT NULL COMMENT '平台域名',
     `enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
     `pattern` VARCHAR(500) DEFAULT '' COMMENT 'URL匹配正则',
     `title_selector` VARCHAR(500) DEFAULT '' COMMENT '标题选择器',

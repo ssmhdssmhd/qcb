@@ -22,7 +22,7 @@ class DbDomainRuleManager {
         if ($dbType === 'mysql') {
             $sql = "CREATE TABLE {$this->tableName} (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                domain VARCHAR(255) NOT NULL UNIQUE,
+                domain VARCHAR(191) NOT NULL UNIQUE,
                 name VARCHAR(255) DEFAULT '',
                 note TEXT,
                 learn_count INT DEFAULT 0,
