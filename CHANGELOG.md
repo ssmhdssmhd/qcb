@@ -5,6 +5,64 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.29.0] - 2026-07-07
+
+### 🚀 官替 API 全面升级 & 核心逻辑优化
+
+**问题**: 官替 API 接口失败，无法从官方视频链接提取视频信息并匹配资源站内容。
+
+**核心升级内容**:
+
+1. **视频信息提取增强** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php))
+   - 优化获取顺序：API 优先 → 页面提取 → URL 提取，三重保障
+   - 新增 `extractTitleFromUrl()` - 从 URL 文件名提取中文标题
+   - 新增 `findTitleInData()` - 递归遍历 JSON 数据，智能识别标题和封面
+   - 支持更多标题字段：title, name, ti, videoName, subTitle, mainTitle 等
+
+2. **多平台 API 支持增强**
+   - **腾讯视频**：新增 2 个 API 源，共 3 个 API 轮询（pbaccess、access、vv）
+   - **爱奇艺**：新增 pcw-api.iqiyi.com 视频信息接口
+   - **芒果TV**：新增 pcweb.api.mgtv.com 剧集列表接口
+   - 通用 JSONP 包装移除，兼容各种返回格式
+
+3. **搜索匹配算法优化**
+   - 增强 `buildSearchKeywords()` - 生成更多关键词组合
+   - 支持中文数字季数（第一季、第二季）
+   - 支持罗马数字季数（Ⅱ、Ⅲ）
+   - 新增季数+版本组合关键词
+   - 新增 part（上下部）关键词组合
+   - 关键词自动去重和长度过滤
+
+4. **去广告集成**
+   - 官替结果新增 `ad_skip_url` 字段 - 直接返回去广告播放地址
+   - 新增 `buildAdSkipUrl()` - 自动构建去广告接口 URL
+   - 自动适配 HTTPS/HTTP 协议和域名路径
+
+5. **缓存清理全面增强** ([UpdateManager.php](file:///workspace/src/UpdateManager.php))
+   - 新增 `clearOfficialReplaceCache()` - 清理官替缓存表
+   - 新增 `clearAnalysisCache()` - 清理分析缓存表
+   - 新增文件缓存清理（m3u8、ad、analysis、official_replace 等）
+   - 新增 `logCacheClear()` - 缓存清理日志记录
+   - 后台"清理缓存"按钮一键清理全部缓存
+
+6. **完整日志系统**
+   - 官替解析日志：`cache/logs/official_replace_YYYY-MM-DD.log`
+   - 缓存清理日志：`cache/logs/cache_clear_YYYY-MM-DD.log`
+   - 日志包含时间、状态、平台、标题、匹配度、站点等详细信息
+   - 失败和成功均记录，便于排查问题
+
+7. **数据库版同步升级** ([DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+   - 所有文件版增强功能同步到数据库版
+   - 保持数据库操作逻辑不变，核心算法同步升级
+
+**测试结果**:
+- 19 项接口测试，100% 通过
+- 10 项基础接口全部正常
+- 6 项错误处理接口全部正常
+- 3 轮 × 10 并发压力测试全部通过
+
+---
+
 ## [2.28.2] - 2026-07-07
 
 ### 🐛 修复内存耗尽问题 & 规则存储优化（紧急修复）

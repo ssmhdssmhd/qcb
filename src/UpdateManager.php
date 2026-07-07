@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '2.3.0';
+    private $currentVersion = '2.29.0';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
@@ -1003,7 +1003,110 @@ class UpdateManager
 
         $results['clearstatcache'] = true;
 
+        $cacheDir = $this->rootDir . '/cache';
+        if (is_dir($cacheDir)) {
+            $clearedCount = 0;
+            $clearedSize = 0;
+
+            $patterns = [
+                'm3u8_*.cache',
+                'ad_*.cache',
+                'analysis_*.cache',
+                'official_replace_*.cache',
+            ];
+
+            foreach ($patterns as $pattern) {
+                $files = glob($cacheDir . '/' . $pattern);
+                if ($files) {
+                    foreach ($files as $file) {
+                        if (is_file($file)) {
+                            $clearedSize += filesize($file);
+                            if (@unlink($file)) {
+                                $clearedCount++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            $results['file_cache_cleared'] = $clearedCount . ' files';
+            $results['file_cache_size'] = round($clearedSize / 1024, 2) . ' KB';
+        }
+
+        $results['official_replace_cache'] = $this->clearOfficialReplaceCache();
+        $results['analysis_cache'] = $this->clearAnalysisCache();
+
+        $this->logCacheClear($results);
+
         return $results;
+    }
+
+    private function clearOfficialReplaceCache()
+    {
+        $count = 0;
+        $size = 0;
+
+        try {
+            $dbConfigFile = $this->rootDir . '/db/db_config.php';
+            if (file_exists($dbConfigFile)) {
+                require_once $this->rootDir . '/db/autoload.php';
+                $db = Database::getInstance();
+                if ($db && $db->tableExists('official_replace_cache')) {
+                    $stmt = $db->query('SELECT COUNT(*) as cnt FROM official_replace_cache');
+                    $count = $stmt ? intval(($stmt[0]['cnt'] ?? 0)) : 0;
+                    $db->query('DELETE FROM official_replace_cache');
+                }
+            }
+        } catch (Throwable $e) {
+        }
+
+        return [
+            'cleared' => $count,
+            'size' => $size
+        ];
+    }
+
+    private function clearAnalysisCache()
+    {
+        $count = 0;
+
+        try {
+            $dbConfigFile = $this->rootDir . '/db/db_config.php';
+            if (file_exists($dbConfigFile)) {
+                require_once $this->rootDir . '/db/autoload.php';
+                $db = Database::getInstance();
+                if ($db && $db->tableExists('m3u8_analysis_cache')) {
+                    $stmt = $db->query('SELECT COUNT(*) as cnt FROM m3u8_analysis_cache');
+                    $count = $stmt ? intval(($stmt[0]['cnt'] ?? 0)) : 0;
+                    $db->query('DELETE FROM m3u8_analysis_cache');
+                }
+            }
+        } catch (Throwable $e) {
+        }
+
+        return [
+            'cleared' => $count
+        ];
+    }
+
+    private function logCacheClear($results)
+    {
+        try {
+            $logDir = $this->rootDir . '/cache/logs';
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0755, true);
+            }
+            $logFile = $logDir . '/cache_clear_' . date('Y-m-d') . '.log';
+            $logLine = sprintf(
+                "[%s] 缓存清理完成 | 文件缓存: %s | 官替缓存: %d 条 | 分析缓存: %d 条\n",
+                date('Y-m-d H:i:s'),
+                $results['file_cache_cleared'] ?? '0 files',
+                $results['official_replace_cache']['cleared'] ?? 0,
+                $results['analysis_cache']['cleared'] ?? 0
+            );
+            @file_put_contents($logFile, $logLine, FILE_APPEND);
+        } catch (Throwable $e) {
+        }
     }
 
     private function rrmdir($dir)

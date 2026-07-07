@@ -294,6 +294,7 @@ class DbOfficialReplaceManager {
         }
 
         if (!$searchResult || empty($searchResult['videos'])) {
+            $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
             return [
                 'success' => false,
                 'message' => '未找到匹配的资源',
@@ -311,6 +312,7 @@ class DbOfficialReplaceManager {
         $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
 
         if (!$bestMatch) {
+            $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
             return [
                 'success' => false,
                 'message' => '未找到匹配度足够的资源',
@@ -358,6 +360,13 @@ class DbOfficialReplaceManager {
         }
         unset($urlItem);
 
+        $adSkipUrl = '';
+        if (!empty($targetEpisodeUrl)) {
+            $adSkipUrl = $this->buildAdSkipUrl($targetEpisodeUrl);
+        }
+
+        $this->logResolve($url, $platform['name'], $videoTitle, $bestMatch['score'] ?? 0, $bestMatch['site'] ?? '', $targetEpisodeUrl, !empty($targetEpisodeUrl));
+
         return [
             'success' => true,
             'platform' => $platform['name'],
@@ -381,6 +390,7 @@ class DbOfficialReplaceManager {
             'site' => $bestMatch['site'],
             'video' => $bestMatch['video'],
             'm3u8_url' => $targetEpisodeUrl,
+            'ad_skip_url' => $adSkipUrl,
             'target_episode' => $targetEpisodeName,
             'all_urls' => $allUrls,
             'episodes' => count($allUrls),
@@ -396,22 +406,75 @@ class DbOfficialReplaceManager {
         return $this->resolve($url);
     }
 
+    private function buildAdSkipUrl($m3u8Url) {
+        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+        $basePath = dirname($requestUri);
+        $basePath = $basePath === '/' ? '' : $basePath;
+        $selfUrl = $scheme . '://' . $host . $basePath;
+        return $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+    }
+
+    private function logResolve($url, $platform, $title, $score, $site, $m3u8Url, $success) {
+        try {
+            $logDir = __DIR__ . '/../cache/logs';
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0755, true);
+            }
+            $logFile = $logDir . '/official_replace_' . date('Y-m-d') . '.log';
+            $logLine = sprintf(
+                "[%s] %s | 平台: %s | 标题: %s | 匹配度: %.1f | 站点: %s | 成功: %s | URL: %s\n",
+                date('Y-m-d H:i:s'),
+                $success ? 'SUCCESS' : 'FAIL',
+                $platform,
+                $title,
+                $score,
+                $site,
+                $success ? '是' : '否',
+                $url
+            );
+            @file_put_contents($logFile, $logLine, FILE_APPEND);
+        } catch (Throwable $e) {
+        }
+    }
+
     private function buildSearchKeywords($videoInfo, $platform) {
         $keywords = [];
         $baseTitle = $videoInfo['base_title'] ?? '';
         $seasonNum = $videoInfo['season_num'] ?? null;
         $version = $videoInfo['version'] ?? '';
+        $part = $videoInfo['part'] ?? '';
 
         if (!empty($baseTitle)) {
             $keywords[] = $baseTitle;
 
-            if ($seasonNum && $seasonNum > 1) {
+            if ($seasonNum) {
+                $cnNum = $this->numberToChinese($seasonNum);
                 $keywords[] = $baseTitle . ' 第' . $seasonNum . '季';
-                $keywords[] = $baseTitle . ' 第二季';
+                if ($cnNum) {
+                    $keywords[] = $baseTitle . ' 第' . $cnNum . '季';
+                }
+                $keywords[] = $baseTitle . $seasonNum;
+                if ($seasonNum == 2) {
+                    $keywords[] = $baseTitle . ' 第二季';
+                    $keywords[] = $baseTitle . 'Ⅱ';
+                } elseif ($seasonNum == 3) {
+                    $keywords[] = $baseTitle . ' 第三季';
+                    $keywords[] = $baseTitle . 'Ⅲ';
+                }
+            }
+
+            if (!empty($part)) {
+                $keywords[] = $baseTitle . ' ' . $part;
             }
 
             if (!empty($version)) {
                 $keywords[] = $baseTitle . ' ' . $version;
+            }
+
+            if ($seasonNum && !empty($version)) {
+                $keywords[] = $baseTitle . ' 第' . $seasonNum . '季 ' . $version;
             }
         }
 
@@ -425,7 +488,19 @@ class DbOfficialReplaceManager {
             $keywords[] = $videoId;
         }
 
-        return array_values(array_unique($keywords));
+        $keywords = array_values(array_unique(array_filter($keywords, function($kw) {
+            return !empty($kw) && mb_strlen($kw) >= 2;
+        })));
+
+        return $keywords;
+    }
+
+    private function numberToChinese($num) {
+        $cnNumbers = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+        if ($num >= 0 && $num <= 10) {
+            return $cnNumbers[$num];
+        }
+        return null;
     }
 
     private function findAllMatches($videoInfo, $videos) {
@@ -560,25 +635,47 @@ class DbOfficialReplaceManager {
     }
 
     private function fetchVideoInfo($url, $platform) {
-        $html = $this->httpGet($url);
-        if (!$html) {
-            return null;
+        $videoId = $this->extractVideoId($url, $platform);
+        $title = null;
+        $cover = null;
+        $episodeInfo = [
+            'episode_num' => null,
+            'episode_name' => '',
+            'total_episodes' => null
+        ];
+
+        $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
+        if ($apiInfo) {
+            if (!empty($apiInfo['title'])) {
+                $title = $apiInfo['title'];
+            }
+            if (!empty($apiInfo['cover'])) {
+                $cover = $apiInfo['cover'];
+            }
         }
 
-        $title = $this->extractTitle($html, $platform);
-        $cover = $this->extractCover($html);
-        $episodeInfo = $this->extractEpisodeFromHtml($html, $platform);
-        $videoId = $this->extractVideoId($url, $platform);
+        if (empty($title) || mb_strlen($title) < 3) {
+            $html = $this->httpGet($url);
+            if ($html) {
+                $htmlTitle = $this->extractTitle($html, $platform);
+                if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3) {
+                    $title = $htmlTitle;
+                }
+                $htmlCover = $this->extractCover($html);
+                if (!empty($htmlCover) && empty($cover)) {
+                    $cover = $htmlCover;
+                }
+                $htmlEpisodeInfo = $this->extractEpisodeFromHtml($html, $platform);
+                if (!empty($htmlEpisodeInfo['episode_num'])) {
+                    $episodeInfo = $htmlEpisodeInfo;
+                }
+            }
+        }
 
         if (empty($title) || mb_strlen($title) < 3) {
-            $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
-            if ($apiInfo) {
-                if (!empty($apiInfo['title'])) {
-                    $title = $apiInfo['title'];
-                }
-                if (!empty($apiInfo['cover']) && empty($cover)) {
-                    $cover = $apiInfo['cover'];
-                }
+            $urlTitle = $this->extractTitleFromUrl($url, $platform);
+            if (!empty($urlTitle) && mb_strlen($urlTitle) >= 3) {
+                $title = $urlTitle;
             }
         }
 
@@ -587,8 +684,32 @@ class DbOfficialReplaceManager {
             'cover' => $cover,
             'url' => $url,
             'platform' => $platform['name'],
-            'episode_info' => $episodeInfo
+            'episode_info' => $episodeInfo,
+            'video_id' => $videoId
         ];
+    }
+
+    private function extractTitleFromUrl($url, $platform) {
+        $domain = $platform['domain'] ?? '';
+
+        if ($domain === 'v.qq.com') {
+            if (preg_match('/cover\/([a-zA-Z0-9]+)\//i', $url, $matches)) {
+                return null;
+            }
+        }
+
+        if (preg_match('/\/([^\/\?#]+)\.(?:html|shtml|htm)/i', $url, $matches)) {
+            $fileName = $matches[1];
+            if (preg_match('/[\x{4e00}-\x{9fa5}]/u', $fileName) && mb_strlen($fileName) >= 2) {
+                $cleanName = preg_replace('/[-_]\d+$/', '', $fileName);
+                $cleanName = preg_replace('/[-_]/u', ' ', $cleanName);
+                if (mb_strlen($cleanName) >= 2) {
+                    return $cleanName;
+                }
+            }
+        }
+
+        return null;
     }
 
     private function fetchVideoInfoFromApi($videoId, $platform) {
@@ -600,21 +721,32 @@ class DbOfficialReplaceManager {
         $result = ['title' => null, 'cover' => null];
 
         if ($platformName === '腾讯视频') {
-            $apiUrl = 'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json';
-            $response = $this->httpGet($apiUrl);
-            if ($response) {
-                $jsonStr = preg_replace('/^QZOutputJson=/', '', $response);
+            $apiUrls = [
+                'https://pbaccess.video.qq.com/trpc.vidplay.vidplay_2_0_fcgi.VidPlay2_0Fcgi/GetCmsVidInfoAll?data={"vid":"' . urlencode($videoId) . '","appVer":"3.5.57","platform":"40000"}',
+                'https://access.video.qq.com/cgi-bin/varietycheck?vid=' . urlencode($videoId),
+                'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json',
+            ];
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
+                $jsonStr = $response;
+                $jsonStr = preg_replace('/^\w+=/', '', $jsonStr);
                 $jsonStr = preg_replace('/;$/', '', $jsonStr);
                 $data = json_decode($jsonStr, true);
-                if ($data && isset($data['vl']['vi'][0])) {
-                    $vi = $data['vl']['vi'][0];
-                    if (!empty($vi['ti'])) {
-                        $result['title'] = $vi['ti'];
+
+                if ($data) {
+                    $found = $this->findTitleInData($data);
+                    if (!empty($found['title']) && empty($result['title'])) {
+                        $result['title'] = $found['title'];
                     }
-                    if (!empty($vi['fn'])) {
-                        $result['filename'] = $vi['fn'];
+                    if (!empty($found['cover']) && empty($result['cover'])) {
+                        $result['cover'] = $found['cover'];
                     }
                 }
+
+                if (!empty($result['title'])) break;
             }
 
             if (empty($result['title'])) {
@@ -632,10 +764,61 @@ class DbOfficialReplaceManager {
             }
         }
 
+        if ($platformName === '爱奇艺') {
+            $apiUrl = 'https://pcw-api.iqiyi.com/video/video/baseinfo/' . urlencode($videoId);
+            $response = $this->httpGet($apiUrl);
+            if ($response) {
+                $data = json_decode($response, true);
+                if ($data && !empty($data['data']['name'])) {
+                    $result['title'] = $data['data']['name'];
+                    if (!empty($data['data']['imageUrl'])) {
+                        $result['cover'] = $data['data']['imageUrl'];
+                    }
+                }
+            }
+        }
+
+        if ($platformName === '芒果TV') {
+            $apiUrl = 'https://pcweb.api.mgtv.com/episode/list?video_id=' . urlencode($videoId);
+            $response = $this->httpGet($apiUrl);
+            if ($response) {
+                $data = json_decode($response, true);
+                if ($data && !empty($data['data']['info']['title'])) {
+                    $result['title'] = $data['data']['info']['title'];
+                    if (!empty($data['data']['info']['cover'])) {
+                        $result['cover'] = $data['data']['info']['cover'];
+                    }
+                }
+            }
+        }
+
         if (!empty($result['title'])) {
             return $result;
         }
         return null;
+    }
+
+    private function findTitleInData($data) {
+        $result = ['title' => null, 'cover' => null];
+        if (!is_array($data)) return $result;
+
+        $titleKeys = ['title', 'name', 'ti', 'videoName', 'video_title', 'vidName', 'subTitle', 'mainTitle'];
+        $coverKeys = ['cover', 'pic', 'image', 'imageUrl', 'poster', 'thumb', 'thumbnail', 'vpic'];
+
+        array_walk_recursive($data, function($value, $key) use (&$result, $titleKeys, $coverKeys) {
+            if (in_array($key, $titleKeys) && is_string($value) && mb_strlen($value) >= 2 && mb_strlen($value) <= 100) {
+                if (empty($result['title']) && preg_match('/[\x{4e00}-\x{9fa5}a-zA-Z]/u', $value)) {
+                    $result['title'] = $value;
+                }
+            }
+            if (in_array($key, $coverKeys) && is_string($value) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $value)) {
+                if (empty($result['cover'])) {
+                    $result['cover'] = $value;
+                }
+            }
+        });
+
+        return $result;
     }
 
     private function extractEpisodeFromHtml($html, $platform) {

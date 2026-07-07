@@ -1,6 +1,6 @@
 <?php
 return [
-    'version' => 'v2.28.2',
+    'version' => 'v2.29.0',
     'commit' => 'mt20260707',
     'updated_at' => '2026-07-07',
 ];
