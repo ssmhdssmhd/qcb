@@ -871,6 +871,41 @@ class DbResourceSiteManager {
             }
 
             $domainResult = $domainRuleManager->learnFromAnalysis($videoDomain, $analysis);
+
+            // ===== 保存广告特征码到数据库 =====
+            $adSignature = new DbAdSignature($this->db);
+            $signatures = [];
+            if (!empty($analysis['durationDistribution'])) {
+                foreach ($analysis['durationDistribution'] as $dur => $count) {
+                    if ((float)$dur < 3.0 && $count > 1) {
+                        $signatures[] = ['type' => 'duration', 'value' => (string)$dur, 'weight' => min(50, $count * 5), 'confidence' => min(80, $count * 10)];
+                    }
+                }
+            }
+            if (!empty($analysis['adClusters'])) {
+                foreach ($analysis['adClusters'] as $cluster) {
+                    if (!empty($cluster['avgDuration']) && $cluster['avgDuration'] < 3.0) {
+                        $signatures[] = ['type' => 'duration', 'value' => (string)round($cluster['avgDuration'], 2), 'weight' => 40, 'confidence' => 60];
+                    }
+                }
+            }
+            if (!empty($analysis['sequenceJumps'])) {
+                foreach ($analysis['sequenceJumps'] as $jump) {
+                    if (!empty($jump['jump']) && $jump['jump'] > 1) {
+                        $signatures[] = ['type' => 'sequence', 'value' => (string)$jump['jump'], 'weight' => 35, 'confidence' => 50];
+                    }
+                }
+            }
+            if ($analysis['discontinuityCount'] > 0) {
+                $signatures[] = ['type' => 'discontinuity', 'value' => 'true', 'weight' => 30, 'confidence' => 50];
+            }
+            $adSignature->addSignatures($videoDomain, $signatures);
+
+            // ===== 记录域名分析统计 =====
+            $domainStats = new DbDomainAnalysisStats($this->db);
+            $domainStats->recordLearn($videoDomain);
+            $domainStats->recordAnalyze($videoDomain, $analysis['totalCount'] ?? 0, $analysis['adCount'] ?? 0, $adPercentage);
+
             unset($analysis);
 
             if ($domainResult) {

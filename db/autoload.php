@@ -17,4 +17,8 @@ if (!defined('DB_AUTOLOAD_LOADED')) {
     require_once $dbDir . '/DbOfficialSiteManager.php';
     require_once $dbDir . '/DbOfficialReplaceManager.php';
     require_once $dbDir . '/DataMigration.php';
+    require_once $dbDir . '/DbAnalysisCache.php';
+    require_once $dbDir . '/DbAdSignature.php';
+    require_once $dbDir . '/DbOfficialReplaceCache.php';
+    require_once $dbDir . '/DbDomainAnalysisStats.php';
 }

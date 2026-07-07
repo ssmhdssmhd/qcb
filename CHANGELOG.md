@@ -5,6 +5,64 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.25.0] - 2026-07-07
+
+### ✅ 全面数据库化改造：分析缓存、特征码、官替、在线播放
+
+**核心改造**: 所有自动学习、分析、缓存、官替、在线播放数据全部走数据库，实现去重和高效管理。
+
+**新增数据库表**:
+1. `m3u8_analysis_cache` - M3U8分析结果缓存表（URL去重，24小时过期）
+2. `ad_signatures` - 广告特征码表（自动去重，权重累积）
+3. `official_replace_cache` - 官替结果缓存表（避免重复抓取和搜索）
+4. `domain_analysis_stats` - 域名分析统计表（分析次数、学习次数统计）
+
+**新增数据库类**:
+- `DbAnalysisCache.php` - 分析缓存管理器
+- `DbAdSignature.php` - 广告特征码管理器（自动去重，命中次数累加）
+- `DbOfficialReplaceCache.php` - 官替结果缓存管理器
+- `DbDomainAnalysisStats.php` - 域名分析统计管理器
+
+**修改内容**:
+
+1. **分析模块全面数据库化** ([mx.php](file:///workspace/mx.php))
+   - `analyze` 接口新增数据库缓存查询，避免重复分析相同URL
+   - 分析结果自动保存到 `m3u8_analysis_cache` 表
+   - 自动提取广告特征码保存到 `ad_signatures` 表
+   - 更新域名分析统计到 `domain_analysis_stats` 表
+   - 支持 `skip_cache` 参数强制重新分析
+
+2. **自动学习模块数据库化** ([db/DbResourceSiteManager.php](file:///workspace/db/DbResourceSiteManager.php))
+   - 学习结果自动保存广告特征码到数据库
+   - 记录域名分析统计和学习统计
+
+3. **官替模块多线程改造** ([db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+   - 新增 `getReplaceUrl` 方法，使用数据库缓存避免重复处理
+   - 多线程抓取页面信息（HTML + API 并发）
+   - 多线程搜索资源站（TaskRunner 并发搜索）
+   - 智能匹配剧名、季数、集数
+   - 使用数据库广告规则进行去广告预处理
+   - 结果缓存到 `official_replace_cache` 表
+
+4. **在线播放数据库化** ([mx.php](file:///workspace/mx.php))
+   - `mxjx` 接口从数据库 `domain_rules` 表加载域名规则
+   - 从 `ad_signatures` 表加载广告特征码
+   - 合并注入到 `EnhancedAdRuleEngine` 进行去广告
+
+5. **数据库修复** ([db/Database.php](file:///workspace/db/Database.php))
+   - 修复 `update` 方法中混合命名参数和位置参数的 PDO 错误
+
+**受影响文件**:
+- [mx.php](file:///workspace/mx.php) - 分析接口、播放接口
+- [db/DbResourceSiteManager.php](file:///workspace/db/DbResourceSiteManager.php) - 自动学习
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php) - 官替模块
+- [db/Database.php](file:///workspace/db/Database.php) - 数据库核心
+- [db/autoload.php](file:///workspace/db/autoload.php) - 自动加载
+- [db/schema_mysql.sql](file:///workspace/db/schema_mysql.sql) - 表结构
+- [version.php](file:///workspace/version.php) - 版本号
+
+---
+
 ## [2.24.0] - 2026-07-07
 
 ### ✅ 数据库配置改为只读，修复一键学习/分析功能，恢复数据

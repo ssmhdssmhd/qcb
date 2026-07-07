@@ -168,6 +168,97 @@ CREATE TABLE IF NOT EXISTS `player_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='播放器配置表';
 
 -- ============================================
+-- 9. M3U8分析结果缓存表（URL去重，避免重复分析）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `m3u8_analysis_cache` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `url_hash` VARCHAR(64) NOT NULL COMMENT 'URL的SHA256哈希',
+    `url` VARCHAR(1000) NOT NULL COMMENT '原始URL',
+    `domain` VARCHAR(191) DEFAULT '' COMMENT '域名',
+    `media_url` VARCHAR(1000) DEFAULT '' COMMENT '解析后的媒体URL',
+    `total_segments` INT DEFAULT 0 COMMENT '总片段数',
+    `ad_segments` INT DEFAULT 0 COMMENT '广告片段数',
+    `ad_percentage` DECIMAL(5,2) DEFAULT 0 COMMENT '广告占比',
+    `duration_rules` TEXT COMMENT '时长规则(JSON)',
+    `discontinuity_rules` TEXT COMMENT 'DISCON规则(JSON)',
+    `sequence_jump_rules` TEXT COMMENT '序列号跳跃规则(JSON)',
+    `filename_patterns` TEXT COMMENT '文件名模式(JSON)',
+    `ad_signatures` TEXT COMMENT '广告特征码列表(JSON)',
+    `stats` TEXT COMMENT '分析统计(JSON)',
+    `fast_mode` TINYINT(1) DEFAULT 0 COMMENT '是否快速模式',
+    `safeguard_triggered` TINYINT(1) DEFAULT 0 COMMENT '是否触发保护',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `expires_at` TIMESTAMP NULL DEFAULT NULL COMMENT '缓存过期时间',
+    UNIQUE KEY `idx_url_hash` (`url_hash`),
+    KEY `idx_domain` (`domain`),
+    KEY `idx_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='M3U8分析结果缓存表';
+
+-- ============================================
+-- 10. 广告特征码表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `ad_signatures` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `domain` VARCHAR(191) NOT NULL COMMENT '域名',
+    `signature_type` VARCHAR(50) NOT NULL COMMENT '特征类型: duration/discontinuity/sequence/filename/pattern',
+    `signature_value` VARCHAR(500) NOT NULL COMMENT '特征值',
+    `weight` INT DEFAULT 30 COMMENT '权重',
+    `hit_count` INT DEFAULT 1 COMMENT '命中次数',
+    `confidence` INT DEFAULT 50 COMMENT '置信度',
+    `first_seen` DATETIME DEFAULT NULL COMMENT '首次发现时间',
+    `last_seen` DATETIME DEFAULT NULL COMMENT '最后发现时间',
+    `status` TINYINT(1) DEFAULT 1 COMMENT '状态: 1启用 0禁用',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY `idx_domain_type` (`domain`, `signature_type`),
+    KEY `idx_status` (`status`),
+    KEY `idx_signature` (`signature_value`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='广告特征码表';
+
+-- ============================================
+-- 11. 官替结果缓存表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `official_replace_cache` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `original_url_hash` VARCHAR(64) NOT NULL COMMENT '原始URL哈希',
+    `original_url` VARCHAR(1000) NOT NULL COMMENT '原始官方URL',
+    `platform` VARCHAR(100) DEFAULT '' COMMENT '平台名称',
+    `video_title` VARCHAR(500) DEFAULT '' COMMENT '视频标题',
+    `base_title` VARCHAR(500) DEFAULT '' COMMENT '基础标题',
+    `season_num` INT DEFAULT NULL COMMENT '季数',
+    `episode_num` INT DEFAULT NULL COMMENT '集数',
+    `m3u8_url` VARCHAR(1000) DEFAULT '' COMMENT '匹配到的M3U8地址',
+    `match_score` DECIMAL(5,2) DEFAULT 0 COMMENT '匹配分数',
+    `site` VARCHAR(100) DEFAULT '' COMMENT '资源站名称',
+    `video_info` TEXT COMMENT '视频信息(JSON)',
+    `status` TINYINT(1) DEFAULT 1 COMMENT '状态: 1有效 0无效',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `expires_at` TIMESTAMP NULL DEFAULT NULL COMMENT '缓存过期时间',
+    UNIQUE KEY `idx_url_hash` (`original_url_hash`),
+    KEY `idx_platform` (`platform`),
+    KEY `idx_expires` (`expires_at`),
+    KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官替结果缓存表';
+
+-- ============================================
+-- 12. 域名分析统计表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `domain_analysis_stats` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `domain` VARCHAR(191) NOT NULL COMMENT '域名',
+    `analyze_count` INT DEFAULT 0 COMMENT '分析次数',
+    `learn_count` INT DEFAULT 0 COMMENT '学习次数',
+    `total_segments_analyzed` INT DEFAULT 0 COMMENT '分析的总片段数',
+    `total_ads_detected` INT DEFAULT 0 COMMENT '检测到的广告总数',
+    `avg_ad_percentage` DECIMAL(5,2) DEFAULT 0 COMMENT '平均广告占比',
+    `last_analyze_time` DATETIME DEFAULT NULL COMMENT '最后分析时间',
+    `last_learn_time` DATETIME DEFAULT NULL COMMENT '最后学习时间',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `idx_domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='域名分析统计表';
+
+-- ============================================
 -- 初始数据
 -- ============================================
 

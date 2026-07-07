@@ -216,12 +216,64 @@ try {
     switch ($action) {
         case 'analyze':
             $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            $skipCache = isset($_GET['skip_cache']) && ($_GET['skip_cache'] === '1' || $_GET['skip_cache'] === 'true');
             if (empty($url)) {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
 
             $parsedUrl = parse_url($url);
             $domain = $parsedUrl['host'] ?? '';
+
+            // ===== 数据库缓存查询 =====
+            $analysisCache = new DbAnalysisCache();
+            $domainStats = new DbDomainAnalysisStats();
+            $adSignature = new DbAdSignature();
+
+            if (!$skipCache) {
+                $cached = $analysisCache->get($url);
+                if ($cached) {
+                    // 更新分析统计
+                    $domainStats->recordAnalyze($domain, $cached['total_segments'], $cached['ad_segments'], $cached['ad_percentage']);
+
+                    $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                    $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                    $basePath = dirname($requestUri);
+                    $basePath = $basePath === '/' ? '' : $basePath;
+                    $selfUrl = $scheme . '://' . $host . $basePath;
+                    $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($cached['media_url']);
+
+                    sendJsonResponse([
+                        'success' => true,
+                        'url' => $url,
+                        'mediaUrl' => $cached['media_url'],
+                        'domain' => $domain,
+                        'hasDomainRules' => !empty($cached['duration_rules']) || !empty($cached['discontinuity_rules']),
+                        'fastMode' => (bool)$cached['fast_mode'],
+                        'safeguardTriggered' => (bool)$cached['safeguard_triggered'],
+                        'message' => '从数据库缓存获取分析结果',
+                        'cached' => true,
+                        'mxjxUrl' => $mxjxUrl,
+                        'playlist' => [
+                            'isMaster' => false,
+                            'version' => 3,
+                            'targetDuration' => 0,
+                            'endlist' => true
+                        ],
+                        'stats' => [
+                            'totalSegments' => $cached['total_segments'],
+                            'adSegments' => $cached['ad_segments'],
+                            'adPercentage' => (float)$cached['ad_percentage']
+                        ],
+                        'duration_rules' => $cached['duration_rules'],
+                        'discontinuity_rules' => $cached['discontinuity_rules'],
+                        'sequence_jump_rules' => $cached['sequence_jump_rules'],
+                        'filename_patterns' => $cached['filename_patterns']
+                    ]);
+                    break;
+                }
+            }
+
             $domainRules = $ruleManager->getRules($domain);
             $hasDomainRules = $domainRules !== null;
 
@@ -279,8 +331,18 @@ try {
                     }
                 }
 
-                if ($fallbackToFull) {
-                } else {
+                if (!$fallbackToFull) {
+                    // 保存到数据库缓存
+                    $cacheResult = [
+                        'duration_rules' => $domainRules['duration_rules'] ?? [],
+                        'discontinuity_rules' => $domainRules['discontinuity_rules'] ?? [],
+                        'sequence_jump_rules' => $domainRules['sequence_jump_rules'] ?? [],
+                        'filename_patterns' => $domainRules['filename_patterns'] ?? [],
+                        'stats' => $stats
+                    ];
+                    $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, true, $safeguardTriggered);
+                    $domainStats->recordAnalyze($domain, $stats['totalSegments'] ?? 0, $stats['removedSegments'] ?? 0, $stats['adPercentage'] ?? 0);
+
                     sendJsonResponse([
                         'success' => true,
                         'url' => $url,
@@ -344,6 +406,50 @@ try {
             }
 
             $currentRules = $ruleManager->getRules($domain);
+
+            // ===== 提取广告特征码并保存到数据库 =====
+            $signatures = [];
+            if (!empty($analysis['durationDistribution'])) {
+                foreach ($analysis['durationDistribution'] as $dur => $count) {
+                    if ((float)$dur < 3.0 && $count > 1) {
+                        $signatures[] = ['type' => 'duration', 'value' => (string)$dur, 'weight' => min(50, $count * 5), 'confidence' => min(80, $count * 10)];
+                    }
+                }
+            }
+            if (!empty($analysis['adClusters'])) {
+                foreach ($analysis['adClusters'] as $cluster) {
+                    if (!empty($cluster['avgDuration']) && $cluster['avgDuration'] < 3.0) {
+                        $signatures[] = ['type' => 'duration', 'value' => (string)round($cluster['avgDuration'], 2), 'weight' => 40, 'confidence' => 60];
+                    }
+                }
+            }
+            if (!empty($analysis['sequenceJumps'])) {
+                foreach ($analysis['sequenceJumps'] as $jump) {
+                    if (!empty($jump['jump']) && $jump['jump'] > 1) {
+                        $signatures[] = ['type' => 'sequence', 'value' => (string)$jump['jump'], 'weight' => 35, 'confidence' => 50];
+                    }
+                }
+            }
+            if ($analysis['discontinuityCount'] > 0) {
+                $signatures[] = ['type' => 'discontinuity', 'value' => 'true', 'weight' => 30, 'confidence' => 50];
+            }
+            $adSignature->addSignatures($domain, $signatures);
+
+            // ===== 保存分析结果到数据库缓存 =====
+            $cacheResult = [
+                'duration_rules' => $currentRules['duration_rules'] ?? [],
+                'discontinuity_rules' => $currentRules['discontinuity_rules'] ?? [],
+                'sequence_jump_rules' => $currentRules['sequence_jump_rules'] ?? [],
+                'filename_patterns' => $currentRules['filename_patterns'] ?? [],
+                'ad_signatures' => $signatures,
+                'stats' => [
+                    'totalSegments' => $analysis['totalCount'],
+                    'adSegments' => $analysis['adCount'],
+                    'adPercentage' => $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0
+                ]
+            ];
+            $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, false, false);
+            $domainStats->recordAnalyze($domain, $analysis['totalCount'], $analysis['adCount'], $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0);
 
             $playlistInfo = [
                 'isMaster' => !empty($playlist['isMaster']),
@@ -651,6 +757,27 @@ try {
                     'checkRepetitiveDuration' => true
                 ]);
                 $enhancedEngine->setDomain($domain);
+
+                // 从数据库加载域名规则和广告特征码
+                if ($useDb) {
+                    $dbRules = $ruleManager->getRules($domain);
+                    if (!empty($dbRules)) {
+                        $engineReflection = new ReflectionClass($enhancedEngine);
+                        $applyMethod = $engineReflection->getMethod('applyDomainRules');
+                        $applyMethod->setAccessible(true);
+                        $applyMethod->invoke($enhancedEngine, $dbRules);
+                    }
+
+                    $adSignature = new DbAdSignature();
+                    $sigRules = $adSignature->getRulesForDomain($domain);
+                    if (!empty($sigRules)) {
+                        $engineReflection = new ReflectionClass($enhancedEngine);
+                        $applyMethod = $engineReflection->getMethod('applyDomainRules');
+                        $applyMethod->setAccessible(true);
+                        $applyMethod->invoke($enhancedEngine, $sigRules);
+                    }
+                }
+
                 $ruleEngineProp->setValue($skipper, $enhancedEngine);
 
                 $filterProp = $reflection->getProperty('filter');

@@ -5,7 +5,12 @@
  */
 
 require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/DbOfficialReplaceCache.php';
+require_once __DIR__ . '/DbResourceSiteManager.php';
 require_once __DIR__ . '/../gz/ResourceSiteManager.php';
+require_once __DIR__ . '/../multi_thread/autoload.php';
+require_once __DIR__ . '/../src/M3U8AdSkipper.php';
+require_once __DIR__ . '/../gz/EnhancedAdRuleEngine.php';
 
 class DbOfficialReplaceManager {
     private $db;
@@ -1337,5 +1342,232 @@ class DbOfficialReplaceManager {
 
         $this->lastHttpError = $lastError;
         return false;
+    }
+
+    public function getReplaceUrl($url) {
+        $cache = new DbOfficialReplaceCache();
+        $cached = $cache->get($url);
+        if ($cached) return $cached['m3u8_url'];
+
+        // 多线程抓取页面信息
+        $pageInfo = $this->fetchPageInfo($url);
+        if (!$pageInfo) return false;
+
+        // 多线程搜索资源站
+        $siteManager = new DbResourceSiteManager();
+        $sites = $siteManager->getAllSites(false);
+        $sites = array_slice($sites, 0, 5);
+
+        $allVideos = [];
+        if (!empty($sites) && class_exists('TaskRunner') && TaskRunner::isMultiThreadAvailable()) {
+            $tasks = [];
+            foreach ($sites as $site) {
+                $tasks[] = [
+                    'id' => $site['name'],
+                    'api_url' => $site['api_url'],
+                    'keyword' => $pageInfo['title'],
+                    'site_name' => $site['name']
+                ];
+            }
+
+            $runner = TaskRunner::create([
+                'concurrency' => 5,
+                'mode' => TaskRunner::MODE_CURL_MULTI,
+                'timeout' => 60
+            ]);
+
+            $results = $runner->run($tasks, function($task) use ($siteManager) {
+                $result = $siteManager->searchVideos($task['api_url'], $task['keyword'], 1, 10);
+                if ($result['success'] && !empty($result['videos'])) {
+                    foreach ($result['videos'] as &$video) {
+                        $video['site'] = $task['site_name'];
+                    }
+                    unset($video);
+                    return $result['videos'];
+                }
+                return [];
+            });
+
+            foreach ($results as $result) {
+                if ($result->success && is_array($result->data)) {
+                    $allVideos = array_merge($allVideos, $result->data);
+                }
+            }
+        } else {
+            $searchResult = $siteManager->searchAllSites($pageInfo['title'], 3, 10);
+            if ($searchResult['success']) {
+                foreach ($searchResult['results'] as $siteResult) {
+                    foreach ($siteResult['videos'] as $video) {
+                        $video['site'] = $siteResult['site'];
+                        $allVideos[] = $video;
+                    }
+                }
+            }
+        }
+
+        if (empty($allVideos)) return false;
+
+        // 匹配最佳结果
+        $bestMatch = $this->findBestMatch($pageInfo, $allVideos);
+        if (!$bestMatch) return false;
+
+        // 匹配具体集数
+        $targetUrl = $bestMatch['video']['first_url'] ?? $bestMatch['video']['url'] ?? '';
+        $allUrls = $bestMatch['video']['urls'] ?? [];
+        if (!empty($pageInfo['episode_num']) && !empty($allUrls)) {
+            $epResult = $this->findEpisodeUrl($allUrls, $pageInfo['episode_num']);
+            if ($epResult) {
+                $targetUrl = $epResult['url'];
+            }
+        }
+
+        if (empty($targetUrl)) return false;
+
+        // 去广告处理
+        $cleanUrl = $this->removeAds($targetUrl);
+
+        // 缓存结果
+        $cache->save(
+            $url,
+            $pageInfo['platform'] ?? '',
+            $pageInfo['fullTitle'] ?? $pageInfo['title'],
+            $pageInfo['title'],
+            $pageInfo['season_num'] ?? null,
+            $pageInfo['episode_num'] ?? null,
+            $cleanUrl,
+            $bestMatch['score'],
+            $bestMatch['site'],
+            $bestMatch['video']
+        );
+
+        return $cleanUrl;
+    }
+
+    private function fetchPageInfo($url) {
+        $platform = $this->detectPlatform($url);
+        if (!$platform) return null;
+
+        $videoId = $this->extractVideoId($url, $platform);
+
+        $html = null;
+        $apiInfo = null;
+
+        // 多线程抓取页面HTML和API信息
+        if (class_exists('TaskRunner') && TaskRunner::isMultiThreadAvailable()) {
+            $tasks = [];
+            $tasks[] = ['id' => 'html', 'url' => $url, 'type' => 'html'];
+            if ($videoId) {
+                $tasks[] = ['id' => 'api', 'video_id' => $videoId, 'platform' => $platform, 'type' => 'api'];
+            }
+
+            $runner = TaskRunner::create([
+                'concurrency' => count($tasks),
+                'mode' => TaskRunner::MODE_CURL_MULTI,
+                'timeout' => 30
+            ]);
+
+            $results = $runner->run($tasks, function($task) {
+                if ($task['type'] === 'html') {
+                    return $this->httpGet($task['url']);
+                } else {
+                    return $this->fetchVideoInfoFromApi($task['video_id'], $task['platform']);
+                }
+            });
+
+            foreach ($results as $result) {
+                if ($result->success) {
+                    if ($result->id === 'html') {
+                        $html = $result->data;
+                    } elseif ($result->id === 'api') {
+                        $apiInfo = $result->data;
+                    }
+                }
+            }
+        } else {
+            $html = $this->httpGet($url);
+            if ($videoId) {
+                $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
+            }
+        }
+
+        if (empty($html) && empty($apiInfo)) return null;
+
+        $title = '';
+        if (!empty($html)) {
+            $title = $this->extractTitle($html, $platform);
+        }
+        if (empty($title) && !empty($apiInfo['title'])) {
+            $title = $apiInfo['title'];
+        }
+        if (empty($title)) return null;
+
+        $episodeInfo = [];
+        if (!empty($html)) {
+            $episodeInfo = $this->extractEpisodeFromHtml($html, $platform);
+        }
+
+        $parsed = $this->parseVideoTitle($title);
+
+        return [
+            'url' => $url,
+            'platform' => $platform['name'] ?? '',
+            'title' => $parsed['base_title'] ?? $title,
+            'fullTitle' => $title,
+            'season' => $parsed['season'],
+            'season_num' => $parsed['season_num'],
+            'episode' => $parsed['episode'],
+            'episode_num' => $parsed['episode_num'] ?? ($episodeInfo['episode_num'] ?? null),
+            'part' => $parsed['part'],
+            'version' => $parsed['version'],
+            'video_id' => $videoId
+        ];
+    }
+
+    private function removeAds($url) {
+        $parsedUrl = parse_url($url);
+        $domain = $parsedUrl['host'] ?? '';
+
+        $skipper = new M3U8AdSkipper();
+        $engine = new EnhancedAdRuleEngine([
+            'checkDiscontinuity' => true,
+            'checkRepetitiveDuration' => true
+        ]);
+        $engine->setDomain($domain);
+
+        // 从数据库加载广告特征码并应用到引擎
+        if ($this->db->tableExists('ad_signatures')) {
+            if (!class_exists('DbAdSignature')) {
+                require_once __DIR__ . '/DbAdSignature.php';
+            }
+            $adSignature = new DbAdSignature($this->db);
+            $sigRules = $adSignature->getRulesForDomain($domain);
+            if (!empty($sigRules)) {
+                $reflection = new ReflectionClass($engine);
+                $applyMethod = $reflection->getMethod('applyDomainRules');
+                $applyMethod->setAccessible(true);
+                $applyMethod->invoke($engine, $sigRules);
+            }
+        }
+
+        // 注入引擎到skipper
+        $reflection = new ReflectionClass($skipper);
+        $ruleEngineProp = $reflection->getProperty('ruleEngine');
+        $ruleEngineProp->setAccessible(true);
+        $ruleEngineProp->setValue($skipper, $engine);
+
+        $filterProp = $reflection->getProperty('filter');
+        $filterProp->setAccessible(true);
+        $filter = $filterProp->getValue($skipper);
+
+        $filterReflection = new ReflectionClass($filter);
+        $filterEngineProp = $filterReflection->getProperty('ruleEngine');
+        $filterEngineProp->setAccessible(true);
+        $filterEngineProp->setValue($filter, $engine);
+
+        // 执行去广告处理（验证M3U8可解析）
+        $skipper->processWithSafeguard($url);
+
+        // 返回原始URL，实际去广告在播放时通过mxjx接口完成
+        return $url;
     }
 }

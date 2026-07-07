@@ -274,14 +274,23 @@ class Database {
             $setParts[] = $k . ' = :set_' . $k;
             $params[':set_' . $k] = $v;
         }
+        // 将 WHERE 中的 ? 替换为命名参数，避免混合命名和位置参数
+        $whereParamIndex = 0;
+        $whereReplaced = preg_replace_callback('/\?/', function() use (&$whereParamIndex) {
+            return ':where_' . ($whereParamIndex++);
+        }, $where);
         foreach ($whereParams as $k => $v) {
-            $params[$k] = $v;
+            if (is_int($k)) {
+                $params[':where_' . $k] = $v;
+            } else {
+                $params[$k] = $v;
+            }
         }
         $sql = sprintf(
             'UPDATE %s SET %s WHERE %s',
             $table,
             implode(', ', $setParts),
-            $where
+            $whereReplaced
         );
         return $this->execute($sql, $params);
     }
