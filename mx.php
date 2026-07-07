@@ -2592,6 +2592,87 @@ try {
             }
             break;
 
+        case 'info':
+            $versionData = file_exists(__DIR__ . '/version.php') ? include __DIR__ . '/version.php' : ['version' => '1.0.0'];
+            $version = is_array($versionData) ? ($versionData['version'] ?? '1.0.0') : $versionData;
+            $info = [
+                'success' => true,
+                'name' => 'M3U8广告跳过系统',
+                'version' => $version,
+                'commit' => is_array($versionData) ? ($versionData['commit'] ?? '') : '',
+                'updated_at' => is_array($versionData) ? ($versionData['updated_at'] ?? '') : '',
+                'php_version' => PHP_VERSION,
+                'database_enabled' => $useDb,
+                'database_type' => $useDb ? $db->getDbType() : 'none',
+                'features' => [
+                    'ad_detection' => true,
+                    'multi_thread' => TaskRunner::isMultiThreadAvailable(),
+                    'database_cache' => $useDb,
+                    'official_replace' => true
+                ],
+                'timestamp' => time()
+            ];
+            if ($useDb) {
+                $info['stats'] = [
+                    'rules' => $db->count('domain_rules', 'status = 1'),
+                    'sites' => $db->count('resource_sites', 'status = "active"'),
+                    'proxies' => $db->count('proxies', 'status = "active"')
+                ];
+            }
+            sendJsonResponse($info);
+            break;
+
+        case 'version':
+            $versionData = file_exists(__DIR__ . '/version.php') ? include __DIR__ . '/version.php' : ['version' => '1.0.0'];
+            $version = is_array($versionData) ? ($versionData['version'] ?? '1.0.0') : $versionData;
+            sendJsonResponse([
+                'success' => true,
+                'version' => $version,
+                'commit' => is_array($versionData) ? ($versionData['commit'] ?? '') : '',
+                'updated_at' => is_array($versionData) ? ($versionData['updated_at'] ?? '') : '',
+                'version_file' => file_exists(__DIR__ . '/version.php'),
+                'php_version' => PHP_VERSION,
+                'database_type' => $useDb ? $db->getDbType() : 'none'
+            ]);
+            break;
+
+        case 'official/list':
+            $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
+            $sites = $officialMgr->getAllSites($includePaused);
+            sendJsonResponse([
+                'success' => true,
+                'sites' => $sites,
+                'total' => count($sites),
+                'enabled' => $officialMgr->isEnabled()
+            ]);
+            break;
+
+        case 'official/platforms':
+            $platforms = $officialReplaceMgr->getPlatforms();
+            sendJsonResponse([
+                'success' => true,
+                'platforms' => $platforms,
+                'total' => count($platforms)
+            ]);
+            break;
+
+        case 'proxies/list':
+            if (!isset($proxyManager)) {
+                sendJsonResponse(['success' => false, 'message' => '代理模块未初始化'], 500);
+                break;
+            }
+            $proxies = $proxyManager->getAllProxies();
+            $activeProxies = array_filter($proxies, function($p) {
+                return ($p['status'] ?? 'active') === 'active';
+            });
+            sendJsonResponse([
+                'success' => true,
+                'proxies' => $proxies,
+                'total' => count($proxies),
+                'active_count' => count($activeProxies)
+            ]);
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
