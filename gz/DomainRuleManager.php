@@ -151,6 +151,9 @@ class DomainRuleManager {
             $ruleData['learn_count'] = 1;
         }
         $ruleData['last_learn_date'] = date('Y-m-d H:i:s');
+
+        $ruleData = $this->filterLargeFields($ruleData);
+
         $file = $this->getRuleFilePath($domain);
         $content = '<?php' . "\n";
         $content .= '/**' . "\n";
@@ -159,6 +162,56 @@ class DomainRuleManager {
         $content .= ' */' . "\n\n";
         $content .= 'return ' . $this->arrayExport($ruleData) . ';' . "\n";
         return file_put_contents($file, $content) !== false;
+    }
+
+    private function filterLargeFields($data) {
+        if (isset($data['history_stats']) && is_array($data['history_stats'])) {
+            $slimHistory = [];
+            foreach ($data['history_stats'] as $stat) {
+                if (!is_array($stat)) continue;
+                $slimStat = [
+                    'totalCount' => $stat['totalCount'] ?? 0,
+                    'adCount' => $stat['adCount'] ?? 0,
+                    'adPercentage' => $stat['adPercentage'] ?? 0,
+                    'discontinuityCount' => $stat['discontinuityCount'] ?? 0,
+                    'cueMarkerCount' => $stat['cueMarkerCount'] ?? 0,
+                    'scte35Count' => $stat['scte35Count'] ?? 0,
+                    'adTagCount' => $stat['adTagCount'] ?? 0,
+                    'confidence' => $stat['confidence'] ?? 0,
+                    'analyzed_at' => $stat['analyzed_at'] ?? date('Y-m-d H:i:s'),
+                ];
+                if (isset($stat['adClusters']) && is_array($stat['adClusters'])) {
+                    $slimStat['adClusterCount'] = count($stat['adClusters']);
+                }
+                if (isset($stat['stats']) && is_array($stat['stats'])) {
+                    $slimStat['totalSegments'] = $stat['stats']['totalSegments'] ?? $stat['totalCount'] ?? 0;
+                    $slimStat['adSegments'] = $stat['stats']['adSegments'] ?? $stat['adCount'] ?? 0;
+                }
+                if (isset($stat['psychologicalFeatures']) && is_array($stat['psychologicalFeatures'])) {
+                    $slimStat['ad_density'] = $stat['psychologicalFeatures']['ad_density'] ?? 0;
+                }
+                $slimHistory[] = $slimStat;
+            }
+            $data['history_stats'] = $slimHistory;
+        }
+
+        $bigFields = ['segments', 'adSegments', 'contentSegments', 'allSegments',
+                      'segmentDetails', 'rawSegments', 'parsedSegments',
+                      'sequence_jump_details', 'jump_details', 'fullAnalysis'];
+        foreach ($bigFields as $field) {
+            if (isset($data[$field])) {
+                unset($data[$field]);
+            }
+        }
+
+        if (isset($data['analysis_stats']) && is_array($data['analysis_stats'])) {
+            $stats = &$data['analysis_stats'];
+            unset($stats['segments']);
+            unset($stats['adSegmentList']);
+            unset($stats['contentSegmentList']);
+        }
+
+        return $data;
     }
 
     public function deleteRules($domain) {

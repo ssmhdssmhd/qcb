@@ -4,8 +4,8 @@
 error_reporting(0);
 
 $memoryLimit = @ini_get('memory_limit');
-if (return_bytes_func($memoryLimit) < 256 * 1024 * 1024) {
-    @ini_set('memory_limit', '256M');
+if (return_bytes_func($memoryLimit) < 512 * 1024 * 1024) {
+    @ini_set('memory_limit', '512M');
 }
 
 function return_bytes_func($val) {

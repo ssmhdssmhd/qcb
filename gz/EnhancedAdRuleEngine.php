@@ -30,7 +30,6 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
         $this->originalThreshold = $options['adThreshold'] ?? 50;
         $this->safeguardEnabled = $options['safeguardEnabled'] ?? true;
         $this->minContentRatio = $options['minContentRatio'] ?? 0.2;
-        $this->loadAllDomainRules();
         $this->addEnhancedRules();
     }
 
@@ -92,21 +91,30 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
         }
     }
 
-    private function loadAllDomainRules() {
-        $gzDir = __DIR__;
-        $files = glob($gzDir . '/rules_*.php');
-        foreach ($files as $file) {
-            $rules = require $file;
-            if (is_array($rules) && isset($rules['domain'])) {
-                $this->domainRules[$rules['domain']] = $rules;
-            }
+    public function setDomain($domain) {
+        $this->currentDomain = $domain;
+        if (!isset($this->domainRules[$domain])) {
+            $this->loadDomainRules($domain);
+        }
+        if (isset($this->domainRules[$domain])) {
+            $this->applyDomainRules($this->domainRules[$domain]);
         }
     }
 
-    public function setDomain($domain) {
-        $this->currentDomain = $domain;
-        if (isset($this->domainRules[$domain])) {
-            $this->applyDomainRules($this->domainRules[$domain]);
+    private function loadDomainRules($domain) {
+        $gzDir = __DIR__;
+        $safeDomain = preg_replace('/[^a-zA-Z0-9._-]/', '_', $domain);
+        $file = $gzDir . '/rules_' . $safeDomain . '.php';
+        if (!file_exists($file)) {
+            return;
+        }
+        try {
+            $rules = @require $file;
+            if (is_array($rules) && isset($rules['domain'])) {
+                $this->domainRules[$rules['domain']] = $rules;
+            }
+        } catch (Throwable $e) {
+            error_log('加载域名规则失败: ' . $domain . ' - ' . $e->getMessage());
         }
     }
 

@@ -1,4 +1,10 @@
-<?php return array (
+<?php
+/**
+ * test3.example.com 域名广告和插播规则
+ * 清理于: 2026-07-07 22:40:05
+ */
+
+return array (
   'domain' => 'test3.example.com',
   'duration_rules' => 'corrupted_string',
   'discontinuity_rules' => 12345,

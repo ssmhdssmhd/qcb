@@ -1,4 +1,10 @@
-<?php return array (
+<?php
+/**
+ * corruptdebug1783360480.com 域名广告和插播规则
+ * 清理于: 2026-07-07 22:40:05
+ */
+
+return array (
   'domain' => 'corruptdebug1783360480.com',
   'duration_rules' => 'corrupted',
   'discontinuity_rules' => 123,
