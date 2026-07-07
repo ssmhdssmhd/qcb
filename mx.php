@@ -358,8 +358,20 @@ try {
                         'filename_patterns' => $domainRules['filename_patterns'] ?? [],
                         'stats' => $stats
                     ];
-                    $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, true, $safeguardTriggered);
-                    $domainStats->recordAnalyze($domain, $stats['totalSegments'] ?? 0, $stats['removedSegments'] ?? $stats['adSegments'] ?? 0, $stats['adPercentage'] ?? 0);
+                    if ($analysisCache) {
+                        try {
+                            $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, true, $safeguardTriggered);
+                        } catch (Throwable $e) {
+                            error_log('保存分析缓存失败（不影响分析结果）: ' . $e->getMessage());
+                        }
+                    }
+                    if ($domainStats) {
+                        try {
+                            $domainStats->recordAnalyze($domain, $stats['totalSegments'] ?? 0, $stats['removedSegments'] ?? $stats['adSegments'] ?? 0, $stats['adPercentage'] ?? 0);
+                        } catch (Throwable $e) {
+                            error_log('记录分析统计失败（不影响分析结果）: ' . $e->getMessage());
+                        }
+                    }
 
                     sendJsonResponse([
                         'success' => true,
@@ -1035,11 +1047,20 @@ try {
             break;
 
         case 'update/version':
+            $versionFile = '';
+            if (file_exists(__DIR__ . '/version.php')) {
+                $vData = include __DIR__ . '/version.php';
+                if (is_array($vData)) {
+                    $versionFile = $vData['version'] ?? json_encode($vData, JSON_UNESCAPED_UNICODE);
+                } else {
+                    $versionFile = trim((string)$vData);
+                }
+            }
             sendJsonResponse([
                 'success' => true,
                 'current_version' => $updateManager->getCurrentVersion(),
                 'current_commit' => $updateManager->getCurrentCommit(),
-                'version_file' => file_exists(__DIR__ . '/version.php') ? trim(include __DIR__ . '/version.php') : ''
+                'version_file' => $versionFile
             ]);
             break;
 
