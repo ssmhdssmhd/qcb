@@ -5,6 +5,42 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.24.0] - 2026-07-07
+
+### ✅ 数据库配置改为只读，修复一键学习/分析功能，恢复数据
+
+**问题**: 
+1. 数据库配置在后台可修改，但实际应以 db/db_config.php 文件为准
+2. 一键学习全部和一键分析全部无法使用后端多线程模式
+3. 后台数据丢失
+
+**修复内容**:
+
+1. **数据库管理页面改为只读** ([mxadmin.php](file:///workspace/mxadmin.php))
+   - 所有配置输入框改为 readonly，背景灰色显示
+   - 移除"保存配置"按钮，替换为提示信息：数据库配置从 db/db_config.php 文件读取
+   - 保留"测试连接"功能
+   - 从服务器获取当前配置并显示
+
+2. **修复一键学习全部** ([mx.php](file:///workspace/mx.php))
+   - 后端多线程模式失败时自动回退到串行模式
+   - 修复 JSON 解析失败处理，返回友好错误信息
+
+3. **修复一键分析全部** ([mx.php](file:///workspace/mx.php))
+   - 后端多线程模式失败时自动回退到串行模式
+   - 修复 JSON 解析失败处理，返回友好错误信息
+
+4. **数据恢复**
+   - 恢复 player_config 表数据（5 条播放器配置）
+   - 检查并确认所有核心数据完整：规则(11)、资源站(50)、官推站点(1)、官替平台(7)
+
+**受影响文件**:
+- [mxadmin.php](file:///workspace/mxadmin.php) - 前端数据库管理页面
+- [mx.php](file:///workspace/mx.php) - 后端 API 接口
+- [version.php](file:///workspace/version.php) - 版本号更新
+
+---
+
 ## [2.23.1] - 2026-07-07
 
 ### ✅ 修复自动学习报错：Unexpected token '<'

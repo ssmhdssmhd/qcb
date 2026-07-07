@@ -1158,85 +1158,96 @@ try {
                 ];
             }
 
+            $multiThreadFailed = false;
             if ($useMultiThread && TaskRunner::isMultiThreadAvailable()) {
-                $runner = TaskRunner::create([
-                    'concurrency' => $concurrency,
-                    'mode' => TaskRunner::MODE_CURL_MULTI,
-                    'timeout' => 120
-                ]);
+                try {
+                    $runner = TaskRunner::create([
+                        'concurrency' => $concurrency,
+                        'mode' => TaskRunner::MODE_CURL_MULTI,
+                        'timeout' => 120
+                    ]);
 
-                $startTime = microtime(true);
-                $results = $runner->run($tasks, function($task) use ($selfBase) {
-                    $url = $task['url'];
-                    $apiUrl = $selfBase;
-                    
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch, CURLOPT_POST, true);
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['url' => $url]));
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                    
-                    $response = curl_exec($ch);
-                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
-                    
-                    if ($httpCode >= 200 && $httpCode < 300) {
-                        $data = json_decode($response, true);
-                        return $data ?: $response;
-                    }
-                    throw new Exception("HTTP $httpCode");
-                });
-                $totalTime = round((microtime(true) - $startTime) * 1000, 2);
-
-                $successCount = 0;
-                $failCount = 0;
-                $learnedDomains = [];
-                $resultDetails = [];
-
-                foreach ($results as $i => $result) {
-                    $data = $result->data;
-                    if ($result->success && is_array($data) && !empty($data['success'])) {
-                        $successCount++;
-                        if (!empty($data['domain'])) {
-                            $learnedDomains[$data['domain']] = true;
+                    $startTime = microtime(true);
+                    $results = $runner->run($tasks, function($task) use ($selfBase) {
+                        $url = $task['url'];
+                        $apiUrl = $selfBase;
+                        
+                        $ch = curl_init();
+                        curl_setopt($ch, CURLOPT_URL, $apiUrl);
+                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($ch, CURLOPT_POST, true);
+                        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['url' => $url]));
+                        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                        
+                        $response = curl_exec($ch);
+                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        curl_close($ch);
+                        
+                        if ($httpCode >= 200 && $httpCode < 300) {
+                            $data = json_decode($response, true);
+                            if ($data === null) {
+                                return ['success' => false, 'message' => '服务器返回非JSON响应'];
+                            }
+                            return $data;
                         }
-                        $resultDetails[] = [
-                            'url' => $urls[$i],
-                            'success' => true,
-                            'domain' => $data['domain'] ?? '',
-                            'segments_count' => $data['segments_count'] ?? 0,
-                            'ad_count' => $data['ad_count'] ?? 0,
-                            'duration' => $result->duration
-                        ];
-                    } else {
-                        $failCount++;
-                        $resultDetails[] = [
-                            'url' => $urls[$i],
-                            'success' => false,
-                            'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
-                            'duration' => $result->duration
-                        ];
-                    }
-                }
+                        return ['success' => false, 'message' => "HTTP $httpCode"];
+                    });
+                    $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
-                sendJsonResponse([
-                    'success' => true,
-                    'mode' => $runner->getActualMode(),
-                    'concurrency' => $concurrency,
-                    'total' => $total,
-                    'success_count' => $successCount,
-                    'fail_count' => $failCount,
-                    'total_time' => $totalTime,
-                    'learned_domains' => array_keys($learnedDomains),
-                    'results' => $resultDetails
-                ]);
-            } else {
+                    $successCount = 0;
+                    $failCount = 0;
+                    $learnedDomains = [];
+                    $resultDetails = [];
+
+                    foreach ($results as $i => $result) {
+                        $data = $result->data;
+                        if ($result->success && is_array($data) && !empty($data['success'])) {
+                            $successCount++;
+                            if (!empty($data['domain'])) {
+                                $learnedDomains[$data['domain']] = true;
+                            }
+                            $resultDetails[] = [
+                                'url' => $urls[$i],
+                                'success' => true,
+                                'domain' => $data['domain'] ?? '',
+                                'segments_count' => $data['segments_count'] ?? 0,
+                                'ad_count' => $data['ad_count'] ?? 0,
+                                'duration' => $result->duration
+                            ];
+                        } else {
+                            $failCount++;
+                            $resultDetails[] = [
+                                'url' => $urls[$i],
+                                'success' => false,
+                                'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
+                                'duration' => $result->duration
+                            ];
+                        }
+                    }
+
+                    sendJsonResponse([
+                        'success' => true,
+                        'mode' => $runner->getActualMode(),
+                        'concurrency' => $concurrency,
+                        'total' => $total,
+                        'success_count' => $successCount,
+                        'fail_count' => $failCount,
+                        'total_time' => $totalTime,
+                        'learned_domains' => array_keys($learnedDomains),
+                        'results' => $resultDetails
+                    ]);
+                    break;
+                } catch (Throwable $e) {
+                    $multiThreadFailed = true;
+                }
+            }
+            
+            if ($multiThreadFailed || !$useMultiThread || !TaskRunner::isMultiThreadAvailable()) {
                 $startTime = microtime(true);
                 $successCount = 0;
                 $failCount = 0;
@@ -1299,76 +1310,87 @@ try {
                 ];
             }
 
+            $multiThreadFailed = false;
             if ($useMultiThread && TaskRunner::isMultiThreadAvailable()) {
-                $runner = TaskRunner::create([
-                    'concurrency' => $concurrency,
-                    'mode' => TaskRunner::MODE_CURL_MULTI,
-                    'timeout' => 120
-                ]);
+                try {
+                    $runner = TaskRunner::create([
+                        'concurrency' => $concurrency,
+                        'mode' => TaskRunner::MODE_CURL_MULTI,
+                        'timeout' => 120
+                    ]);
 
-                $startTime = microtime(true);
-                $results = $runner->run($tasks, function($task) use ($selfBase) {
-                    $apiUrl = $selfBase . '&url=' . urlencode($task['url']);
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                    $startTime = microtime(true);
+                    $results = $runner->run($tasks, function($task) use ($selfBase) {
+                        $apiUrl = $selfBase . '&url=' . urlencode($task['url']);
+                        $ch = curl_init();
+                        curl_setopt($ch, CURLOPT_URL, $apiUrl);
+                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 
-                    $response = curl_exec($ch);
-                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
+                        $response = curl_exec($ch);
+                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        curl_close($ch);
 
-                    if ($httpCode >= 200 && $httpCode < 300) {
-                        $data = json_decode($response, true);
-                        return $data ?: $response;
+                        if ($httpCode >= 200 && $httpCode < 300) {
+                            $data = json_decode($response, true);
+                            if ($data === null) {
+                                return ['success' => false, 'message' => '服务器返回非JSON响应'];
+                            }
+                            return $data;
+                        }
+                        return ['success' => false, 'message' => "HTTP $httpCode"];
+                    });
+                    $totalTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                    $successCount = 0;
+                    $failCount = 0;
+                    $resultDetails = [];
+
+                    foreach ($results as $i => $result) {
+                        $data = $result->data;
+                        if ($result->success && is_array($data) && !empty($data['success'])) {
+                            $successCount++;
+                            $resultDetails[] = [
+                                'url' => $urls[$i],
+                                'success' => true,
+                                'domain' => $data['domain'] ?? '',
+                                'fast_mode' => $data['fastMode'] ?? false,
+                                'stats' => $data['stats'] ?? [],
+                                'duration' => $result->duration
+                            ];
+                        } else {
+                            $failCount++;
+                            $resultDetails[] = [
+                                'url' => $urls[$i],
+                                'success' => false,
+                                'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
+                                'duration' => $result->duration
+                            ];
+                        }
                     }
-                    throw new Exception("HTTP $httpCode");
-                });
-                $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
-                $successCount = 0;
-                $failCount = 0;
-                $resultDetails = [];
-
-                foreach ($results as $i => $result) {
-                    $data = $result->data;
-                    if ($result->success && is_array($data) && !empty($data['success'])) {
-                        $successCount++;
-                        $resultDetails[] = [
-                            'url' => $urls[$i],
-                            'success' => true,
-                            'domain' => $data['domain'] ?? '',
-                            'fast_mode' => $data['fastMode'] ?? false,
-                            'stats' => $data['stats'] ?? [],
-                            'duration' => $result->duration
-                        ];
-                    } else {
-                        $failCount++;
-                        $resultDetails[] = [
-                            'url' => $urls[$i],
-                            'success' => false,
-                            'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
-                            'duration' => $result->duration
-                        ];
-                    }
+                    sendJsonResponse([
+                        'success' => true,
+                        'mode' => $runner->getActualMode(),
+                        'concurrency' => $concurrency,
+                        'total' => $total,
+                        'success_count' => $successCount,
+                        'fail_count' => $failCount,
+                        'total_time' => $totalTime,
+                        'results' => $resultDetails
+                    ]);
+                    break;
+                } catch (Throwable $e) {
+                    $multiThreadFailed = true;
                 }
-
-                sendJsonResponse([
-                    'success' => true,
-                    'mode' => $runner->getActualMode(),
-                    'concurrency' => $concurrency,
-                    'total' => $total,
-                    'success_count' => $successCount,
-                    'fail_count' => $failCount,
-                    'total_time' => $totalTime,
-                    'results' => $resultDetails
-                ]);
-            } else {
+            }
+            
+            if ($multiThreadFailed || !$useMultiThread || !TaskRunner::isMultiThreadAvailable()) {
                 $startTime = microtime(true);
                 $successCount = 0;
                 $failCount = 0;
@@ -2334,6 +2356,11 @@ try {
                 }
                 $migration = new DataMigration();
                 $status['migrated'] = $migration->isMigrated();
+                
+                $configFile = __DIR__ . '/db/db_config.php';
+                if (file_exists($configFile)) {
+                    $status['config'] = require $configFile;
+                }
             }
             sendJsonResponse(['success' => true, 'status' => $status]);
             break;

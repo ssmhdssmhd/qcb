@@ -1504,38 +1504,40 @@ header('Expires: 0');
                             <input type="radio" name="dbType" value="mysql" onchange="toggleDbType('mysql')"> MySQL
                         </label>
                     </div>
+                    <div style="padding:12px;background:#f5f7fa;border-radius:4px;font-size:13px;color:#909399;margin-bottom:12px">
+                        ⚠️ 数据库配置从 <code>db/db_config.php</code> 文件读取，如需修改请直接编辑该文件。
+                    </div>
                     <div id="sqliteConfig" style="margin-bottom:12px">
                         <div style="margin-bottom:8px;font-size:13px;color:#606266">数据库文件路径:</div>
-                        <input type="text" id="sqlitePath" value="db/data.db" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                        <input type="text" id="sqlitePath" value="db/data.db" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                     </div>
                     <div id="mysqlConfig" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:12px">
                         <div>
                             <div style="margin-bottom:4px;font-size:13px;color:#606266">主机</div>
-                            <input type="text" id="mysqlHost" value="127.0.0.1" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                            <input type="text" id="mysqlHost" value="127.0.0.1" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                         </div>
                         <div>
                             <div style="margin-bottom:4px;font-size:13px;color:#606266">端口</div>
-                            <input type="number" id="mysqlPort" value="3306" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                            <input type="number" id="mysqlPort" value="3306" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                         </div>
                         <div>
                             <div style="margin-bottom:4px;font-size:13px;color:#606266">数据库名</div>
-                            <input type="text" id="mysqlDbname" value="m3u8_ad" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                            <input type="text" id="mysqlDbname" value="m3u8_ad" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                         </div>
                         <div>
                             <div style="margin-bottom:4px;font-size:13px;color:#606266">用户名</div>
-                            <input type="text" id="mysqlUsername" value="root" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                            <input type="text" id="mysqlUsername" value="root" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                         </div>
                         <div>
                             <div style="margin-bottom:4px;font-size:13px;color:#606266">密码</div>
-                            <input type="password" id="mysqlPassword" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                            <input type="password" id="mysqlPassword" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                         </div>
                         <div>
                             <div style="margin-bottom:4px;font-size:13px;color:#606266">字符集</div>
-                            <input type="text" id="mysqlCharset" value="utf8mb4" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px">
+                            <input type="text" id="mysqlCharset" value="utf8mb4" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
                         </div>
                     </div>
                     <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
-                        <button class="btn btn-primary" onclick="saveDbConfig()">保存配置</button>
                         <button class="btn btn-secondary" onclick="testDbConnection()">测试连接</button>
                         <span id="testConnResult" style="font-size:13px;color:#909399"></span>
                     </div>
@@ -5859,6 +5861,24 @@ header('Expires: 0');
                 }
                 tablesHtml += '</tbody></table>';
                 document.getElementById('dbTables').innerHTML = tablesHtml;
+
+                if (status.config) {
+                    const cfg = status.config;
+                    if (cfg.type === 'mysql') {
+                        document.querySelector('input[name="dbType"][value="mysql"]').checked = true;
+                        toggleDbType('mysql');
+                        document.getElementById('mysqlHost').value = cfg.mysql_host || '127.0.0.1';
+                        document.getElementById('mysqlPort').value = cfg.mysql_port || 3306;
+                        document.getElementById('mysqlDbname').value = cfg.mysql_dbname || 'm3u8_ad';
+                        document.getElementById('mysqlUsername').value = cfg.mysql_username || 'root';
+                        document.getElementById('mysqlPassword').value = cfg.mysql_password || '';
+                        document.getElementById('mysqlCharset').value = cfg.mysql_charset || 'utf8mb4';
+                    } else {
+                        document.querySelector('input[name="dbType"][value="sqlite"]').checked = true;
+                        toggleDbType('sqlite');
+                        document.getElementById('sqlitePath').value = cfg.sqlite_path || 'db/data.db';
+                    }
+                }
             } catch (e) {
                 document.getElementById('dbStatus').textContent = '连接失败';
                 document.getElementById('dbStatus').style.color = '#f56c6c';
@@ -5867,35 +5887,7 @@ header('Expires: 0');
         }
 
         async function saveDbConfig() {
-            const dbType = document.querySelector('input[name="dbType"]:checked').value;
-            const config = { type: dbType };
-            if (dbType === 'sqlite') {
-                config.sqlite_path = document.getElementById('sqlitePath').value;
-            } else {
-                config.mysql_host = document.getElementById('mysqlHost').value;
-                config.mysql_port = parseInt(document.getElementById('mysqlPort').value) || 3306;
-                config.mysql_dbname = document.getElementById('mysqlDbname').value;
-                config.mysql_username = document.getElementById('mysqlUsername').value;
-                config.mysql_password = document.getElementById('mysqlPassword').value;
-                config.mysql_charset = document.getElementById('mysqlCharset').value;
-            }
-
-            try {
-                const res = await fetch(API_BASE + '?action=db/config/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-                const data = await res.json();
-                if (data.success) {
-                    showToast('配置保存成功，页面将刷新', 'success');
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    showToast('保存失败: ' + data.message, 'error');
-                }
-            } catch (e) {
-                showToast('保存失败: ' + e.message, 'error');
-            }
+            showToast('数据库配置为只读，请直接编辑 db/db_config.php 文件', 'warning');
         }
 
         async function testDbConnection() {
