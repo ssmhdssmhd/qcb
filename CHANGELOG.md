@@ -5,6 +5,29 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.22.3] - 2026-07-07
+
+### 🐛 修复 DbDomainRuleManager 建表仍报 JSON 错误
+
+**问题**: 虽然修改了 `schema_mysql.sql`，但 [DbDomainRuleManager.php](file:///workspace/db/DbDomainRuleManager.php) 中有自己的 `initTable()` 方法，里面硬编码了建表 SQL，也使用了 `JSON` 字段类型，导致 MySQL 低版本初始化时仍然报错。
+
+**错误信息**:
+```
+类初始化失败: ... near 'JSON, discontinuity_rules JSON, sequence_jump_ru' at line 11
+```
+
+**根因**: 存在两套建表机制：
+1. `Database::initTables()` - 读取 schema SQL 文件建表
+2. `DbDomainRuleManager::initTable()` - 硬编码 SQL 建表（仅 domain_rules 表）
+
+当数据库为空时，`DbDomainRuleManager` 先实例化，先触发自己的 `initTable()`，所以即使 schema 文件改了也没用。
+
+**修复**:
+- 将 `DbDomainRuleManager::initTable()` 中 MySQL 建表语句的 11 个 `JSON` 字段全部改为 `TEXT`
+- 与 `schema_mysql.sql` 保持一致
+
+---
+
 ## [2.22.2] - 2026-07-06
 
 ### 🐛 修复 MySQL 低版本建表失败
