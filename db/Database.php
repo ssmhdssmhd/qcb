@@ -144,40 +144,243 @@ class Database {
         $sql = file_get_contents($sqlFile);
         $statements = $this->splitSqlStatements($sql);
 
-        $transactionStarted = false;
+        $createTableStmts = [];
+        $createIndexStmts = [];
+        $otherStmts = [];
+
+        foreach ($statements as $stmt) {
+            $stmt = trim($stmt);
+            if (empty($stmt)) continue;
+
+            if (preg_match('/CREATE TABLE\s+IF NOT EXISTS/i', $stmt)) {
+                $createTableStmts[] = $stmt;
+            } elseif (preg_match('/CREATE INDEX\s+IF NOT EXISTS/i', $stmt)) {
+                $createIndexStmts[] = $stmt;
+            } elseif (!preg_match('/^--/', $stmt) && !preg_match('/^\/\*/', $stmt)) {
+                $otherStmts[] = $stmt;
+            }
+        }
+
         try {
-            foreach ($statements as $stmt) {
-                $stmt = trim($stmt);
-                if (empty($stmt)) continue;
-                
-                if (preg_match('/CREATE TABLE\s+IF NOT EXISTS/i', $stmt)) {
-                    try {
-                        $this->pdo->exec($stmt);
-                    } catch (Exception $e) {
-                        if (!strpos($e->getMessage(), 'already exists')) {
-                            throw $e;
-                        }
+            foreach ($createTableStmts as $stmt) {
+                try {
+                    $this->pdo->exec($stmt);
+                } catch (Exception $e) {
+                    if (strpos($e->getMessage(), 'already exists') === false) {
+                        error_log('[DB] 创建表失败: ' . $e->getMessage());
                     }
-                } else {
+                }
+            }
+
+            $this->migrateTables();
+            $this->migrateColumns();
+
+            foreach ($createIndexStmts as $stmt) {
+                try {
+                    $this->pdo->exec($stmt);
+                } catch (Exception $e) {
+                    error_log('[DB] 创建索引失败（忽略）: ' . $e->getMessage());
+                }
+            }
+
+            $transactionStarted = false;
+            foreach ($otherStmts as $stmt) {
+                try {
                     if (!$transactionStarted) {
                         $this->pdo->beginTransaction();
                         $transactionStarted = true;
                     }
                     $this->pdo->exec($stmt);
+                } catch (Exception $e) {
+                    error_log('[DB] 执行初始化语句失败（忽略）: ' . $e->getMessage());
                 }
             }
-            if ($transactionStarted) {
-                $this->pdo->commit();
-            }
-            return true;
-        } catch (Exception $e) {
             if ($transactionStarted) {
                 try {
-                    $this->pdo->rollBack();
-                } catch (Exception $rollbackEx) {
+                    $this->pdo->commit();
+                } catch (Exception $e) {
+                    try { $this->pdo->rollBack(); } catch (Exception $re) {}
                 }
             }
+
+            return true;
+        } catch (Exception $e) {
             throw $e;
+        }
+    }
+
+    private function migrateTables() {
+        $expectedTables = [
+            'sys_config',
+            'domain_rules',
+            'resource_sites',
+            'official_sites',
+            'proxies',
+            'official_platforms',
+            'auto_learn_logs',
+            'player_config',
+            'm3u8_analysis_cache',
+            'ad_signatures',
+            'official_replace_cache',
+            'domain_analysis_stats',
+        ];
+
+        foreach ($expectedTables as $table) {
+            if (!$this->tableExists($table)) {
+                error_log('[DB Migration] 创建缺失的表: ' . $table);
+                $this->createTableByName($table);
+            }
+        }
+    }
+
+    private function createTableByName($table) {
+        $schemaFile = __DIR__ . '/schema_' . $this->dbType . '.sql';
+        if (!file_exists($schemaFile)) {
+            $schemaFile = __DIR__ . '/schema.sql';
+        }
+        if (!file_exists($schemaFile)) return;
+
+        $sql = file_get_contents($schemaFile);
+        $pattern = '/CREATE TABLE\s+IF NOT EXISTS\s+[`"]?' . preg_quote($table, '/') . '[`"]?\s*\((?:[^()]|(?R))*\)/s';
+        if (preg_match($pattern, $sql, $matches)) {
+            try {
+                $this->pdo->exec($matches[0]);
+                error_log('[DB Migration] 表创建成功: ' . $table);
+            } catch (Exception $e) {
+                error_log('[DB Migration] 创建表失败 ' . $table . ': ' . $e->getMessage());
+            }
+        }
+    }
+
+    private function migrateColumns() {
+        $expectedColumns = $this->getExpectedColumns();
+
+        foreach ($expectedColumns as $table => $columns) {
+            if (!$this->tableExists($table)) continue;
+
+            $existingColumns = $this->getTableColumns($table);
+            $existingNames = array_map('strtolower', array_keys($existingColumns));
+
+            foreach ($columns as $colName => $colDef) {
+                if (!in_array(strtolower($colName), $existingNames)) {
+                    error_log('[DB Migration] 添加缺失的列: ' . $table . '.' . $colName);
+                    $this->addColumn($table, $colName, $colDef);
+                }
+            }
+        }
+    }
+
+    private function getExpectedColumns() {
+        $isMysql = $this->dbType === 'mysql';
+        $tinyint = $isMysql ? 'TINYINT(1)' : 'INTEGER';
+        $decimal = $isMysql ? 'DECIMAL(10,3)' : 'REAL';
+        $decimal52 = $isMysql ? 'DECIMAL(5,2)' : 'REAL';
+        $text = 'TEXT';
+        $int = 'INT';
+        $varchar191 = $isMysql ? 'VARCHAR(191)' : 'TEXT';
+        $varchar1000 = $isMysql ? 'VARCHAR(1000)' : 'TEXT';
+        $varchar64 = $isMysql ? 'VARCHAR(64)' : 'TEXT';
+        $timestamp = $isMysql ? 'TIMESTAMP NULL DEFAULT NULL' : 'DATETIME';
+        $timestampDef = $isMysql ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' : 'DATETIME DEFAULT CURRENT_TIMESTAMP';
+
+        return [
+            'm3u8_analysis_cache' => [
+                'url_hash' => $varchar64 . ' NOT NULL',
+                'url' => $varchar1000 . ' NOT NULL',
+                'domain' => $varchar191 . " DEFAULT ''",
+                'media_url' => $varchar1000 . " DEFAULT ''",
+                'total_segments' => $int . ' DEFAULT 0',
+                'ad_segments' => $int . ' DEFAULT 0',
+                'kept_segments' => $int . ' DEFAULT 0',
+                'original_duration' => $decimal . ' DEFAULT 0',
+                'filtered_duration' => $decimal . ' DEFAULT 0',
+                'saved_duration' => $decimal . ' DEFAULT 0',
+                'ad_percentage' => $decimal52 . ' DEFAULT 0',
+                'duration_rules' => $text,
+                'discontinuity_rules' => $text,
+                'sequence_jump_rules' => $text,
+                'filename_patterns' => $text,
+                'ad_signatures' => $text,
+                'stats' => $text,
+                'fast_mode' => $tinyint . ' DEFAULT 0',
+                'safeguard_triggered' => $tinyint . ' DEFAULT 0',
+                'expires_at' => $timestamp,
+            ],
+            'domain_rules' => [
+                'marker_detection' => $text,
+                'confidence' => $text,
+                'enable_marker_detection' => $tinyint . ' DEFAULT 0',
+                'history_stats' => $text,
+            ],
+            'ad_signatures' => [
+                'domain' => $varchar191 . ' NOT NULL',
+                'signature_type' => ($isMysql ? 'VARCHAR(50)' : 'TEXT') . ' NOT NULL',
+                'signature_value' => ($isMysql ? 'VARCHAR(500)' : 'TEXT') . ' NOT NULL',
+                'weight' => $int . ' DEFAULT 30',
+                'hit_count' => $int . ' DEFAULT 1',
+                'confidence' => $int . ' DEFAULT 50',
+                'first_seen' => $timestamp,
+                'last_seen' => $timestamp,
+                'status' => $tinyint . ' DEFAULT 1',
+            ],
+            'official_replace_cache' => [
+                'original_url_hash' => $varchar64 . ' NOT NULL',
+                'original_url' => $varchar1000 . ' NOT NULL',
+                'platform' => ($isMysql ? 'VARCHAR(100)' : 'TEXT') . " DEFAULT ''",
+                'video_title' => ($isMysql ? 'VARCHAR(500)' : 'TEXT') . " DEFAULT ''",
+                'base_title' => ($isMysql ? 'VARCHAR(500)' : 'TEXT') . " DEFAULT ''",
+                'season_num' => $int . ' DEFAULT NULL',
+                'episode_num' => $int . ' DEFAULT NULL',
+                'm3u8_url' => $varchar1000 . " DEFAULT ''",
+                'match_score' => $decimal52 . ' DEFAULT 0',
+                'site' => ($isMysql ? 'VARCHAR(100)' : 'TEXT') . " DEFAULT ''",
+                'video_info' => $text,
+                'status' => $tinyint . ' DEFAULT 1',
+                'expires_at' => $timestamp,
+            ],
+            'domain_analysis_stats' => [
+                'domain' => $varchar191 . ' NOT NULL',
+                'analyze_count' => $int . ' DEFAULT 0',
+                'learn_count' => $int . ' DEFAULT 0',
+                'total_segments_analyzed' => $int . ' DEFAULT 0',
+                'total_ads_detected' => $int . ' DEFAULT 0',
+                'avg_ad_percentage' => $decimal52 . ' DEFAULT 0',
+                'last_analyze_time' => $timestamp,
+                'last_learn_time' => $timestamp,
+            ],
+        ];
+    }
+
+    private function getTableColumns($table) {
+        $columns = [];
+        if ($this->dbType === 'mysql') {
+            $dbname = $this->config['mysql_dbname'] ?? 'm3u8_ad';
+            $stmt = $this->pdo->prepare(
+                'SELECT COLUMN_NAME, DATA_TYPE, COLUMN_DEFAULT, IS_NULLABLE
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?'
+            );
+            $stmt->execute([$dbname, $table]);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $columns[$row['COLUMN_NAME']] = $row;
+            }
+        } else {
+            $stmt = $this->pdo->query('PRAGMA table_info(' . $table . ')');
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $columns[$row['name']] = $row;
+            }
+        }
+        return $columns;
+    }
+
+    private function addColumn($table, $columnName, $columnDef) {
+        try {
+            $sql = sprintf('ALTER TABLE %s ADD COLUMN %s %s', $table, $columnName, $columnDef);
+            $this->pdo->exec($sql);
+            return true;
+        } catch (Exception $e) {
+            error_log('[DB Migration] 添加列失败: ' . $table . '.' . $columnName . ' - ' . $e->getMessage());
+            return false;
         }
     }
 
@@ -186,6 +389,7 @@ class Database {
         $current = '';
         $inString = false;
         $stringChar = '';
+        $parenDepth = 0;
         $length = strlen($sql);
 
         for ($i = 0; $i < $length; $i++) {
@@ -200,7 +404,13 @@ class Database {
                     $inString = true;
                     $stringChar = $char;
                     $current .= $char;
-                } elseif ($char === ';') {
+                } elseif ($char === '(') {
+                    $parenDepth++;
+                    $current .= $char;
+                } elseif ($char === ')') {
+                    $parenDepth--;
+                    $current .= $char;
+                } elseif ($char === ';' && $parenDepth === 0) {
                     $statements[] = $current;
                     $current = '';
                 } else {

@@ -173,6 +173,101 @@ CREATE TABLE IF NOT EXISTS player_config (
 );
 
 -- ============================================
+-- 9. M3U8分析结果缓存表
+-- ============================================
+CREATE TABLE IF NOT EXISTS m3u8_analysis_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url_hash TEXT NOT NULL UNIQUE,
+    url TEXT NOT NULL,
+    domain TEXT DEFAULT '',
+    media_url TEXT DEFAULT '',
+    total_segments INTEGER DEFAULT 0,
+    ad_segments INTEGER DEFAULT 0,
+    kept_segments INTEGER DEFAULT 0,
+    original_duration REAL DEFAULT 0,
+    filtered_duration REAL DEFAULT 0,
+    saved_duration REAL DEFAULT 0,
+    ad_percentage REAL DEFAULT 0,
+    duration_rules TEXT,
+    discontinuity_rules TEXT,
+    sequence_jump_rules TEXT,
+    filename_patterns TEXT,
+    ad_signatures TEXT,
+    stats TEXT,
+    fast_mode INTEGER DEFAULT 0,
+    safeguard_triggered INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_m3u8_analysis_cache_domain ON m3u8_analysis_cache(domain);
+CREATE INDEX IF NOT EXISTS idx_m3u8_analysis_cache_expires ON m3u8_analysis_cache(expires_at);
+
+-- ============================================
+-- 10. 广告特征码表
+-- ============================================
+CREATE TABLE IF NOT EXISTS ad_signatures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL,
+    signature_type TEXT NOT NULL,
+    signature_value TEXT NOT NULL,
+    weight INTEGER DEFAULT 30,
+    hit_count INTEGER DEFAULT 1,
+    confidence INTEGER DEFAULT 50,
+    first_seen DATETIME,
+    last_seen DATETIME,
+    status INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ad_signatures_domain_type ON ad_signatures(domain, signature_type);
+CREATE INDEX IF NOT EXISTS idx_ad_signatures_status ON ad_signatures(status);
+CREATE INDEX IF NOT EXISTS idx_ad_signatures_value ON ad_signatures(signature_value);
+
+-- ============================================
+-- 11. 官替结果缓存表
+-- ============================================
+CREATE TABLE IF NOT EXISTS official_replace_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_url_hash TEXT NOT NULL UNIQUE,
+    original_url TEXT NOT NULL,
+    platform TEXT DEFAULT '',
+    video_title TEXT DEFAULT '',
+    base_title TEXT DEFAULT '',
+    season_num INTEGER,
+    episode_num INTEGER,
+    m3u8_url TEXT DEFAULT '',
+    match_score REAL DEFAULT 0,
+    site TEXT DEFAULT '',
+    video_info TEXT,
+    status INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_official_replace_cache_platform ON official_replace_cache(platform);
+CREATE INDEX IF NOT EXISTS idx_official_replace_cache_expires ON official_replace_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_official_replace_cache_status ON official_replace_cache(status);
+
+-- ============================================
+-- 12. 域名分析统计表
+-- ============================================
+CREATE TABLE IF NOT EXISTS domain_analysis_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL UNIQUE,
+    analyze_count INTEGER DEFAULT 0,
+    learn_count INTEGER DEFAULT 0,
+    total_segments_analyzed INTEGER DEFAULT 0,
+    total_ads_detected INTEGER DEFAULT 0,
+    avg_ad_percentage REAL DEFAULT 0,
+    last_analyze_time DATETIME,
+    last_learn_time DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================
 -- 初始数据
 -- ============================================
 INSERT OR IGNORE INTO sys_config (config_key, config_value, description) VALUES
