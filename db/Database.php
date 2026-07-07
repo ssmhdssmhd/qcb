@@ -144,18 +144,39 @@ class Database {
         $sql = file_get_contents($sqlFile);
         $statements = $this->splitSqlStatements($sql);
 
-        $this->pdo->beginTransaction();
+        $transactionStarted = false;
         try {
             foreach ($statements as $stmt) {
                 $stmt = trim($stmt);
-                if (!empty($stmt)) {
+                if (empty($stmt)) continue;
+                
+                if (preg_match('/CREATE TABLE\s+IF NOT EXISTS/i', $stmt)) {
+                    try {
+                        $this->pdo->exec($stmt);
+                    } catch (Exception $e) {
+                        if (!strpos($e->getMessage(), 'already exists')) {
+                            throw $e;
+                        }
+                    }
+                } else {
+                    if (!$transactionStarted) {
+                        $this->pdo->beginTransaction();
+                        $transactionStarted = true;
+                    }
                     $this->pdo->exec($stmt);
                 }
             }
-            $this->pdo->commit();
+            if ($transactionStarted) {
+                $this->pdo->commit();
+            }
             return true;
         } catch (Exception $e) {
-            $this->pdo->rollBack();
+            if ($transactionStarted) {
+                try {
+                    $this->pdo->rollBack();
+                } catch (Exception $rollbackEx) {
+                }
+            }
             throw $e;
         }
     }

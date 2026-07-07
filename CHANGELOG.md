@@ -5,6 +5,74 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.23.0] - 2026-07-07
+
+### ✅ 数据库配置和数据迁移完成
+
+**问题**: 数据库配置 MySQL 保存失败，初始化表结构失败，无法迁移数据。
+
+**修复内容**:
+
+1. **MySQL 服务安装与配置**
+   - 安装 MySQL 8.0 服务器
+   - 创建 `m3u8_ad` 数据库（utf8mb4 字符集）
+   - 配置 root 用户密码认证（修改为 `mysql_native_password`）
+   - 设置 MySQL 监听 127.0.0.1:3306
+
+2. **数据库连接测试通过**
+   - 数据库类型: MySQL
+   - MySQL版本: 8.0.46-0ubuntu0.24.04.3
+   - 表结构初始化成功
+
+3. **数据迁移完成**
+   - domain_rules: 迁移 11 条规则
+   - resource_sites: 迁移 50 个资源站
+   - official_sites: 迁移 1 个推荐采集站
+   - official_platforms: 迁移 7 个官替平台
+   - sys_config: 迁移 6 条配置
+
+4. **API 功能测试全部通过**
+   - 规则列表、资源站列表、官替平台、推荐采集站、代理列表、配置管理、保存规则测试全部成功
+
+**受影响文件**:
+- [db_config.php](file:///workspace/db/db_config.php) - 默认 MySQL 配置
+- [version.php](file:///workspace/version.php) - 版本号更新
+
+---
+
+## [2.22.5] - 2026-07-07
+
+### 🐛 修复 MySQL 保存配置和初始化表结构失败
+
+**问题**: 保存 MySQL 配置时报错 `There is no active transaction`，且重复建表时会报错。
+
+**修复内容**:
+
+1. **修复事务处理问题**
+   - 修改 `Database::initTables()`，仅在执行非 CREATE TABLE 语句时开启事务
+   - CREATE TABLE 语句单独执行，避免事务嵌套问题
+   - 添加 `$transactionStarted` 标志，确保 rollback 前事务已开启
+
+2. **修复重复建表问题**
+   - 将 `schema_mysql.sql` 中所有 `CREATE TABLE` 改为 `CREATE TABLE IF NOT EXISTS`
+   - 修改 `DbDomainRuleManager::initTable()` 添加 `IF NOT EXISTS`
+   - 表已存在时自动跳过，不再报错
+
+3. **默认数据库改为 MySQL**
+   - 修改 `db_config.php` 默认配置为 MySQL
+   - 默认数据库名：`m3u8_ad`，用户名：`root`，密码：空
+
+4. **修复 DbDomainRuleManager 语法错误**
+   - 修复之前编辑导致的 SQL 字符串语法错误
+
+**受影响文件**:
+- [Database.php](file:///workspace/db/Database.php) - initTables 事务处理
+- [schema_mysql.sql](file:///workspace/db/schema_mysql.sql) - IF NOT EXISTS
+- [DbDomainRuleManager.php](file:///workspace/db/DbDomainRuleManager.php) - initTable 语法修复
+- [db_config.php](file:///workspace/db/db_config.php) - 默认 MySQL 配置
+
+---
+
 ## [2.22.4] - 2026-07-07
 
 ### 🐛 修复 MySQL 索引过长报错（767 bytes 限制）

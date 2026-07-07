@@ -20,7 +20,7 @@ class DbDomainRuleManager {
         $dbType = $this->db->getDbType();
 
         if ($dbType === 'mysql') {
-            $sql = "CREATE TABLE {$this->tableName} (
+            $sql = "CREATE TABLE IF NOT EXISTS {$this->tableName} (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 domain VARCHAR(191) NOT NULL UNIQUE,
                 name VARCHAR(255) DEFAULT '',
@@ -71,12 +71,12 @@ class DbDomainRuleManager {
                 confidence TEXT,
                 enable_marker_detection INTEGER DEFAULT 0,
                 history_stats TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )";
         }
 
-        $this->db->execute($sql);
+        $this->db->query($sql);
     }
 
     private function jsonEncode($data) {
