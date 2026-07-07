@@ -39,10 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 function sendJsonResponse($data, $code = 200) {
     http_response_code($code);
-    $output = ob_get_clean();
-    if (!empty(trim($output))) {
-        $data['debug_output'] = base64_encode($output);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
     }
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -70,7 +70,11 @@ set_error_handler('jsonErrorHandler');
 function jsonFatalHandler() {
     $error = error_get_last();
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        @ob_clean();
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'success' => false,
             'message' => $error['message'],
@@ -80,7 +84,6 @@ function jsonFatalHandler() {
             ],
             'fatal_error' => true
         ], JSON_UNESCAPED_UNICODE);
-        @ob_end_flush();
     }
 }
 register_shutdown_function('jsonFatalHandler');
@@ -1536,7 +1539,7 @@ try {
 
                 $startTime = microtime(true);
                 $results = $runner->run($allVideos, function($task) use ($selfBase) {
-                    $apiUrl = $task['url'] ? $selfBase : '';
+                    $apiUrl = $selfBase;
                     $ch = curl_init();
                     curl_setopt($ch, CURLOPT_URL, $apiUrl);
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -1555,9 +1558,16 @@ try {
 
                     if ($httpCode >= 200 && $httpCode < 300) {
                         $data = json_decode($response, true);
-                        return $data ?: ['success' => false, 'message' => '解析失败'];
+                        if ($data === null) {
+                            $errorMsg = 'JSON解析失败';
+                            if (is_string($response) && strpos($response, '<html') !== false) {
+                                $errorMsg = '服务器返回HTML错误页面';
+                            }
+                            return ['success' => false, 'message' => $errorMsg];
+                        }
+                        return $data;
                     }
-                    throw new Exception("HTTP $httpCode");
+                    return ['success' => false, 'message' => "HTTP $httpCode"];
                 });
                 $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 

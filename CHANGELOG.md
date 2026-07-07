@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.23.1] - 2026-07-07
+
+### ✅ 修复自动学习报错：Unexpected token '<'
+
+**问题**: 自动学习功能报错 `学习失败: Unexpected token '<', "<html> <h"... is not valid JSON`
+
+**根本原因**: 
+- 后端输出缓冲区清理不彻底，导致 PHP 错误信息（HTML 格式）混入 JSON 响应
+- 多线程模式下内部请求失败时抛出异常，未正确处理
+- 前端 JSON 解析缺少异常处理
+
+**修复内容**:
+
+1. **后端修复** ([mx.php](file:///workspace/mx.php))
+   - `sendJsonResponse()`: 彻底清理所有输出缓冲区，重新设置 Content-Type 头
+   - `jsonFatalHandler()`: 清理所有输出缓冲区后再输出 JSON
+   - 多线程模式内部请求: 修复 API URL 拼接错误，增加 JSON 解析失败的友好错误提示
+
+2. **前端修复** ([mxadmin.php](file:///workspace/mxadmin.php))
+   - `learnFromVideoUrl()`: 增加 JSON 解析异常捕获，记录详细错误信息到控制台
+   - `runAutoLearn()`: 增加 JSON 解析异常捕获，提供友好错误提示
+   - `learnOne()`: 增加 JSON 解析异常捕获，返回标准错误对象
+
+**受影响文件**:
+- [mx.php](file:///workspace/mx.php) - 后端 API 接口
+- [mxadmin.php](file:///workspace/mxadmin.php) - 前端管理页面
+- [version.php](file:///workspace/version.php) - 版本号更新
+
+---
+
 ## [2.23.0] - 2026-07-07
 
 ### ✅ 数据库配置和数据迁移完成

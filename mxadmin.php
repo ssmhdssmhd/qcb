@@ -4422,7 +4422,16 @@ header('Expires: 0');
                         concurrency: concurrency
                     })
                 });
-                const data = await res.json();
+                
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const text = await res.text();
+                    console.error('JSON解析失败，响应内容:', text);
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
                 if (!data.success) throw new Error(data.message);
                 let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
                 html += '<div style="font-weight:600;color:#67c23a;margin-bottom:8px">✅ ' + escapeHtml(data.message || '自动学习完成') + '</div>';
@@ -4699,7 +4708,18 @@ header('Expires: 0');
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url: url })
                 });
-                const data = await res.json();
+                
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const text = await res.text();
+                    console.error('JSON解析失败，响应内容:', text);
+                    showToast('学习失败: 服务器返回非JSON响应', 'error');
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    return;
+                }
 
                 if (data.success) {
                     showToast('学习成功！域名: ' + (data.domain || ''), 'success');
@@ -4872,7 +4892,15 @@ header('Expires: 0');
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url: video.url })
                     });
-                    const data = await res.json();
+                    
+                    let data;
+                    try {
+                        data = await res.json();
+                    } catch (jsonErr) {
+                        const text = await res.text();
+                        console.error('JSON解析失败，响应内容:', text);
+                        return { success: false, message: '服务器返回非JSON响应' };
+                    }
 
                     if (data.success) {
                         successCount++;
