@@ -26,7 +26,7 @@ class CacheManager
             return null;
         }
         $data = @file_get_contents($file);
-        if ($data === false) {
+        if ($data === false || $data === '') {
             return null;
         }
         $cache = @unserialize($data);
@@ -51,8 +51,26 @@ class CacheManager
             'expire' => time() + $ttl,
             'data' => $data
         ];
-        $result = @file_put_contents($file, serialize($cache), LOCK_EX);
-        return $result !== false;
+        $content = serialize($cache);
+
+        $tmpFile = $file . '.tmp.' . uniqid('', true);
+        $bytes = @file_put_contents($tmpFile, $content, LOCK_EX);
+        if ($bytes === false) {
+            @unlink($tmpFile);
+            return false;
+        }
+
+        if (function_exists('opcache_invalidate')) {
+            @opcache_invalidate($tmpFile, true);
+        }
+
+        $success = @rename($tmpFile, $file);
+        if (!$success) {
+            @unlink($tmpFile);
+            $bytes = @file_put_contents($file, $content, LOCK_EX);
+            return $bytes !== false;
+        }
+        return true;
     }
 
     public function has($key)
@@ -111,6 +129,10 @@ class CacheManager
         $dir = $this->cacheDir . '/m3u8/' . $subDir;
         if (!is_dir($dir)) {
             @mkdir($dir, 0755, true);
+            if (!is_dir($dir)) {
+                usleep(10000);
+                @mkdir($dir, 0755, true);
+            }
         }
         return $dir . '/' . $hash . '.cache';
     }

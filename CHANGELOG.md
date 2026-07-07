@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.28.1] - 2026-07-07
+
+### 🚀 接口并发优化 & 问题修复
+
+**修复内容**:
+
+1. **修复 moxi 接口 HTTP 状态码不一致** ([mx.php](file:///workspace/mx.php#L2257-L2268))
+   - 缺少参数时返回 HTTP 400 而不是 200
+   - 与其他接口保持一致，方便客户端判断
+
+2. **优化文件缓存并发安全性** ([CacheManager.php](file:///workspace/src/CacheManager.php#L44-L73))
+   - `set()` 方法采用"临时文件 + rename"原子写入模式
+   - 避免并发写入时读到不完整的缓存文件
+   - rename 失败时回退到 LOCK_EX 模式
+   - 增加 opcache 失效处理
+
+3. **优化缓存目录创建并发安全** ([CacheManager.php](file:///workspace/src/CacheManager.php#L125-L138))
+   - 目录创建失败时重试一次（10ms 延迟）
+   - 避免多进程同时创建目录时的竞态条件
+
+4. **优化缓存读取容错** ([CacheManager.php](file:///workspace/src/CacheManager.php#L22-L42))
+   - 空文件直接返回 null，避免反序列化失败
+   - 增强错误场景下的兼容性
+
+5. **全面测试验证**
+   - 20 项接口测试，100% 通过
+   - 3 轮 × 10 并发压力测试全部通过
+   - 相同 URL 20 并发缓存竞争测试通过
+   - 涵盖 analyze、mxjx、mxjx/info、official_replace/info、moxi 等全部接口
+
 ## [2.28.0] - 2026-07-07
 
 ### 🚀 新增数据库自动迁移机制，彻底解决版本升级后数据库变动导致的报错

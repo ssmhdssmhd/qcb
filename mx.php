@@ -2255,6 +2255,7 @@ try {
             $playType = $_GET['type'] ?? '';
             
             if (empty($url)) {
+                http_response_code(400);
                 echo json_encode([
                     'code' => 400,
                     'url' => '',
