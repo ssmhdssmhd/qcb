@@ -275,8 +275,12 @@ try {
                             'endlist' => true
                         ],
                         'stats' => [
-                            'totalSegments' => $cached['total_segments'],
-                            'adSegments' => $cached['ad_segments'],
+                            'totalSegments' => (int)$cached['total_segments'],
+                            'adSegments' => (int)$cached['ad_segments'],
+                            'keptSegments' => (int)($cached['kept_segments'] ?? ($cached['total_segments'] - $cached['ad_segments'])),
+                            'originalDuration' => (float)($cached['original_duration'] ?? 0),
+                            'filteredDuration' => (float)($cached['filtered_duration'] ?? 0),
+                            'savedDuration' => (float)($cached['saved_duration'] ?? 0),
                             'adPercentage' => (float)$cached['ad_percentage']
                         ],
                         'duration_rules' => $cached['duration_rules'],
@@ -289,7 +293,7 @@ try {
             }
 
             $domainRules = $ruleManager->getRules($domain);
-            $hasDomainRules = $domainRules !== null;
+            $hasDomainRules = $domainRules !== null && !empty($domainRules['duration_rules']) && !empty($domainRules['discontinuity_rules']);
 
             if ($hasDomainRules) {
                 $mediaUrl = resolveMasterPlaylist($url);
@@ -355,7 +359,7 @@ try {
                         'stats' => $stats
                     ];
                     $analysisCache->save($url, $domain, $mediaUrl, $cacheResult, true, $safeguardTriggered);
-                    $domainStats->recordAnalyze($domain, $stats['totalSegments'] ?? 0, $stats['removedSegments'] ?? 0, $stats['adPercentage'] ?? 0);
+                    $domainStats->recordAnalyze($domain, $stats['totalSegments'] ?? 0, $stats['removedSegments'] ?? $stats['adSegments'] ?? 0, $stats['adPercentage'] ?? 0);
 
                     sendJsonResponse([
                         'success' => true,
@@ -378,12 +382,12 @@ try {
                         ],
                         'stats' => [
                             'totalSegments' => $stats['totalSegments'] ?? 0,
-                            'adSegments' => $stats['removedSegments'] ?? 0,
+                            'adSegments' => $stats['adSegments'] ?? $stats['removedSegments'] ?? 0,
                             'keptSegments' => $stats['keptSegments'] ?? 0,
-                            'originalDuration' => $stats['originalDuration'] ?? 0,
-                            'filteredDuration' => $stats['filteredDuration'] ?? 0,
-                            'savedDuration' => $stats['savedDuration'] ?? 0,
-                            'adPercentage' => $stats['adPercentage'] ?? 0
+                            'originalDuration' => (float)($stats['originalDuration'] ?? 0),
+                            'filteredDuration' => (float)($stats['filteredDuration'] ?? 0),
+                            'savedDuration' => (float)($stats['savedDuration'] ?? 0),
+                            'adPercentage' => (float)($stats['adPercentage'] ?? 0)
                         ],
                         'domainRules' => $domainRules
                     ]);
@@ -470,6 +474,10 @@ try {
                 'stats' => [
                     'totalSegments' => $analysis['totalCount'],
                     'adSegments' => $analysis['adCount'],
+                    'keptSegments' => $analysis['contentCount'],
+                    'originalDuration' => $analysis['totalDuration'] ?? 0,
+                    'filteredDuration' => $analysis['contentDuration'] ?? 0,
+                    'savedDuration' => $analysis['adDuration'] ?? 0,
                     'adPercentage' => $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0
                 ]
             ];
@@ -502,12 +510,16 @@ try {
             }));
 
             $allSegmentsSummary = [];
+            $maxSegments = 500;
+            $segmentCount = 0;
             foreach ($analysis['segments'] as $idx => $seg) {
+                if ($segmentCount >= $maxSegments) break;
                 $allSegmentsSummary[] = [
                     'i' => $idx,
                     'd' => $seg['duration'],
                     'a' => !empty($seg['isAd']) ? 1 : 0
                 ];
+                $segmentCount++;
             }
 
             sendJsonResponse([
@@ -523,6 +535,11 @@ try {
                 'stats' => [
                     'totalSegments' => $analysis['totalCount'],
                     'adSegments' => $analysis['adCount'],
+                    'keptSegments' => $analysis['contentCount'],
+                    'originalDuration' => (float)($analysis['totalDuration'] ?? 0),
+                    'filteredDuration' => (float)($analysis['contentDuration'] ?? 0),
+                    'savedDuration' => (float)($analysis['adDuration'] ?? 0),
+                    'adPercentage' => $analysis['totalCount'] > 0 ? round($analysis['adCount'] / $analysis['totalCount'] * 100, 2) : 0,
                     'discontinuityCount' => $analysis['discontinuityCount'],
                     'sequenceJumpCount' => count($analysis['sequenceJumps']),
                     'adClusterCount' => count($analysis['adClusters'])
@@ -530,8 +547,10 @@ try {
                 'durationDistribution' => $analysis['durationDistribution'],
                 'sequenceJumps' => array_slice($analysis['sequenceJumps'], 0, 20),
                 'adClusters' => $analysis['adClusters'],
-                'adSegments' => $adSegments,
-                'allSegments' => $allSegmentsSummary
+                'adSegments' => array_slice($adSegments, 0, 50),
+                'allSegments' => $allSegmentsSummary,
+                'segmentLimit' => $maxSegments,
+                'hasMoreSegments' => $analysis['totalCount'] > $maxSegments
             ]);
             unset($analysis);
             break;

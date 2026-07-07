@@ -19,6 +19,8 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
             'checkAdClusters' => true,
             'checkPreRoll' => true,
             'checkPostRoll' => true,
+            'checkSequenceJump' => true,
+            'checkAdUriPattern' => true,
             'adThreshold' => 50,
             'safeguardEnabled' => true,
             'minContentRatio' => 0.2
@@ -29,6 +31,65 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
         $this->safeguardEnabled = $options['safeguardEnabled'] ?? true;
         $this->minContentRatio = $options['minContentRatio'] ?? 0.2;
         $this->loadAllDomainRules();
+        $this->addEnhancedRules();
+    }
+
+    private function addEnhancedRules() {
+        if (!empty($this->options['checkAdUriPattern'])) {
+            $this->addRule([
+                'name' => 'ad-uri-pattern',
+                'description' => 'URI包含广告特征路径',
+                'category' => 'pattern',
+                'weight' => 90,
+                'check' => function($segment) {
+                    $uri = $segment['uri'] ?? '';
+                    $adPatterns = [
+                        '/\/adjump\//i',
+                        '/\/ad\//i',
+                        '/\/advertisement\//i',
+                        '/\/commercial\//i',
+                        '/\/promo\//i',
+                        '/\/sponsor\//i',
+                        '/\/ads\//i',
+                        '/\/pre[-_]?roll\//i',
+                        '/\/mid[-_]?roll\//i',
+                        '/\/post[-_]?roll\//i',
+                        '/\/advert\//i',
+                        '/ad_time/i',
+                        '/ad_time/i',
+                        '/adzone/i',
+                        '/adzone/i'
+                    ];
+                    foreach ($adPatterns as $pattern) {
+                        if (preg_match($pattern, $uri)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            ]);
+        }
+
+        if (!empty($this->options['checkSequenceJump'])) {
+            $this->addRule([
+                'name' => 'extreme-sequence-jump',
+                'description' => '序列号出现极端跳跃（超大值或负值），可能是广告跳转',
+                'category' => 'marker',
+                'weight' => 85,
+                'check' => function($segment, $index, $segments) {
+                    if ($index === 0) return false;
+                    $uri = $segment['uri'] ?? '';
+                    $filename = basename($uri, '.ts');
+                    if (preg_match('/(\d+)$/', $filename, $matches)) {
+                        $currentSeq = intval($matches[1]);
+                        if ($currentSeq > 1000000000000) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            ]);
+        }
     }
 
     private function loadAllDomainRules() {
@@ -555,7 +616,8 @@ class EnhancedAdRuleEngine extends AdRuleEngine {
                 'matchedRules' => $matchedRules,
                 'confidence' => min(100, $totalWeight),
                 'categories' => $categories,
-                'totalWeight' => $totalWeight
+                'totalWeight' => $totalWeight,
+                'duration' => $duration
             ];
 
             if ($isAd) {

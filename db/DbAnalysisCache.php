@@ -47,8 +47,12 @@ class DbAnalysisCache {
         $hash = $this->hashUrl($url);
         $stats = $result['stats'] ?? [];
         $totalSegments = $stats['totalSegments'] ?? 0;
-        $adSegments = $stats['adSegments'] ?? 0;
+        $adSegments = $stats['adSegments'] ?? $stats['removedSegments'] ?? 0;
         $adPercentage = $stats['adPercentage'] ?? 0;
+        $keptSegments = $stats['keptSegments'] ?? ($totalSegments - $adSegments);
+        $originalDuration = (float)($stats['originalDuration'] ?? 0);
+        $filteredDuration = (float)($stats['filteredDuration'] ?? 0);
+        $savedDuration = (float)($stats['savedDuration'] ?? 0);
 
         $data = [
             'url_hash' => $hash,
@@ -57,6 +61,10 @@ class DbAnalysisCache {
             'media_url' => $mediaUrl,
             'total_segments' => $totalSegments,
             'ad_segments' => $adSegments,
+            'kept_segments' => $keptSegments,
+            'original_duration' => $originalDuration,
+            'filtered_duration' => $filteredDuration,
+            'saved_duration' => $savedDuration,
             'ad_percentage' => $adPercentage,
             'duration_rules' => json_encode($result['duration_rules'] ?? [], JSON_UNESCAPED_UNICODE),
             'discontinuity_rules' => json_encode($result['discontinuity_rules'] ?? [], JSON_UNESCAPED_UNICODE),

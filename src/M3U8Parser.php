@@ -142,13 +142,15 @@ class M3U8Parser {
                 $lastError = $error;
                 if (strpos($error, 'Could not resolve') !== false || 
                     strpos($error, 'Connection timed out') !== false ||
-                    strpos($error, 'Failed to connect') !== false) {
+                    strpos($error, 'Failed to connect') !== false ||
+                    strpos($error, 'SSL_ERROR') !== false ||
+                    strpos($error, 'SSL connect') !== false) {
                     if ($attempt < $maxRetries) {
                         usleep(500000);
                         continue;
                     }
                 }
-                throw new Exception('请求失败: ' . $error);
+                throw new Exception('请求失败: ' . $error . ' (请检查网络连接或配置代理)');
             }
 
             if ($httpCode < 200 || $httpCode >= 300) {

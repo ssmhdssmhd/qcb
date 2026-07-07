@@ -2,7 +2,7 @@
 
 class AdRuleEngine {
     private $options = [];
-    private $rules = [];
+    protected $rules = [];
     private $durationCache = null;
     private $durationCacheKey = null;
 
