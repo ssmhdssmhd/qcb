@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS `domain_analysis_stats` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='域名分析统计表';
 
 -- ============================================
--- 初始数据
+-- 初始数据（不包含版本信息，版本由 version.php 管理）
 -- ============================================
 
 -- 系统默认配置
@@ -267,5 +267,4 @@ INSERT IGNORE INTO `sys_config` (`config_key`, `config_value`, `description`) VA
 ('auto_learn', '{"enabled":true,"interval_days":3,"videos_per_site":5,"max_sites_per_run":5,"min_segments":50,"max_ad_percentage":90}', '自动学习配置'),
 ('proxy_config', '{"enabled":false,"auto_switch":true,"check_interval":300,"timeout":10}', '代理配置'),
 ('official_replace', '{"enabled":true,"default_site":"量子","max_search_sites":5,"cache_ttl":3600}', '官替API配置'),
-('official_sites', '{"enabled":true,"settings":{"auto_switch_domain":true,"max_retry_per_domain":2,"timeout":10,"default_limit":20}}', '推荐采集配置'),
-('system_version', '"v2.22.0"', '系统版本');
+('official_sites', '{"enabled":true,"settings":{"auto_switch_domain":true,"max_retry_per_domain":2,"timeout":10,"default_limit":20}}', '推荐采集配置');
