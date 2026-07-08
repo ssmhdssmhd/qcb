@@ -1148,11 +1148,11 @@ $apiBase = $basePath . '/mx.php?action=';
                     <div class="api-body"></div>
                 </div>
 
-                <div class="api-card" data-name="img/list 统一解析接口列表">
+                <div class="api-card" data-name="parse/list 统一解析接口列表">
                     <div class="api-header" onclick="toggleApi(this)">
                         <span class="api-method get">GET</span>
-                        <span class="api-path">img/list</span>
-                        <span class="api-desc">图片视频统一解析 - 接口列表</span>
+                        <span class="api-path">parse/list</span>
+                        <span class="api-desc">统一视频解析 - 接口列表</span>
                         <span class="tag new">新</span>
                         <span class="tag hot">推荐</span>
                         <span class="api-arrow">▶</span>
@@ -1161,8 +1161,7 @@ $apiBase = $basePath . '/mx.php?action=';
                         <div class="api-section">
                             <div class="api-section-title">说明</div>
                             <p style="color: var(--text-regular); font-size: 0.9em;">
-                                统一解析接口，整合多种解析能力，一键调用，智能识别视频类型。<br>
-                                也可以使用独立脚本: <code>img.php?action=list</code>
+                                统一解析接口，整合多种解析能力，一键调用，智能识别视频类型。
                             </p>
                         </div>
                         <div class="api-section">
@@ -1183,11 +1182,11 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                 </div>
 
-                <div class="api-card" data-name="img/parse 统一解析">
+                <div class="api-card" data-name="parse 统一解析">
                     <div class="api-header" onclick="toggleApi(this)">
                         <span class="api-method get">GET</span>
-                        <span class="api-path">img/parse</span>
-                        <span class="api-desc">图片视频统一解析 - 解析视频</span>
+                        <span class="api-path">parse</span>
+                        <span class="api-desc">统一视频解析 - 解析视频</span>
                         <span class="tag new">新</span>
                         <span class="tag hot">推荐</span>
                         <span class="api-arrow">▶</span>
@@ -1210,23 +1209,23 @@ $apiBase = $basePath . '/mx.php?action=';
                             <div class="code-block">
                                 <button class="copy-btn" onclick="copyCode(this)">复制</button>
 <pre>// 智能解析
-mx.php?action=img/parse&url=https://v.youku.com/v_show/id_xxx.html
+mx.php?action=parse&url=https://v.youku.com/v_show/id_xxx.html
 
 // 指定虾米解析
-mx.php?action=img/parse&type=xiami&url=https://v.youku.com/v_show/id_xxx.html
+mx.php?action=parse&type=xiami&url=https://v.youku.com/v_show/id_xxx.html
 
 // 去广告解析
-mx.php?action=img/parse&type=mxjx&url=https://example.com/video.m3u8</pre>
+mx.php?action=parse&type=mxjx&url=https://example.com/video.m3u8</pre>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="api-card" data-name="img/info 统一解析详情">
+                <div class="api-card" data-name="parse/info 统一解析详情">
                     <div class="api-header" onclick="toggleApi(this)">
                         <span class="api-method get">GET</span>
-                        <span class="api-path">img/info</span>
-                        <span class="api-desc">图片视频统一解析 - 详细信息</span>
+                        <span class="api-path">parse/info</span>
+                        <span class="api-desc">统一视频解析 - 详细信息</span>
                         <span class="tag new">新</span>
                         <span class="api-arrow">▶</span>
                     </div>

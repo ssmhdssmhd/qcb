@@ -7,24 +7,20 @@
 
 ## [2.31.0] - 2026-07-08
 
-### 🖼️ 新增图片视频统一解析接口
+### 🎬 新增统一视频解析接口
 
-**功能**: 新增 `img.php` 统一解析接口，整合所有视频解析能力，提供统一的调用入口，方便用户快速使用。
+**功能**: 在 `mx.php` 中新增统一视频解析入口，整合所有视频解析能力，提供统一的调用方式，方便用户快速使用。
 
-**文件**: [img.php](file:///workspace/img.php)
+**调用入口**: `mx.php?action=parse`
 
-**两种调用方式**:
+**使用方式**:
 
-1. **独立脚本**: `img.php`
-   - `img.php?url=视频链接` (智能解析)
-   - `img.php?type=xiami&url=视频链接` (指定类型)
-   - `img.php?action=info&url=视频链接` (获取详情)
-   - `img.php?action=list` (接口列表)
-
-2. **统一接口**: `mx.php`
-   - `mx.php?action=img/list` (接口列表)
-   - `mx.php?action=img/parse&url=视频链接` (解析视频)
-   - `mx.php?action=img/info&url=视频链接` (解析详情)
+| 调用方式 | 示例 |
+|---------|------|
+| 智能解析 | `mx.php?action=parse&url=视频链接` |
+| 指定类型 | `mx.php?action=parse&type=xiami&url=视频链接` |
+| 获取详情 | `mx.php?action=parse/info&url=视频链接` |
+| 接口列表 | `mx.php?action=parse/list` |
 
 **支持的解析类型**:
 
@@ -40,26 +36,124 @@
 - ✅ 智能识别视频类型（M3U8/官方视频/普通链接）
 - ✅ 统一的响应格式，便于集成
 - ✅ 支持 5 种解析方式，一键切换
-- ✅ 独立脚本 + 统一接口双模式
 - ✅ 完整的错误处理和超时控制
-- ✅ CORS 跨域支持
+- ✅ 全部整合在 `mx.php` 中，无需额外文件
 
 **api_helper.php 新增函数**:
 
 | 函数 | 说明 |
 |------|------|
-| `imgApiList()` | 获取统一解析接口列表 |
-| `imgParse($url, $type)` | 统一解析视频 |
-| `imgInfo($url, $type)` | 获取解析详细信息 |
+| `parseApiList()` | 获取统一解析接口列表 |
+| `parseVideo($url, $type)` | 统一解析视频 |
+| `parseVideoInfo($url, $type)` | 获取解析详细信息 |
 | `smartParse($url)` | 智能解析（自动判断类型） |
-| `imgXiaMiParse($url)` | 虾米解析（统一接口版） |
-| `imgMoXiParse($url)` | 沫兮解析（统一接口版） |
-| `imgAdSkipParse($url)` | 去广告解析（统一接口版） |
-| `imgOfficialReplaceParse($url)` | 官方替换解析（统一接口版） |
+| `parseXiaMi($url)` | 虾米解析（统一接口版） |
+| `parseMoXi($url)` | 沫兮解析（统一接口版） |
+| `parseAdSkip($url)` | 去广告解析（统一接口版） |
+| `parseOfficialReplace($url)` | 官方替换解析（统一接口版） |
 
 **文档更新**:
 - API 文档新增「统一解析」板块，包含 3 个接口说明
 - 支持搜索过滤、一键复制示例代码
+
+---
+
+## [2.30.3] - 2026-07-08
+
+### 🎯 新增靶机测试环境 - 一键部署
+
+**功能**: 新增完整的靶机测试环境，包含测试 m3u8 生成器、模拟资源站 API、一键部署脚本，方便快速测试和验证系统各项功能。
+
+---
+
+#### 📁 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `generate_test_m3u8.php` | M3U8 测试文件生成器 |
+| `test_site_api.php` | 模拟资源站 API 接口 |
+| `setup_test_env.php` | 一键部署脚本 |
+
+---
+
+#### 🎬 M3U8 测试文件生成器
+
+支持 7 种广告场景的测试 m3u8 文件生成：
+
+| 类型 | 说明 | 用途 |
+|------|------|------|
+| `basic` | 基础测试（无广告） | 验证广告识别准确率（零误报） |
+| `pre_roll` | 前置广告 | 测试前向广告检测能力 |
+| `mid_roll` | 中插广告 | 测试中段广告检测能力 |
+| `post_roll` | 后置广告 | 测试后向广告检测能力 |
+| `mixed` | 混合广告 | 综合场景测试（前+中+后） |
+| `short_segments` | 短片段广告 | 边界情况测试 |
+| `long_movie` | 长电影（多段广告） | 大文件、多广告点测试 |
+
+**使用方法**:
+```
+# 生成所有测试文件
+generate_test_m3u8.php?type=all
+
+# 在线预览单个类型
+generate_test_m3u8.php?type=mixed
+
+# 下载单个类型
+generate_test_m3u8.php?type=mixed&download=1
+```
+
+---
+
+#### 📺 模拟资源站 API
+
+模拟真实资源站 API 行为，返回搜索结果、视频详情、播放地址等：
+
+**接口列表**:
+
+| 接口 | 说明 |
+|------|------|
+| `test_site_api.php?action=search` | 视频搜索 |
+| `test_site_api.php?action=detail` | 视频详情 |
+| `test_site_api.php?action=play` | 播放地址 |
+| `test_site_api.php?action=list` | 视频列表 |
+
+**内置测试视频**: 10+ 个预设测试视频，覆盖不同广告场景
+
+---
+
+#### 🚀 一键部署脚本
+
+**一键部署靶机测试环境，自动生成所有测试资源**:
+
+```
+setup_test_env.php
+```
+
+**部署内容**:
+- 生成所有类型的测试 m3u8 文件
+- 配置模拟资源站 API
+- 生成测试报告模板
+- 自动校验环境可用性
+
+---
+
+#### 📊 测试场景覆盖
+
+| 场景 | 测试目标 |
+|------|---------|
+| 零广告场景 | 验证不误删正常片段 |
+| 单段广告 | 前置/中置/后置广告识别 |
+| 多段广告 | 混合广告场景处理 |
+| 短片段广告 | 边界情况处理 |
+| 长视频多广告 | 大文件性能与正确性 |
+
+---
+
+### 🐛 其他优化
+
+- 优化测试环境初始化流程，减少手动配置
+- 新增测试数据一致性校验机制
+- 完善模拟 API 的响应格式兼容性
 
 ---
 
