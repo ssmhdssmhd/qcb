@@ -5,6 +5,114 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.30.3] - 2026-07-08
+
+### 🎯 新增靶机测试环境 - 一键部署
+
+**功能**: 新增完整的靶机测试环境，包含测试 m3u8 生成器、模拟资源站 API、一键部署脚本，方便快速测试和验证系统各项功能。
+
+---
+
+#### 📁 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| [generate_test_m3u8.php](file:///workspace/generate_test_m3u8.php) | M3U8 测试文件生成器 |
+| [test_site_api.php](file:///workspace/test_site_api.php) | 模拟资源站 API 接口 |
+| [setup_test_env.php](file:///workspace/setup_test_env.php) | 一键部署脚本 |
+
+---
+
+#### 🎬 M3U8 测试文件生成器
+
+**生成器**: [generate_test_m3u8.php](file:///workspace/generate_test_m3u8.php)
+
+支持 7 种广告场景的测试 m3u8 文件生成：
+
+| 类型 | 说明 | 用途 |
+|------|------|------|
+| `basic` | 基础测试（无广告） | 验证广告识别准确率（零误报） |
+| `pre_roll` | 前置广告 | 测试前向广告检测能力 |
+| `mid_roll` | 中插广告 | 测试中段广告检测能力 |
+| `post_roll` | 后置广告 | 测试后向广告检测能力 |
+| `mixed` | 混合广告 | 综合场景测试（前+中+后） |
+| `short_segments` | 短片段广告 | 边界情况测试 |
+| `long_movie` | 长电影（多段广告） | 大文件、多广告点测试 |
+
+**使用方法**:
+```
+# 生成所有测试文件
+generate_test_m3u8.php?type=all
+
+# 在线预览单个类型
+generate_test_m3u8.php?type=mixed
+
+# 下载单个类型
+generate_test_m3u8.php?type=mixed&download=1
+```
+
+---
+
+#### 📺 模拟资源站 API
+
+**接口**: [test_site_api.php](file:///workspace/test_site_api.php)
+
+完全兼容苹果 CMS 接口规范的模拟资源站：
+
+- ✅ 5 部测试视频（3 部电视剧 + 2 部电影）
+- ✅ 支持搜索（`?wd=关键词`）
+- ✅ 支持列表（`?ac=list`）
+- ✅ 支持详情（`?ac=detail&ids=1`）
+- ✅ 自动关联测试 m3u8 文件
+- ✅ 分页支持
+
+**测试视频列表**:
+| 视频名 | 类型 | 集数 | 广告类型 |
+|--------|------|------|----------|
+| 庆余年 第一季 | 国产剧 | 7集 | 全场景测试 |
+| 狂飙 | 国产剧 | 3集 | 混合广告 |
+| 三体 | 国产剧 | 3集 | 前中后广告 |
+| 长津湖 | 动作片 | 1集 | 长电影多广告 |
+| 流浪地球2 | 科幻片 | 1集 | 混合广告 |
+
+---
+
+#### 🚀 一键部署脚本
+
+**脚本**: [setup_test_env.php](file:///workspace/setup_test_env.php)
+
+一键完成靶机测试环境部署：
+
+1. ✅ 自动生成 7 个测试 m3u8 文件
+2. ✅ 自动配置靶机测试资源站
+3. ✅ 自动生成演示规则
+4. ✅ 输出完整测试指南（7 大测试场景）
+
+**使用方法**:
+```bash
+# CLI 方式
+php setup_test_env.php
+
+# 浏览器方式
+http://your-domain/setup_test_env.php
+```
+
+---
+
+#### 🧪 测试场景
+
+| 场景 | 测试模块 | 验证内容 |
+|------|----------|----------|
+| 视频分析测试 | 视频分析 | 各类型广告识别准确率 |
+| 规则学习测试 | 搜索影视学习 | 自动学习规则效果 |
+| 批量学习测试 | 批量学习 | 多线程并发稳定性 |
+| 自动学习测试 | 自动学习 | 全自动化学习流程 |
+| 去广告效果测试 | mxjx 接口 | 去广告后 m3u8 输出 |
+| 官方替换测试 | official_replace | 官替解析完整流程 |
+| 虾米解析测试 | xiami_jx 接口 | 第三方解析集成 |
+
+---
+
 ## [2.30.2] - 2026-07-08
 
 ### 🐘 新增 PHP 接口调用示例库
