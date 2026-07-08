@@ -799,6 +799,7 @@ header('Expires: 0');
         <div class="nav-item" data-page="official_sites">推荐采集</div>
         <div class="nav-item" data-page="official_replace">官替管理</div>
         <div class="nav-item" data-page="moxi_api">沫兮API</div>
+        <div class="nav-item" onclick="window.open('api_doc.php', '_blank')" style="cursor:pointer">📚 API文档</div>
         <div class="nav-item" onclick="location.href='proxy/proxy_admin.php'" style="cursor:pointer">代理池管理</div>
         <div class="nav-item" data-page="database">数据库管理</div>
         <div class="nav-item" data-page="play">在线播放</div>
@@ -1340,7 +1341,10 @@ header('Expires: 0');
 
         <div class="page" id="page-moxi_api">
             <div class="card">
-                <div class="card-title">沫兮API 接口说明</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>沫兮API 接口说明</span>
+                    <button class="btn btn-secondary" onclick="window.open('api_doc.php', '_blank')">📚 查看完整 API 文档</button>
+                </div>
                 <div style="font-size:13px;line-height:1.8;color:#606266">
                     <p><strong>沫兮API 解析接口：</strong></p>
                     <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
