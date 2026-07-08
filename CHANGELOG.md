@@ -5,6 +5,29 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.29.2] - 2026-07-08
+
+### 🐛 修复更新后数据库配置被覆盖的问题
+
+**问题**: 每次版本更新后，数据库连接配置（主机、用户名、密码等）被仓库默认配置覆盖，导致更新后必须重新设置数据库。
+
+**原因**: `copyDirectory()` 和 `cleanOrphanedFiles()` 的文件排除列表仅包含 `sq.php` 和 `auth_config.php`，未包含 `db_config.php` 等用户配置文件。
+
+**修复内容** ([UpdateManager.php](file:///workspace/src/UpdateManager.php)):
+- `copyDirectory()`: 排除列表新增 `db_config.php`、`proxy_config.php`、`player_config.php`、`official_replace_config.php`、`official_sites_config.php`
+- `cleanOrphanedFiles()`: 同步新增排除文件和路径保护模式，防止配置文件被误删
+
+**保护的配置文件清单**:
+| 文件 | 用途 |
+|------|------|
+| `db/db_config.php` | 数据库连接配置（主机、端口、用户名、密码） |
+| `proxy/proxy_config.php` | 代理服务器配置 |
+| `gz/player_config.php` | 播放器配置 |
+| `gz/official_replace_config.php` | 官方替换配置 |
+| `gz/official_sites_config.php` | 官方站点配置 |
+
+---
+
 ## [2.29.1] - 2026-07-08
 
 ### 🐛 修复分析页面前端报错

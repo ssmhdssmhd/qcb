@@ -4,7 +4,7 @@ require_once __DIR__ . '/AuthValidator.php';
 
 class UpdateManager
 {
-    private $currentVersion = '2.29.1';
+    private $currentVersion = '2.29.2';
     private $backupDir;
     private $rootDir;
     private $githubRepo = 'ssmhdssmhd/qcb';
@@ -811,8 +811,24 @@ class UpdateManager
         $cleanedFiles = [];
         $skippedFiles = [];
         $excludeDirs = ['backups', '.git'];
-        $excludeFiles = ['sq.php', 'auth_config.php', 'fix_update.php'];
-        $protectedPatterns = ['/^gz\/rules_.*\.php$/'];
+        $excludeFiles = [
+            'sq.php',
+            'auth_config.php',
+            'fix_update.php',
+            'db_config.php',
+            'proxy_config.php',
+            'player_config.php',
+            'official_replace_config.php',
+            'official_sites_config.php',
+        ];
+        $protectedPatterns = [
+            '/^gz\/rules_.*\.php$/',
+            '/^db\/db_config\.php$/',
+            '/^proxy\/proxy_config\.php$/',
+            '/^gz\/player_config\.php$/',
+            '/^gz\/official_replace_config\.php$/',
+            '/^gz\/official_sites_config\.php$/',
+        ];
         $systemFiles = [
             '.user.ini',
             '.htaccess',
@@ -941,7 +957,15 @@ class UpdateManager
         if (!is_dir($dst)) {
             mkdir($dst, 0755, true);
         }
-        $excludeFiles = ['sq.php', 'auth_config.php'];
+        $excludeFiles = [
+            'sq.php',
+            'auth_config.php',
+            'db_config.php',
+            'proxy_config.php',
+            'player_config.php',
+            'official_replace_config.php',
+            'official_sites_config.php',
+        ];
         $excludePatterns = ['/^rules_.*\.php$/'];
         while (($file = readdir($dir)) !== false) {
             if ($file === '.' || $file === '..') continue;
