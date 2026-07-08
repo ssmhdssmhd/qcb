@@ -1372,35 +1372,7 @@ try {
                     ]);
 
                     $startTime = microtime(true);
-                    $results = $runner->run($tasks, function($task) use ($selfBase) {
-                        $url = $task['url'];
-                        $apiUrl = $selfBase;
-                        
-                        $ch = curl_init();
-                        curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                        curl_setopt($ch, CURLOPT_POST, true);
-                        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['url' => $url]));
-                        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-                        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                        
-                        $response = curl_exec($ch);
-                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                        curl_close($ch);
-                        
-                        if ($httpCode >= 200 && $httpCode < 300) {
-                            $data = json_decode($response, true);
-                            if ($data === null) {
-                                return ['success' => false, 'message' => '服务器返回非JSON响应'];
-                            }
-                            return $data;
-                        }
-                        return ['success' => false, 'message' => "HTTP $httpCode"];
-                    });
+                    $results = $runner->run($tasks, $selfBase);
                     $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
                     $successCount = 0;
@@ -1410,6 +1382,12 @@ try {
 
                     foreach ($results as $i => $result) {
                         $data = $result->data;
+                        if (is_string($data)) {
+                            $decoded = json_decode($data, true);
+                            if ($decoded !== null) {
+                                $data = $decoded;
+                            }
+                        }
                         if ($result->success && is_array($data) && !empty($data['success'])) {
                             $successCount++;
                             if (!empty($data['domain'])) {
@@ -1425,10 +1403,20 @@ try {
                             ];
                         } else {
                             $failCount++;
+                            $failMsg = '';
+                            if (!$result->success) {
+                                $failMsg = $result->error ?: '请求失败';
+                            } elseif (is_array($data) && !empty($data['message'])) {
+                                $failMsg = $data['message'];
+                            } elseif (is_string($data)) {
+                                $failMsg = '响应解析失败';
+                            } else {
+                                $failMsg = '未知错误';
+                            }
                             $resultDetails[] = [
                                 'url' => $urls[$i],
                                 'success' => false,
-                                'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
+                                'message' => $failMsg,
                                 'duration' => $result->duration
                             ];
                         }
@@ -1763,38 +1751,19 @@ try {
                     'timeout' => 120
                 ]);
 
+                $learnTasks = [];
+                foreach ($allVideos as $video) {
+                    $learnTasks[] = [
+                        'id' => $video['id'],
+                        'site' => $video['site'],
+                        'name' => $video['name'],
+                        'url' => $video['url'],
+                        'post_data' => ['url' => $video['url']]
+                    ];
+                }
+
                 $startTime = microtime(true);
-                $results = $runner->run($allVideos, function($task) use ($selfBase) {
-                    $apiUrl = $selfBase;
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch, CURLOPT_POST, true);
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['url' => $task['url']]));
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-
-                    $response = curl_exec($ch);
-                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
-
-                    if ($httpCode >= 200 && $httpCode < 300) {
-                        $data = json_decode($response, true);
-                        if ($data === null) {
-                            $errorMsg = 'JSON解析失败';
-                            if (is_string($response) && strpos($response, '<html') !== false) {
-                                $errorMsg = '服务器返回HTML错误页面';
-                            }
-                            return ['success' => false, 'message' => $errorMsg];
-                        }
-                        return $data;
-                    }
-                    return ['success' => false, 'message' => "HTTP $httpCode"];
-                });
+                $results = $runner->run($learnTasks, $selfBase);
                 $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
                 $successCount = 0;
@@ -1811,12 +1780,20 @@ try {
                             'videos_checked' => 0,
                             'videos_learned' => 0,
                             'videos_failed' => 0,
-                            'domains' => []
+                            'domains' => [],
+                            'fail_reasons' => []
                         ];
                     }
                     $siteResults[$siteName]['videos_checked']++;
 
                     $data = $result->data;
+                    if (is_string($data)) {
+                        $decoded = json_decode($data, true);
+                        if ($decoded !== null) {
+                            $data = $decoded;
+                        }
+                    }
+
                     if ($result->success && is_array($data) && !empty($data['success'])) {
                         $successCount++;
                         $siteResults[$siteName]['videos_learned']++;
@@ -1830,6 +1807,20 @@ try {
                     } else {
                         $failCount++;
                         $siteResults[$siteName]['videos_failed']++;
+                        $failMsg = '';
+                        if (!$result->success) {
+                            $failMsg = $result->error ?: '请求失败';
+                        } elseif (is_array($data) && !empty($data['message'])) {
+                            $failMsg = $data['message'];
+                        } elseif (is_string($data)) {
+                            $failMsg = '响应解析失败';
+                        } else {
+                            $failMsg = '未知错误';
+                        }
+                        if (!isset($siteResults[$siteName]['fail_reasons'][$failMsg])) {
+                            $siteResults[$siteName]['fail_reasons'][$failMsg] = 0;
+                        }
+                        $siteResults[$siteName]['fail_reasons'][$failMsg]++;
                     }
                 }
 

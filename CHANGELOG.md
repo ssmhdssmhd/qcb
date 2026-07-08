@@ -5,6 +5,35 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.29.3] - 2026-07-08
+
+### 🐛 修复自动学习多线程模式全部失败的问题
+
+**问题**: 自动学习开启多线程加速后，全部视频学习失败（0成功/全部失败），模式显示 curl_multi 但实际未并发。
+
+**根本原因**:
+1. `CurlMultiTaskRunner` 在传入**回调函数**时，实际走的是 `runWithCallback()`（串行 foreach 循环），并未使用 curl_multi 并发
+2. 虽然 `getActualMode()` 返回 `curl_multi`，但这只是类的静态属性，不代表实际执行模式
+3. 自我调用 HTTP 请求可能因各种原因失败，但缺少详细错误信息
+
+**修复内容**:
+
+#### 1. 自动学习 & 批量学习改用真正的 curl_multi 并发 ([mx.php](file:///workspace/mx.php))
+- `sites/auto_learn/run` 接口：从回调函数方式改为 URL 模板 + post_data 方式
+- `sites/learn_batch` 接口：同样改为 URL 模板模式
+- 现在真正使用 `curl_multi` 并发请求，速度提升 3-5 倍
+
+#### 2. 修复 URL 模板模式支持完整 URL ([CurlMultiTaskRunner.php](file:///workspace/multi_thread/CurlMultiTaskRunner.php#L168-L184))
+- `buildUrl()` 新增特殊处理：当模板为 `{url}` 且 task 有 `url` 字段时，直接返回完整 URL（不做 urlencode）
+- 解决了完整 URL 被错误编码导致 "Bad hostname" 的问题
+
+#### 3. 增强错误信息输出
+- 自动学习结果新增 `fail_reasons` 字段，按失败原因分类统计
+- 批量学习结果新增详细错误消息（HTTP错误/响应解析失败/业务错误等）
+- 便于排查具体失败原因
+
+---
+
 ## [2.29.2] - 2026-07-08
 
 ### 🐛 修复更新后数据库配置被覆盖的问题

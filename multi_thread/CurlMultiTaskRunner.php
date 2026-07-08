@@ -170,6 +170,10 @@ class CurlMultiTaskRunner implements TaskRunnerInterface {
             return call_user_func($template, $task);
         }
 
+        if (is_string($template) && $template === '{url}' && isset($task['url'])) {
+            return $task['url'];
+        }
+
         $url = $template;
         foreach ($task as $key => $value) {
             if (is_string($value) || is_numeric($value)) {
