@@ -439,6 +439,83 @@ function moxiApi($videoUrl) {
     return api_get($url);
 }
 
+// ==================== 图片视频统一解析接口 ====================
+
+/**
+ * 获取图片视频统一解析接口列表
+ * @return array
+ */
+function imgApiList() {
+    return api_get(API_BASE_URL . 'img/list');
+}
+
+/**
+ * 图片视频统一解析 - 解析视频
+ * @param string $videoUrl 视频 URL
+ * @param string $type 解析类型：parse（智能）、mxjx（去广告）、xiami（虾米）、moxi（沫兮）、official（官方替换）
+ * @return array
+ */
+function imgParse($videoUrl, $type = 'parse') {
+    $url = API_BASE_URL . 'img/parse&type=' . urlencode($type) . '&url=' . urlencode($videoUrl);
+    return api_get($url);
+}
+
+/**
+ * 图片视频统一解析 - 获取详细信息
+ * @param string $videoUrl 视频 URL
+ * @param string $type 解析类型
+ * @return array
+ */
+function imgInfo($videoUrl, $type = 'parse') {
+    $url = API_BASE_URL . 'img/info&type=' . urlencode($type) . '&url=' . urlencode($videoUrl);
+    return api_get($url);
+}
+
+/**
+ * 智能解析视频（自动判断类型）
+ * @param string $videoUrl 视频 URL
+ * @return array
+ */
+function smartParse($videoUrl) {
+    return imgParse($videoUrl, 'parse');
+}
+
+/**
+ * 虾米解析 - 统一接口版（全网 VIP 视频）
+ * @param string $videoUrl 视频播放页 URL
+ * @return array
+ */
+function imgXiaMiParse($videoUrl) {
+    return imgParse($videoUrl, 'xiami');
+}
+
+/**
+ * 沫兮解析 - 统一接口版
+ * @param string $videoUrl 视频 URL
+ * @return array
+ */
+function imgMoXiParse($videoUrl) {
+    return imgParse($videoUrl, 'moxi');
+}
+
+/**
+ * 去广告解析 - 统一接口版
+ * @param string $videoUrl M3U8 视频 URL
+ * @return array
+ */
+function imgAdSkipParse($videoUrl) {
+    return imgParse($videoUrl, 'mxjx');
+}
+
+/**
+ * 官方替换解析 - 统一接口版
+ * @param string $videoUrl 官方视频 URL
+ * @return array
+ */
+function imgOfficialReplaceParse($videoUrl) {
+    return imgParse($videoUrl, 'official');
+}
+
 // ==================== 系统更新接口 ====================
 
 /**
@@ -595,6 +672,8 @@ if (php_sapi_name() === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FIL
     echo "║  🤖 自动学习: runAutoLearn(), getAutoLearnStatus()...   ║\n";
     echo "║  🔄 官方替换: officialReplaceResolve()...               ║\n";
     echo "║  🔗 解析接口: xiamiParse(), moxiApi(), getAdFreeM3u8()  ║\n";
+    echo "║  🖼️  统一解析: imgParse(), smartParse(), imgAdSkipParse() ║\n";
+    echo "║           imgXiaMiParse(), imgMoXiParse(), imgOfficialReplaceParse() ║\n";
     echo "║  🔧 系统更新: getCurrentVersion(), checkUpdate()...     ║\n";
     echo "║  🗄️  数据库: getDbStatus(), testDbConnection()...       ║\n";
     echo "║                                                          ║\n";

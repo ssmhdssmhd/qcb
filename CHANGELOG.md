@@ -5,6 +5,64 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.31.0] - 2026-07-08
+
+### 🖼️ 新增图片视频统一解析接口
+
+**功能**: 新增 `img.php` 统一解析接口，整合所有视频解析能力，提供统一的调用入口，方便用户快速使用。
+
+**文件**: [img.php](file:///workspace/img.php)
+
+**两种调用方式**:
+
+1. **独立脚本**: `img.php`
+   - `img.php?url=视频链接` (智能解析)
+   - `img.php?type=xiami&url=视频链接` (指定类型)
+   - `img.php?action=info&url=视频链接` (获取详情)
+   - `img.php?action=list` (接口列表)
+
+2. **统一接口**: `mx.php`
+   - `mx.php?action=img/list` (接口列表)
+   - `mx.php?action=img/parse&url=视频链接` (解析视频)
+   - `mx.php?action=img/info&url=视频链接` (解析详情)
+
+**支持的解析类型**:
+
+| 类型 | 名称 | 说明 |
+|------|------|------|
+| parse | 智能解析 | 自动判断视频类型，选择最佳解析方式 |
+| mxjx | 去广告解析 | M3U8 视频去广告，自动识别并移除广告片段 |
+| xiami | 虾米解析 | 全网 VIP 视频解析，支持腾讯、爱奇艺、优酷等 |
+| moxi | 沫兮解析 | 沫兮 API 解析，支持官方视频智能替换 |
+| official | 官方替换 | 官方视频链接智能匹配资源站无广告源 |
+
+**技术特点**:
+- ✅ 智能识别视频类型（M3U8/官方视频/普通链接）
+- ✅ 统一的响应格式，便于集成
+- ✅ 支持 5 种解析方式，一键切换
+- ✅ 独立脚本 + 统一接口双模式
+- ✅ 完整的错误处理和超时控制
+- ✅ CORS 跨域支持
+
+**api_helper.php 新增函数**:
+
+| 函数 | 说明 |
+|------|------|
+| `imgApiList()` | 获取统一解析接口列表 |
+| `imgParse($url, $type)` | 统一解析视频 |
+| `imgInfo($url, $type)` | 获取解析详细信息 |
+| `smartParse($url)` | 智能解析（自动判断类型） |
+| `imgXiaMiParse($url)` | 虾米解析（统一接口版） |
+| `imgMoXiParse($url)` | 沫兮解析（统一接口版） |
+| `imgAdSkipParse($url)` | 去广告解析（统一接口版） |
+| `imgOfficialReplaceParse($url)` | 官方替换解析（统一接口版） |
+
+**文档更新**:
+- API 文档新增「统一解析」板块，包含 3 个接口说明
+- 支持搜索过滤、一键复制示例代码
+
+---
+
 ## [2.30.2] - 2026-07-08
 
 ### 🐘 新增 PHP 接口调用示例库

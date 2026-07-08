@@ -1147,6 +1147,104 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body"></div>
                 </div>
+
+                <div class="api-card" data-name="img/list 统一解析接口列表">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">img/list</span>
+                        <span class="api-desc">图片视频统一解析 - 接口列表</span>
+                        <span class="tag new">新</span>
+                        <span class="tag hot">推荐</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                统一解析接口，整合多种解析能力，一键调用，智能识别视频类型。<br>
+                                也可以使用独立脚本: <code>img.php?action=list</code>
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">支持的解析类型</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>类型</th><th>名称</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>parse</td><td>智能解析</td><td>自动判断视频类型，选择最佳解析方式</td></tr>
+                                    <tr><td>mxjx</td><td>去广告解析</td><td>M3U8 视频去广告，自动识别并移除广告片段</td></tr>
+                                    <tr><td>xiami</td><td>虾米解析</td><td>全网 VIP 视频解析，支持腾讯、爱奇艺、优酷等</td></tr>
+                                    <tr><td>moxi</td><td>沫兮解析</td><td>沫兮 API 解析，支持官方视频智能替换</td></tr>
+                                    <tr><td>official</td><td>官方替换</td><td>官方视频链接智能匹配资源站无广告源</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="img/parse 统一解析">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">img/parse</span>
+                        <span class="api-desc">图片视频统一解析 - 解析视频</span>
+                        <span class="tag new">新</span>
+                        <span class="tag hot">推荐</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频链接</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>解析类型，默认 parse（智能解析）</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 智能解析
+mx.php?action=img/parse&url=https://v.youku.com/v_show/id_xxx.html
+
+// 指定虾米解析
+mx.php?action=img/parse&type=xiami&url=https://v.youku.com/v_show/id_xxx.html
+
+// 去广告解析
+mx.php?action=img/parse&type=mxjx&url=https://example.com/video.m3u8</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="img/info 统一解析详情">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">img/info</span>
+                        <span class="api-desc">图片视频统一解析 - 详细信息</span>
+                        <span class="tag new">新</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频链接</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>解析类型，默认 parse</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 系统更新 -->

@@ -3220,6 +3220,115 @@ try {
             ]);
             break;
 
+        case 'img/list':
+        case 'image/list':
+            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
+            $selfUrl = $scheme . '://' . $host . $basePath;
+            sendJsonResponse([
+                'success' => true,
+                'message' => '图片视频统一解析接口',
+                'name' => 'IMG API - 统一解析接口',
+                'version' => 'v1.0.0',
+                'img_url' => $selfUrl . '/img.php',
+                'usage' => [
+                    '直接解析' => 'mx.php?action=img/parse&url=视频链接',
+                    '指定类型' => 'mx.php?action=img/parse&type=xiami&url=视频链接',
+                    '获取详情' => 'mx.php?action=img/info&url=视频链接',
+                    '接口列表' => 'mx.php?action=img/list',
+                ],
+                'supported_types' => [
+                    'parse' => '智能解析（自动判断类型）',
+                    'mxjx' => '去广告解析（M3U8 去广告）',
+                    'xiami' => '虾米解析（全网 VIP 视频）',
+                    'moxi' => '沫兮解析（官方视频替换）',
+                    'official' => '官方替换（智能匹配资源站）',
+                ]
+            ]);
+            break;
+
+        case 'img/parse':
+        case 'image/parse':
+            $parseUrl = $_GET['url'] ?? $_POST['url'] ?? '';
+            $parseType = $_GET['type'] ?? $_POST['type'] ?? 'parse';
+            if (empty($parseUrl)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
+            $selfUrl = $scheme . '://' . $host . $basePath;
+            $imgApiUrl = $selfUrl . '/img.php?type=' . urlencode($parseType) . '&url=' . urlencode($parseUrl);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $imgApiUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($response === false) {
+                sendJsonResponse(['success' => false, 'message' => '调用 img.php 失败'], 500);
+            }
+            $data = json_decode($response, true);
+            if ($data === null) {
+                sendJsonResponse(['success' => false, 'message' => '响应解析失败', 'raw' => $response], 500);
+            }
+            sendJsonResponse([
+                'success' => true,
+                'type' => $parseType,
+                'original_url' => $parseUrl,
+                'result' => $data
+            ]);
+            break;
+
+        case 'img/info':
+        case 'image/info':
+            $infoUrl = $_GET['url'] ?? $_POST['url'] ?? '';
+            $infoType = $_GET['type'] ?? $_POST['type'] ?? 'parse';
+            if (empty($infoUrl)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
+            $selfUrl = $scheme . '://' . $host . $basePath;
+            $imgApiUrl = $selfUrl . '/img.php?action=info&type=' . urlencode($infoType) . '&url=' . urlencode($infoUrl);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $imgApiUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($response === false) {
+                sendJsonResponse(['success' => false, 'message' => '调用 img.php 失败'], 500);
+            }
+            $data = json_decode($response, true);
+            if ($data === null) {
+                sendJsonResponse(['success' => false, 'message' => '响应解析失败', 'raw' => $response], 500);
+            }
+            sendJsonResponse($data);
+            break;
+
         case 'proxies/list':
             if (!isset($proxyManager)) {
                 sendJsonResponse(['success' => false, 'message' => '代理模块未初始化'], 500);
@@ -3274,6 +3383,9 @@ try {
                     'moxi/api' => '沫兮API接口(别名)',
                     'skip' => '去广告接口',
                     'mxjx' => '去广告m3u8输出',
+                    'img/list' => '图片视频统一解析-接口列表',
+                    'img/parse' => '图片视频统一解析-解析视频',
+                    'img/info' => '图片视频统一解析-解析详情',
                     'update/version' => '获取当前版本',
                     'update/check' => '检查更新',
                     'update/integrity' => '完整性检查',
