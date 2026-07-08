@@ -1998,7 +1998,15 @@ header('Expires: 0');
             document.getElementById('analyzeResult').style.display = 'none';
             try {
                 const res = await fetch(API_BASE + '?action=analyze&url=' + encodeURIComponent(url));
-                const data = await res.json();
+                
+                let data;
+                try {
+                    const text = await res.text();
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
                 if (!data.success) throw new Error(data.message);
                 currentAnalysis = data;
                 renderAnalysis(data);
@@ -2237,7 +2245,15 @@ header('Expires: 0');
             if (!currentAnalysis) { showToast('请先分析视频', 'error'); return; }
             try {
                 const res = await fetch(API_BASE + '?action=rules/generate&url=' + encodeURIComponent(currentAnalysis.url));
-                const data = await res.json();
+                
+                let data;
+                try {
+                    const text = await res.text();
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
                 if (!data.success) throw new Error(data.message);
                 editingRules = data.rules;
                 document.querySelector('.nav-item[data-page="rules"]').click();
@@ -2256,7 +2272,15 @@ header('Expires: 0');
             try {
                 const learnUrl = currentAnalysis.mediaUrl || currentAnalysis.url;
                 const res = await fetch(API_BASE + '?action=rules/learn&url=' + encodeURIComponent(learnUrl));
-                const data = await res.json();
+                
+                let data;
+                try {
+                    const text = await res.text();
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
                 if (!data.success) throw new Error(data.message);
                 const learnStatusEl = document.getElementById('learnStatus');
                 if (learnStatusEl) {
@@ -4451,10 +4475,10 @@ header('Expires: 0');
                 
                 let data;
                 try {
-                    data = await res.json();
-                } catch (jsonErr) {
                     const text = await res.text();
-                    console.error('JSON解析失败，响应内容:', text);
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    console.error('JSON解析失败，响应内容:', jsonErr.message);
                     throw new Error('服务器返回非JSON响应');
                 }
                 
@@ -4737,10 +4761,9 @@ header('Expires: 0');
                 
                 let data;
                 try {
-                    data = await res.json();
-                } catch (jsonErr) {
                     const text = await res.text();
-                    console.error('JSON解析失败，响应内容:', text);
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
                     showToast('学习失败: 服务器返回非JSON响应', 'error');
                     btn.disabled = false;
                     btn.textContent = originalText;
@@ -4870,7 +4893,14 @@ header('Expires: 0');
                             multi_thread: true
                         })
                     });
-                    const data = await res.json();
+                    
+                    let data;
+                    try {
+                        const text = await res.text();
+                        data = JSON.parse(text);
+                    } catch (jsonErr) {
+                        throw new Error('服务器返回非JSON响应');
+                    }
 
                     if (data.success) {
                         successCount = data.success_count || 0;
@@ -4921,10 +4951,9 @@ header('Expires: 0');
                     
                     let data;
                     try {
-                        data = await res.json();
-                    } catch (jsonErr) {
                         const text = await res.text();
-                        console.error('JSON解析失败，响应内容:', text);
+                        data = JSON.parse(text);
+                    } catch (jsonErr) {
                         return { success: false, message: '服务器返回非JSON响应' };
                     }
 
@@ -6058,12 +6087,24 @@ header('Expires: 0');
 
         async function learnOfficialVideo(url, name) {
             if (!confirm('学习视频「' + name + '」的广告规则？')) return;
-            const res = await fetch(API_BASE + '?action=analyze&url=' + encodeURIComponent(url) + '&auto_learn=1&_t=' + Date.now());
-            const data = await res.json();
-            if (data.success) {
-                showToast('学习成功，广告占比: ' + (data.stats?.adPercentage || 0).toFixed(1) + '%', 'success');
-            } else {
-                showToast(data.message || '学习失败', 'error');
+            try {
+                const res = await fetch(API_BASE + '?action=analyze&url=' + encodeURIComponent(url) + '&auto_learn=1&_t=' + Date.now());
+                
+                let data;
+                try {
+                    const text = await res.text();
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
+                if (data.success) {
+                    showToast('学习成功，广告占比: ' + (data.stats?.adPercentage || 0).toFixed(1) + '%', 'success');
+                } else {
+                    showToast(data.message || '学习失败', 'error');
+                }
+            } catch (e) {
+                showToast('学习失败: ' + e.message, 'error');
             }
         }
 

@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.29.5] - 2026-07-08
+
+### 🐛 修复自动学习报错 "body stream already read" 及统一前端响应处理
+
+**问题**: 自动学习及其他学习相关功能报错 "学习失败: Failed to execute 'text' on 'Response': body stream already read"，当服务器返回非 JSON 响应时前端无法正确处理。
+
+**根本原因**:
+1. 部分前端函数直接使用 `res.json()` 解析响应，当服务器返回 HTML 或其他非 JSON 内容时会抛出异常
+2. 错误处理方式不统一，有些函数在 JSON 解析失败后没有清晰的错误提示
+3. 多个学习相关函数的响应处理逻辑不一致，维护困难
+
+**修复内容** ([mxadmin.php](file:///workspace/mxadmin.php)):
+
+#### 统一响应处理模式（先读 text 再 parse JSON）
+以下函数全部改为先读取 `res.text()` 再手动 `JSON.parse()` 的模式，避免流二次读取问题，同时提供更友好的错误提示：
+
+- `analyzeVideo()` - 视频分析功能
+- `generateRules()` - 生成规则功能
+- `learnRules()` - 学习并更新规则功能
+- `learnOfficialVideo()` - 官替视频学习功能
+- `batchLearnAll()` 中的后端批量学习调用
+- （之前已修复：`runAutoLearn()`、`learnFromVideoUrl()`、`batchLearnFrontend()` 内部函数）
+
+#### 改进错误提示
+- JSON 解析失败时统一抛出 "服务器返回非JSON响应" 错误
+- 错误信息更清晰，便于用户和开发者定位问题
+- 所有学习相关函数的错误处理逻辑保持一致
+
+---
+
 ## [2.29.4] - 2026-07-08
 
 ### 🐛 修复一键分析/一键学习多线程全部失败的问题
