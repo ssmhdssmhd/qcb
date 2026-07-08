@@ -76,3 +76,8 @@ cache/m3u8/*
 !cache/m3u8/.gitkeep
 !cache/index.html
 !cache/.htaccess
+
+# ===== Config (sensitive) =====
+db/db_config.php
+auth_config.php
+sq.php
