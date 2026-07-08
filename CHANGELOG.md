@@ -5,6 +5,40 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.29.4] - 2026-07-08
+
+### 🐛 修复一键分析/一键学习多线程全部失败的问题
+
+**问题**: 一键分析全部和一键学习全部在多线程模式下全部失败，一键分析返回 HTML 错误页面（JSON 解析失败），一键学习 0 成功全部失败。
+
+**根本原因**:
+1. `CurlMultiTaskRunner` 回调函数模式实际是串行执行（foreach 循环），并未使用 curl_multi 并发
+2. 缺少失败回退机制：多线程模式即使全部失败也直接返回结果，不会回退到串行模式
+3. 缺少详细的错误分类信息，难以定位失败原因
+
+**修复内容**:
+
+#### 1. 三个批量接口全部改用真正的 curl_multi 并发 ([mx.php](file:///workspace/mx.php))
+- `sites/analyze_batch` - 一键分析全部：从回调函数改为 URL 模板模式
+- `sites/learn_batch` - 一键学习全部：从回调函数改为 URL 模板模式
+- `sites/auto_learn/run` - 自动学习：从回调函数改为 URL 模板模式 + post_data
+
+#### 2. 智能失败回退机制
+- 当多线程模式失败率 > 80% 时，自动回退到串行模式重新执行
+- 保证即使多线程模式有问题，功能也能正常使用（只是慢一点）
+- 回退时会记录 `mode_fallback_from` 标记
+
+#### 3. 增强错误信息输出
+- 新增 `fail_reasons` 字段：按失败原因分类统计（HTTP错误/响应解析失败/业务错误等）
+- 每个失败结果都有详细的 message 字段
+- 便于快速定位问题根源
+
+#### 4. CurlMultiTaskRunner 优化 ([CurlMultiTaskRunner.php](file:///workspace/multi_thread/CurlMultiTaskRunner.php))
+- `buildUrl()` 新增 `{url}` 特殊处理：完整 URL 不做 urlencode
+- 支持 post_data 发送 JSON POST 请求
+
+---
+
 ## [2.29.3] - 2026-07-08
 
 ### 🐛 修复自动学习多线程模式全部失败的问题

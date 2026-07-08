@@ -1422,18 +1422,23 @@ try {
                         }
                     }
 
-                    sendJsonResponse([
-                        'success' => true,
-                        'mode' => $runner->getActualMode(),
-                        'concurrency' => $concurrency,
-                        'total' => $total,
-                        'success_count' => $successCount,
-                        'fail_count' => $failCount,
-                        'total_time' => $totalTime,
-                        'learned_domains' => array_keys($learnedDomains),
-                        'results' => $resultDetails
-                    ]);
-                    break;
+                    $failRate = $total > 0 ? ($failCount / $total) : 0;
+                    if ($failRate > 0.8) {
+                        $multiThreadFailed = true;
+                    } else {
+                        sendJsonResponse([
+                            'success' => true,
+                            'mode' => $runner->getActualMode(),
+                            'concurrency' => $concurrency,
+                            'total' => $total,
+                            'success_count' => $successCount,
+                            'fail_count' => $failCount,
+                            'total_time' => $totalTime,
+                            'learned_domains' => array_keys($learnedDomains),
+                            'results' => $resultDetails
+                        ]);
+                        break;
+                    }
                 } catch (Throwable $e) {
                     $multiThreadFailed = true;
                 }
@@ -1498,7 +1503,7 @@ try {
             foreach ($urls as $idx => $url) {
                 $tasks[] = [
                     'id' => $idx,
-                    'url' => $url
+                    'url' => $selfBase . '&url=' . urlencode($url)
                 ];
             }
 
@@ -1512,31 +1517,7 @@ try {
                     ]);
 
                     $startTime = microtime(true);
-                    $results = $runner->run($tasks, function($task) use ($selfBase) {
-                        $apiUrl = $selfBase . '&url=' . urlencode($task['url']);
-                        $ch = curl_init();
-                        curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-                        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-
-                        $response = curl_exec($ch);
-                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                        curl_close($ch);
-
-                        if ($httpCode >= 200 && $httpCode < 300) {
-                            $data = json_decode($response, true);
-                            if ($data === null) {
-                                return ['success' => false, 'message' => '服务器返回非JSON响应'];
-                            }
-                            return $data;
-                        }
-                        return ['success' => false, 'message' => "HTTP $httpCode"];
-                    });
+                    $results = $runner->run($tasks, "{url}");
                     $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
                     $successCount = 0;
@@ -1545,6 +1526,12 @@ try {
 
                     foreach ($results as $i => $result) {
                         $data = $result->data;
+                        if (is_string($data)) {
+                            $decoded = json_decode($data, true);
+                            if ($decoded !== null) {
+                                $data = $decoded;
+                            }
+                        }
                         if ($result->success && is_array($data) && !empty($data['success'])) {
                             $successCount++;
                             $resultDetails[] = [
@@ -1557,26 +1544,41 @@ try {
                             ];
                         } else {
                             $failCount++;
+                            $failMsg = '';
+                            if (!$result->success) {
+                                $failMsg = $result->error ?: '请求失败';
+                            } elseif (is_array($data) && !empty($data['message'])) {
+                                $failMsg = $data['message'];
+                            } elseif (is_string($data)) {
+                                $failMsg = '响应解析失败';
+                            } else {
+                                $failMsg = '未知错误';
+                            }
                             $resultDetails[] = [
                                 'url' => $urls[$i],
                                 'success' => false,
-                                'message' => is_array($data) ? ($data['message'] ?? '未知错误') : ($result->error ?: '未知错误'),
+                                'message' => $failMsg,
                                 'duration' => $result->duration
                             ];
                         }
                     }
 
-                    sendJsonResponse([
-                        'success' => true,
-                        'mode' => $runner->getActualMode(),
-                        'concurrency' => $concurrency,
-                        'total' => $total,
-                        'success_count' => $successCount,
-                        'fail_count' => $failCount,
-                        'total_time' => $totalTime,
-                        'results' => $resultDetails
-                    ]);
-                    break;
+                    $failRate = $total > 0 ? ($failCount / $total) : 0;
+                    if ($failRate > 0.8) {
+                        $multiThreadFailed = true;
+                    } else {
+                        sendJsonResponse([
+                            'success' => true,
+                            'mode' => $runner->getActualMode(),
+                            'concurrency' => $concurrency,
+                            'total' => $total,
+                            'success_count' => $successCount,
+                            'fail_count' => $failCount,
+                            'total_time' => $totalTime,
+                            'results' => $resultDetails
+                        ]);
+                        break;
+                    }
                 } catch (Throwable $e) {
                     $multiThreadFailed = true;
                 }
@@ -1826,19 +1828,28 @@ try {
 
                 $siteManager->setLastLearnTime();
 
-                sendJsonResponse([
-                    'success' => true,
-                    'message' => '自动学习完成（多线程模式）',
-                    'mode' => $runner->getActualMode(),
-                    'concurrency' => $concurrency,
-                    'keyword' => $keyword,
-                    'sites_processed' => count($sites),
-                    'total_learned' => $successCount,
-                    'total_failed' => $failCount,
-                    'total_time' => $totalTime,
-                    'learned_domains' => array_keys($learnedDomains),
-                    'details' => array_values($siteResults)
-                ]);
+                $totalVideos = $successCount + $failCount;
+                $failRate = $totalVideos > 0 ? ($failCount / $totalVideos) : 0;
+
+                if ($failRate > 0.8 && $failCount > 0) {
+                    $result = $siteManager->runAutoLearn($ruleManager, $options);
+                    $result['mode_fallback_from'] = $runner->getActualMode();
+                    sendJsonResponse($result, $result['success'] ? 200 : 400);
+                } else {
+                    sendJsonResponse([
+                        'success' => true,
+                        'message' => '自动学习完成（多线程模式）',
+                        'mode' => $runner->getActualMode(),
+                        'concurrency' => $concurrency,
+                        'keyword' => $keyword,
+                        'sites_processed' => count($sites),
+                        'total_learned' => $successCount,
+                        'total_failed' => $failCount,
+                        'total_time' => $totalTime,
+                        'learned_domains' => array_keys($learnedDomains),
+                        'details' => array_values($siteResults)
+                    ]);
+                }
             } else {
                 $result = $siteManager->runAutoLearn($ruleManager, $options);
                 sendJsonResponse($result, $result['success'] ? 200 : 400);
