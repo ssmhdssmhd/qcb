@@ -5,6 +5,77 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.30.0] - 2026-07-08
+
+### ✨ 新增搜索影视学习一体化接口
+
+**功能**: 新增 `sites/search_and_learn` 接口，将搜索影视和学习规则两个步骤合二为一，支持多线程并发，调用更简单、速度更快。
+
+**接口地址**: `mx.php?action=sites/search_and_learn`
+
+**请求参数**:
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| keyword | string | 是 | - | 搜索关键词 |
+| site_name | string | 否 | all | 指定资源站名称，all 表示搜索全部 |
+| max_sites | int | 否 | 5 | 搜索的最大站点数（site_name=all 时有效） |
+| limit_per_site | int | 否 | 10 | 每个站点取多少个视频 |
+| multi_thread | bool | 否 | false | 是否启用多线程 |
+| concurrency | int | 否 | 5 | 并发数（1-10） |
+| min_segments | int | 否 | 50 | 最少片段数阈值 |
+| max_ad_percentage | int | 否 | 90 | 最大广告占比阈值 |
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "搜索学习完成",
+  "keyword": "庆余年",
+  "sites_searched": 3,
+  "total_found": 25,
+  "total_learned": 20,
+  "total_failed": 5,
+  "total_time": 15234.56,
+  "mode": "curl_multi",
+  "concurrency": 5,
+  "learned_domains": ["v.example.com"],
+  "site_results": [...],
+  "details": [...]
+}
+```
+
+**特性**:
+- 支持搜索所有资源站或指定资源站
+- 支持多线程并发学习（curl_multi），速度提升 3-5 倍
+- 支持串行模式回退，确保稳定性
+- 按站点分组统计学习结果
+- 详细的失败原因分类统计
+
+---
+
+### ✨ 集成虾米解析 API
+
+**功能**: 集成虾米解析 (jx.xmflv.cc) API，新增第三方视频解析渠道，支持全网 VIP 视频解析。
+
+**使用方式**:
+
+1. 独立脚本: `xiami_jx.php?url=视频链接`
+2. 统一接口: `mx.php?action=xiami_jx&url=视频链接` 或 `mx.php?action=xiami_jx/info&url=视频链接`
+
+**接口参数**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| url | string | 是 | 视频播放页 URL |
+
+**技术特点**:
+- AES-256-CBC + ZeroPadding 签名加密，兼容 CryptoJS
+- 双 API 节点自动切换，稳定性更高
+- 自动解密响应数据，去除水印
+- 浏览器级请求头伪装，降低被封风险
+- 支持 HLS (m3u8) 和 MP4 格式识别
+
+---
+
 ## [2.29.5] - 2026-07-08
 
 ### 🐛 修复自动学习报错 "body stream already read" 及统一前端响应处理

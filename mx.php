@@ -1046,6 +1046,199 @@ try {
             ]);
             break;
 
+        case 'xiami_jx':
+        case 'xiami_jx/info':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse([
+                    'code' => 400,
+                    'success' => false,
+                    'message' => '缺少 url 参数'
+                ], 400);
+            }
+
+            $apiEndpoints = [
+                'https://cache.0567890.xyz:4433/Api',
+                'https://cache.hls.one/Api',
+            ];
+
+            $tm = intval(round(microtime(true) * 1000));
+            $keyHex = md5($tm . $url);
+
+            $aesKeyHex = md5($keyHex);
+            $iv = 'fUU9eRmkYzsgbkEK';
+            $plaintext = $keyHex;
+            $blockSize = 16;
+            $padLen = $blockSize - (strlen($plaintext) % $blockSize);
+            if ($padLen == $blockSize) $padLen = 0;
+            $padded = $plaintext . str_repeat("\x00", $padLen);
+            $sign = @openssl_encrypt(
+                $padded,
+                'aes-256-cbc',
+                $aesKeyHex,
+                OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+                $iv
+            );
+            if ($sign !== false) {
+                $sign = base64_encode($sign);
+            }
+
+            $playUrl = '';
+            $lastError = '';
+            $videoType = '';
+
+            if (!empty($sign)) {
+                $postData = [
+                    'tm'   => $tm,
+                    'url'  => $url,
+                    'key'  => $keyHex,
+                    'sign' => $sign,
+                ];
+
+                foreach ($apiEndpoints as $api) {
+                    $ch = curl_init();
+                    curl_setopt_array($ch, [
+                        CURLOPT_URL            => $api,
+                        CURLOPT_POST           => true,
+                        CURLOPT_POSTFIELDS     => http_build_query($postData),
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_TIMEOUT        => 25,
+                        CURLOPT_CONNECTTIMEOUT => 10,
+                        CURLOPT_SSL_VERIFYPEER => false,
+                        CURLOPT_SSL_VERIFYHOST => false,
+                        CURLOPT_HTTPHEADER     => [
+                            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                            'Accept: application/json, text/javascript, */*; q=0.01',
+                            'Origin: https://jx.xmflv.cc',
+                            'Referer: https://jx.xmflv.cc/',
+                            'X-Requested-With: XMLHttpRequest',
+                        ],
+                    ]);
+                    $response = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    $curlError = curl_error($ch);
+                    curl_close($ch);
+
+                    if ($response === false || $httpCode !== 200) {
+                        $lastError = $curlError ?: "HTTP $httpCode";
+                        continue;
+                    }
+
+                    $body = str_replace('tg:@xmflv', '', $response);
+                    $json = json_decode($body, true);
+
+                    if ($json === null || !isset($json['code'])) {
+                        $lastError = '响应解析失败';
+                        continue;
+                    }
+
+                    if ($json['code'] !== 200) {
+                        $lastError = isset($json['msg']) ? $json['msg'] : '解析失败';
+                        continue;
+                    }
+
+                    if (empty($json['data']) || empty($json['key']) || empty($json['iv'])) {
+                        $lastError = '响应缺少 data/key/iv 字段';
+                        continue;
+                    }
+
+                    $ciphertext = base64_decode($json['data'], true);
+                    $decKey = $json['key'];
+                    $decIv = $json['iv'];
+
+                    if ($ciphertext === false || strlen($ciphertext) === 0) {
+                        $lastError = '解密数据无效';
+                        continue;
+                    }
+
+                    $keyLen = strlen($decKey);
+                    if ($keyLen <= 16) {
+                        $method = 'aes-128-cbc';
+                    } elseif ($keyLen <= 24) {
+                        $method = 'aes-192-cbc';
+                    } else {
+                        $method = 'aes-256-cbc';
+                    }
+
+                    if ($keyLen < 16) {
+                        $lastError = '密钥长度不足';
+                        continue;
+                    }
+
+                    $decrypted = @openssl_decrypt(
+                        $ciphertext,
+                        $method,
+                        $decKey,
+                        OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+                        $decIv
+                    );
+
+                    if ($decrypted !== false && strlen($decrypted) > 0) {
+                        $decrypted = rtrim($decrypted, "\x00");
+                        $decrypted = str_replace('tg:@xmflv', '', $decrypted);
+                        $decrypted = rtrim($decrypted, "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f");
+                    } else {
+                        $decrypted = @openssl_decrypt(
+                            $ciphertext,
+                            $method,
+                            $decKey,
+                            OPENSSL_RAW_DATA,
+                            $decIv
+                        );
+                        if ($decrypted !== false) {
+                            $decrypted = str_replace('tg:@xmflv', '', $decrypted);
+                            $decrypted = rtrim($decrypted, "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f");
+                        }
+                    }
+
+                    if ($decrypted === false || strlen($decrypted) === 0) {
+                        $lastError = '解密失败';
+                        continue;
+                    }
+
+                    $resultData = json_decode($decrypted, true);
+                    if ($resultData === null) {
+                        $lastError = '解密数据解析失败';
+                        continue;
+                    }
+
+                    $playUrl = isset($resultData['vurl']) ? $resultData['vurl'] : (isset($resultData['url']) ? $resultData['url'] : '');
+                    $videoType = isset($resultData['type']) ? $resultData['type'] : '';
+                    break;
+                }
+            }
+
+            if (empty($playUrl)) {
+                sendJsonResponse([
+                    'code' => 500,
+                    'success' => false,
+                    'message' => $lastError ?: '未获取到资源',
+                    'data' => null
+                ], 500);
+            }
+
+            $label = '';
+            if (strpos($videoType, 'm3u8') !== false || strpos($videoType, 'hls') !== false) {
+                $label = 'HLS';
+            } elseif (strpos($videoType, 'mp4') !== false) {
+                $label = 'MP4';
+            }
+
+            sendJsonResponse([
+                'code' => 200,
+                'success' => true,
+                'message' => '解析成功',
+                'data' => [
+                    'original_url' => $url,
+                    'media_url' => $playUrl,
+                    'type' => $videoType,
+                    'label' => $label,
+                    'source' => 'xiami'
+                ]
+            ]);
+            break;
+
         case 'update/version':
             $versionFile = '';
             if (file_exists(__DIR__ . '/version.php')) {
@@ -1331,6 +1524,297 @@ try {
 
             $result = $siteManager->learnFromVideoUrl($videoUrl, $ruleManager, $options);
             sendJsonResponse($result, $result['success'] ? 200 : 400);
+            break;
+
+        case 'sites/search_and_learn':
+            $input = getInputJson();
+            $keyword = $input['keyword'] ?? $_GET['keyword'] ?? '';
+            $siteName = $input['site_name'] ?? $_GET['site_name'] ?? 'all';
+            $maxSites = isset($input['max_sites']) ? intval($input['max_sites']) : (isset($_GET['max_sites']) ? intval($_GET['max_sites']) : 5);
+            $limitPerSite = isset($input['limit_per_site']) ? intval($input['limit_per_site']) : (isset($_GET['limit_per_site']) ? intval($_GET['limit_per_site']) : 10);
+            $useMultiThread = !empty($input['multi_thread']) || (isset($_GET['multi_thread']) && $_GET['multi_thread'] === '1');
+            $concurrency = isset($input['concurrency']) ? intval($input['concurrency']) : (isset($_GET['concurrency']) ? intval($_GET['concurrency']) : 5);
+            $minSegments = isset($input['min_segments']) ? intval($input['min_segments']) : null;
+            $maxAdPercentage = isset($input['max_ad_percentage']) ? intval($input['max_ad_percentage']) : null;
+
+            if (empty($keyword)) {
+                sendJsonResponse(['success' => false, 'message' => '请输入搜索关键词'], 400);
+            }
+
+            $concurrency = max(1, min(10, $concurrency));
+            $startTime = microtime(true);
+
+            if ($siteName === 'all') {
+                $searchResult = $siteManager->searchAllSites($keyword, $maxSites, $limitPerSite);
+            } else {
+                $site = $siteManager->getSiteByName($siteName);
+                if (!$site) {
+                    sendJsonResponse(['success' => false, 'message' => '资源站不存在'], 400);
+                }
+                $searchResult = $siteManager->searchVideos($site['api_url'], $keyword, 1, $limitPerSite * 3);
+                if ($searchResult['success']) {
+                    $videos = array_slice($searchResult['videos'] ?? [], 0, $limitPerSite);
+                    foreach ($videos as &$v) {
+                        $v['site_name'] = $site['name'];
+                    }
+                    unset($v);
+                    $searchResult = [
+                        'success' => true,
+                        'keyword' => $keyword,
+                        'sites_searched' => 1,
+                        'total_videos' => count($videos),
+                        'results' => [
+                            [
+                                'site' => $site['name'],
+                                'site_url' => $site['site_url'] ?? '',
+                                'count' => count($videos),
+                                'videos' => $videos
+                            ]
+                        ]
+                    ];
+                } else {
+                    $searchResult = [
+                        'success' => true,
+                        'keyword' => $keyword,
+                        'sites_searched' => 1,
+                        'total_videos' => 0,
+                        'results' => [
+                            [
+                                'site' => $site['name'],
+                                'site_url' => $site['site_url'] ?? '',
+                                'count' => 0,
+                                'videos' => [],
+                                'error' => $searchResult['message']
+                            ]
+                        ]
+                    ];
+                }
+            }
+
+            $allVideos = [];
+            $siteVideoMap = [];
+            foreach ($searchResult['results'] ?? [] as $siteResult) {
+                foreach ($siteResult['videos'] ?? [] as $video) {
+                    $videoUrl = $video['url'] ?? $video['first_url'] ?? '';
+                    if (!empty($videoUrl)) {
+                        $allVideos[] = [
+                            'url' => $videoUrl,
+                            'site' => $siteResult['site'] ?? '',
+                            'name' => $video['name'] ?? '未知'
+                        ];
+                        if (!isset($siteVideoMap[$siteResult['site']])) {
+                            $siteVideoMap[$siteResult['site']] = 0;
+                        }
+                        $siteVideoMap[$siteResult['site']]++;
+                    }
+                }
+            }
+
+            $totalVideos = count($allVideos);
+
+            if ($totalVideos === 0) {
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '未找到可学习的视频',
+                    'keyword' => $keyword,
+                    'sites_searched' => $searchResult['sites_searched'] ?? 0,
+                    'total_found' => 0,
+                    'total_learned' => 0,
+                    'total_failed' => 0,
+                    'total_time' => 0,
+                    'learned_domains' => [],
+                    'search_results' => $searchResult
+                ]);
+            }
+
+            $learnOptions = [];
+            if ($minSegments !== null) $learnOptions['min_segments'] = $minSegments;
+            if ($maxAdPercentage !== null) $learnOptions['max_ad_percentage'] = $maxAdPercentage;
+
+            $successCount = 0;
+            $failCount = 0;
+            $learnedDomains = [];
+            $siteResults = [];
+            $resultDetails = [];
+
+            if ($useMultiThread && TaskRunner::isMultiThreadAvailable() && $totalVideos > 1) {
+                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                $basePath = dirname($requestUri);
+                $basePath = $basePath === '/' ? '' : $basePath;
+                $selfBase = $scheme . '://' . $host . $basePath . '/mx.php?action=sites/learn_video';
+
+                $tasks = [];
+                foreach ($allVideos as $idx => $video) {
+                    $postData = ['url' => $video['url']];
+                    if ($minSegments !== null) $postData['min_segments'] = $minSegments;
+                    if ($maxAdPercentage !== null) $postData['max_ad_percentage'] = $maxAdPercentage;
+                    $tasks[] = [
+                        'id' => $idx,
+                        'url' => $video['url'],
+                        'site' => $video['site'],
+                        'name' => $video['name'],
+                        'post_data' => $postData
+                    ];
+                }
+
+                $runner = TaskRunner::create([
+                    'concurrency' => $concurrency,
+                    'mode' => TaskRunner::MODE_CURL_MULTI,
+                    'timeout' => 120
+                ]);
+
+                $results = $runner->run($tasks, $selfBase);
+
+                foreach ($results as $i => $result) {
+                    $video = $allVideos[$i];
+                    $siteName = $video['site'] ?? '';
+                    if (!isset($siteResults[$siteName])) {
+                        $siteResults[$siteName] = [
+                            'site' => $siteName,
+                            'videos_found' => $siteVideoMap[$siteName] ?? 0,
+                            'videos_learned' => 0,
+                            'videos_failed' => 0,
+                            'domains' => [],
+                            'fail_reasons' => []
+                        ];
+                    }
+
+                    $data = $result->data;
+                    if (is_string($data)) {
+                        $decoded = json_decode($data, true);
+                        if ($decoded !== null) {
+                            $data = $decoded;
+                        }
+                    }
+
+                    if ($result->success && is_array($data) && !empty($data['success'])) {
+                        $successCount++;
+                        $siteResults[$siteName]['videos_learned']++;
+                        if (!empty($data['domain'])) {
+                            $learnedDomains[$data['domain']] = true;
+                            if (!isset($siteResults[$siteName]['domains'][$data['domain']])) {
+                                $siteResults[$siteName]['domains'][$data['domain']] = 0;
+                            }
+                            $siteResults[$siteName]['domains'][$data['domain']]++;
+                        }
+                        $resultDetails[] = [
+                            'name' => $video['name'],
+                            'site' => $siteName,
+                            'url' => $video['url'],
+                            'success' => true,
+                            'domain' => $data['domain'] ?? '',
+                            'segments_count' => $data['segments_count'] ?? 0,
+                            'ad_percentage' => $data['ad_percentage'] ?? 0,
+                            'duration' => $result->duration
+                        ];
+                    } else {
+                        $failCount++;
+                        $siteResults[$siteName]['videos_failed']++;
+                        $failMsg = '';
+                        if (!$result->success) {
+                            $failMsg = $result->error ?: '请求失败';
+                        } elseif (is_array($data) && !empty($data['message'])) {
+                            $failMsg = $data['message'];
+                        } elseif (is_string($data)) {
+                            $failMsg = '响应解析失败';
+                        } else {
+                            $failMsg = '未知错误';
+                        }
+                        if (!isset($siteResults[$siteName]['fail_reasons'][$failMsg])) {
+                            $siteResults[$siteName]['fail_reasons'][$failMsg] = 0;
+                        }
+                        $siteResults[$siteName]['fail_reasons'][$failMsg]++;
+                        $resultDetails[] = [
+                            'name' => $video['name'],
+                            'site' => $siteName,
+                            'url' => $video['url'],
+                            'success' => false,
+                            'message' => $failMsg,
+                            'duration' => $result->duration
+                        ];
+                    }
+                }
+
+                $mode = $runner->getActualMode();
+            } else {
+                foreach ($allVideos as $video) {
+                    $siteName = $video['site'] ?? '';
+                    if (!isset($siteResults[$siteName])) {
+                        $siteResults[$siteName] = [
+                            'site' => $siteName,
+                            'videos_found' => $siteVideoMap[$siteName] ?? 0,
+                            'videos_learned' => 0,
+                            'videos_failed' => 0,
+                            'domains' => [],
+                            'fail_reasons' => []
+                        ];
+                    }
+
+                    $videoStart = microtime(true);
+                    $result = $siteManager->learnFromVideoUrl($video['url'], $ruleManager, $learnOptions);
+                    $videoDuration = round((microtime(true) - $videoStart) * 1000, 2);
+
+                    if (!empty($result['success'])) {
+                        $successCount++;
+                        $siteResults[$siteName]['videos_learned']++;
+                        if (!empty($result['domain'])) {
+                            $learnedDomains[$result['domain']] = true;
+                            if (!isset($siteResults[$siteName]['domains'][$result['domain']])) {
+                                $siteResults[$siteName]['domains'][$result['domain']] = 0;
+                            }
+                            $siteResults[$siteName]['domains'][$result['domain']]++;
+                        }
+                        $resultDetails[] = [
+                            'name' => $video['name'],
+                            'site' => $siteName,
+                            'url' => $video['url'],
+                            'success' => true,
+                            'domain' => $result['domain'] ?? '',
+                            'segments_count' => $result['segments_count'] ?? 0,
+                            'ad_percentage' => $result['ad_percentage'] ?? 0,
+                            'duration' => $videoDuration
+                        ];
+                    } else {
+                        $failCount++;
+                        $siteResults[$siteName]['videos_failed']++;
+                        $failMsg = $result['message'] ?? '未知错误';
+                        if (!isset($siteResults[$siteName]['fail_reasons'][$failMsg])) {
+                            $siteResults[$siteName]['fail_reasons'][$failMsg] = 0;
+                        }
+                        $siteResults[$siteName]['fail_reasons'][$failMsg]++;
+                        $resultDetails[] = [
+                            'name' => $video['name'],
+                            'site' => $siteName,
+                            'url' => $video['url'],
+                            'success' => false,
+                            'message' => $failMsg,
+                            'duration' => $videoDuration
+                        ];
+                    }
+                }
+
+                $mode = 'serial';
+            }
+
+            $totalTime = round((microtime(true) - $startTime) * 1000, 2);
+
+            sendJsonResponse([
+                'success' => true,
+                'message' => '搜索学习完成',
+                'keyword' => $keyword,
+                'sites_searched' => $searchResult['sites_searched'] ?? 0,
+                'total_found' => $totalVideos,
+                'total_learned' => $successCount,
+                'total_failed' => $failCount,
+                'total_time' => $totalTime,
+                'mode' => $mode,
+                'concurrency' => $useMultiThread ? $concurrency : 1,
+                'learned_domains' => array_keys($learnedDomains),
+                'site_results' => array_values($siteResults),
+                'details' => $resultDetails
+            ]);
             break;
 
         case 'sites/learn_batch':
@@ -2772,6 +3256,7 @@ try {
                     'sites/fetch_videos' => '从资源站获取视频列表',
                     'sites/search' => '搜索指定资源站视频',
                     'sites/search_all' => '搜索所有资源站视频',
+                    'sites/search_and_learn' => '搜索并学习（搜索影视学习一体化）',
                     'sites/learn_video' => '从指定视频URL学习规则',
                     'sites/auto_learn/config' => '获取自动学习配置',
                     'sites/auto_learn/config/save' => '保存自动学习配置',
