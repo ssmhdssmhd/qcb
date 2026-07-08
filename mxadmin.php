@@ -2166,53 +2166,70 @@ header('Expires: 0');
 
             if (currentSegmentTab === 'ad') {
                 const ads = currentAnalysis.adSegments;
-                if (ads.length === 0) {
+                if (!ads || ads.length === 0) {
                     listEl.innerHTML = '<div class="empty">未检测到广告片段</div>';
                     return;
                 }
-                listEl.innerHTML = ads.map(s => `
+                listEl.innerHTML = ads.map((s, idx) => {
+                    const uri = s.uri || (s.segment && s.segment.uri) || '';
+                    const duration = s.duration || (s.segment && s.segment.duration) || 0;
+                    const matchedRules = s.matchedRules || [];
+                    return `
                     <div class="segment-item ad">
                         <div>
-                            <span class="segment-name">${basename(s.segment.uri)}</span>
-                            ${s.matchedRules.map(r => `<span class="tag tag-red">${r.name}</span>`).join('')}
+                            <span class="segment-name">${basename(uri) || ('片段#' + idx)}</span>
+                            ${matchedRules.map(r => `<span class="tag tag-red">${r.name}</span>`).join('')}
                         </div>
-                        <span class="segment-duration">${s.segment.duration.toFixed(2)}s</span>
+                        <span class="segment-duration">${parseFloat(duration).toFixed(2)}s</span>
                     </div>
-                `).join('');
+                `}).join('');
             } else if (currentSegmentTab === 'cluster') {
                 const clusters = currentAnalysis.adClusters;
-                if (clusters.length === 0) {
+                if (!clusters || clusters.length === 0) {
                     listEl.innerHTML = '<div class="empty">无广告聚类</div>';
                     return;
                 }
                 let totalAdDuration = 0;
-                currentAnalysis.adSegments.forEach(s => totalAdDuration += s.segment.duration);
+                const ads = currentAnalysis.adSegments || [];
+                ads.forEach(s => {
+                    const dur = s.duration || (s.segment && s.segment.duration) || 0;
+                    totalAdDuration += dur;
+                });
                 listEl.innerHTML = clusters.map((c, i) => {
-                    const segSubset = currentAnalysis.adSegments.filter(s => s.index >= c.start && s.index <= c.end);
-                    const clusterDuration = segSubset.reduce((sum, s) => sum + s.segment.duration, 0);
                     return `
                         <div class="segment-item ad">
                             <div>
                                 <span class="tag tag-red">聚类 #${i + 1}</span>
                                 <span style="margin-left:8px">索引 ${c.start} - ${c.end}</span>
                             </div>
-                            <span class="segment-duration">${c.count}个片段 / ${clusterDuration.toFixed(2)}s</span>
+                            <span class="segment-duration">${c.count}个片段 / ${parseFloat(c.duration || 0).toFixed(2)}s</span>
                         </div>
                     `;
                 }).join('');
             } else {
                 const segs = currentAnalysis.allSegments;
-                listEl.innerHTML = segs.map(s => `
-                    <div class="segment-item ${s.isAd ? 'ad' : ''}">
+                if (!segs || segs.length === 0) {
+                    listEl.innerHTML = '<div class="empty">无片段数据</div>';
+                    return;
+                }
+                listEl.innerHTML = segs.map((s, i) => {
+                    const index = s.index ?? s.i ?? i;
+                    const isAd = s.isAd ?? (s.a === 1) ?? false;
+                    const uri = s.uri || (s.segment && s.segment.uri) || '';
+                    const duration = s.duration || (s.segment && s.segment.duration) || s.d || 0;
+                    const matchedRules = s.matchedRules || [];
+                    const discontinuity = s.discontinuity || (s.segment && s.segment.discontinuity) || false;
+                    return `
+                    <div class="segment-item ${isAd ? 'ad' : ''}">
                         <div>
-                            <span style="color:#909399;font-size:11px;margin-right:8px">#${s.index}</span>
-                            <span class="segment-name">${basename(s.segment.uri)}</span>
-                            ${s.isAd ? s.matchedRules.map(r => `<span class="tag tag-red">${r.name}</span>`).join('') : ''}
-                            ${s.segment.discontinuity ? '<span class="tag tag-orange">DISCON</span>' : ''}
+                            <span style="color:#909399;font-size:11px;margin-right:8px">#${index}</span>
+                            <span class="segment-name">${basename(uri) || ('片段#' + index)}</span>
+                            ${isAd && matchedRules.length > 0 ? matchedRules.map(r => `<span class="tag tag-red">${r.name}</span>`).join('') : ''}
+                            ${discontinuity ? '<span class="tag tag-orange">DISCON</span>' : ''}
                         </div>
-                        <span class="segment-duration">${s.segment.duration.toFixed(2)}s</span>
+                        <span class="segment-duration">${parseFloat(duration).toFixed(2)}s</span>
                     </div>
-                `).join('');
+                `}).join('');
             }
         }
 
