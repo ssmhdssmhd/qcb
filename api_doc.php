@@ -453,6 +453,12 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                分析 M3U8 视频的广告结构，识别广告片段，统计广告占比，可选自动学习规则。
+                            </p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
@@ -461,8 +467,20 @@ $apiBase = $basePath . '/mx.php?action=';
                                 <tbody>
                                     <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频 m3u8 URL</td></tr>
                                     <tr><td>auto_learn</td><td>int</td><td class="param-optional">否</td><td>是否自动学习，1=是</td></tr>
+                                    <tr><td>skip_cache</td><td>int</td><td class="param-optional">否</td><td>是否跳过缓存，1=是</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 分析视频广告结构
+mx.php?action=analyze&url=https://example.com/video.m3u8
+
+// 分析并自动学习规则
+mx.php?action=analyze&url=https://example.com/video.m3u8&auto_learn=1</pre>
+                            </div>
                         </div>
                         <div class="api-section">
                             <div class="api-section-title">响应示例</div>
@@ -471,12 +489,52 @@ $apiBase = $basePath . '/mx.php?action=';
 <pre>{
   "success": true,
   "url": "https://example.com/video.m3u8",
+  "domain": "example.com",
   "total_segments": 200,
   "ad_segments": 20,
-  "ad_percentage": 10,
-  "segments": [...]
+  "kept_segments": 180,
+  "ad_percentage": 10.0,
+  "original_duration": 3600,
+  "filtered_duration": 3240,
+  "saved_duration": 360,
+  "has_domain_rules": true,
+  "duration_stats": {
+    "min": 2.5,
+    "max": 15.0,
+    "avg": 6.0
+  },
+  "ad_segments_list": [
+    { "index": 5, "duration": 10.0, "uri": "https://example.com/ad/5.ts" }
+  ],
+  "all_segments": [
+    { "i": 0, "d": 6.0, "a": false },
+    { "i": 5, "d": 10.0, "a": true }
+  ]
 }</pre>
                             </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应字段说明</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>success</td><td>bool</td><td>是否成功</td></tr>
+                                    <tr><td>url</td><td>string</td><td>分析的 M3U8 地址</td></tr>
+                                    <tr><td>domain</td><td>string</td><td>视频域名</td></tr>
+                                    <tr><td>total_segments</td><td>int</td><td>总片段数</td></tr>
+                                    <tr><td>ad_segments</td><td>int</td><td>广告片段数</td></tr>
+                                    <tr><td>kept_segments</td><td>int</td><td>保留的正常片段数</td></tr>
+                                    <tr><td>ad_percentage</td><td>float</td><td>广告占比百分比</td></tr>
+                                    <tr><td>original_duration</td><td>float</td><td>原始总时长（秒）</td></tr>
+                                    <tr><td>filtered_duration</td><td>float</td><td>去广告后时长（秒）</td></tr>
+                                    <tr><td>saved_duration</td><td>float</td><td>节省时长（秒）</td></tr>
+                                    <tr><td>has_domain_rules</td><td>bool</td><td>是否有域名规则</td></tr>
+                                    <tr><td>ad_segments_list</td><td>array</td><td>广告片段详情列表</td></tr>
+                                    <tr><td>all_segments</td><td>array</td><td>全部片段精简列表（i=索引, d=时长, a=是否广告）</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -495,15 +553,47 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取所有已保存的域名规则列表（精简版），返回每个域名的规则概要信息，不包含完整规则配置。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=rules/list</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">响应示例</div>
                             <div class="code-block">
                                 <button class="copy-btn" onclick="copyCode(this)">复制</button>
 <pre>{
   "success": true,
   "rules": {
-    "example.com": { ... }
-  },
-  "total": 10
+    "v.lzcdn23.com": {
+      "domain": "v.lzcdn23.com",
+      "name": "v.lzcdn23.com",
+      "note": "",
+      "learn_count": 3,
+      "ad_threshold": 50,
+      "confidence_score": 80,
+      "analysis_date": "2026-07-01 10:00:00",
+      "last_learn_date": "2026-07-02 12:00:00",
+      "duration_rule_count": 2,
+      "discontinuity_rule_count": 1,
+      "sequence_jump_rule_count": 0,
+      "filename_pattern_count": 3,
+      "total_segments": 100,
+      "ad_segments": 12,
+      "ad_percentage": 12,
+      "marker_stats": {
+        "discontinuity_count": 1,
+        "cue_marker_count": 0,
+        "scte35_count": 0,
+        "ad_tag_count": 0
+      }
+    }
+  }
 }</pre>
                             </div>
                         </div>
@@ -519,6 +609,10 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取指定域名的完整规则配置，包含时长规则、不连续规则、序列跳变规则、文件名匹配模式等。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
@@ -528,6 +622,45 @@ $apiBase = $basePath . '/mx.php?action=';
                                     <tr><td>domain</td><td>string</td><td class="param-required">是</td><td>域名</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=rules/get&domain=v.lzcdn23.com</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "domain": "v.lzcdn23.com",
+  "rules": {
+    "domain": "v.lzcdn23.com",
+    "name": "v.lzcdn23.com",
+    "note": "",
+    "learn_count": 3,
+    "ad_threshold": 50,
+    "confidence_score": 80,
+    "analysis_date": "2026-07-01 10:00:00",
+    "duration_rules": [
+      {
+        "name": "short_segment",
+        "enabled": true,
+        "type": "duration",
+        "operator": "&lt;",
+        "threshold": 2,
+        "reason": "极短片段 (&lt;2秒) 可能是广告"
+      }
+    ],
+    "discontinuity_rules": [],
+    "sequence_jump_rules": [],
+    "filename_patterns": []
+  }
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -541,6 +674,10 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">保存指定域名的规则配置，以 JSON Body 形式提交。若域名已存在则覆盖更新，不存在则新增。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数 (JSON Body)</div>
                             <table class="param-table">
                                 <thead>
@@ -548,9 +685,45 @@ $apiBase = $basePath . '/mx.php?action=';
                                 </thead>
                                 <tbody>
                                     <tr><td>domain</td><td>string</td><td class="param-required">是</td><td>域名</td></tr>
-                                    <tr><td>rules</td><td>object</td><td class="param-required">是</td><td>规则配置</td></tr>
+                                    <tr><td>rules</td><td>object</td><td class="param-required">是</td><td>规则配置，包含 duration_rules、discontinuity_rules、filename_patterns 等字段</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=rules/save \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "v.lzcdn23.com",
+    "rules": {
+      "domain": "v.lzcdn23.com",
+      "name": "v.lzcdn23.com",
+      "duration_rules": [
+        {
+          "name": "short_segment",
+          "enabled": true,
+          "type": "duration",
+          "operator": "&lt;",
+          "threshold": 2
+        }
+      ],
+      "filename_patterns": []
+    }
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "规则保存成功",
+  "domain": "v.lzcdn23.com"
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -564,6 +737,10 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">删除指定域名的规则配置，以 JSON Body 形式提交 domain 参数。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
@@ -573,6 +750,25 @@ $apiBase = $basePath . '/mx.php?action=';
                                     <tr><td>domain</td><td>string</td><td class="param-required">是</td><td>域名</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=rules/delete \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "v.lzcdn23.com"}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "规则删除成功"
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -586,15 +782,56 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">根据视频 URL 解析 M3U8 切片并自动生成规则（不保存），返回生成的规则配置及分析统计信息。会自动从 URL 中提取域名。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
                                     <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频 URL</td></tr>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频 URL（M3U8 地址或播放页地址）</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=rules/generate&url=https://example.com/video.m3u8</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "domain": "example.com",
+  "rules": {
+    "domain": "example.com",
+    "duration_rules": [
+      {
+        "name": "short_segment",
+        "enabled": true,
+        "type": "duration",
+        "operator": "&lt;",
+        "threshold": 2
+      }
+    ],
+    "sample_url": "https://example.com/video.m3u8"
+  },
+  "analysis": {
+    "totalSegments": 100,
+    "adSegments": 12,
+    "discontinuityCount": 1,
+    "sequenceJumpCount": 0,
+    "adClusterCount": 1
+  }
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -608,15 +845,45 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">从指定视频 URL 学习并更新规则（会保存到规则文件）。会解析 M3U8 切片进行分析，自动提取域名，并累加学习次数。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
                                     <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频 URL</td></tr>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频 URL（M3U8 地址或播放页地址）</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=rules/learn&url=https://example.com/video.m3u8</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "规则学习完成",
+  "domain": "example.com",
+  "learn_count": 2,
+  "stats": {
+    "totalSegments": 100,
+    "adSegments": 12,
+    "discontinuityCount": 1,
+    "sequenceJumps": 0,
+    "adClusters": 1
+  }
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -628,7 +895,57 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">导出所有规则为 JSON</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">导出规则为 JSON 数据，支持导出全部规则或指定域名的规则。带 <code>download=1</code> 参数时返回文件下载响应。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>domain</td><td>string</td><td class="param-optional">否</td><td>指定域名，仅导出该域名规则；不传则导出全部</td></tr>
+                                    <tr><td>download</td><td>any</td><td class="param-optional">否</td><td>传 1 时以附件形式下载 JSON 文件</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 导出全部规则
+mx.php?action=rules/export
+
+// 导出指定域名规则
+mx.php?action=rules/export&domain=v.lzcdn23.com
+
+// 下载为文件
+mx.php?action=rules/export&download=1</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "version": "1.0",
+  "export_date": "2026-07-08 10:00:00",
+  "type": "all",
+  "count": 1,
+  "rules": {
+    "v.lzcdn23.com": {
+      "domain": "v.lzcdn23.com",
+      "learn_count": 3,
+      "duration_rules": []
+    }
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="rules/import 导入规则">
@@ -638,7 +955,56 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">导入规则 JSON</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">导入规则 JSON 数据，支持单条（type=single）或批量（type=all）导入。数据格式需与 rules/export 导出格式一致。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>version</td><td>string</td><td class="param-optional">否</td><td>版本号，如 "1.0"</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-required">是</td><td>导入类型：single（单条）/ all（批量）</td></tr>
+                                    <tr><td>rules</td><td>object/array</td><td class="param-required">是</td><td>规则数据，single 时为对象，all 时为按域名分组的对象</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=rules/import \
+  -H "Content-Type: application/json" \
+  -d '{
+    "version": "1.0",
+    "type": "all",
+    "rules": {
+      "v.lzcdn23.com": {
+        "domain": "v.lzcdn23.com",
+        "duration_rules": []
+      }
+    }
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "imported": 1,
+  "updated": 0,
+  "errors": [],
+  "message": "导入完成：新增 1 条，更新 0 条"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="rules/clear 清空规则">
@@ -648,7 +1014,30 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">清空所有规则</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">清空所有已保存的域名规则，该操作不可恢复，请谨慎使用。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=rules/clear</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "已清理 15 条规则",
+  "cleared_count": 15
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -663,7 +1052,61 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">获取所有资源站列表</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取所有资源站列表，同时返回自动学习配置、最后学习时间及是否应该触发自动学习等状态信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>include_paused</td><td>int</td><td class="param-optional">否</td><td>是否包含已暂停资源站，传 1 包含，默认不包含</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 获取启用的资源站
+mx.php?action=sites/list
+
+// 包含已暂停的资源站
+mx.php?action=sites/list&include_paused=1</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "sites": [
+    {
+      "name": "量子",
+      "site_url": "http://23.224.101.30",
+      "api_url": "https://cj.lziapi.com/api.php/provide/vod/from/lzm3u8/",
+      "type": "maccms",
+      "status": "active",
+      "note": "推荐",
+      "priority": 1
+    }
+  ],
+  "total": 1,
+  "auto_learn_config": {
+    "enabled": false,
+    "interval_hours": 24
+  },
+  "last_learn_time": "",
+  "should_auto_learn": false
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/get 获取单个资源站">
@@ -675,6 +1118,10 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">根据名称获取单个资源站的完整配置信息。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
@@ -684,6 +1131,31 @@ $apiBase = $basePath . '/mx.php?action=';
                                     <tr><td>name</td><td>string</td><td class="param-required">是</td><td>资源站名称</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=sites/get&name=量子</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "site": {
+    "name": "量子",
+    "site_url": "http://23.224.101.30",
+    "api_url": "https://cj.lziapi.com/api.php/provide/vod/from/lzm3u8/",
+    "type": "maccms",
+    "status": "active",
+    "note": "推荐",
+    "priority": 1
+  }
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -695,7 +1167,55 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">添加新的资源站</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">添加新的资源站，以 JSON Body 形式提交资源站配置。名称和采集接口为必填项，名称不能与已有资源站重复。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>name</td><td>string</td><td class="param-required">是</td><td>资源站名称（唯一）</td></tr>
+                                    <tr><td>api_url</td><td>string</td><td class="param-required">是</td><td>采集接口地址</td></tr>
+                                    <tr><td>site_url</td><td>string</td><td class="param-optional">否</td><td>资源站官网地址</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>类型，默认 maccms</td></tr>
+                                    <tr><td>status</td><td>string</td><td class="param-optional">否</td><td>状态：active/paused，默认 active</td></tr>
+                                    <tr><td>note</td><td>string</td><td class="param-optional">否</td><td>备注</td></tr>
+                                    <tr><td>priority</td><td>int</td><td class="param-optional">否</td><td>优先级，默认 50</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/add \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "新资源站",
+    "site_url": "http://example.com",
+    "api_url": "https://api.example.com/api.php/provide/vod/from/lzm3u8/",
+    "type": "maccms",
+    "note": "测试",
+    "priority": 10
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "添加成功"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/update 更新资源站">
@@ -705,7 +1225,52 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">更新资源站配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">更新指定资源站的配置，以 JSON Body 形式提交。只需传入要更新的字段，会与原有配置合并（name 字段不可更改）。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>name</td><td>string</td><td class="param-required">是</td><td>要更新的资源站名称</td></tr>
+                                    <tr><td>site_url</td><td>string</td><td class="param-optional">否</td><td>资源站官网地址</td></tr>
+                                    <tr><td>api_url</td><td>string</td><td class="param-optional">否</td><td>采集接口地址</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>类型，如 maccms</td></tr>
+                                    <tr><td>status</td><td>string</td><td class="param-optional">否</td><td>状态：active/paused</td></tr>
+                                    <tr><td>note</td><td>string</td><td class="param-optional">否</td><td>备注</td></tr>
+                                    <tr><td>priority</td><td>int</td><td class="param-optional">否</td><td>优先级</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "量子",
+    "note": "推荐资源站",
+    "priority": 1
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "更新成功"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/delete 删除资源站">
@@ -715,7 +1280,46 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">删除资源站</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">删除指定名称的资源站，支持通过 JSON Body 或 GET 参数提交 name。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>name</td><td>string</td><td class="param-required">是</td><td>资源站名称（支持 JSON Body 或 GET 传参）</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 方式一：JSON Body
+curl -X POST mx.php?action=sites/delete \
+  -H "Content-Type: application/json" \
+  -d '{"name": "量子"}'
+
+// 方式二：GET 参数
+mx.php?action=sites/delete&name=量子</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "删除成功"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/search 搜索指定资源站视频">
@@ -728,19 +1332,65 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">在指定资源站搜索视频，需提供资源站名称或采集接口地址（二选一），并指定搜索关键词。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
                                     <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>name</td><td>string</td><td class="param-optional">否</td><td>资源站名称</td></tr>
-                                    <tr><td>api_url</td><td>string</td><td class="param-optional">否</td><td>采集接口地址</td></tr>
+                                    <tr><td>name</td><td>string</td><td class="param-optional">否</td><td>资源站名称（与 api_url 二选一）</td></tr>
+                                    <tr><td>api_url</td><td>string</td><td class="param-optional">否</td><td>采集接口地址（与 name 二选一）</td></tr>
                                     <tr><td>keyword</td><td>string</td><td class="param-required">是</td><td>搜索关键词</td></tr>
                                     <tr><td>page</td><td>int</td><td class="param-optional">否</td><td>页码，默认1</td></tr>
                                     <tr><td>limit</td><td>int</td><td class="param-optional">否</td><td>每页数量，默认20</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 通过资源站名称搜索
+mx.php?action=sites/search&name=量子&keyword=庆余年&page=1
+
+// 通过采集接口搜索
+mx.php?action=sites/search&api_url=https://cj.lziapi.com/api.php/provide/vod/from/lzm3u8/&keyword=庆余年</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "total": 50,
+  "pagecount": 3,
+  "page": 1,
+  "videos": [
+    {
+      "id": 12345,
+      "name": "庆余年",
+      "pic": "https://example.com/cover.jpg",
+      "remarks": "全46集",
+      "urls": [
+        {
+          "from": "lzm3u8",
+          "url": "https://example.com/play/12345.m3u8"
+        }
+      ],
+      "first_url": "https://example.com/play/12345.m3u8",
+      "raw_play_url": "第1集$https://example.com/play/1.m3u8#第2集$https://example.com/play/2.m3u8",
+      "play_from": "lzm3u8",
+      "has_non_m3u8": false,
+      "all_urls_count": 1
+    }
+  ]
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -755,6 +1405,10 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">在所有启用的资源站中搜索视频，按优先级顺序依次搜索前 max_sites 个站点，聚合返回各站搜索结果。</p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
@@ -767,6 +1421,50 @@ $apiBase = $basePath . '/mx.php?action=';
                                 </tbody>
                             </table>
                         </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=sites/search_all&keyword=庆余年&max_sites=5&limit_per_site=10</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "keyword": "庆余年",
+  "sites_searched": 3,
+  "total_videos": 2,
+  "results": [
+    {
+      "site": "量子",
+      "site_url": "http://23.224.101.30",
+      "count": 1,
+      "videos": [
+        {
+          "id": 12345,
+          "name": "庆余年",
+          "pic": "https://example.com/cover.jpg",
+          "remarks": "全46集",
+          "first_url": "https://example.com/play/12345.m3u8",
+          "site_name": "量子",
+          "site_url": "http://23.224.101.30"
+        }
+      ]
+    },
+    {
+      "site": "暴风",
+      "site_url": "http://bfzv8.lv",
+      "count": 0,
+      "videos": [],
+      "error": "搜索无结果"
+    }
+  ]
+}</pre>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -777,7 +1475,68 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">从资源站获取视频列表</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">从指定资源站获取视频列表（分页），需提供资源站名称或采集接口地址（二选一）。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>name</td><td>string</td><td class="param-optional">否</td><td>资源站名称（与 api_url 二选一）</td></tr>
+                                    <tr><td>api_url</td><td>string</td><td class="param-optional">否</td><td>采集接口地址（与 name 二选一）</td></tr>
+                                    <tr><td>page</td><td>int</td><td class="param-optional">否</td><td>页码，默认1</td></tr>
+                                    <tr><td>limit</td><td>int</td><td class="param-optional">否</td><td>每页数量，默认20</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 通过资源站名称获取
+mx.php?action=sites/fetch_videos&name=量子&page=1&limit=20
+
+// 通过采集接口获取
+mx.php?action=sites/fetch_videos&api_url=https://cj.lziapi.com/api.php/provide/vod/from/lzm3u8/&page=1</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "total": 100,
+  "pagecount": 5,
+  "page": 1,
+  "videos": [
+    {
+      "id": 12345,
+      "name": "示例视频",
+      "pic": "https://example.com/cover.jpg",
+      "remarks": "HD",
+      "urls": [
+        {
+          "from": "lzm3u8",
+          "url": "https://example.com/play/12345.m3u8"
+        }
+      ],
+      "first_url": "https://example.com/play/12345.m3u8",
+      "raw_play_url": "第1集$https://example.com/play/1.m3u8",
+      "play_from": "lzm3u8",
+      "has_non_m3u8": false,
+      "all_urls_count": 1
+    }
+  ]
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -863,17 +1622,46 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                从指定视频 URL 学习广告规则。接口会解析 M3U8 视频片段，使用增强广告规则引擎分析广告特征（不连续点、重复时长、序列跳变等），并更新对应域名的去广告规则。当片段数不足或广告占比过高时会拒绝学习。
+                            </p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数 (JSON Body)</div>
                             <table class="param-table">
                                 <thead>
-                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频 URL</td></tr>
-                                    <tr><td>min_segments</td><td>int</td><td class="param-optional">否</td><td>最少片段数</td></tr>
-                                    <tr><td>max_ad_percentage</td><td>int</td><td class="param-optional">否</td><td>最大广告占比</td></tr>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>-</td><td>视频 URL（M3U8 或可解析的播放页地址）</td></tr>
+                                    <tr><td>min_segments</td><td>int</td><td class="param-optional">否</td><td>50</td><td>最少片段数，低于此值视为无效视频</td></tr>
+                                    <tr><td>max_ad_percentage</td><td>int</td><td class="param-optional">否</td><td>90</td><td>最大广告占比（0-100），超过则拒绝学习</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/learn_video \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/video.m3u8", "min_segments": 50, "max_ad_percentage": 90}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "domain": "v.example.com",
+  "segments_count": 120,
+  "ad_count": 0,
+  "ad_percentage": 12.5,
+  "rule_updated": true
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -887,17 +1675,58 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                批量学习多个视频的广告规则，支持多线程并发处理以提高效率。启用 multi_thread 后使用 curl_multi 并发请求 sites/learn_video 接口；当多线程失败率超过 80% 或不可用时自动回退为串行模式。并发数会被限制在 1-10 之间。
+                            </p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数 (JSON Body)</div>
                             <table class="param-table">
                                 <thead>
-                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>urls</td><td>array</td><td class="param-required">是</td><td>视频 URL 数组</td></tr>
-                                    <tr><td>concurrency</td><td>int</td><td class="param-optional">否</td><td>并发数，默认5</td></tr>
-                                    <tr><td>multi_thread</td><td>bool</td><td class="param-optional">否</td><td>启用多线程</td></tr>
+                                    <tr><td>urls</td><td>array</td><td class="param-required">是</td><td>-</td><td>视频 URL 数组</td></tr>
+                                    <tr><td>concurrency</td><td>int</td><td class="param-optional">否</td><td>5</td><td>并发数（1-10）</td></tr>
+                                    <tr><td>multi_thread</td><td>bool</td><td class="param-optional">否</td><td>false</td><td>是否启用多线程</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/learn_batch \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://example.com/v1.m3u8", "https://example.com/v2.m3u8"], "multi_thread": true, "concurrency": 5}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "mode": "curl_multi",
+  "concurrency": 5,
+  "total": 2,
+  "success_count": 2,
+  "fail_count": 0,
+  "total_time": 8423.51,
+  "learned_domains": ["v.example.com"],
+  "results": [
+    {
+      "url": "https://example.com/v1.m3u8",
+      "success": true,
+      "domain": "v.example.com",
+      "segments_count": 120,
+      "ad_count": 0,
+      "duration": 4230.12
+    }
+  ]
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -909,7 +1738,67 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">批量分析多个视频（支持多线程）</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                批量分析多个视频的广告片段分布，仅分析统计不学习规则。启用 multi_thread 后并发请求 analyze 接口；多线程失败率超过 80% 或不可用时自动回退为串行模式，串行模式下直接调用 M3U8Parser 与 EnhancedAdRuleEngine 进行本地分析。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>urls</td><td>array</td><td class="param-required">是</td><td>-</td><td>视频 URL 数组</td></tr>
+                                    <tr><td>concurrency</td><td>int</td><td class="param-optional">否</td><td>5</td><td>并发数（1-10）</td></tr>
+                                    <tr><td>multi_thread</td><td>bool</td><td class="param-optional">否</td><td>false</td><td>是否启用多线程</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/analyze_batch \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://example.com/v1.m3u8", "https://example.com/v2.m3u8"], "multi_thread": true, "concurrency": 5}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "mode": "curl_multi",
+  "concurrency": 5,
+  "total": 2,
+  "success_count": 2,
+  "fail_count": 0,
+  "total_time": 5234.18,
+  "results": [
+    {
+      "url": "https://example.com/v1.m3u8",
+      "success": true,
+      "domain": "v.example.com",
+      "fast_mode": false,
+      "stats": {
+        "totalSegments": 120,
+        "adSegments": 15,
+        "discontinuityCount": 3,
+        "sequenceJumps": 2,
+        "adClusters": 4
+      },
+      "duration": 2612.34
+    }
+  ]
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/multi_thread/status 多线程状态">
@@ -919,7 +1808,36 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">获取多线程支持状态</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                获取当前运行环境对多线程的支持状态，返回可用的并发模式列表、推荐模式以及 PHP 运行环境信息（SAPI、pcntl 支持、curl_multi 支持）。供批量任务接口决定是否启用多线程及采用何种模式。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=sites/multi_thread/status</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "available": true,
+  "modes": ["serial", "curl_multi"],
+  "recommended_mode": "curl_multi",
+  "php_sapi": "apache2handler",
+  "pcntl_support": false,
+  "curl_multi_support": true
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -934,7 +1852,40 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">获取自动学习配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                获取自动学习配置，包含是否启用、间隔天数、每次视频数、最大站点数等参数。同时返回上次学习时间（last_learn_time）及是否应该触发自动学习（should_auto_learn，根据配置的间隔天数判断）。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=sites/auto_learn/config</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "config": {
+    "enabled": true,
+    "interval_days": 3,
+    "videos_per_site": 5,
+    "max_sites_per_run": 5,
+    "min_segments": 50,
+    "max_ad_percentage": 90
+  },
+  "last_learn_time": "2026-07-05 10:30:00",
+  "should_auto_learn": true
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/auto_learn/config/save 保存自动学习配置">
@@ -944,7 +1895,49 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">保存自动学习配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                保存自动学习配置。提交的配置会与现有配置合并后持久化到数据库（sys_config 表的 auto_learn 键），未提供的字段保留默认值。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>enabled</td><td>bool</td><td class="param-optional">否</td><td>是否启用自动学习</td></tr>
+                                    <tr><td>interval_days</td><td>int</td><td class="param-optional">否</td><td>触发间隔天数，默认 3</td></tr>
+                                    <tr><td>videos_per_site</td><td>int</td><td class="param-optional">否</td><td>每个站点学习的视频数，默认 5</td></tr>
+                                    <tr><td>max_sites_per_run</td><td>int</td><td class="param-optional">否</td><td>每次执行最大站点数，默认 5</td></tr>
+                                    <tr><td>min_segments</td><td>int</td><td class="param-optional">否</td><td>最少片段数，默认 50</td></tr>
+                                    <tr><td>max_ad_percentage</td><td>int</td><td class="param-optional">否</td><td>最大广告占比，默认 90</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/auto_learn/config/save \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true, "interval_days": 3, "videos_per_site": 5, "max_sites_per_run": 5}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "配置已更新"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="sites/auto_learn/run 执行自动学习">
@@ -957,16 +1950,62 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                执行一次自动学习任务。根据配置自动从资源站获取视频并学习广告规则，执行完成后会更新 last_learn_time。启用 multi_thread 时使用 curl_multi 并发调用 sites/learn_video；当多线程失败率超过 80% 时自动回退到串行模式（runAutoLearn）。需先在配置中启用自动学习，否则多线程模式会返回错误。
+                            </p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数 (JSON Body)</div>
                             <table class="param-table">
                                 <thead>
-                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>multi_thread</td><td>bool</td><td class="param-optional">否</td><td>启用多线程</td></tr>
-                                    <tr><td>concurrency</td><td>int</td><td class="param-optional">否</td><td>并发数</td></tr>
+                                    <tr><td>multi_thread</td><td>bool</td><td class="param-optional">否</td><td>false</td><td>是否启用多线程</td></tr>
+                                    <tr><td>concurrency</td><td>int</td><td class="param-optional">否</td><td>5</td><td>并发数（1-10）</td></tr>
+                                    <tr><td>max_sites</td><td>int</td><td class="param-optional">否</td><td>配置值</td><td>本次最大站点数，覆盖配置</td></tr>
+                                    <tr><td>videos_per_site</td><td>int</td><td class="param-optional">否</td><td>配置值</td><td>每站视频数，覆盖配置</td></tr>
+                                    <tr><td>keyword</td><td>string</td><td class="param-optional">否</td><td>-</td><td>搜索关键词，为空时获取最新视频</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=sites/auto_learn/run \
+  -H "Content-Type: application/json" \
+  -d '{"multi_thread": true, "concurrency": 5, "keyword": "庆余年"}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "自动学习完成（多线程模式）",
+  "mode": "curl_multi",
+  "concurrency": 5,
+  "keyword": "庆余年",
+  "sites_processed": 5,
+  "total_learned": 18,
+  "total_failed": 7,
+  "total_time": 23451.89,
+  "learned_domains": ["v.example.com", "v.lzcdn23.com"],
+  "details": [
+    {
+      "site": "量子",
+      "videos_checked": 5,
+      "videos_learned": 4,
+      "videos_failed": 1,
+      "domains": {"v.example.com": 4},
+      "fail_reasons": {"片段数不足": 1}
+    }
+  ]
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -978,7 +2017,40 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">获取自动学习状态</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                获取自动学习运行状态，包含上次学习时间、是否应该触发自动学习（依据配置间隔天数判断）以及当前完整配置。适合用于面板展示或定时任务调度前判断是否需要执行。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=sites/auto_learn/status</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "last_learn_time": "2026-07-05 10:30:00",
+  "should_auto_learn": true,
+  "config": {
+    "enabled": true,
+    "interval_days": 3,
+    "videos_per_site": 5,
+    "max_sites_per_run": 5,
+    "min_segments": 50,
+    "max_ad_percentage": 90
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -993,7 +2065,50 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">获取官替配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                获取官替功能完整配置，包含功能开关、默认站点、最大搜索站点数、缓存时间、平台规则列表（腾讯/爱奇艺/优酷/芒果TV/B站/搜狐/PP视频等）、搜索站点列表及匹配阈值。配置文件位于 gz/official_replace_config.php。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official_replace/config</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "config": {
+    "version": "1.0",
+    "update_date": "2026-07-05 10:30:00",
+    "enabled": true,
+    "default_site": "量子",
+    "max_search_sites": 5,
+    "cache_ttl": 3600,
+    "platforms": [
+      {
+        "name": "腾讯视频",
+        "domain": "v.qq.com",
+        "enabled": true,
+        "pattern": "/v\\.qq\\.com\/.*?(?:vid=|\/)([a-zA-Z0-9]+)/i",
+        "title_selector": "meta[property=\"og:title\"], meta[name=\"twitter:title\"], .video_title, h1",
+        "priority": 1
+      }
+    ],
+    "search_sites": ["量子", "最大", "猫眼", "红牛"],
+    "match_threshold": 60
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="official_replace/config/save 保存官替配置">
@@ -1003,7 +2118,50 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">保存官替配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                保存官替配置。提交的配置会整体覆盖现有配置并自动更新 update_date 时间戳，然后写回 gz/official_replace_config.php 文件。建议先通过 GET 接口获取完整配置再修改后提交，避免遗漏字段。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>enabled</td><td>bool</td><td class="param-optional">否</td><td>是否启用官替功能</td></tr>
+                                    <tr><td>default_site</td><td>string</td><td class="param-optional">否</td><td>默认资源站名称</td></tr>
+                                    <tr><td>max_search_sites</td><td>int</td><td class="param-optional">否</td><td>最大搜索站点数</td></tr>
+                                    <tr><td>cache_ttl</td><td>int</td><td class="param-optional">否</td><td>缓存时间（秒）</td></tr>
+                                    <tr><td>platforms</td><td>array</td><td class="param-optional">否</td><td>平台规则数组（含 name/domain/enabled/pattern/title_selector/priority）</td></tr>
+                                    <tr><td>search_sites</td><td>array</td><td class="param-optional">否</td><td>搜索资源站名称数组</td></tr>
+                                    <tr><td>match_threshold</td><td>int</td><td class="param-optional">否</td><td>匹配阈值（0-100），低于此值视为不匹配</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=official_replace/config/save \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true, "default_site": "量子", "max_search_sites": 5, "match_threshold": 60, "search_sites": ["量子", "最大"]}'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "保存成功"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="official_replace/platforms 官替平台列表">
@@ -1013,7 +2171,49 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">获取官替平台列表</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                获取官替支持的视频平台列表及匹配规则，包含平台名称、域名、URL 匹配正则、标题选择器、优先级等。返回数据来自官替配置的 platforms 字段。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official_replace/platforms</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "platforms": [
+    {
+      "name": "腾讯视频",
+      "domain": "v.qq.com",
+      "enabled": true,
+      "pattern": "/v\\.qq\\.com\/.*?(?:vid=|\/)([a-zA-Z0-9]+)/i",
+      "title_selector": "meta[property=\"og:title\"], meta[name=\"twitter:title\"], .video_title, h1",
+      "priority": 1
+    },
+    {
+      "name": "爱奇艺",
+      "domain": "iqiyi.com",
+      "enabled": true,
+      "pattern": "/iqiyi\\.com\/.*?([a-zA-Z0-9]{5,})/i",
+      "title_selector": "meta[property=\"og:title\"], meta[name=\"twitter:title\"], .main_title, h1",
+      "priority": 1
+    }
+  ],
+  "total": 2
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="official_replace/resolve 官替解析完整结果">
@@ -1026,15 +2226,65 @@ $apiBase = $basePath . '/mx.php?action=';
                     </div>
                     <div class="api-body">
                         <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                官替解析完整接口。传入官方视频平台 URL（腾讯/爱奇艺/优酷等），自动识别平台、抓取视频标题、解析季集信息，再到配置的资源站搜索匹配，返回最佳匹配资源站的 M3U8 地址、去广告跳转链接、所有候选结果及匹配详情（含 base_score、season_match、备选项 alternatives）。适合需要展示完整解析过程或调试匹配度的场景。
+                            </p>
+                        </div>
+                        <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
                                 <thead>
                                     <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>官方视频 URL</td></tr>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>官方视频 URL（支持 GET 与 POST 传参）</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official_replace/resolve&url=https://v.qq.com/x/cover/xxx.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "platform": "腾讯视频",
+  "original_url": "https://v.qq.com/x/cover/xxx.html",
+  "video_title": "庆余年 第二季",
+  "video_name": "庆余年 第二季",
+  "video_pic": "https://example.com/cover.jpg",
+  "video_remarks": "更新至第36集",
+  "original_title": "庆余年 第二季",
+  "base_title": "庆余年",
+  "season": "第二季",
+  "season_num": 2,
+  "episode": null,
+  "episode_num": null,
+  "video_id": "xxx",
+  "match_score": 95.0,
+  "base_score": 80.0,
+  "season_match": true,
+  "site": "量子",
+  "m3u8_url": "https://v.lzcdn23.com/xxx/index.m3u8",
+  "ad_skip_url": "https://your-domain.com/mx.php?action=mxjx&url=https%3A%2F%2Fv.lzcdn23.com%2Fxxx%2Findex.m3u8",
+  "target_episode": "第1集",
+  "all_urls": [
+    {"name": "第1集", "url": "https://v.lzcdn23.com/xxx/1.m3u8"},
+    {"name": "第2集", "url": "https://v.lzcdn23.com/xxx/2.m3u8"}
+  ],
+  "episodes": 2,
+  "alternatives": [],
+  "used_keyword": "庆余年 第二季",
+  "request_time": 1783552229
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1046,7 +2296,58 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">官替解析 - 精简信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                官替解析精简版接口。返回去广告播放所需的精简信息（平台、标题、封面、M3U8 地址、去广告跳转链接、集数列表等），适合直接嵌入播放器使用。响应会设置 no-cache 头，每次请求都重新解析。底层调用 official_replace/resolve 的同一逻辑，仅裁剪输出字段。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>官方视频 URL</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official_replace/info&url=https://v.qq.com/x/cover/xxx.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "platform": "腾讯视频",
+  "original_url": "https://v.qq.com/x/cover/xxx.html",
+  "video_title": "庆余年 第二季",
+  "video_name": "庆余年 第二季",
+  "video_pic": "https://example.com/cover.jpg",
+  "video_remarks": "更新至第36集",
+  "match_score": 95.0,
+  "site": "量子",
+  "m3u8_url": "https://v.lzcdn23.com/xxx/index.m3u8",
+  "target_episode": "第1集",
+  "ad_skip_url": "https://your-domain.com/mx.php?action=mxjx&url=https%3A%2F%2Fv.lzcdn23.com%2Fxxx%2Findex.m3u8",
+  "all_urls": [
+    {"name": "第1集", "url": "https://v.lzcdn23.com/xxx/1.m3u8"},
+    {"name": "第2集", "url": "https://v.lzcdn23.com/xxx/2.m3u8"}
+  ],
+  "episodes": 2,
+  "timestamp": 1783552229
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1058,21 +2359,16 @@ $apiBase = $basePath . '/mx.php?action=';
                     <div class="api-header" onclick="toggleApi(this)">
                         <span class="api-method get">GET</span>
                         <span class="api-path">skip</span>
-                        <span class="api-desc">去广告接口（跳转）</span>
-                        <span class="api-arrow">▶</span>
-                    </div>
-                    <div class="api-body"></div>
-                </div>
-
-                <div class="api-card" data-name="mxjx 去广告m3u8输出">
-                    <div class="api-header" onclick="toggleApi(this)">
-                        <span class="api-method get">GET</span>
-                        <span class="api-path">mxjx</span>
-                        <span class="api-desc">去广告 m3u8 直接输出</span>
-                        <span class="tag stable">稳定</span>
+                        <span class="api-desc">去广告接口（302跳转）</span>
                         <span class="api-arrow">▶</span>
                     </div>
                     <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                去广告跳转接口，解析 M3U8 视频并 302 重定向到去广告后的播放地址。
+                            </p>
+                        </div>
                         <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
@@ -1080,9 +2376,22 @@ $apiBase = $basePath . '/mx.php?action=';
                                     <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>m3u8 视频 URL</td></tr>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频 URL</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=skip&url=https://example.com/video.m3u8</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                返回 HTTP 302 重定向，Location 头指向去广告后的 M3U8 地址。直接在浏览器或播放器中打开即可播放。
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -1094,18 +2403,13 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-desc">去广告解析详细信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
-                </div>
-
-                <div class="api-card" data-name="xiami_jx 虾米解析">
-                    <div class="api-header" onclick="toggleApi(this)">
-                        <span class="api-method get">GET</span>
-                        <span class="api-path">xiami_jx</span>
-                        <span class="api-desc">虾米解析 - 全网 VIP 视频解析</span>
-                        <span class="tag new">新</span>
-                        <span class="api-arrow">▶</span>
-                    </div>
                     <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                返回 M3U8 去广告解析的详细信息，包括原始地址、去广告后地址、广告统计等。
+                            </p>
+                        </div>
                         <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
@@ -1113,16 +2417,43 @@ $apiBase = $basePath . '/mx.php?action=';
                                     <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频播放页 URL</td></tr>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频 URL</td></tr>
                                 </tbody>
                             </table>
                         </div>
                         <div class="api-section">
-                            <div class="api-section-title">说明</div>
-                            <p style="color: var(--text-regular); font-size: 0.9em;">
-                                支持爱奇艺、腾讯视频、优酷、芒果TV等主流视频平台的 VIP 视频解析。<br>
-                                也可以使用独立脚本: <code>xiami_jx.php?url=视频链接</code>
-                            </p>
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=mxjx/info&url=https://example.com/video.m3u8</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "code": 200,
+  "success": true,
+  "message": "解析成功",
+  "data": {
+    "original_url": "https://example.com/video.m3u8",
+    "media_url": "https://example.com/video.m3u8",
+    "domain": "example.com",
+    "play_url": "https://your-domain.com/mx.php?action=mxjx&url=xxx",
+    "has_domain_rules": true,
+    "stats": {
+      "total_segments": 120,
+      "kept_segments": 100,
+      "removed_segments": 20,
+      "original_duration": 2400,
+      "filtered_duration": 2000,
+      "saved_duration": 400,
+      "ad_percentage": 16.7
+    }
+  }
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1135,17 +2466,50 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="tag new">新</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
-                </div>
-
-                <div class="api-card" data-name="moxi 沫兮API接口">
-                    <div class="api-header" onclick="toggleApi(this)">
-                        <span class="api-method get">GET</span>
-                        <span class="api-path">moxi</span>
-                        <span class="api-desc">沫兮 API 接口</span>
-                        <span class="api-arrow">▶</span>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                返回虾米解析的详细信息，包括原始 URL、媒体地址、视频类型等。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频播放页 URL</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=xiami_jx/info&url=https://v.youku.com/v_show/id_xxx.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "code": 200,
+  "success": true,
+  "message": "解析成功",
+  "data": {
+    "original_url": "https://v.youku.com/v_show/id_xxx.html",
+    "media_url": "https://example.com/play.m3u8",
+    "type": "m3u8",
+    "label": "HLS",
+    "source": "xiami"
+  }
+}</pre>
+                            </div>
+                        </div>
                     </div>
-                    <div class="api-body"></div>
                 </div>
 
                 <div class="api-card" data-name="parse/list 统一解析接口列表">
@@ -1387,6 +2751,54 @@ mx.php?action=parse/info&url=https://v.youku.com/v_show/id_xxx.html
 // 指定类型获取详情
 mx.php?action=parse/info&type=xiami&url=https://v.youku.com/v_show/id_xxx.html</pre>
                             </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "code": 200,
+  "message": "虾米解析成功",
+  "type": "xiami",
+  "type_name": "虾米解析",
+  "original_url": "https://v.youku.com/v_show/id_xxx.html",
+  "play_url": "https://example.com/play/video.m3u8",
+  "video_name": "",
+  "is_official": true,
+  "is_m3u8": false,
+  "raw": {
+    "success": true,
+    "code": 200,
+    "message": "解析成功",
+    "play_url": "https://example.com/play/video.m3u8",
+    "video_type": "m3u8",
+    "label": "HLS",
+    "original_url": "https://v.youku.com/v_show/id_xxx.html",
+    "source": "xiami"
+  }
+}</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应字段说明</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>success</td><td>bool</td><td>是否成功</td></tr>
+                                    <tr><td>code</td><td>int</td><td>状态码：200=成功，400=参数错误，500=解析失败</td></tr>
+                                    <tr><td>message</td><td>string</td><td>状态信息</td></tr>
+                                    <tr><td>type</td><td>string</td><td>使用的解析类型</td></tr>
+                                    <tr><td>type_name</td><td>string</td><td>解析类型名称</td></tr>
+                                    <tr><td>original_url</td><td>string</td><td>原始视频链接</td></tr>
+                                    <tr><td>play_url</td><td>string</td><td>解析后的播放地址</td></tr>
+                                    <tr><td>is_official</td><td>bool</td><td>是否为官方视频平台链接</td></tr>
+                                    <tr><td>is_m3u8</td><td>bool</td><td>是否为 M3U8 视频</td></tr>
+                                    <tr><td>raw</td><td>object</td><td>原始解析接口返回的完整数据</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1684,7 +3096,31 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">获取当前版本信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取系统当前版本信息，包括当前版本号、Git commit 哈希以及 version.php 文件中记录的内容。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=update/version</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "current_version": "1.0.0",
+  "current_commit": "a1b2c3d",
+  "version_file": "1.0.0"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="update/check 检查更新">
@@ -1694,7 +3130,34 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">检查是否有新版本</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">检查远程仓库是否存在新版本，返回是否有更新、当前版本与最新版本信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=update/check</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "has_update": true,
+  "current_version": "1.0.0",
+  "current_commit": "a1b2c3d",
+  "latest_version": "1.1.0",
+  "latest_commit": "e4f5g6h",
+  "message": "发现新版本"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="update/integrity 完整性检查">
@@ -1704,7 +3167,33 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">文件完整性检查</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">校验系统核心文件是否被篡改或缺失，返回被修改和缺失的文件列表。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=update/integrity</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "完整性检查完成",
+  "total_files": 120,
+  "modified_files": 0,
+  "missing_files": 0,
+  "files": []
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="update/download 下载更新">
@@ -1714,7 +3203,31 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">下载并安装更新</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">从远程仓库下载最新版本文件并安装更新，无需请求参数。建议在执行前先调用 update/check 确认存在新版本。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=update/download</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "更新下载并安装成功",
+  "updated_files": 15,
+  "new_version": "1.1.0"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="update/clear_cache 清理更新缓存">
@@ -1724,7 +3237,33 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">清理更新缓存</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">清理系统运行过程中产生的各类缓存文件，无需请求参数。返回清理结果及缓存统计信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=update/clear_cache</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "缓存清理成功",
+  "cache_info": {
+    "cleared": true,
+    "size": 1048576
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="update/system_info 系统信息">
@@ -1734,7 +3273,32 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">获取系统信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取服务器运行环境信息，包括 PHP 版本、操作系统、磁盘空间、内存占用等。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=update/system_info</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "php_version": "8.2.0",
+  "os": "Linux",
+  "disk_free": "10.5G",
+  "memory_usage": "32M"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1749,7 +3313,33 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">获取当前授权信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取当前系统授权状态信息，包括授权域名、授权码、到期时间及联系方式。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=auth/info</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "authorized": true,
+  "domain": "example.com",
+  "auth_code": "xxxx-xxxx-xxxx-xxxx",
+  "expire_at": "2026-12-31",
+  "contact": "QQ2094332348"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="auth/validate 验证授权">
@@ -1759,7 +3349,32 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">验证授权码</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">同时执行本地与远程授权校验，返回各自校验结果及综合有效性，无需请求参数。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=auth/validate</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "local_valid": true,
+  "remote_valid": true,
+  "all_valid": true,
+  "error": null
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="auth/set 设置授权码">
@@ -1769,7 +3384,44 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">设置授权码</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">设置系统授权码，以 JSON Body 形式提交。授权码为空时返回 400 错误。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>auth_code</td><td>string</td><td class="param-required">是</td><td>授权码</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=auth/set \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auth_code": "xxxx-xxxx-xxxx-xxxx"
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "授权码设置成功"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="auth/generate 生成授权码">
@@ -1779,7 +3431,42 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">生成授权码</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">根据指定域名生成对应的授权码，参数 domain 可通过 GET 或 POST 方式提交。domain 为空时返回 400 错误。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>domain</td><td>string</td><td class="param-required">是</td><td>需要生成授权码的域名</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=auth/generate \
+  -d "domain=example.com"</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "domain": "example.com",
+  "auth_code": "xxxx-xxxx-xxxx-xxxx"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1794,7 +3481,48 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">获取数据库连接状态</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取数据库启用状态、数据库类型、各核心表是否存在、规则/资源站/代理数量、是否已迁移及当前配置信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=db/status</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "status": {
+    "use_db": true,
+    "db_type": "sqlite",
+    "tables": {
+      "sys_config": true,
+      "domain_rules": true,
+      "resource_sites": true,
+      "proxies": true,
+      "official_sites": true,
+      "official_platforms": true
+    },
+    "rule_count": 12,
+    "site_count": 5,
+    "proxy_count": 3,
+    "migrated": true,
+    "config": {
+      "type": "sqlite",
+      "sqlite_path": "/var/www/html/db/data.db"
+    }
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="db/config/save 保存数据库配置">
@@ -1804,7 +3532,57 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">保存数据库配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">保存数据库连接配置到 db/db_config.php 文件，保存后会尝试连接并初始化表结构。配置写入失败或连接异常时返回相应错误信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>数据库类型，sqlite 或 mysql，默认 sqlite</td></tr>
+                                    <tr><td>sqlite_path</td><td>string</td><td class="param-optional">否</td><td>SQLite 数据库文件路径（type=sqlite 时使用）</td></tr>
+                                    <tr><td>mysql_host</td><td>string</td><td class="param-optional">否</td><td>MySQL 主机地址，默认 127.0.0.1</td></tr>
+                                    <tr><td>mysql_port</td><td>int</td><td class="param-optional">否</td><td>MySQL 端口，默认 3306</td></tr>
+                                    <tr><td>mysql_dbname</td><td>string</td><td class="param-optional">否</td><td>MySQL 数据库名，默认 m3u8_ad</td></tr>
+                                    <tr><td>mysql_username</td><td>string</td><td class="param-optional">否</td><td>MySQL 用户名，默认 root</td></tr>
+                                    <tr><td>mysql_password</td><td>string</td><td class="param-optional">否</td><td>MySQL 密码，默认空</td></tr>
+                                    <tr><td>mysql_charset</td><td>string</td><td class="param-optional">否</td><td>MySQL 字符集，默认 utf8mb4</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=db/config/save \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "mysql",
+    "mysql_host": "127.0.0.1",
+    "mysql_port": 3306,
+    "mysql_dbname": "m3u8_ad",
+    "mysql_username": "root",
+    "mysql_password": "123456",
+    "mysql_charset": "utf8mb4"
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "配置保存成功，数据库连接正常"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="db/test_connection 测试数据库连接">
@@ -1814,7 +3592,62 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">测试数据库连接</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">使用提交的配置参数测试数据库连接，不会持久化保存配置。成功时返回数据库类型、版本及表数量等信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>数据库类型，sqlite 或 mysql，默认 sqlite</td></tr>
+                                    <tr><td>sqlite_path</td><td>string</td><td class="param-optional">否</td><td>SQLite 数据库文件路径（type=sqlite 时使用）</td></tr>
+                                    <tr><td>mysql_host</td><td>string</td><td class="param-optional">否</td><td>MySQL 主机地址，默认 127.0.0.1</td></tr>
+                                    <tr><td>mysql_port</td><td>int</td><td class="param-optional">否</td><td>MySQL 端口，默认 3306</td></tr>
+                                    <tr><td>mysql_dbname</td><td>string</td><td class="param-optional">否</td><td>MySQL 数据库名，默认 m3u8_ad</td></tr>
+                                    <tr><td>mysql_username</td><td>string</td><td class="param-optional">否</td><td>MySQL 用户名，默认 root</td></tr>
+                                    <tr><td>mysql_password</td><td>string</td><td class="param-optional">否</td><td>MySQL 密码，默认空</td></tr>
+                                    <tr><td>mysql_charset</td><td>string</td><td class="param-optional">否</td><td>MySQL 字符集，默认 utf8mb4</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=db/test_connection \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "mysql",
+    "mysql_host": "127.0.0.1",
+    "mysql_port": 3306,
+    "mysql_dbname": "m3u8_ad",
+    "mysql_username": "root",
+    "mysql_password": "123456"
+  }'</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "数据库连接成功！",
+  "info": {
+    "type": "mysql",
+    "connected": true,
+    "version": "8.0.30",
+    "table_count": 6
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="db/migrate 数据库迁移">
@@ -1824,7 +3657,34 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">执行数据库迁移</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">将文件存储的数据迁移到数据库中，无需请求参数。数据库未启用时返回 400 错误，迁移失败返回 500 状态码。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=db/migrate</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "数据迁移完成",
+  "migrated": {
+    "rules": 12,
+    "sites": 5,
+    "proxies": 3
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="db/init 初始化数据库">
@@ -1834,7 +3694,29 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">初始化数据库</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">初始化数据库表结构，创建所需的核心表，无需请求参数。数据库未启用时返回 400 错误，初始化失败返回 500 状态码。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=db/init</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "数据库表初始化完成"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1849,7 +3731,47 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">系统基本信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取系统基本信息，包括系统名称、版本、PHP 版本、数据库状态、可用特性及统计信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=info</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "name": "M3U8广告跳过系统",
+  "version": "1.0.0",
+  "commit": "a1b2c3d",
+  "updated_at": "2026-07-01",
+  "php_version": "8.2.0",
+  "database_enabled": true,
+  "database_type": "sqlite",
+  "features": {
+    "ad_detection": true,
+    "multi_thread": true,
+    "database_cache": true,
+    "official_replace": true
+  },
+  "timestamp": 1720411200,
+  "stats": {
+    "rules": 12,
+    "sites": 5,
+    "proxies": 3
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="version 版本信息">
@@ -1859,7 +3781,34 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">版本信息</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取系统版本信息，包括版本号、commit、更新时间、version.php 文件是否存在、PHP 版本及数据库类型。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=version</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "version": "1.0.0",
+  "commit": "a1b2c3d",
+  "updated_at": "2026-07-01",
+  "version_file": true,
+  "php_version": "8.2.0",
+  "database_type": "sqlite"
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="player/config 播放器配置">
@@ -1869,7 +3818,46 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">播放器配置</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取播放器配置信息，读取 gz/player_config.php 文件并与默认配置合并后返回。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=player/config</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "config": {
+    "player": "dplayer",
+    "autoplay": false,
+    "preload": "auto",
+    "api_base_url": "",
+    "hls_config": {
+      "enableWorker": true,
+      "lowLatencyMode": false,
+      "maxBufferLength": 30,
+      "maxMaxBufferLength": 600,
+      "minBufferLength": 2,
+      "maxBufferSize": 60000000,
+      "maxBufferHole": 0.5,
+      "highBufferWatchdogPeriod": 2,
+      "startLevel": -1,
+      "capLevelToPlayerSize": false
+    }
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="proxy/list 代理列表">
@@ -1879,7 +3867,51 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">代理列表</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取当前可用的代理列表，按响应时间、优先级和失败次数排序，并返回代理统计信息。代理模块未初始化时返回 500 错误。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=proxy/list</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "proxies": [
+    {
+      "id": "1",
+      "name": "代理1",
+      "type": "http",
+      "url": "http://1.2.3.4:8080",
+      "host": "1.2.3.4",
+      "port": 8080,
+      "response_time": 0.35,
+      "success_count": 120,
+      "fail_count": 2,
+      "priority": 100,
+      "last_check": "2026-07-08 10:00:00",
+      "last_success": "2026-07-08 10:00:00"
+    }
+  ],
+  "count": 1,
+  "stats": {
+    "total": 3,
+    "active": 1,
+    "auto_switch": true
+  },
+  "auto_switch": true
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="official/list 官替站点列表">
@@ -1889,7 +3921,49 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">官替站点列表</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取官替（官方替换）资源站列表，返回站点数据、总数及官替功能是否启用。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>include_paused</td><td>string</td><td class="param-optional">否</td><td>是否包含已暂停站点，传 1 表示包含</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official/list
+mx.php?action=official/list&include_paused=1</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "sites": [
+    {
+      "name": "资源站1",
+      "api_url": "https://example.com/api.php",
+      "status": "active"
+    }
+  ],
+  "total": 1,
+  "enabled": true
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="api-card" data-name="proxies/list 代理配置列表">
@@ -1899,7 +3973,41 @@ mx.php?action=official_replace/platforms</pre>
                         <span class="api-desc">代理配置列表</span>
                         <span class="api-arrow">▶</span>
                     </div>
-                    <div class="api-body"></div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取所有代理配置列表，包括全部代理及活跃代理数量统计。代理模块未初始化时返回 500 错误。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=proxies/list</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "proxies": [
+    {
+      "id": "1",
+      "name": "代理1",
+      "type": "http",
+      "host": "1.2.3.4",
+      "port": 8080,
+      "status": "active",
+      "priority": 100
+    }
+  ],
+  "total": 3,
+  "active_count": 1
+}</pre>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
