@@ -5,6 +5,57 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.30.2] - 2026-07-08
+
+### 🐘 新增 PHP 接口调用示例库
+
+**功能**: 新增 `api_helper.php` PHP 调用工具库，封装了 30+ 常用接口的调用函数，即插即用，方便在其他 PHP 项目中快速集成。
+
+**文件**: [api_helper.php](file:///workspace/api_helper.php)
+
+**包含的函数分类**:
+
+| 分类 | 函数列表 |
+|------|---------|
+| 🎬 视频分析 | `analyzeVideo()` |
+| 📋 规则管理 | `getRulesList()`, `getDomainRules()`, `saveDomainRules()`, `deleteDomainRules()`, `generateRules()`, `learnRules()` |
+| 📺 资源站管理 | `getSitesList()`, `searchSiteVideos()`, `searchAllSites()` |
+| 📖 学习相关 | `searchAndLearn()`, `learnVideo()`, `learnBatchVideos()` |
+| 🤖 自动学习 | `getAutoLearnConfig()`, `saveAutoLearnConfig()`, `runAutoLearn()`, `getAutoLearnStatus()` |
+| 🔄 官方替换 | `officialReplaceResolve()`, `officialReplaceInfo()`, `getOfficialReplaceConfig()` |
+| 🔗 解析接口 | `getAdFreeM3u8()`, `getMxjxInfo()`, `xiamiParse()`, `xiamiParseInfo()`, `moxiApi()` |
+| 🔧 系统更新 | `getCurrentVersion()`, `checkUpdate()`, `getSystemInfo()` |
+| 🗄️ 数据库 | `getDbStatus()`, `saveDbConfig()`, `testDbConnection()` |
+| 📦 其他 | `getInfo()`, `getVersion()`, `getPlayerConfig()` |
+
+**通用请求函数**:
+- `api_get($url, $timeout)` - GET 请求
+- `api_post_json($url, $data, $timeout)` - POST JSON 请求
+- `api_post_form($url, $data, $timeout)` - POST 表单请求
+
+**使用方法**:
+```php
+require_once 'api_helper.php';
+
+// 示例：搜索并学习
+$result = searchAndLearn('庆余年', [
+    'multi_thread' => true,
+    'concurrency' => 5
+]);
+
+// 示例：虾米解析
+$result = xiamiParse('https://v.youku.com/v_show/id_xxx.html');
+
+// 示例：获取去广告 m3u8
+$m3u8 = getAdFreeM3u8('https://example.com/video.m3u8');
+```
+
+**入口位置**:
+- API 文档页面顶部 → 🐘 下载 PHP 调用示例
+- API 文档左侧边栏 → 📥 下载 PHP 调用示例库
+
+---
+
 ## [2.30.1] - 2026-07-08
 
 ### 📚 新增完整 API 文档页面

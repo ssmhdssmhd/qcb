@@ -374,7 +374,12 @@ $apiBase = $basePath . '/mx.php?action=';
         <a href="mxadmin.php" class="back-btn">← 返回后台</a>
         <h1>📚 API 接口文档</h1>
         <p>M3U8 广告分析系统 - 完整 API 参考手册</p>
-        <span class="version">版本 <?php echo $version; ?></span>
+        <div style="margin-top: 15px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <span class="version">版本 <?php echo $version; ?></span>
+            <a href="api_helper.php" class="back-btn" style="background: rgba(255,255,255,0.2); padding: 6px 16px; border-radius: 20px;" download>
+                🐘 下载 PHP 调用示例
+            </a>
+        </div>
     </div>
 
     <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
@@ -385,6 +390,15 @@ $apiBase = $basePath . '/mx.php?action=';
                 <div class="sidebar-title">🔍 快速搜索</div>
                 <div class="search-box">
                     <input type="text" class="search-input" id="searchInput" placeholder="搜索接口名称..." oninput="filterApis()">
+                </div>
+                <div class="sidebar-title">🐘 PHP 调用</div>
+                <div style="margin-bottom: 16px;">
+                    <a href="api_helper.php" download style="display:block;padding:10px 12px;background:var(--primary-bg);color:var(--primary-text);border-radius:6px;text-decoration:none;font-size:0.9em;text-align:center;">
+                        📥 下载 PHP 调用示例库
+                    </a>
+                    <p style="font-size:0.8em;color:var(--text-secondary);margin-top:8px;line-height:1.4">
+                        包含 30+ 封装好的接口调用函数，即插即用
+                    </p>
                 </div>
                 <div class="sidebar-title">📑 接口分类</div>
                 <ul class="sidebar-list" id="sidebarList">
