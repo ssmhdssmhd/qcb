@@ -1161,28 +1161,61 @@ $apiBase = $basePath . '/mx.php?action=';
                         <div class="api-section">
                             <div class="api-section-title">说明</div>
                             <p style="color: var(--text-regular); font-size: 0.9em;">
-                                统一解析接口，整合多种解析能力，一键调用，智能识别视频类型。
+                                获取统一解析接口支持的所有解析类型和使用说明。所有解析能力全部集成在 mx.php 中，无需额外文件。
                             </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=parse/list</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "message": "统一视频解析接口",
+  "name": "Parse API - 统一解析接口",
+  "version": "v1.0.0",
+  "base_url": "https://your-domain.com/mx.php",
+  "usage": {
+    "智能解析": "mx.php?action=parse&url=视频链接",
+    "指定类型": "mx.php?action=parse&type=xiami&url=视频链接",
+    "获取详情": "mx.php?action=parse/info&url=视频链接",
+    "接口列表": "mx.php?action=parse/list"
+  },
+  "supported_types": {
+    "parse": "智能解析（自动判断类型）",
+    "mxjx": "去广告解析（M3U8 去广告）",
+    "xiami": "虾米解析（全网 VIP 视频）",
+    "moxi": "沫兮解析（官方视频替换）",
+    "official": "官方替换（智能匹配资源站）"
+  }
+}</pre>
+                            </div>
                         </div>
                         <div class="api-section">
                             <div class="api-section-title">支持的解析类型</div>
                             <table class="param-table">
                                 <thead>
-                                    <tr><th>类型</th><th>名称</th><th>说明</th></tr>
+                                    <tr><th>类型</th><th>名称</th><th>适用场景</th><th>说明</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>parse</td><td>智能解析</td><td>自动判断视频类型，选择最佳解析方式</td></tr>
-                                    <tr><td>mxjx</td><td>去广告解析</td><td>M3U8 视频去广告，自动识别并移除广告片段</td></tr>
-                                    <tr><td>xiami</td><td>虾米解析</td><td>全网 VIP 视频解析，支持腾讯、爱奇艺、优酷等</td></tr>
-                                    <tr><td>moxi</td><td>沫兮解析</td><td>沫兮 API 解析，支持官方视频智能替换</td></tr>
-                                    <tr><td>official</td><td>官方替换</td><td>官方视频链接智能匹配资源站无广告源</td></tr>
+                                    <tr><td>parse</td><td>智能解析</td><td>所有场景</td><td>自动判断视频类型，选择最佳解析方式</td></tr>
+                                    <tr><td>mxjx</td><td>去广告解析</td><td>M3U8 视频</td><td>M3U8 视频去广告，自动识别并移除广告片段</td></tr>
+                                    <tr><td>xiami</td><td>虾米解析</td><td>VIP 视频</td><td>全网 VIP 视频解析，支持腾讯、爱奇艺、优酷等</td></tr>
+                                    <tr><td>moxi</td><td>沫兮解析</td><td>官方视频</td><td>沫兮 API 解析，支持官方视频智能替换</td></tr>
+                                    <tr><td>official</td><td>官方替换</td><td>官方视频</td><td>官方视频链接智能匹配资源站无广告源</td></tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
 
-                <div class="api-card" data-name="parse 统一解析">
+                <div class="api-card" data-name="parse 统一解析视频">
                     <div class="api-header" onclick="toggleApi(this)">
                         <span class="api-method get">GET</span>
                         <span class="api-path">parse</span>
@@ -1192,6 +1225,146 @@ $apiBase = $basePath . '/mx.php?action=';
                         <span class="api-arrow">▶</span>
                     </div>
                     <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                统一视频解析入口，支持 5 种解析方式，智能识别视频类型。<br>
+                                <strong>全部内部集成，无外部 HTTP 自调用，性能更优。</strong>
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频链接（M3U8 地址或 VIP 视频播放页）</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>解析类型：parse / mxjx / xiami / moxi / official，默认 parse</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 1. 智能解析（推荐，自动选择最佳方式）
+mx.php?action=parse&url=https://v.youku.com/v_show/id_xxx.html
+
+// 2. 虾米解析（VIP 视频）
+mx.php?action=parse&type=xiami&url=https://v.youku.com/v_show/id_xxx.html
+
+// 3. 去广告解析（M3U8 视频）
+mx.php?action=parse&type=mxjx&url=https://example.com/video.m3u8
+
+// 4. 沫兮解析
+mx.php?action=parse&type=moxi&url=https://v.qq.com/x/cover/xxx.html
+
+// 5. 官方替换
+mx.php?action=parse&type=official&url=https://www.iqiyi.com/v_xxx.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例（成功）</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "code": 200,
+  "message": "虾米解析成功",
+  "type": "xiami",
+  "type_name": "虾米解析",
+  "original_url": "https://v.youku.com/v_show/id_xxx.html",
+  "play_url": "https://example.com/play/video.m3u8",
+  "video_name": "",
+  "is_official": true,
+  "is_m3u8": false,
+  "raw": {
+    "success": true,
+    "code": 200,
+    "message": "解析成功",
+    "play_url": "https://example.com/play/video.m3u8",
+    "video_type": "m3u8",
+    "label": "HLS",
+    "original_url": "https://v.youku.com/v_show/id_xxx.html",
+    "source": "xiami"
+  }
+}</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例（失败）</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": false,
+  "code": 500,
+  "message": "未获取到资源",
+  "type": "xiami",
+  "type_name": "虾米解析",
+  "original_url": "https://v.youku.com/v_show/id_xxx.html",
+  "play_url": "",
+  "video_name": "",
+  "is_official": true,
+  "is_m3u8": false
+}</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应字段说明</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>success</td><td>bool</td><td>是否成功</td></tr>
+                                    <tr><td>code</td><td>int</td><td>状态码：200=成功，400=参数错误，500=解析失败</td></tr>
+                                    <tr><td>message</td><td>string</td><td>状态信息</td></tr>
+                                    <tr><td>type</td><td>string</td><td>使用的解析类型</td></tr>
+                                    <tr><td>type_name</td><td>string</td><td>解析类型名称</td></tr>
+                                    <tr><td>original_url</td><td>string</td><td>原始视频链接</td></tr>
+                                    <tr><td>play_url</td><td>string</td><td>解析后的播放地址</td></tr>
+                                    <tr><td>video_name</td><td>string</td><td>视频名称（部分接口支持）</td></tr>
+                                    <tr><td>is_official</td><td>bool</td><td>是否为官方视频平台链接</td></tr>
+                                    <tr><td>is_m3u8</td><td>bool</td><td>是否为 M3U8 视频</td></tr>
+                                    <tr><td>raw</td><td>object</td><td>原始解析接口返回的完整数据（可选）</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">智能解析规则</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                当 <code>type=parse</code> 时，按以下规则自动选择解析方式：
+                            </p>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>视频类型</th><th>自动选择</th><th>判断条件</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>M3U8 视频</td><td>mxjx（去广告解析）</td><td>URL 包含 .m3u8 后缀</td></tr>
+                                    <tr><td>官方 VIP 视频</td><td>xiami（虾米解析）</td><td>域名为腾讯/爱奇艺/优酷/芒果TV/B站等</td></tr>
+                                    <tr><td>其他视频</td><td>mxjx（去广告解析）</td><td>以上都不匹配时</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="parse/info 统一解析详情">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">parse/info</span>
+                        <span class="api-desc">统一视频解析 - 详细信息</span>
+                        <span class="tag new">新</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                与 <code>parse</code> 接口功能相同，返回完整的解析详情信息。
+                            </p>
+                        </div>
                         <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
@@ -1208,28 +1381,105 @@ $apiBase = $basePath . '/mx.php?action=';
                             <div class="api-section-title">调用示例</div>
                             <div class="code-block">
                                 <button class="copy-btn" onclick="copyCode(this)">复制</button>
-<pre>// 智能解析
-mx.php?action=parse&url=https://v.youku.com/v_show/id_xxx.html
+<pre>// 获取详细解析信息
+mx.php?action=parse/info&url=https://v.youku.com/v_show/id_xxx.html
 
-// 指定虾米解析
-mx.php?action=parse&type=xiami&url=https://v.youku.com/v_show/id_xxx.html
-
-// 去广告解析
-mx.php?action=parse&type=mxjx&url=https://example.com/video.m3u8</pre>
+// 指定类型获取详情
+mx.php?action=parse/info&type=xiami&url=https://v.youku.com/v_show/id_xxx.html</pre>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="api-card" data-name="parse/info 统一解析详情">
+                <div class="api-card" data-name="xiami_jx 虾米解析">
                     <div class="api-header" onclick="toggleApi(this)">
                         <span class="api-method get">GET</span>
-                        <span class="api-path">parse/info</span>
-                        <span class="api-desc">统一视频解析 - 详细信息</span>
-                        <span class="tag new">新</span>
+                        <span class="api-path">xiami_jx</span>
+                        <span class="api-desc">虾米解析 - VIP 视频解析</span>
                         <span class="api-arrow">▶</span>
                     </div>
                     <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                虾米解析（jx.xmflv.cc）API，支持全网 VIP 视频解析。<br>
+                                采用 AES-256-CBC + Zero Padding 签名加密，多节点轮询。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频播放页链接</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 解析视频
+mx.php?action=xiami_jx&url=https://v.youku.com/v_show/id_xxx.html
+
+// 获取详细信息
+mx.php?action=xiami_jx/info&url=https://v.qq.com/x/page/xxx.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "code": 200,
+  "success": true,
+  "message": "解析成功",
+  "data": {
+    "original_url": "https://v.youku.com/v_show/id_xxx.html",
+    "media_url": "https://example.com/play.m3u8",
+    "type": "m3u8",
+    "label": "HLS",
+    "source": "xiami"
+  }
+}</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">支持平台</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>平台</th><th>域名</th><th>支持</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>腾讯视频</td><td>v.qq.com</td><td>✅</td></tr>
+                                    <tr><td>爱奇艺</td><td>iqiyi.com</td><td>✅</td></tr>
+                                    <tr><td>优酷</td><td>youku.com</td><td>✅</td></tr>
+                                    <tr><td>芒果TV</td><td>mgtv.com</td><td>✅</td></tr>
+                                    <tr><td>哔哩哔哩</td><td>bilibili.com</td><td>✅</td></tr>
+                                    <tr><td>搜狐视频</td><td>sohu.com</td><td>✅</td></tr>
+                                    <tr><td>PPTV</td><td>pptv.com</td><td>✅</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="moxi 沫兮解析">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">moxi</span>
+                        <span class="api-desc">沫兮 API - 视频解析</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                沫兮 API 视频解析接口，支持官方视频智能替换，自动识别视频标题和集数。
+                            </p>
+                        </div>
                         <div class="api-section">
                             <div class="api-section-title">请求参数</div>
                             <table class="param-table">
@@ -1238,9 +1488,186 @@ mx.php?action=parse&type=mxjx&url=https://example.com/video.m3u8</pre>
                                 </thead>
                                 <tbody>
                                     <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频链接</td></tr>
-                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>解析类型，默认 parse</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>播放类型</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 沫兮解析
+mx.php?action=moxi&url=https://v.qq.com/x/cover/xxx.html
+
+// API 别名
+mx.php?action=moxi/api&url=https://www.iqiyi.com/v_xxx.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "code": 200,
+  "url": "https://your-domain.com/mx.php?action=mxjx&url=xxx.m3u8",
+  "msg": "解析成功",
+  "jm": "视频名称",
+  "js": "第1集",
+  "time": "2026-07-08 12:00:00",
+  "kfz": "沫兮API - 在线视频解析"
+}</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应字段说明</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>code</td><td>int</td><td>状态码，200=成功</td></tr>
+                                    <tr><td>url</td><td>string</td><td>解析后的播放地址（已拼接去广告）</td></tr>
+                                    <tr><td>msg</td><td>string</td><td>状态信息</td></tr>
+                                    <tr><td>jm</td><td>string</td><td>剧名字段（视频名称）</td></tr>
+                                    <tr><td>js</td><td>string</td><td>集数字段</td></tr>
+                                    <tr><td>time</td><td>string</td><td>解析时间</td></tr>
+                                    <tr><td>kfz</td><td>string</td><td>开发者标识</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="mxjx 去广告解析">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">mxjx</span>
+                        <span class="api-desc">M3U8 去广告解析</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                M3U8 视频去广告接口，自动识别并移除广告片段，输出纯净的 M3U8 播放列表。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 直接使用（返回 M3U8 内容）
+mx.php?action=mxjx&url=https://example.com/video.m3u8
+
+// 获取详细信息（JSON 格式）
+mx.php?action=mxjx/info&url=https://example.com/video.m3u8</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">mxjx/info 响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "code": 200,
+  "success": true,
+  "message": "解析成功",
+  "data": {
+    "original_url": "https://example.com/video.m3u8",
+    "media_url": "https://example.com/video.m3u8",
+    "domain": "example.com",
+    "play_url": "https://your-domain.com/mx.php?action=mxjx&url=xxx",
+    "has_domain_rules": true,
+    "stats": {
+      "total_segments": 120,
+      "kept_segments": 100,
+      "removed_segments": 20,
+      "original_duration": 2400,
+      "filtered_duration": 2000,
+      "saved_duration": 400,
+      "ad_percentage": 16.7
+    }
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="official_replace 官方替换">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">official_replace</span>
+                        <span class="api-desc">官方视频智能替换</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">
+                                官方视频链接智能匹配资源站无广告源，自动从已配置的资源站中搜索匹配视频。
+                            </p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead>
+                                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>官方视频播放页链接</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>// 直接解析（302跳转）
+mx.php?action=official_replace/resolve&url=https://v.qq.com/x/cover/xxx.html
+
+// 获取详细信息
+mx.php?action=official_replace/info&url=https://www.iqiyi.com/v_xxx.html
+
+// 获取支持的平台列表
+mx.php?action=official_replace/platforms</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">official_replace/info 响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "platform": "iqiyi",
+  "original_url": "https://www.iqiyi.com/v_xxx.html",
+  "video_title": "视频标题",
+  "video_name": "xxx",
+  "video_pic": "https://example.com/cover.jpg",
+  "video_remarks": "全24集",
+  "match_score": 95.5,
+  "site": "资源站名称",
+  "m3u8_url": "https://example.com/video.m3u8",
+  "target_episode": "第1集",
+  "ad_skip_url": "https://your-domain.com/mx.php?action=mxjx&url=xxx.m3u8",
+  "episodes": 24,
+  "all_urls": [
+    { "name": "第1集", "url": "https://example.com/ep1.m3u8" },
+    { "name": "第2集", "url": "https://example.com/ep2.m3u8" }
+  ],
+  "timestamp": 1720411200
+}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>

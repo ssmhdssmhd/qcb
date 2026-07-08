@@ -47,28 +47,376 @@ function sendJsonResponse($data, $code = 200) {
     exit;
 }
 
-function parse_internal_call($baseUrl, $action, $url) {
-    $callUrl = $baseUrl . '/mx.php?action=' . urlencode($action) . '&url=' . urlencode($url);
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $callUrl,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_HTTPHEADER => [
-            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept: application/json',
-        ],
-    ]);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($response === false || $httpCode !== 200) {
-        return null;
+function parse_internal_xiami($url) {
+    $apiEndpoints = [
+        'https://cache.0567890.xyz:4433/Api',
+        'https://cache.hls.one/Api',
+    ];
+
+    $tm = intval(round(microtime(true) * 1000));
+    $keyHex = md5($tm . $url);
+
+    $aesKeyHex = md5($keyHex);
+    $iv = 'fUU9eRmkYzsgbkEK';
+    $plaintext = $keyHex;
+    $blockSize = 16;
+    $padLen = $blockSize - (strlen($plaintext) % $blockSize);
+    if ($padLen == $blockSize) $padLen = 0;
+    $padded = $plaintext . str_repeat("\x00", $padLen);
+    $sign = @openssl_encrypt(
+        $padded,
+        'aes-256-cbc',
+        $aesKeyHex,
+        OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+        $iv
+    );
+    if ($sign !== false) {
+        $sign = base64_encode($sign);
     }
-    return json_decode($response, true);
+
+    $playUrl = '';
+    $lastError = '';
+    $videoType = '';
+
+    if (!empty($sign)) {
+        $postData = [
+            'tm'   => $tm,
+            'url'  => $url,
+            'key'  => $keyHex,
+            'sign' => $sign,
+        ];
+
+        foreach ($apiEndpoints as $api) {
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $api,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => http_build_query($postData),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 25,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept: application/json, text/javascript, */*; q=0.01',
+                    'Origin: https://jx.xmflv.cc',
+                    'Referer: https://jx.xmflv.cc/',
+                    'X-Requested-With: XMLHttpRequest',
+                ],
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($response === false || $httpCode !== 200) {
+                $lastError = $curlError ?: "HTTP $httpCode";
+                continue;
+            }
+
+            $body = str_replace('tg:@xmflv', '', $response);
+            $json = json_decode($body, true);
+
+            if ($json === null || !isset($json['code'])) {
+                $lastError = '响应解析失败';
+                continue;
+            }
+
+            if ($json['code'] !== 200) {
+                $lastError = isset($json['msg']) ? $json['msg'] : '解析失败';
+                continue;
+            }
+
+            if (empty($json['data']) || empty($json['key']) || empty($json['iv'])) {
+                $lastError = '响应缺少 data/key/iv 字段';
+                continue;
+            }
+
+            $ciphertext = base64_decode($json['data'], true);
+            $decKey = $json['key'];
+            $decIv = $json['iv'];
+
+            if ($ciphertext === false || strlen($ciphertext) === 0) {
+                $lastError = '解密数据无效';
+                continue;
+            }
+
+            $keyLen = strlen($decKey);
+            if ($keyLen <= 16) {
+                $method = 'aes-128-cbc';
+            } elseif ($keyLen <= 24) {
+                $method = 'aes-192-cbc';
+            } else {
+                $method = 'aes-256-cbc';
+            }
+
+            if ($keyLen < 16) {
+                $lastError = '密钥长度不足';
+                continue;
+            }
+
+            $decrypted = @openssl_decrypt(
+                $ciphertext,
+                $method,
+                $decKey,
+                OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+                $decIv
+            );
+
+            if ($decrypted !== false && strlen($decrypted) > 0) {
+                $decrypted = rtrim($decrypted, "\x00");
+                $decrypted = str_replace('tg:@xmflv', '', $decrypted);
+                $decrypted = rtrim($decrypted, "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f");
+            } else {
+                $decrypted = @openssl_decrypt(
+                    $ciphertext,
+                    $method,
+                    $decKey,
+                    OPENSSL_RAW_DATA,
+                    $decIv
+                );
+                if ($decrypted !== false) {
+                    $decrypted = str_replace('tg:@xmflv', '', $decrypted);
+                    $decrypted = rtrim($decrypted, "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f");
+                }
+            }
+
+            if ($decrypted === false || strlen($decrypted) === 0) {
+                $lastError = '解密失败';
+                continue;
+            }
+
+            $resultData = json_decode($decrypted, true);
+            if ($resultData === null) {
+                $lastError = '解密数据解析失败';
+                continue;
+            }
+
+            $playUrl = isset($resultData['vurl']) ? $resultData['vurl'] : (isset($resultData['url']) ? $resultData['url'] : '');
+            $videoType = isset($resultData['type']) ? $resultData['type'] : '';
+            break;
+        }
+    }
+
+    $label = '';
+    if (strpos($videoType, 'm3u8') !== false || strpos($videoType, 'hls') !== false) {
+        $label = 'HLS';
+    } elseif (strpos($videoType, 'mp4') !== false) {
+        $label = 'MP4';
+    }
+
+    if (empty($playUrl)) {
+        return [
+            'success' => false,
+            'code' => 500,
+            'message' => $lastError ?: '未获取到资源',
+            'play_url' => '',
+            'video_type' => '',
+            'label' => '',
+        ];
+    }
+
+    return [
+        'success' => true,
+        'code' => 200,
+        'message' => '解析成功',
+        'play_url' => $playUrl,
+        'video_type' => $videoType,
+        'label' => $label,
+        'original_url' => $url,
+        'source' => 'xiami',
+    ];
+}
+
+function parse_internal_moxi($url, $selfUrl, $officialReplaceMgr = null, $siteManager = null) {
+    $officialDomains = ['v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'bilibili.com', 'sohu.com', 'pptv.com'];
+    $parsedUrl = parse_url($url);
+    $urlHost = $parsedUrl['host'] ?? '';
+    $isOfficialUrl = false;
+
+    foreach ($officialDomains as $domain) {
+        if (strpos($urlHost, $domain) !== false) {
+            $isOfficialUrl = true;
+            break;
+        }
+    }
+
+    $extractTitleFromUrl = function($url) {
+        $parsed = parse_url($url);
+        $path = $parsed['path'] ?? '';
+        $host = $parsed['host'] ?? '';
+        if (empty($path)) return $host ?: '在线视频';
+        $pathParts = array_values(array_filter(explode('/', $path), function($v) { return !empty($v); }));
+        if (empty($pathParts)) return $host ?: '在线视频';
+        $fileName = end($pathParts);
+        $fileNameWithoutExt = preg_replace('/\.(m3u8|mp4|mkv|avi|mov|flv|ts|html?)$/i', '', $fileName);
+        $isEpisodeLike = false;
+        if (preg_match('/第?\d+[集期话]/u', $fileNameWithoutExt)) $isEpisodeLike = true;
+        if (preg_match('/^(episode|ep|e|集|期|话)[_\-]?\d+$/i', $fileNameWithoutExt)) $isEpisodeLike = true;
+        if (preg_match('/^\d+$/', $fileNameWithoutExt) && strlen($fileNameWithoutExt) <= 4) $isEpisodeLike = true;
+        if (preg_match('/[_\-]\d+$/', $fileNameWithoutExt) && strlen($fileNameWithoutExt) <= 15) {
+            $prefix = preg_replace('/[_\-]\d+$/', '', $fileNameWithoutExt);
+            if (in_array(strtolower($prefix), ['episode', 'ep', 'e', '第', '集', ''])) $isEpisodeLike = true;
+        }
+        if ($isEpisodeLike || $fileName === 'index.m3u8' || $fileNameWithoutExt === 'index') {
+            $candidates = [];
+            $dirParts = array_slice($pathParts, 0, -1);
+            foreach (array_reverse($dirParts) as $part) {
+                if (preg_match('/^[a-f0-9]{8,}$/i', $part)) continue;
+                if (is_numeric($part)) continue;
+                if (strlen($part) < 2) continue;
+                $lowerPart = strtolower($part);
+                if (in_array($lowerPart, ['video', 'videos', 'm3u8', 'movie', 'tv', 'play', 'player'])) continue;
+                $candidates[] = $part;
+            }
+            if (!empty($candidates)) {
+                $title = preg_replace('/[_-]+/', ' ', $candidates[0]);
+                $title = trim($title);
+                if (!empty($title)) {
+                    if (preg_match('/^[a-z\s]+$/i', $title)) return ucwords($title);
+                    return $title;
+                }
+            }
+            return $host ?: '在线视频';
+        }
+        $title = preg_replace('/[_-]+/', ' ', $fileNameWithoutExt);
+        $title = preg_replace('/\s*\d+\s*$/', '', $title);
+        $title = trim($title);
+        if (empty($title) || strlen($title) < 2) {
+            $dirParts = array_slice($pathParts, 0, -1);
+            foreach (array_reverse($dirParts) as $part) {
+                if (preg_match('/^[a-f0-9]{8,}$/i', $part)) continue;
+                if (is_numeric($part)) continue;
+                if (strlen($part) < 2) continue;
+                if (in_array(strtolower($part), ['video', 'videos', 'm3u8', 'movie', 'tv'])) continue;
+                $title = preg_replace('/[_-]+/', ' ', $part);
+                $title = trim($title);
+                if (!empty($title)) {
+                    if (preg_match('/^[a-z\s]+$/i', $title)) return ucwords($title);
+                    return $title;
+                }
+            }
+            return $host ?: '在线视频';
+        }
+        if (preg_match('/^[a-z\s]+$/i', $title)) return ucwords($title);
+        return $title;
+    };
+
+    $extractEpisodeFromUrl = function($url) {
+        $parsed = parse_url($url);
+        $path = $parsed['path'] ?? '';
+        if (empty($path)) return '正片';
+        $pathParts = array_values(array_filter(explode('/', $path), function($v) { return !empty($v); }));
+        foreach (array_reverse($pathParts) as $part) {
+            $part = preg_replace('/\.(m3u8|mp4|mkv|avi|mov|flv|ts|html?)$/i', '', $part);
+            if (preg_match('/第(\d+)[集期话]/u', $part, $m)) return '第' . $m[1] . '集';
+            if (preg_match('/(?:episode|ep|e)[_\-]?(\d+)/i', $part, $m)) return '第' . intval($m[1]) . '集';
+            if (preg_match('/^(\d+)$/', $part, $m)) {
+                $num = intval($m[1]);
+                if ($num > 0 && $num < 1000) return '第' . $num . '集';
+            }
+            if (preg_match('/[_\-](\d+)$/', $part, $m)) {
+                $num = intval($m[1]);
+                if ($num > 0 && $num < 1000) {
+                    $prefix = preg_replace('/[_\-]\d+$/', '', $part);
+                    if (empty($prefix) || in_array(strtolower($prefix), ['episode', 'ep', 'e'])) return '第' . $num . '集';
+                }
+            }
+        }
+        return '正片';
+    };
+
+    $playUrl = '';
+    $juMing = '';
+    $jiShu = '';
+    $code = 200;
+    $msg = '解析成功';
+
+    if ($isOfficialUrl && $officialReplaceMgr) {
+        $result = $officialReplaceMgr->resolve($url);
+        if ($result['success']) {
+            $m3u8Url = $result['m3u8_url'] ?? '';
+            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+            $juMing = $result['video_title'] ?? '';
+            $jiShu = $result['target_episode'] ?? ($result['episode'] ?? '');
+            if (empty($jiShu)) $jiShu = '正片';
+        } else {
+            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+            $juMing = $result['video_title'] ?? '';
+            if (empty($juMing)) $juMing = $extractTitleFromUrl($url);
+            $jiShu = $result['episode'] ?? '';
+            if (empty($jiShu)) $jiShu = $extractEpisodeFromUrl($url);
+        }
+    } else {
+        $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+        $juMing = $extractTitleFromUrl($url);
+        $jiShu = $extractEpisodeFromUrl($url);
+
+        $searchKeyword = '';
+        $path = $parsedUrl['path'] ?? '';
+        $pathParts = array_values(array_filter(explode('/', $path), function($v) { return !empty($v); }));
+        foreach ($pathParts as $part) {
+            if (preg_match('/\.(m3u8|mp4|mkv|avi|mov|flv|ts)$/i', $part)) continue;
+            if (preg_match('/^[a-f0-9]{8,}$/i', $part)) continue;
+            if (is_numeric($part)) continue;
+            if (strlen($part) < 3) continue;
+            if ($part === 'video' || $part === 'videos' || $part === 'm3u8') continue;
+            $searchKeyword = $part;
+            break;
+        }
+        if (!empty($searchKeyword) && $searchKeyword !== $juMing) {
+            $searchKeyword = trim(preg_replace('/[_-]+/', ' ', $searchKeyword));
+        }
+
+        if (!empty($searchKeyword) && $siteManager) {
+            try {
+                $searchResult = $siteManager->searchAllSites($searchKeyword, 3, 5);
+                if ($searchResult['success'] && !empty($searchResult['results'])) {
+                    $bestMatch = null;
+                    $bestScore = 0;
+                    $urlBase = basename($path, '.m3u8');
+                    foreach ($searchResult['results'] as $siteResult) {
+                        if (empty($siteResult['videos'])) continue;
+                        foreach ($siteResult['videos'] as $video) {
+                            $videoName = $video['name'] ?? '';
+                            if (empty($videoName)) continue;
+                            $score = 0;
+                            similar_text($searchKeyword, $videoName, $score);
+                            $firstUrl = $video['first_url'] ?? $video['url'] ?? '';
+                            if (!empty($firstUrl)) {
+                                $firstUrlPath = parse_url($firstUrl, PHP_URL_PATH) ?? '';
+                                $pathScore = 0;
+                                similar_text($path, $firstUrlPath, $pathScore);
+                                if ($pathScore > $score) $score = $pathScore;
+                            }
+                            if ($score > $bestScore && $score > 40) {
+                                $bestScore = $score;
+                                $bestMatch = $video;
+                            }
+                        }
+                    }
+                    if ($bestMatch && $bestScore > 50) {
+                        $juMing = $bestMatch['name'] ?? $juMing;
+                        if (!empty($bestMatch['remarks'])) $jiShu = $bestMatch['remarks'];
+                    }
+                }
+            } catch (\Exception $e) {}
+        }
+    }
+
+    return [
+        'success' => true,
+        'code' => $code,
+        'message' => $msg,
+        'play_url' => $playUrl,
+        'video_name' => $juMing,
+        'episode' => $jiShu,
+        'original_url' => $url,
+        'is_official' => $isOfficialUrl,
+        'source' => 'moxi',
+    ];
 }
 
 function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
@@ -3333,15 +3681,15 @@ try {
                 case 'xiami':
                 case '虾米':
                 case '虾米解析':
-                    $xiamiData = parse_internal_call($selfUrl, 'xiami_jx/info', $parseUrl);
-                    if (!empty($xiamiData['code']) && $xiamiData['code'] == 200 && !empty($xiamiData['data']['url'])) {
-                        $playUrl = $xiamiData['data']['url'];
-                        $videoName = $xiamiData['data']['video_name'] ?? '';
+                    $xiamiResult = parse_internal_xiami($parseUrl);
+                    if (!empty($xiamiResult['success'])) {
+                        $playUrl = $xiamiResult['play_url'];
+                        $videoName = '';
                         $msg = '虾米解析成功';
-                        $extra = $xiamiData['data'] ?? [];
+                        $extra = $xiamiResult;
                     } else {
                         $code = 500;
-                        $msg = $xiamiData['message'] ?? $xiamiData['msg'] ?? '虾米解析失败';
+                        $msg = $xiamiResult['message'] ?? '虾米解析失败';
                     }
                     $typeName = '虾米解析';
                     break;
@@ -3349,15 +3697,15 @@ try {
                 case 'moxi':
                 case '沫兮':
                 case '沫兮解析':
-                    $moxiData = parse_internal_call($selfUrl, 'moxi/api', $parseUrl);
-                    if (!empty($moxiData['code']) && $moxiData['code'] == 200) {
-                        $playUrl = $moxiData['url'] ?? '';
-                        $videoName = $moxiData['jm'] ?? '';
-                        $msg = $moxiData['msg'] ?? '沫兮解析成功';
-                        $extra = $moxiData;
+                    $moxiResult = parse_internal_moxi($parseUrl, $selfUrl, $officialReplaceMgr ?? null, $siteManager ?? null);
+                    if (!empty($moxiResult['success'])) {
+                        $playUrl = $moxiResult['play_url'];
+                        $videoName = $moxiResult['video_name'] ?? '';
+                        $msg = '沫兮解析成功';
+                        $extra = $moxiResult;
                     } else {
                         $code = 500;
-                        $msg = $moxiData['msg'] ?? '沫兮解析失败';
+                        $msg = $moxiResult['message'] ?? '沫兮解析失败';
                     }
                     $typeName = '沫兮解析';
                     break;
@@ -3365,15 +3713,21 @@ try {
                 case 'official':
                 case '官替':
                 case '官方替换':
-                    $orData = parse_internal_call($selfUrl, 'official_replace/info', $parseUrl);
-                    if (!empty($orData['success'])) {
-                        $playUrl = $orData['ad_skip_url'] ?? $orData['m3u8_url'] ?? '';
-                        $videoName = $orData['video_title'] ?? '';
-                        $msg = '官方替换成功';
-                        $extra = $orData;
+                    if (isset($officialReplaceMgr)) {
+                        $orResult = $officialReplaceMgr->resolve($parseUrl);
+                        if (!empty($orResult['success'])) {
+                            $m3u8Url = $orResult['m3u8_url'] ?? '';
+                            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                            $videoName = $orResult['video_title'] ?? '';
+                            $msg = '官方替换成功';
+                            $extra = $orResult;
+                        } else {
+                            $code = 500;
+                            $msg = $orResult['message'] ?? '未找到匹配资源';
+                        }
                     } else {
                         $code = 500;
-                        $msg = $orData['message'] ?? '未找到匹配资源';
+                        $msg = '官方替换模块未初始化';
                     }
                     $typeName = '官方替换';
                     break;
@@ -3405,22 +3759,9 @@ try {
 
         case 'parse/info':
         case 'jx/info':
-            $infoUrl = $_GET['url'] ?? $_POST['url'] ?? '';
-            $infoType = $_GET['type'] ?? $_POST['type'] ?? 'parse';
-            if (empty($infoUrl)) {
-                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
-            }
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
-            $infoData = parse_internal_call($selfUrl, 'parse/parse', $infoUrl);
-            if ($infoData === null) {
-                sendJsonResponse(['success' => false, 'message' => '解析失败'], 500);
-            }
-            sendJsonResponse($infoData);
+            $_GET['action'] = 'parse/parse';
+            include __FILE__;
+            exit;
             break;
 
         case 'proxies/list':
