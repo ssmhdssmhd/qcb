@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.29.1] - 2026-07-08
+
+### 🐛 修复分析页面前端报错
+
+**问题**: 视频分析页面报错 `Cannot read properties of undefined (reading 'uri')`，导致分析结果无法正常展示。
+
+**原因**: 前端 `renderSegmentList` 函数期望的数据结构（`s.segment.uri`）与后端返回的实际数据结构不一致：
+- `adSegments`: 后端返回扁平结构 `{ uri, duration, isAd, ... }`，前端期望嵌套结构 `{ segment: { uri, duration } }`
+- `allSegments`: 后端返回精简格式 `{ i, d, a }`，前端期望完整格式 `{ index, segment: { uri, ... } }`
+
+**修复内容** ([mxadmin.php](file:///workspace/mxadmin.php)):
+- 广告片段列表：兼容扁平结构和嵌套结构，优先使用 `s.uri`，fallback 到 `s.segment.uri`
+- 全部片段列表：适配精简格式（`s.i`, `s.d`, `s.a`）和完整格式
+- 聚类列表：直接使用 `c.duration` 字段，避免二次计算
+- 空值保护：所有数组访问前添加存在性检查，防止 undefined 访问错误
+
+---
+
 ## [2.29.0] - 2026-07-07
 
 ### 🚀 官替 API 全面升级 & 核心逻辑优化
