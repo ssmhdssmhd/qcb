@@ -199,6 +199,30 @@ class ResourceSiteManager {
         return ['success' => false, 'message' => '资源站不存在'];
     }
 
+    private function isDomainFailureError($error) {
+        if (!$error) return false;
+        $error = strtolower($error);
+        $patterns = [
+            'could not resolve',
+            'dns',
+            'name lookup',
+            'no such host',
+            'host not found',
+            'ssl_error_syscall',
+            'connection refused',
+            'connection timed out',
+            'failed to connect',
+            'operation timed out',
+            'timed out after',
+        ];
+        foreach ($patterns as $pattern) {
+            if (strpos($error, strtolower($pattern)) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function fetchVideos($apiUrl, $page = 1, $limit = 20) {
         $urlsToTry = $this->generateApiUrlVariants($apiUrl);
         $fetchStrategies = [
@@ -207,6 +231,8 @@ class ResourceSiteManager {
         ];
 
         $lastError = '';
+        $isDomainFailure = false;
+        $dnsHost = '';
         foreach ($urlsToTry as $tryUrl) {
             foreach ($fetchStrategies as $strategy) {
                 $params = array_merge($strategy, [
@@ -218,6 +244,11 @@ class ResourceSiteManager {
                 $response = $this->httpGet($url);
                 if ($response === false) {
                     $lastError = $this->lastHttpError ?? '未知错误';
+                    if ($this->isDomainFailureError($lastError)) {
+                        $isDomainFailure = true;
+                        $parsed = parse_url($tryUrl);
+                        $dnsHost = $parsed['host'] ?? '';
+                    }
                     continue;
                 }
 
@@ -236,6 +267,16 @@ class ResourceSiteManager {
             }
         }
 
+        if ($isDomainFailure) {
+            $hostDisplay = $dnsHost ? '（域名: ' . $dnsHost . '）' : '';
+            return [
+                'success' => false,
+                'message' => '资源站API无法连接' . $hostDisplay . '，该资源站可能已失效，请更换其他资源站',
+                'error_type' => 'dns_failure',
+                'dns_host' => $dnsHost
+            ];
+        }
+
         return ['success' => false, 'message' => '获取失败: ' . $lastError];
     }
 
@@ -247,6 +288,8 @@ class ResourceSiteManager {
         ];
 
         $lastError = '';
+        $isDomainFailure = false;
+        $dnsHost = '';
         foreach ($urlsToTry as $tryUrl) {
             foreach ($searchStrategies as $strategy) {
                 $params = array_merge($strategy, [
@@ -258,6 +301,11 @@ class ResourceSiteManager {
                 $response = $this->httpGet($url);
                 if ($response === false) {
                     $lastError = $this->lastHttpError ?? '未知错误';
+                    if ($this->isDomainFailureError($lastError)) {
+                        $isDomainFailure = true;
+                        $parsed = parse_url($tryUrl);
+                        $dnsHost = $parsed['host'] ?? '';
+                    }
                     continue;
                 }
 
@@ -280,6 +328,16 @@ class ResourceSiteManager {
                 }
                 $lastError = $result['message'] ?? '搜索无结果';
             }
+        }
+
+        if ($isDomainFailure) {
+            $hostDisplay = $dnsHost ? '（域名: ' . $dnsHost . '）' : '';
+            return [
+                'success' => false,
+                'message' => '资源站API无法连接' . $hostDisplay . '，该资源站可能已失效，请更换其他资源站',
+                'error_type' => 'dns_failure',
+                'dns_host' => $dnsHost
+            ];
         }
 
         return ['success' => false, 'message' => '搜索失败: ' . $lastError];

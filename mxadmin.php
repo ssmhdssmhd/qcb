@@ -4428,8 +4428,11 @@ header('Expires: 0');
                 const apiUrl = site.api_url || '';
                 const note = escapeHtml(site.note || '');
                 const healthNote = health && !health.healthy ? escapeHtml(health.message) : note;
+                const isPaused = site.status !== 'active';
+                const videoBtnDisabled = isPaused ? ' disabled style="opacity:0.5;cursor:not-allowed"' : '';
+                const videoBtnOnclick = isPaused ? '' : 'onclick="fetchSiteVideos(\'' + escapeHtml(site.name) + '\')"';
                 html += `
-                    <tr>
+                    <tr style="${isPaused ? 'opacity:0.6' : ''}">
                         <td><span class="tag tag-blue">${priority}</span></td>
                         <td><strong>${escapeHtml(site.name)}</strong></td>
                         <td>
@@ -4442,8 +4445,8 @@ header('Expires: 0');
                         <td style="font-size:12px;color:#67c23a">${responseTime}</td>
                         <td style="font-size:12px;color:#606266;max-width:130px" title="${healthNote}">${healthNote || '-'}</td>
                         <td>
-                            <button class="btn btn-sm btn-secondary" onclick="fetchSiteVideos('${escapeHtml(site.name)}')">视频</button>
-                            <button class="btn btn-sm btn-secondary" onclick="toggleSiteStatus('${escapeHtml(site.name)}', '${site.status}')">${site.status === 'active' ? '暂停' : '启用'}</button>
+                            <button class="btn btn-sm btn-secondary" ${videoBtnOnclick}${videoBtnDisabled} title="${isPaused ? '站点已暂停，无法获取视频' : '获取视频列表'}">视频</button>
+                            <button class="btn btn-sm btn-secondary" onclick="toggleSiteStatus('${escapeHtml(site.name)}', '${site.status}')">${isPaused ? '启用' : '暂停'}</button>
                             <button class="btn btn-sm btn-secondary" onclick="editSite('${escapeHtml(site.name)}')">编辑</button>
                         </td>
                     </tr>
@@ -4559,7 +4562,19 @@ header('Expires: 0');
             try {
                 const res = await fetch(API_BASE + '?action=sites/fetch_videos&name=' + encodeURIComponent(name) + '&limit=10');
                 const data = await res.json();
-                if (!data.success) throw new Error(data.message);
+                if (!data.success) {
+                    const isDnsFailure = data.error_type === 'dns_failure';
+                    let errorHtml = '<div class="empty" style="text-align:left;padding:20px">';
+                    errorHtml += '<div style="color:#f56c6c;font-weight:500;margin-bottom:8px">❌ ' + escapeHtml(data.message) + '</div>';
+                    if (isDnsFailure) {
+                        errorHtml += '<div style="font-size:12px;color:#909399;margin-bottom:12px">该资源站API域名无法解析，可能已经失效或被墙。建议将其标记为暂停状态。</div>';
+                        errorHtml += '<button class="btn btn-sm btn-warning" onclick="toggleSiteStatus(\'' + escapeHtml(name) + '\', \'active\')">⚠️ 标记为暂停</button>';
+                    }
+                    errorHtml += '</div>';
+                    document.getElementById('siteVideosList').innerHTML = errorHtml;
+                    showToast('获取视频失败: ' + data.message, 'error');
+                    return;
+                }
                 renderSiteVideos(data.videos || []);
             } catch (e) {
                 document.getElementById('siteVideosList').innerHTML = '<div class="empty">获取失败: ' + escapeHtml(e.message) + '</div>';
