@@ -122,6 +122,135 @@ header('Expires: 0');
             color: var(--text-primary);
             transition: background 0.3s, color 0.3s;
         }
+        .app-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 260px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border-light);
+            padding: 20px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            flex-shrink: 0;
+        }
+        .sidebar-logo {
+            padding: 8px 12px 16px;
+            border-bottom: 1px solid var(--border-lighter);
+            margin-bottom: 4px;
+        }
+        .sidebar-logo h2 {
+            font-size: 18px;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.3;
+        }
+        .sidebar-logo p {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .menu-group {
+            background: var(--bg-card);
+            border-radius: 10px;
+            border: 1px solid var(--border-lighter);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .menu-group:hover {
+            border-color: var(--border-base);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .menu-group-title {
+            padding: 10px 14px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            background: var(--fill-lighter);
+            border-bottom: 1px solid var(--border-lighter);
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 14px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            border-bottom: none;
+            transition: all 0.2s ease;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-regular);
+            white-space: nowrap;
+            position: relative;
+        }
+        .nav-item:last-child {
+            border-bottom: none;
+        }
+        .nav-item + .nav-item {
+            border-top: 1px solid var(--border-lighter);
+        }
+        .nav-item:hover {
+            color: var(--primary);
+            background: var(--primary-bg);
+            border-left-color: var(--primary);
+        }
+        .nav-item.active {
+            color: var(--primary);
+            border-left-color: var(--primary);
+            border-bottom: none;
+            font-weight: 600;
+            background: var(--primary-bg);
+        }
+        .nav-item.active::before {
+            display: none;
+        }
+        .nav-item .menu-icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .nav-item .menu-text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .nav-item .menu-badge {
+            background: var(--danger);
+            color: white;
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-lighter);
+        }
+        .sidebar-version {
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
         .header {
             background: var(--primary-gradient);
             color: white;
@@ -207,49 +336,6 @@ header('Expires: 0');
         .theme-dot[data-theme-name="cyan"] { background: linear-gradient(135deg, #03626c, #13c2c2); }
         .theme-dot[data-theme-name="red"] { background: linear-gradient(135deg, #c41d1d, #f56c6c); }
         .theme-dot[data-theme-name="dark"] { background: linear-gradient(135deg, #1f1f1f, #434343); }
-        .nav {
-            background: var(--bg-card);
-            padding: 0 30px;
-            display: flex;
-            gap: 0;
-            border-bottom: 1px solid var(--border-light);
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }
-        .nav::-webkit-scrollbar { display: none; }
-        .nav-item {
-            padding: 18px 24px;
-            cursor: pointer;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s ease;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-regular);
-            white-space: nowrap;
-            flex-shrink: 0;
-            position: relative;
-        }
-        .nav-item:hover { 
-            color: var(--primary); 
-            background: var(--primary-bg);
-        }
-        .nav-item.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-            font-weight: 600;
-            background: var(--primary-bg);
-        }
-        .nav-item.active::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: var(--primary-gradient);
-        }
         .container { padding: 30px; }
         .page { display: none; }
         .page.active { display: block; animation: fadeInPage 0.3s ease; }
@@ -739,14 +825,30 @@ header('Expires: 0');
         }
 
         @media (max-width: 768px) {
+            .app-layout { flex-direction: column; }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                padding: 12px;
+                gap: 10px;
+                flex-direction: row;
+                overflow-x: auto;
+            }
+            .sidebar-logo { display: none; }
+            .sidebar-footer { display: none; }
+            .menu-group {
+                flex-shrink: 0;
+                min-width: 140px;
+            }
+            .menu-group-title { display: none; }
             .header { padding: 16px 20px; }
             .header h1 { font-size: 18px; }
             .header p { font-size: 12px; }
             .header-actions { margin-top: 10px; }
             .theme-label { display: none; }
             .theme-dot { width: 20px; height: 20px; }
-            .nav { padding: 0 16px; gap: 0; }
-            .nav-item { padding: 12px 14px; font-size: 13px; }
+            .nav-item { padding: 10px 12px; font-size: 12px; }
             .container { padding: 16px; }
             .card { padding: 16px; margin-bottom: 16px; }
             .card-title { font-size: 15px; margin-bottom: 12px; }
@@ -771,41 +873,39 @@ header('Expires: 0');
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-content">
-            <div class="header-left">
-                <h1>M3U8 广告分析与规则管理后台</h1>
-                <p>靶机测试工具 - 分析视频广告特征，管理域名去广告规则</p>
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <h2>M3U8 广告分析</h2>
+                <p>智能去广告管理后台</p>
             </div>
-            <div class="header-actions">
-                <div class="theme-switcher">
-                    <span class="theme-label">主题:</span>
-                    <div class="theme-dot active" data-theme-name="default" title="默认紫" onclick="switchTheme('default')"></div>
-                    <div class="theme-dot" data-theme-name="gold" title="金色" onclick="switchTheme('gold')"></div>
-                    <div class="theme-dot" data-theme-name="green" title="绿色" onclick="switchTheme('green')"></div>
-                    <div class="theme-dot" data-theme-name="blue" title="蓝色" onclick="switchTheme('blue')"></div>
-                    <div class="theme-dot" data-theme-name="cyan" title="青色" onclick="switchTheme('cyan')"></div>
-                    <div class="theme-dot" data-theme-name="red" title="红色" onclick="switchTheme('red')"></div>
-                    <div class="theme-dot" data-theme-name="dark" title="深色" onclick="switchTheme('dark')"></div>
+            <div id="sidebarMenu"></div>
+            <div class="sidebar-footer">
+                <div class="sidebar-version" id="sidebarVersion">加载中...</div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="header">
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1>M3U8 广告分析与规则管理后台</h1>
+                        <p>靶机测试工具 - 分析视频广告特征，管理域名去广告规则</p>
+                    </div>
+                    <div class="header-actions">
+                        <div class="theme-switcher">
+                            <span class="theme-label">主题:</span>
+                            <div class="theme-dot active" data-theme-name="default" title="默认紫" onclick="switchTheme('default')"></div>
+                            <div class="theme-dot" data-theme-name="gold" title="金色" onclick="switchTheme('gold')"></div>
+                            <div class="theme-dot" data-theme-name="green" title="绿色" onclick="switchTheme('green')"></div>
+                            <div class="theme-dot" data-theme-name="blue" title="蓝色" onclick="switchTheme('blue')"></div>
+                            <div class="theme-dot" data-theme-name="cyan" title="青色" onclick="switchTheme('cyan')"></div>
+                            <div class="theme-dot" data-theme-name="red" title="红色" onclick="switchTheme('red')"></div>
+                            <div class="theme-dot" data-theme-name="dark" title="深色" onclick="switchTheme('dark')"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="nav">
-        <div class="nav-item active" data-page="analyze">视频分析</div>
-        <div class="nav-item" data-page="rules">规则管理</div>
-        <div class="nav-item" data-page="sites">资源站管理</div>
-        <div class="nav-item" data-page="official_sites">推荐采集</div>
-        <div class="nav-item" data-page="official_replace">官替管理</div>
-        <div class="nav-item" data-page="moxi_api">沫兮API</div>
-        <div class="nav-item" onclick="window.open('api_doc.php', '_blank')" style="cursor:pointer">📚 API文档</div>
-        <div class="nav-item" onclick="location.href='proxy/proxy_admin.php'" style="cursor:pointer">代理池管理</div>
-        <div class="nav-item" data-page="database">数据库管理</div>
-        <div class="nav-item" data-page="play">在线播放</div>
-        <div class="nav-item" data-page="update">系统更新</div>
-        <div class="nav-item" data-page="auth">授权管理</div>
-    </div>
 
     <div id="accessPreview" style="background:var(--primary-gradient);color:white;padding:20px 30px;font-size:13px">
         <div style="display:flex;flex-wrap:wrap;gap:20px">
@@ -1721,6 +1821,9 @@ header('Expires: 0');
         </div>
     </div>
 
+        </main>
+    </div>
+
     <div id="toastContainer"></div>
 
     <div id="updateModal" class="update-modal-overlay" style="display:none" onclick="if(event.target===this)hideUpdateModal()">
@@ -1959,6 +2062,63 @@ header('Expires: 0');
             const baseDir = path.substring(0, path.lastIndexOf('/'));
             return protocol + '//' + host + baseDir + '/mx.php';
         })();
+
+        const MENU_CONFIG = [
+            {
+                group: '核心功能',
+                items: [
+                    { page: 'analyze', icon: '🎯', text: '视频分析' },
+                    { page: 'rules', icon: '📋', text: '规则管理' },
+                ]
+            },
+            {
+                group: '资源管理',
+                items: [
+                    { page: 'sites', icon: '🌐', text: '资源站管理' },
+                    { page: 'official_sites', icon: '⭐', text: '推荐采集' },
+                    { page: 'official_replace', icon: '🔄', text: '官替管理' },
+                ]
+            },
+            {
+                group: '接口工具',
+                items: [
+                    { page: 'moxi_api', icon: '⚡', text: '沫兮API' },
+                    { icon: '📚', text: 'API文档', action: "window.open('api_doc.php', '_blank')" },
+                    { icon: '🔌', text: '代理池管理', action: "location.href='proxy/proxy_admin.php'" },
+                ]
+            },
+            {
+                group: '系统管理',
+                items: [
+                    { page: 'database', icon: '🗄️', text: '数据库管理' },
+                    { page: 'play', icon: '▶️', text: '在线播放' },
+                    { page: 'update', icon: '🔧', text: '系统更新' },
+                    { page: 'auth', icon: '🔐', text: '授权管理' },
+                ]
+            }
+        ];
+
+        function renderSidebarMenu() {
+            const container = document.getElementById('sidebarMenu');
+            if (!container) return;
+            let html = '';
+            MENU_CONFIG.forEach(group => {
+                html += '<div class="menu-group">';
+                html += '<div class="menu-group-title">' + escapeHtml(group.group) + '</div>';
+                group.items.forEach(item => {
+                    const dataPage = item.page ? ' data-page="' + item.page + '"' : '';
+                    const onclick = item.action ? ' onclick="' + item.action + '"' : '';
+                    const activeClass = item.page === 'analyze' ? ' active' : '';
+                    html += '<div class="nav-item' + activeClass + '"' + dataPage + onclick + '>';
+                    html += '<span class="menu-icon">' + item.icon + '</span>';
+                    html += '<span class="menu-text">' + escapeHtml(item.text) + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        }
+
         let currentAnalysis = null;
         let currentSegmentTab = 'ad';
         let editingRules = null;
@@ -1978,19 +2138,27 @@ header('Expires: 0');
             setTimeout(() => toast.remove(), 3000);
         }
 
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', () => {
-                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                item.classList.add('active');
-                const pageId = 'page-' + item.dataset.page;
-                document.getElementById(pageId).classList.add('active');
-                const page = item.dataset.page;
-                if (page === 'rules') refreshRules();
-                if (page === 'auth') refreshAuthInfo();
-                if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
-                if (page === 'database') checkDbStatus();
-            });
+        function handleNavClick(item) {
+            if (!item.dataset.page) return;
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            item.classList.add('active');
+            const pageId = 'page-' + item.dataset.page;
+            const pageEl = document.getElementById(pageId);
+            if (pageEl) pageEl.classList.add('active');
+            const page = item.dataset.page;
+            if (page === 'rules') refreshRules();
+            if (page === 'sites') refreshSites();
+            if (page === 'auth') refreshAuthInfo();
+            if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
+            if (page === 'database') checkDbStatus();
+        }
+
+        document.addEventListener('click', (e) => {
+            const item = e.target.closest('.nav-item');
+            if (item && item.dataset.page) {
+                handleNavClick(item);
+            }
         });
 
         async function analyzeVideo() {
@@ -3464,10 +3632,8 @@ header('Expires: 0');
         function doUpdateFromModal() {
             hideUpdateModal();
             if (!document.getElementById('page-update').classList.contains('active')) {
-                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                document.querySelector('[data-page="update"]').classList.add('active');
-                document.getElementById('page-update').classList.add('active');
+                const updateItem = document.querySelector('.nav-item[data-page="update"]');
+                if (updateItem) handleNavClick(updateItem);
             }
             setTimeout(() => doUpdate(), 300);
         }
@@ -5168,16 +5334,6 @@ header('Expires: 0');
             currentSearchData = null;
         }
 
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const page = item.dataset.page;
-                if (page === 'rules') refreshRules();
-                if (page === 'sites') refreshSites();
-                if (page === 'auth') refreshAuthInfo();
-                if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
-            });
-        });
-
         function copyText(text) {
             if (!text) return;
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -6269,6 +6425,7 @@ header('Expires: 0');
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            renderSidebarMenu();
             initTheme();
             refreshRules();
             initAccessPreview();
@@ -6276,6 +6433,15 @@ header('Expires: 0');
             loadOfficialReplaceConfig();
             loadPlayerConfig();
             loadProxyList();
+            fetch(API_BASE + '?action=info/version')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.version) {
+                        const v = document.getElementById('sidebarVersion');
+                        if (v) v.textContent = '版本 ' + data.version;
+                    }
+                })
+                .catch(() => {});
             setTimeout(() => checkUpdate(true), 2000);
         });
     </script>
