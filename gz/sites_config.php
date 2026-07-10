@@ -6,8 +6,8 @@
  */
 
 return [
-    'version' => '1.2',
-    'update_date' => '2026-07-02',
+    'version' => '2.0',
+    'update_date' => '2026-07-09',
     'sites' => [
         [
             'name' => '量子',
@@ -29,11 +29,11 @@ return [
         ],
         [
             'name' => '非凡',
-            'site_url' => 'http://ffzy3.tv',
-            'api_url' => 'https://cj.ffzyapi.com/api.php/provide/vod/from/ffm3u8/',
+            'site_url' => 'https://www.ffzy.tv',
+            'api_url' => 'https://www.ffzy.tv/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '推荐',
+            'note' => '推荐，API已更新',
             'priority' => 1
         ],
         [
@@ -93,10 +93,10 @@ return [
         [
             'name' => '猫眼',
             'site_url' => 'https://www.maoyanzy.com',
-            'api_url' => 'https://api.maoyanapi.top/api.php/provide/vod/from/mym3u8/?ac=list',
+            'api_url' => 'https://www.maoyanzy.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '压缩其他资源站，插播都没去，直接压进去',
+            'note' => 'API已更新',
             'priority' => 3
         ],
         [
@@ -128,29 +128,29 @@ return [
         ],
         [
             'name' => '索尼',
-            'site_url' => 'https://suonizy.com',
-            'api_url' => 'https://suoniapi.com/api.php/provide/vod/from/snm3u8/?ac=list',
+            'site_url' => 'https://suonizy.cc',
+            'api_url' => 'https://suonizy.cc/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '有些资源比老太婆走路还慢',
+            'note' => 'API已更新',
             'priority' => 4
         ],
         [
             'name' => '最大',
-            'site_url' => 'https://zuidazy.me',
-            'api_url' => 'https://api.zuidapi.com/api.php/provide/vod/from/zuidam3u8/?ac=list',
+            'site_url' => 'https://www.zuidazy.co',
+            'api_url' => 'https://www.zuidazy.co/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '',
+            'note' => 'API已更新',
             'priority' => 4
         ],
         [
             'name' => 'OK资源',
             'site_url' => 'https://okzyw.cc',
-            'api_url' => 'https://api.okzyw.net/api.php/provide/vod/?ac=list',
+            'api_url' => 'https://okzyw.cc/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '',
+            'note' => 'API已更新',
             'priority' => 4
         ],
         [
@@ -164,20 +164,20 @@ return [
         ],
         [
             'name' => '快车',
-            'site_url' => 'https://kuaichezy.org',
-            'api_url' => 'https://caiji.kuaichezy.org/api.php/provide/vod/?ac=list',
+            'site_url' => 'https://kuaichezy.com',
+            'api_url' => 'https://kuaichezy.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '',
+            'note' => 'API已更新',
             'priority' => 4
         ],
         [
             'name' => '闪电',
             'site_url' => 'https://shandianzy.com',
-            'api_url' => 'https://xsd.sdzyapi.com/api.php/provide/vod/from/sdm3u8/?ac=list',
+            'api_url' => 'https://shandianzy.com/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '',
+            'note' => 'API已更新',
             'priority' => 4
         ],
         [
@@ -262,15 +262,6 @@ return [
             'priority' => 99
         ],
         [
-            'name' => '百度',
-            'site_url' => 'https://baidubz.com/',
-            'api_url' => 'https://baidubz.com/api.php/provide/vod/?ac=list',
-            'type' => 'maccms',
-            'status' => 'paused',
-            'note' => 'API已关闭',
-            'priority' => 99
-        ],
-        [
             'name' => '茅台',
             'site_url' => 'https://mtzy.me',
             'api_url' => 'https://caiji.maotai999.vip/api.php/provide/vod/from/mtm3u8/?ac=list',
@@ -317,11 +308,11 @@ return [
         ],
         [
             'name' => '如意',
-            'site_url' => 'https://www.ryzy5.tv',
-            'api_url' => 'https://www.ryzy5.tv/api.php/provide/vod/?ac=list',
+            'site_url' => 'https://www.ryzy.tv',
+            'api_url' => 'https://www.ryzy.tv/api.php/provide/vod/?ac=list',
             'type' => 'maccms',
             'status' => 'active',
-            'note' => '规则变动频繁',
+            'note' => 'API已更新',
             'priority' => 7
         ],
         [
@@ -467,6 +458,105 @@ return [
             'status' => 'paused',
             'note' => '',
             'priority' => 99
+        ],
+        [
+            'name' => '蓝光',
+            'site_url' => 'https://lgzyz.xyz',
+            'api_url' => 'https://lgzyz.xyz/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增，4K资源',
+            'priority' => 5
+        ],
+        [
+            'name' => '魔都',
+            'site_url' => 'https://www.moduzy.cc',
+            'api_url' => 'https://www.moduzy.cc/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 5
+        ],
+        [
+            'name' => '看看',
+            'site_url' => 'https://kankan01.com',
+            'api_url' => 'https://kankan01.com/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 5
+        ],
+        [
+            'name' => '樱花',
+            'site_url' => 'https://yhzy.cc',
+            'api_url' => 'https://yhzy.cc/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 5
+        ],
+        [
+            'name' => '好花',
+            'site_url' => 'https://www.haohuazy.com',
+            'api_url' => 'https://www.haohuazy.com/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 5
+        ],
+        [
+            'name' => '百度',
+            'site_url' => 'https://bdzy.tv',
+            'api_url' => 'http://bdzy.tv/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增，仅支持HTTP',
+            'priority' => 6
+        ],
+        [
+            'name' => '电影天堂',
+            'site_url' => 'https://dyttzyw.tv',
+            'api_url' => 'https://dyttzyw.tv/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 5
+        ],
+        [
+            'name' => '爱奇艺资',
+            'site_url' => 'https://iqiyizy.cc',
+            'api_url' => 'https://iqiyizy.cc/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 6
+        ],
+        [
+            'name' => '牛牛6',
+            'site_url' => 'https://niuniuzy6.com',
+            'api_url' => 'https://niuniuzy6.com/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 6
+        ],
+        [
+            'name' => '蓝志',
+            'site_url' => 'https://www.lzzy.tv',
+            'api_url' => 'https://www.lzzy.tv/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 6
+        ],
+        [
+            'name' => '天逸',
+            'site_url' => 'https://tyyszy.com',
+            'api_url' => 'https://tyyszy.com/api.php/provide/vod/?ac=list',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '新增',
+            'priority' => 6
         ]
     ],
     'auto_learn' => [
