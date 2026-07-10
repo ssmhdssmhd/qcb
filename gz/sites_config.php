@@ -6,8 +6,8 @@
  */
 
 return [
-    'version' => '2.0',
-    'update_date' => '2026-07-09',
+    'version' => '2.30.5',
+    'update_date' => '2026-07-10',
     'sites' => [
         [
             'name' => '量子',
