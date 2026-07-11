@@ -1830,6 +1830,7 @@ header('Expires: 0');
                 <div class="input-group">
                     <input type="text" id="aiSkipUrl" placeholder="输入 M3U8 视频链接，例如：https://example.com/video/index.m3u8">
                     <button class="btn btn-primary" onclick="aiSkipVideo()">🚀 AI 去广告</button>
+                    <button class="btn btn-success" onclick="aiMd5Analyze()">🔬 MD5分析</button>
                 </div>
                 <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
@@ -1840,6 +1841,12 @@ header('Expires: 0');
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
                         <input type="checkbox" id="aiSkipDeepAnalysis"> 深度分析模式
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipMd5Mode"> MD5特征识别
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipSaveMd5"> 保存特征码
                     </label>
                 </div>
             </div>
@@ -1872,6 +1879,7 @@ header('Expires: 0');
                     <div class="tab-bar">
                         <div class="tab-item active" onclick="switchAiSkipTab(this, 'ad')">广告片段</div>
                         <div class="tab-item" onclick="switchAiSkipTab(this, 'content')">内容片段</div>
+                        <div class="tab-item" onclick="switchAiSkipTab(this, 'md5')">MD5特征码</div>
                         <div class="tab-item" onclick="switchAiSkipTab(this, 'detail')">识别详情</div>
                     </div>
                     <div class="segment-list" id="aiSkipSegmentList"></div>
@@ -1899,6 +1907,7 @@ header('Expires: 0');
                 <div class="input-group">
                     <input type="text" id="aiInsertUrl" placeholder="输入 M3U8 视频链接，检测插播内容">
                     <button class="btn btn-primary" onclick="aiInsertDetect()">🔍 检测插播</button>
+                    <button class="btn btn-success" onclick="aiInsertMd5Analyze()">🔬 MD5分析</button>
                 </div>
                 <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
@@ -1910,6 +1919,9 @@ header('Expires: 0');
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
                         <input type="checkbox" id="aiInsertMiddle" checked> 检测中间插播
                     </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiInsertMd5Mode"> MD5特征识别
+                    </label>
                 </div>
             </div>
 
@@ -1919,6 +1931,11 @@ header('Expires: 0');
                 <div class="card">
                     <div class="card-title">插播检测结果</div>
                     <div id="aiInsertList"></div>
+                </div>
+
+                <div class="card" id="aiInsertMd5Card" style="display:none">
+                    <div class="card-title">🔬 MD5 特征码分析</div>
+                    <div id="aiInsertMd5Content"></div>
                 </div>
 
                 <div class="card">
@@ -2793,6 +2810,86 @@ header('Expires: 0');
                 if (contentSegments.length > 50) {
                     container.innerHTML += `<div style="text-align:center;color:#909399;padding:12px;font-size:12px">仅显示前 50 条，共 ${contentSegments.length} 条</div>`;
                 }
+            } else if (aiSkipSegmentTab === 'md5') {
+                const md5Data = currentMd5Data;
+                if (!md5Data) {
+                    container.innerHTML = '<div style="text-align:center;color:#909399;padding:30px">点击「🔬 MD5分析」按钮开始分析</div>';
+                    return;
+                }
+                
+                const adCandidates = md5Data.ad_candidates || [];
+                const contentCandidates = md5Data.content_candidates || [];
+                const md5Details = md5Data.md5_details || [];
+                
+                let md5Html = '<div style="margin-bottom:16px">';
+                md5Html += '<div style="font-weight:600;color:#303133;margin-bottom:12px">🎯 广告候选MD5特征码</div>';
+                if (adCandidates.length === 0) {
+                    md5Html += '<div style="color:#67c23a;padding:12px;background:#f0f9eb;border-radius:6px">未检测到重复的广告候选MD5</div>';
+                } else {
+                    md5Html += adCandidates.map((cand, i) => `
+                        <div style="padding:12px;background:#fef0f0;border-radius:8px;margin-bottom:8px">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+                                <div style="font-family:monospace;font-size:12px;color:#f56c6c;word-break:break-all">#${i + 1} ${cand.md5}</div>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                    <span class="badge badge-danger">重复${cand.count}次</span>
+                                    <span class="badge badge-warning">${cand.avg_duration}s/片</span>
+                                    <span class="badge badge-info">共${cand.total_duration}s</span>
+                                </div>
+                            </div>
+                            <div style="font-size:12px;color:#606266">
+                                出现位置: ${cand.segments?.map(s => '#' + (s.index + 1)).join(', ') || '-'}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                md5Html += '</div>';
+                
+                md5Html += '<div style="margin-bottom:16px">';
+                md5Html += '<div style="font-weight:600;color:#303133;margin-bottom:12px">✅ 内容候选MD5特征码</div>';
+                if (contentCandidates.length === 0) {
+                    md5Html += '<div style="color:#909399;padding:12px;background:#f5f7fa;border-radius:6px">未检测到内容候选</div>';
+                } else {
+                    md5Html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+                    md5Html += contentCandidates.slice(0, 20).map((cand, i) => `
+                        <div style="padding:6px 10px;background:#f0f9eb;border-radius:4px;font-family:monospace;font-size:11px;color:#67c23a">
+                            ${cand.md5.substring(0, 16)}... (${cand.count}次)
+                        </div>
+                    `).join('');
+                    md5Html += '</div>';
+                    if (contentCandidates.length > 20) {
+                        md5Html += `<div style="margin-top:8px;font-size:12px;color:#909399">仅显示前20个，共${contentCandidates.length}个</div>`;
+                    }
+                }
+                md5Html += '</div>';
+                
+                md5Html += '<div>';
+                md5Html += '<div style="font-weight:600;color:#303133;margin-bottom:12px">📋 片段MD5详情</div>';
+                md5Html += '<div style="max-height:300px;overflow-y:auto">';
+                md5Html += md5Details.slice(0, 50).map((detail, i) => {
+                    const isAd = adCandidates.some(c => c.md5 === detail.md5);
+                    return `
+                        <div class="segment-item">
+                            <div class="segment-index">#${detail.index + 1}</div>
+                            <div class="segment-info">
+                                <div class="segment-name" style="font-family:monospace;font-size:12px">${detail.md5 || '计算失败'}</div>
+                                <div class="segment-meta">
+                                    <span>时长: ${(detail.duration || 0).toFixed(3)}s</span>
+                                    <span>${detail.uri?.substring?.(0, 30) || ''}${detail.uri?.length > 30 ? '...' : ''}</span>
+                                </div>
+                            </div>
+                            <div class="segment-badges">
+                                ${isAd ? '<span class="badge badge-danger">广告候选</span>' : '<span class="badge badge-success">内容</span>'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                md5Html += '</div>';
+                if (md5Details.length > 50) {
+                    md5Html += `<div style="text-align:center;color:#909399;padding:12px;font-size:12px">仅显示前 50 条，共 ${md5Details.length} 条</div>`;
+                }
+                md5Html += '</div>';
+                
+                container.innerHTML = md5Html;
             } else {
                 const analysis = data.data?.analysis || data.analysis || {};
                 const methods = data.data?.methods || data.methods || [];
@@ -2881,6 +2978,72 @@ header('Expires: 0');
             const url = document.getElementById('aiSkipUrl').value.trim();
             document.getElementById('aiWatermarkUrl').value = url;
             document.querySelector('.nav-item[data-page="ai_watermark"]').click();
+        }
+
+        let currentMd5Data = null;
+
+        async function aiMd5Analyze() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            const saveMd5 = document.getElementById('aiSkipSaveMd5').checked;
+            
+            showToast('正在进行MD5特征码分析，请稍候...', 'info');
+            document.getElementById('aiSkipResult').style.display = 'block';
+            
+            try {
+                const params = new URLSearchParams({
+                    action: 'ai/md5_analyze',
+                    url: url,
+                    save: saveMd5 ? '1' : '0'
+                });
+                
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const data = await res.json();
+                
+                if (!data.success) throw new Error(data.message || '分析失败');
+                currentMd5Data = data.data;
+                
+                renderMd5Stats(data.data);
+                aiSkipSegmentTab = 'md5';
+                document.querySelectorAll('#page-ai_skip .tab-item').forEach((t, i) => {
+                    t.classList.toggle('active', i === 2);
+                });
+                renderAiSkipSegmentList();
+                
+                showToast('MD5特征码分析完成', 'success');
+            } catch (e) {
+                showToast('分析失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderMd5Stats(data) {
+            const statsHtml = `
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#667eea">${data.total_segments || 0}</div>
+                    <div class="stat-label">总片段数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#67c23a">${data.analyzed_segments || 0}</div>
+                    <div class="stat-label">已分析</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#409eff">${data.unique_md5 || 0}</div>
+                    <div class="stat-label">唯一MD5</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#f56c6c">${data.ad_candidate_count || 0}</div>
+                    <div class="stat-label">广告候选</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#e6a23c">${data.content_candidate_count || 0}</div>
+                    <div class="stat-label">内容候选</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#909399">${data.process_time || '0ms'}</div>
+                    <div class="stat-label">分析耗时</div>
+                </div>
+            `;
+            document.getElementById('aiSkipStats').innerHTML = statsHtml;
         }
 
         let currentAiInsertData = null;
@@ -2986,6 +3149,66 @@ header('Expires: 0');
             const url = document.getElementById('aiInsertUrl').value.trim();
             document.getElementById('aiSkipUrl').value = url;
             document.querySelector('.nav-item[data-page="ai_skip"]').click();
+        }
+
+        async function aiInsertMd5Analyze() {
+            const url = document.getElementById('aiInsertUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            
+            showToast('正在进行MD5特征码分析，请稍候...', 'info');
+            document.getElementById('aiInsertResult').style.display = 'block';
+            document.getElementById('aiInsertMd5Card').style.display = 'block';
+            document.getElementById('aiInsertMd5Content').innerHTML = '<div style="text-align:center;color:#909399;padding:30px">正在分析中...</div>';
+            
+            try {
+                const params = new URLSearchParams({
+                    action: 'ai/md5_analyze',
+                    url: url
+                });
+                
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const data = await res.json();
+                
+                if (!data.success) throw new Error(data.message || '分析失败');
+                
+                const md5Data = data.data;
+                const adCandidates = md5Data.ad_candidates || [];
+                
+                let html = '<div style="margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap">';
+                html += `<div><strong>分析片段:</strong> ${md5Data.analyzed_segments || 0}</div>`;
+                html += `<div><strong>唯一MD5:</strong> ${md5Data.unique_md5 || 0}</div>`;
+                html += `<div><strong>广告候选:</strong> <span style="color:#f56c6c">${md5Data.ad_candidate_count || 0}</span></div>`;
+                html += '</div>';
+                
+                if (adCandidates.length === 0) {
+                    html += '<div style="color:#67c23a;padding:12px;background:#f0f9eb;border-radius:6px">未检测到重复的广告候选MD5</div>';
+                } else {
+                    html += '<div style="max-height:300px;overflow-y:auto">';
+                    adCandidates.forEach((cand, i) => {
+                        html += `
+                            <div style="padding:10px;background:#fef0f0;border-radius:6px;margin-bottom:6px">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:4px">
+                                    <div style="font-family:monospace;font-size:11px;color:#f56c6c;word-break:break-all">#${i + 1} ${cand.md5}</div>
+                                    <div style="display:flex;gap:4px">
+                                        <span class="badge badge-danger">${cand.count}次</span>
+                                        <span class="badge badge-warning">${cand.avg_duration}s</span>
+                                    </div>
+                                </div>
+                                <div style="font-size:11px;color:#606266">
+                                    位置: ${cand.segments?.map(s => '#' + (s.index + 1)).join(', ') || '-'}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                }
+                
+                document.getElementById('aiInsertMd5Content').innerHTML = html;
+                showToast('MD5特征码分析完成', 'success');
+            } catch (e) {
+                document.getElementById('aiInsertMd5Content').innerHTML = '<div style="color:#f56c6c;padding:12px">分析失败: ' + e.message + '</div>';
+                showToast('分析失败: ' + e.message, 'error');
+            }
         }
 
         function aiInsertToWatermark() {

@@ -4193,6 +4193,216 @@ try {
             }
             break;
 
+        case 'ai/md5_analyze':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            $saveToDb = isset($_GET['save']) ? ($_GET['save'] === '1' || $_GET['save'] === 'true') : false;
+            
+            $startTime = microtime(true);
+            try {
+                require_once __DIR__ . '/src/M3U8Parser.php';
+                require_once __DIR__ . '/src/TsMd5Analyzer.php';
+                
+                $parser = new M3U8Parser();
+                $playlist = $parser->parse($url);
+                $segments = $playlist['segments'] ?? [];
+                
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+                
+                $analyzer = new TsMd5Analyzer($domain);
+                $result = $analyzer->analyzeMd5Signatures($segments, $url);
+                
+                $savedCount = 0;
+                if ($saveToDb && !empty($domain) && !empty($result['ad_candidates'])) {
+                    $savedCount = $analyzer->saveMd5Signatures($domain, $result['ad_candidates']);
+                }
+                
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => 'MD5特征码分析完成',
+                    'data' => [
+                        'original_url' => $url,
+                        'domain' => $domain,
+                        'process_time' => $processTime . 'ms',
+                        'total_segments' => count($segments),
+                        'analyzed_segments' => $result['total_analyzed'],
+                        'unique_md5' => $result['unique_md5'],
+                        'ad_candidates' => $result['ad_candidates'],
+                        'ad_candidate_count' => count($result['ad_candidates']),
+                        'content_candidates' => array_slice($result['content_candidates'], 0, 20),
+                        'content_candidate_count' => count($result['content_candidates']),
+                        'md5_details' => array_slice($result['md5_details'], 0, 50),
+                        'saved_to_db' => $saveToDb,
+                        'saved_count' => $savedCount
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '分析失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'ai/md5_signatures':
+            $domain = $_GET['domain'] ?? '';
+            if (empty($domain)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain 参数'], 400);
+                break;
+            }
+            $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
+            
+            try {
+                require_once __DIR__ . '/src/TsMd5Analyzer.php';
+                
+                $analyzer = new TsMd5Analyzer($domain);
+                $signatures = $analyzer->getMd5Signatures($domain, $limit);
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '获取成功',
+                    'data' => [
+                        'domain' => $domain,
+                        'total' => count($signatures),
+                        'signatures' => array_map(function($sig) {
+                            return [
+                                'id' => (int)$sig['id'],
+                                'md5' => $sig['md5'],
+                                'avg_duration' => (float)$sig['avg_duration'],
+                                'ad_type' => $sig['ad_type'],
+                                'weight' => (int)$sig['weight'],
+                                'hit_count' => (int)$sig['hit_count'],
+                                'confidence' => (int)$sig['confidence'],
+                                'first_seen' => $sig['first_seen'],
+                                'last_seen' => $sig['last_seen']
+                            ];
+                        }, $signatures)
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '获取失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'ai/md5_detect':
+            $url = $_GET['url'] ?? '';
+            $domain = $_GET['domain'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            
+            $startTime = microtime(true);
+            try {
+                require_once __DIR__ . '/src/M3U8Parser.php';
+                require_once __DIR__ . '/src/TsMd5Analyzer.php';
+                require_once __DIR__ . '/src/M3U8AdSkipper.php';
+                
+                if (empty($domain)) {
+                    $parsedUrl = parse_url($url);
+                    $domain = $parsedUrl['host'] ?? '';
+                }
+                
+                $parser = new M3U8Parser();
+                $playlist = $parser->parse($url);
+                $segments = $playlist['segments'] ?? [];
+                
+                $analyzer = new TsMd5Analyzer($domain);
+                $md5Result = $analyzer->analyzeMd5Signatures($segments, $url);
+                
+                $adMd5Set = [];
+                foreach ($md5Result['ad_candidates'] as $cand) {
+                    $adMd5Set[$cand['md5']] = true;
+                }
+                
+                $skipper = new M3U8AdSkipper();
+                $baseResult = $skipper->processWithSafeguard($url);
+                
+                $adSegments = [];
+                $contentSegments = [];
+                $md5Map = [];
+                foreach ($md5Result['md5_details'] as $detail) {
+                    $md5Map[$detail['uri']] = $detail['md5'];
+                }
+                
+                $removedSegments = $baseResult['filtered']['removedSegments'] ?? [];
+                $keptSegments = $baseResult['filtered']['segments'] ?? [];
+                
+                foreach ($removedSegments as $seg) {
+                    $uri = $seg['uri'] ?? '';
+                    $md5 = $md5Map[$uri] ?? null;
+                    $adSegments[] = [
+                        'uri' => $uri,
+                        'duration' => $seg['duration'] ?? 0,
+                        'mediaSequence' => $seg['mediaSequence'] ?? null,
+                        'isAd' => true,
+                        'md5' => $md5,
+                        'md5_detected' => isset($adMd5Set[$md5]),
+                        'adReasons' => $seg['adInfo']['matchedRules'] ?? []
+                    ];
+                }
+                
+                foreach ($keptSegments as $seg) {
+                    $uri = $seg['uri'] ?? '';
+                    $md5 = $md5Map[$uri] ?? null;
+                    $contentSegments[] = [
+                        'uri' => $uri,
+                        'duration' => $seg['duration'] ?? 0,
+                        'mediaSequence' => $seg['mediaSequence'] ?? null,
+                        'isAd' => false,
+                        'md5' => $md5
+                    ];
+                }
+                
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => 'MD5智能去广告完成',
+                    'data' => [
+                        'original_url' => $url,
+                        'domain' => $domain,
+                        'process_time' => $processTime . 'ms',
+                        'safeguard_triggered' => $baseResult['safeguardTriggered'] ?? false,
+                        'safeguard_reason' => $baseResult['safeguardReason'] ?? '',
+                        'md5_analysis' => [
+                            'analyzed_segments' => $md5Result['total_analyzed'],
+                            'unique_md5' => $md5Result['unique_md5'],
+                            'ad_candidate_count' => count($md5Result['ad_candidates']),
+                            'ad_candidates' => $md5Result['ad_candidates']
+                        ],
+                        'stats' => [
+                            'total_segments' => $baseResult['stats']['totalSegments'] ?? 0,
+                            'ad_segments' => $baseResult['stats']['removedSegments'] ?? 0,
+                            'kept_segments' => $baseResult['stats']['keptSegments'] ?? 0,
+                            'original_duration' => $baseResult['stats']['originalDuration'] ?? 0,
+                            'filtered_duration' => $baseResult['stats']['filteredDuration'] ?? 0,
+                            'saved_duration' => $baseResult['stats']['savedDuration'] ?? 0,
+                            'ad_percentage' => $baseResult['stats']['adPercentage'] ?? 0
+                        ],
+                        'ad_segments' => array_slice($adSegments, 0, 100),
+                        'content_segments' => array_slice($contentSegments, 0, 100),
+                        'ad_segment_count' => count($adSegments),
+                        'content_segment_count' => count($contentSegments)
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '处理失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
@@ -4201,6 +4411,9 @@ try {
                     'ai/skip' => 'AI自动去广告',
                     'ai/insert_detect' => 'AI插播识别检测',
                     'ai/watermark' => 'AI水印处理',
+                    'ai/md5_analyze' => 'AI-MD5特征码分析',
+                    'ai/md5_signatures' => 'AI-MD5特征码列表',
+                    'ai/md5_detect' => 'AI-MD5智能去广告',
                     'analyze' => '分析视频广告',
                     'rules/list' => '获取所有域名规则',
                     'rules/get' => '获取指定域名规则',
