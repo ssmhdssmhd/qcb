@@ -4200,6 +4200,10 @@ try {
                 break;
             }
             $saveToDb = isset($_GET['save']) ? ($_GET['save'] === '1' || $_GET['save'] === 'true') : false;
+            $fastMode = isset($_GET['fast']) ? ($_GET['fast'] === '1' || $_GET['fast'] === 'true') : true;
+            $sampleMode = $_GET['sample'] ?? 'auto';
+            $maxCount = isset($_GET['count']) ? intval($_GET['count']) : ($fastMode ? 30 : 60);
+            $concurrency = isset($_GET['concurrency']) ? intval($_GET['concurrency']) : ($fastMode ? 15 : 10);
             
             $startTime = microtime(true);
             try {
@@ -4214,7 +4218,16 @@ try {
                 $domain = $parsedUrl['host'] ?? '';
                 
                 $analyzer = new TsMd5Analyzer($domain);
-                $result = $analyzer->analyzeMd5Signatures($segments, $url);
+                $analyzer->setConcurrency($concurrency);
+                
+                if ($fastMode) {
+                    $analyzer->setFastMode(true);
+                }
+                
+                $result = $analyzer->analyzeMd5Signatures($segments, $url, [
+                    'max_count' => $maxCount,
+                    'sample_mode' => $sampleMode
+                ]);
                 
                 $savedCount = 0;
                 if ($saveToDb && !empty($domain) && !empty($result['ad_candidates'])) {
@@ -4230,6 +4243,9 @@ try {
                         'original_url' => $url,
                         'domain' => $domain,
                         'process_time' => $processTime . 'ms',
+                        'fast_mode' => $fastMode,
+                        'sample_mode' => $result['sample_mode'],
+                        'concurrency' => $concurrency,
                         'total_segments' => count($segments),
                         'analyzed_segments' => $result['total_analyzed'],
                         'unique_md5' => $result['unique_md5'],
@@ -4317,6 +4333,7 @@ try {
                 $segments = $playlist['segments'] ?? [];
                 
                 $analyzer = new TsMd5Analyzer($domain);
+                $analyzer->setFastMode(true);
                 $md5Result = $analyzer->analyzeMd5Signatures($segments, $url);
                 
                 $adMd5Set = [];

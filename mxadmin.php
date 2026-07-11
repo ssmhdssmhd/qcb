@@ -1843,7 +1843,10 @@ header('Expires: 0');
                         <input type="checkbox" id="aiSkipDeepAnalysis"> 深度分析模式
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipMd5Mode"> MD5特征识别
+                        <input type="checkbox" id="aiSkipMd5Mode" checked> MD5特征识别
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipFastMode" checked> ⚡ 极速模式
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
                         <input type="checkbox" id="aiSkipSaveMd5"> 保存特征码
@@ -1920,7 +1923,10 @@ header('Expires: 0');
                         <input type="checkbox" id="aiInsertMiddle" checked> 检测中间插播
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiInsertMd5Mode"> MD5特征识别
+                        <input type="checkbox" id="aiInsertMd5Mode" checked> MD5特征识别
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiInsertFastMode" checked> ⚡ 极速模式
                     </label>
                 </div>
             </div>
@@ -2986,15 +2992,34 @@ header('Expires: 0');
             const url = document.getElementById('aiSkipUrl').value.trim();
             if (!url) { showToast('请输入视频链接', 'error'); return; }
             const saveMd5 = document.getElementById('aiSkipSaveMd5').checked;
+            const fastMode = document.getElementById('aiSkipFastMode').checked;
             
-            showToast('正在进行MD5特征码分析，请稍候...', 'info');
+            showToast('正在进行MD5特征码分析' + (fastMode ? '（极速模式）' : '') + '，请稍候...', 'info');
             document.getElementById('aiSkipResult').style.display = 'block';
+            document.getElementById('aiSkipStats').innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#e6a23c">⏳</div>
+                    <div class="stat-label">分析中...</div>
+                </div>
+            `;
+            aiSkipSegmentTab = 'md5';
+            document.querySelectorAll('#page-ai_skip .tab-item').forEach((t, i) => {
+                t.classList.toggle('active', i === 2);
+            });
+            document.getElementById('aiSkipSegmentList').innerHTML = `
+                <div style="text-align:center;color:#909399;padding:40px">
+                    <div style="font-size:32px;margin-bottom:16px">🔬</div>
+                    <div style="font-size:14px;margin-bottom:8px">极速MD5分析中，通常 2-5 秒...</div>
+                    <div style="font-size:12px;color:#c0c4cc">并发下载 + 智能采样 + 仅下载文件头</div>
+                </div>
+            `;
             
             try {
                 const params = new URLSearchParams({
                     action: 'ai/md5_analyze',
                     url: url,
-                    save: saveMd5 ? '1' : '0'
+                    save: saveMd5 ? '1' : '0',
+                    fast: fastMode ? '1' : '0'
                 });
                 
                 const res = await fetch(API_BASE + '?' + params.toString());
@@ -3004,14 +3029,11 @@ header('Expires: 0');
                 currentMd5Data = data.data;
                 
                 renderMd5Stats(data.data);
-                aiSkipSegmentTab = 'md5';
-                document.querySelectorAll('#page-ai_skip .tab-item').forEach((t, i) => {
-                    t.classList.toggle('active', i === 2);
-                });
                 renderAiSkipSegmentList();
                 
-                showToast('MD5特征码分析完成', 'success');
+                showToast('MD5特征码分析完成，耗时 ' + data.data.process_time, 'success');
             } catch (e) {
+                document.getElementById('aiSkipSegmentList').innerHTML = '<div style="color:#f56c6c;padding:20px;text-align:center">分析失败: ' + e.message + '</div>';
                 showToast('分析失败: ' + e.message, 'error');
             }
         }
@@ -3154,16 +3176,24 @@ header('Expires: 0');
         async function aiInsertMd5Analyze() {
             const url = document.getElementById('aiInsertUrl').value.trim();
             if (!url) { showToast('请输入视频链接', 'error'); return; }
+            const fastMode = document.getElementById('aiInsertFastMode').checked;
             
-            showToast('正在进行MD5特征码分析，请稍候...', 'info');
+            showToast('正在进行MD5特征码分析' + (fastMode ? '（极速模式）' : '') + '，请稍候...', 'info');
             document.getElementById('aiInsertResult').style.display = 'block';
             document.getElementById('aiInsertMd5Card').style.display = 'block';
-            document.getElementById('aiInsertMd5Content').innerHTML = '<div style="text-align:center;color:#909399;padding:30px">正在分析中...</div>';
+            document.getElementById('aiInsertMd5Content').innerHTML = `
+                <div style="text-align:center;color:#909399;padding:30px">
+                    <div style="font-size:24px;margin-bottom:12px">🔬</div>
+                    <div>极速分析中，通常 2-5 秒...</div>
+                    <div style="margin-top:8px;font-size:12px;color:#c0c4cc">并发下载 + 智能采样</div>
+                </div>
+            `;
             
             try {
                 const params = new URLSearchParams({
                     action: 'ai/md5_analyze',
-                    url: url
+                    url: url,
+                    fast: fastMode ? '1' : '0'
                 });
                 
                 const res = await fetch(API_BASE + '?' + params.toString());
