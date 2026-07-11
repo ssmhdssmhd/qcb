@@ -926,6 +926,171 @@ header('Expires: 0');
 
         body { background: var(--v3-bg-page); }
 
+        /* ===== 背景图 v3 ===== */
+        body.bg-image-mode {
+            background-image: none;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            transition: background-image 0.8s ease-in-out;
+        }
+        body.bg-image-mode::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg,
+                rgba(59, 130, 246, 0.15) 0%,
+                rgba(139, 92, 246, 0.15) 50%,
+                rgba(236, 72, 153, 0.15) 100%);
+            background-size: 300% 300%;
+            animation: bgGradientShift 15s ease infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        body.bg-image-mode::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: rgba(248, 250, 252, 0.75);
+            pointer-events: none;
+            z-index: 0;
+            backdrop-filter: blur(0px);
+        }
+        [data-theme="dark"].bg-image-mode::after {
+            background: rgba(15, 23, 42, 0.8);
+        }
+        @keyframes bgGradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        body.bg-image-mode .app-layout,
+        body.bg-image-mode .container {
+            position: relative;
+            z-index: 1;
+        }
+        body.bg-image-mode .card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        [data-theme="dark"].bg-image-mode .card {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body.bg-image-mode .sidebar {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-right: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        [data-theme="dark"].bg-image-mode .sidebar {
+            background: rgba(30, 41, 59, 0.9);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body.bg-image-mode .header {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        [data-theme="dark"].bg-image-mode .header {
+            background: rgba(30, 41, 59, 0.85);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body.bg-image-mode .stat-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        [data-theme="dark"].bg-image-mode .stat-card {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body.bg-image-mode .dashboard-card,
+        body.bg-image-mode .quick-action-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        [data-theme="dark"].bg-image-mode .dashboard-card,
+        [data-theme="dark"].bg-image-mode .quick-action-card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body.bg-image-mode .mobile-bottom-nav {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        [data-theme="dark"].bg-image-mode .mobile-bottom-nav {
+            background: rgba(30, 41, 59, 0.9);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body.bg-image-mode input,
+        body.bg-image-mode select,
+        body.bg-image-mode textarea {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        [data-theme="dark"].bg-image-mode input,
+        [data-theme="dark"].bg-image-mode select,
+        [data-theme="dark"].bg-image-mode textarea {
+            background: rgba(30, 41, 59, 0.9);
+        }
+
+        /* ===== 背景图切换按钮 ===== */
+        .bg-toggle-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            background: var(--v3-bg-hover);
+            color: var(--v3-text-secondary);
+            transition: all var(--v3-transition);
+            margin-left: 8px;
+        }
+        .bg-toggle-btn:hover {
+            background: var(--v3-primary-light);
+            color: var(--v3-primary);
+            transform: scale(1.1);
+        }
+        .bg-toggle-btn.active {
+            background: var(--v3-primary-gradient);
+            color: white;
+        }
+        .bg-change-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            background: var(--v3-bg-hover);
+            color: var(--v3-text-secondary);
+            transition: all var(--v3-transition);
+            margin-left: 8px;
+        }
+        .bg-change-btn:hover {
+            background: var(--v3-primary-light);
+            color: var(--v3-primary);
+            transform: rotate(180deg);
+        }
+
         /* ===== 侧边栏 v3 ===== */
         .sidebar {
             width: 250px;
@@ -1706,6 +1871,8 @@ header('Expires: 0');
                             <div class="theme-dot" data-theme-name="red" title="红色" onclick="switchTheme('red')"></div>
                             <div class="theme-dot" data-theme-name="dark" title="深色" onclick="switchTheme('dark')"></div>
                         </div>
+                        <button class="bg-toggle-btn" id="bgToggleBtn" onclick="toggleBgImage()" title="背景图">🖼️</button>
+                        <button class="bg-change-btn" id="bgChangeBtn" onclick="changeBgImage()" title="换一张" style="display:none">🔄</button>
                     </div>
                 </div>
             </div>
@@ -8331,6 +8498,76 @@ header('Expires: 0');
             }
         }
 
+        // ===== 背景图功能 =====
+        const BG_IMAGES = [];
+        for (let i = 1; i <= 20; i++) {
+            BG_IMAGES.push('img/bj/bg_' + i + '.jpg');
+        }
+        let currentBgIndex = -1;
+        let bgImageEnabled = localStorage.getItem('bgImageEnabled') === 'true';
+        let bgAutoChange = localStorage.getItem('bgAutoChange') === 'true';
+        let bgAutoTimer = null;
+
+        function getBasePath() {
+            const path = window.location.pathname;
+            return path.substring(0, path.lastIndexOf('/') + 1);
+        }
+
+        function toggleBgImage() {
+            bgImageEnabled = !bgImageEnabled;
+            localStorage.setItem('bgImageEnabled', bgImageEnabled);
+            applyBgImage();
+            updateBgButtons();
+            showToast(bgImageEnabled ? '背景图已开启' : '背景图已关闭', 'success');
+        }
+
+        function applyBgImage() {
+            const body = document.body;
+            if (bgImageEnabled) {
+                body.classList.add('bg-image-mode');
+                if (currentBgIndex < 0) {
+                    changeBgImage(true);
+                } else {
+                    const basePath = getBasePath();
+                    body.style.backgroundImage = 'url("' + basePath + BG_IMAGES[currentBgIndex] + '")';
+                }
+            } else {
+                body.classList.remove('bg-image-mode');
+                body.style.backgroundImage = 'none';
+                if (bgAutoTimer) {
+                    clearInterval(bgAutoTimer);
+                    bgAutoTimer = null;
+                }
+            }
+        }
+
+        function changeBgImage(silent = false) {
+            if (!bgImageEnabled) return;
+            let newIndex;
+            do {
+                newIndex = Math.floor(Math.random() * BG_IMAGES.length);
+            } while (newIndex === currentBgIndex && BG_IMAGES.length > 1);
+            currentBgIndex = newIndex;
+            const basePath = getBasePath();
+            document.body.style.backgroundImage = 'url("' + basePath + BG_IMAGES[currentBgIndex] + '")';
+            localStorage.setItem('currentBgIndex', currentBgIndex);
+            if (!silent) {
+                showToast('已更换背景图 ' + (currentBgIndex + 1) + '/' + BG_IMAGES.length, 'success');
+            }
+        }
+
+        function updateBgButtons() {
+            const toggleBtn = document.getElementById('bgToggleBtn');
+            const changeBtn = document.getElementById('bgChangeBtn');
+            if (toggleBtn) {
+                toggleBtn.classList.toggle('active', bgImageEnabled);
+                toggleBtn.textContent = bgImageEnabled ? '🖼️' : '🖼️';
+            }
+            if (changeBtn) {
+                changeBtn.style.display = bgImageEnabled ? 'flex' : 'none';
+            }
+        }
+
         // ===== v3.0 新功能 =====
 
         let analysisHistory = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
@@ -8652,6 +8889,12 @@ header('Expires: 0');
             loadProxyList();
             updateDashboardStats();
             renderDashboardRecent();
+            const savedBgIndex = parseInt(localStorage.getItem('currentBgIndex'));
+            if (!isNaN(savedBgIndex) && savedBgIndex >= 0 && savedBgIndex < BG_IMAGES.length) {
+                currentBgIndex = savedBgIndex;
+            }
+            applyBgImage();
+            updateBgButtons();
             fetch(API_BASE + '?action=info/version')
                 .then(r => r.json())
                 .then(data => {
