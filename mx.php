@@ -3945,11 +3945,258 @@ try {
             }
             break;
 
+        case 'ai/skip':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            $safeguard = isset($_GET['safeguard']) ? ($_GET['safeguard'] === '1' || $_GET['safeguard'] === 'true') : true;
+            $autoLearn = isset($_GET['auto_learn']) ? ($_GET['auto_learn'] === '1' || $_GET['auto_learn'] === 'true') : true;
+            $deepAnalysis = isset($_GET['deep_analysis']) ? ($_GET['deep_analysis'] === '1' || $_GET['deep_analysis'] === 'true') : false;
+            
+            $startTime = microtime(true);
+            try {
+                require_once __DIR__ . '/src/M3U8AdSkipper.php';
+                $skipper = new M3U8AdSkipper();
+                
+                if ($safeguard) {
+                    $result = $skipper->processWithSafeguard($url);
+                } else {
+                    $result = $skipper->process($url);
+                }
+                
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+                
+                $adSegments = [];
+                $contentSegments = [];
+                foreach ($result['segments'] as $seg) {
+                    if (!empty($seg['isAd'])) {
+                        $adSegments[] = [
+                            'uri' => $seg['uri'] ?? '',
+                            'duration' => $seg['duration'] ?? 0,
+                            'mediaSequence' => $seg['mediaSequence'] ?? null,
+                            'isAd' => true,
+                            'adReasons' => $seg['adReasons'] ?? []
+                        ];
+                    } else {
+                        $contentSegments[] = [
+                            'uri' => $seg['uri'] ?? '',
+                            'duration' => $seg['duration'] ?? 0,
+                            'mediaSequence' => $seg['mediaSequence'] ?? null,
+                            'isAd' => false
+                        ];
+                    }
+                }
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => 'AI去广告处理完成',
+                    'data' => [
+                        'original_url' => $url,
+                        'process_time' => $processTime . 'ms',
+                        'safeguard_enabled' => $safeguard,
+                        'deep_analysis' => $deepAnalysis,
+                        'safeguard_triggered' => $result['safeguardTriggered'] ?? false,
+                        'safeguard_reason' => $result['safeguardReason'] ?? '',
+                        'safeguard_method' => $result['safeguardMethod'] ?? '',
+                        'stats' => [
+                            'total_segments' => $result['stats']['totalSegments'] ?? 0,
+                            'ad_segments' => $result['stats']['removedSegments'] ?? 0,
+                            'kept_segments' => $result['stats']['keptSegments'] ?? 0,
+                            'original_duration' => $result['stats']['originalDuration'] ?? 0,
+                            'filtered_duration' => $result['stats']['filteredDuration'] ?? 0,
+                            'saved_duration' => $result['stats']['savedDuration'] ?? 0,
+                            'ad_percentage' => $result['stats']['adPercentage'] ?? 0
+                        ],
+                        'ad_segments' => array_slice($adSegments, 0, 100),
+                        'content_segments' => array_slice($contentSegments, 0, 100),
+                        'ad_segment_count' => count($adSegments),
+                        'content_segment_count' => count($contentSegments),
+                        'has_more_segments' => count($adSegments) > 100 || count($contentSegments) > 100
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '处理失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'ai/insert_detect':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            $checkOpening = isset($_GET['opening']) ? ($_GET['opening'] === '1' || $_GET['opening'] === 'true') : true;
+            $checkEnding = isset($_GET['ending']) ? ($_GET['ending'] === '1' || $_GET['ending'] === 'true') : true;
+            $checkMiddle = isset($_GET['middle']) ? ($_GET['middle'] === '1' || $_GET['middle'] === 'true') : true;
+            
+            $startTime = microtime(true);
+            try {
+                require_once __DIR__ . '/src/M3U8Parser.php';
+                require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
+                
+                $parser = new M3U8Parser();
+                $playlist = $parser->parse(file_get_contents_safe($url));
+                $segments = $playlist['segments'] ?? [];
+                
+                $insertions = [];
+                $openingCount = 0;
+                $endingCount = 0;
+                $middleCount = 0;
+                
+                if (count($segments) > 0) {
+                    $durations = array_column($segments, 'duration');
+                    $avgDuration = count($durations) > 0 ? array_sum($durations) / count($durations) : 10;
+                    
+                    $adClusters = [];
+                    $currentCluster = null;
+                    
+                    foreach ($segments as $i => $seg) {
+                        $isAdLike = false;
+                        $reason = '';
+                        
+                        if ($seg['duration'] < $avgDuration * 0.5 && $seg['duration'] > 0.5) {
+                            $isAdLike = true;
+                            $reason = '时长短';
+                        }
+                        if (!empty($seg['discontinuity'])) {
+                            $isAdLike = true;
+                            $reason = $reason ? $reason . '+不连续标记' : '不连续标记';
+                        }
+                        
+                        if ($isAdLike) {
+                            if ($currentCluster === null) {
+                                $currentCluster = [
+                                    'startIndex' => $i,
+                                    'endIndex' => $i,
+                                    'duration' => $seg['duration'],
+                                    'reason' => $reason,
+                                    'type' => 'middle'
+                                ];
+                            } else {
+                                $currentCluster['endIndex'] = $i;
+                                $currentCluster['duration'] += $seg['duration'];
+                            }
+                        } else {
+                            if ($currentCluster !== null) {
+                                $adClusters[] = $currentCluster;
+                                $currentCluster = null;
+                            }
+                        }
+                    }
+                    if ($currentCluster !== null) {
+                        $adClusters[] = $currentCluster;
+                    }
+                    
+                    foreach ($adClusters as $cluster) {
+                        $type = 'middle';
+                        if ($checkOpening && $cluster['startIndex'] <= 3) {
+                            $type = 'opening';
+                            $openingCount++;
+                        } elseif ($checkEnding && $cluster['endIndex'] >= count($segments) - 4) {
+                            $type = 'ending';
+                            $endingCount++;
+                        } elseif ($checkMiddle) {
+                            $middleCount++;
+                        } else {
+                            continue;
+                        }
+                        $cluster['type'] = $type;
+                        $insertions[] = $cluster;
+                    }
+                }
+                
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '插播检测完成',
+                    'data' => [
+                        'original_url' => $url,
+                        'process_time' => $processTime . 'ms',
+                        'total_segments' => count($segments),
+                        'opening_count' => $openingCount,
+                        'ending_count' => $endingCount,
+                        'middle_count' => $middleCount,
+                        'insertions' => $insertions
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '检测失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'ai/watermark':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            
+            $watermarkParams = ['wsip', 'wsh', 'wsTime', 'sign', 'wd', 'chyuan', 'x-play', 'k_ft', 'k_id'];
+            
+            $removedParams = [];
+            $originalUrl = $url;
+            $processedUrl = $url;
+            
+            try {
+                $urlParts = parse_url($url);
+                if ($urlParts && isset($urlParts['query'])) {
+                    parse_str($urlParts['query'], $queryParams);
+                    foreach ($watermarkParams as $param) {
+                        if (isset($queryParams[$param])) {
+                            $removedParams[] = [
+                                'name' => $param,
+                                'value' => $queryParams[$param]
+                            ];
+                            unset($queryParams[$param]);
+                        }
+                    }
+                    
+                    $newQuery = http_build_query($queryParams);
+                    $scheme = $urlParts['scheme'] ?? 'https';
+                    $host = $urlParts['host'] ?? '';
+                    $path = $urlParts['path'] ?? '';
+                    $processedUrl = $scheme . '://' . $host . $path;
+                    if ($newQuery) {
+                        $processedUrl .= '?' . $newQuery;
+                    }
+                }
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '水印处理完成',
+                    'data' => [
+                        'original_url' => $originalUrl,
+                        'processed_url' => $processedUrl,
+                        'removed_params' => $removedParams,
+                        'removed_count' => count($removedParams),
+                        'watermark_params_lib' => $watermarkParams
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '处理失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
                 'message' => '未知操作',
                 'available_actions' => [
+                    'ai/skip' => 'AI自动去广告',
+                    'ai/insert_detect' => 'AI插播识别检测',
+                    'ai/watermark' => 'AI水印处理',
                     'analyze' => '分析视频广告',
                     'rules/list' => '获取所有域名规则',
                     'rules/get' => '获取指定域名规则',

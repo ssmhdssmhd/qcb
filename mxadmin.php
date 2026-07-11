@@ -1819,6 +1819,174 @@ header('Expires: 0');
                 </div>
             </div>
         </div>
+
+        <div class="page" id="page-ai_skip">
+            <div class="card">
+                <div class="card-title">🤖 AI 自动去广告</div>
+                <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
+                    <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能广告识别引擎</div>
+                    <div style="font-size:13px;opacity:0.9">基于多维度特征分析，自动识别并移除 M3U8 视频中的广告片段，支持时长检测、不连续标记、序列号跳跃、文件名模式等多种识别算法</div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="aiSkipUrl" placeholder="输入 M3U8 视频链接，例如：https://example.com/video/index.m3u8">
+                    <button class="btn btn-primary" onclick="aiSkipVideo()">🚀 AI 去广告</button>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipSafeguard" checked> 启用安全守护
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipAutoLearn" checked> 自动学习规则
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipDeepAnalysis"> 深度分析模式
+                    </label>
+                </div>
+            </div>
+
+            <div id="aiSkipResult" style="display:none">
+                <div class="stats-grid" id="aiSkipStats"></div>
+
+                <div class="card">
+                    <div class="card-title">处理结果</div>
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                        <div style="flex:1;min-width:200px">
+                            <div style="font-size:13px;color:#909399;margin-bottom:4px">无广告播放链接</div>
+                            <code id="aiSkipOutputUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <button class="btn btn-secondary" onclick="copyText(document.getElementById('aiSkipOutputUrl').textContent)">📋 复制链接</button>
+                        <button class="btn btn-primary" onclick="window.open(document.getElementById('aiSkipOutputUrl').textContent, '_blank')">🔗 新窗口播放</button>
+                        <button class="btn btn-success" onclick="playAiSkipVideo()">▶️ 内置播放</button>
+                        <button class="btn btn-secondary" onclick="downloadAiSkipM3u8()">💾 下载M3U8</button>
+                    </div>
+                    <div id="aiSkipPlayerContainer" style="display:none;margin-top:16px">
+                        <div id="aiSkipVideoPlayer" style="width:100%;height:360px;border-radius:8px;overflow:hidden;background:#000"></div>
+                        <div style="margin-top:8px;font-size:12px;color:#909399" id="aiSkipPlayStatus"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">AI 识别详情</div>
+                    <div class="tab-bar">
+                        <div class="tab-item active" onclick="switchAiSkipTab(this, 'ad')">广告片段</div>
+                        <div class="tab-item" onclick="switchAiSkipTab(this, 'content')">内容片段</div>
+                        <div class="tab-item" onclick="switchAiSkipTab(this, 'detail')">识别详情</div>
+                    </div>
+                    <div class="segment-list" id="aiSkipSegmentList"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">快捷操作</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <button class="btn btn-secondary" onclick="aiSkipGenerateRules()">📋 生成规则</button>
+                        <button class="btn btn-success" onclick="goToRules()">🔧 规则管理</button>
+                        <button class="btn btn-secondary" onclick="aiSkipToInsert()">📺 检测插播</button>
+                        <button class="btn btn-secondary" onclick="aiSkipToWatermark()">💧 水印处理</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-ai_insert">
+            <div class="card">
+                <div class="card-title">📺 AI 插播识别</div>
+                <div style="background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
+                    <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能插播检测引擎</div>
+                    <div style="font-size:13px;opacity:0.9">自动识别视频中的插播内容，包括片头片尾广告、中间插播广告、跑马灯等，精准定位插播位置和时长</div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="aiInsertUrl" placeholder="输入 M3U8 视频链接，检测插播内容">
+                    <button class="btn btn-primary" onclick="aiInsertDetect()">🔍 检测插播</button>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiInsertOpening" checked> 检测片头
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiInsertEnding" checked> 检测片尾
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiInsertMiddle" checked> 检测中间插播
+                    </label>
+                </div>
+            </div>
+
+            <div id="aiInsertResult" style="display:none">
+                <div class="stats-grid" id="aiInsertStats"></div>
+
+                <div class="card">
+                    <div class="card-title">插播检测结果</div>
+                    <div id="aiInsertList"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">操作</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <button class="btn btn-primary" onclick="aiInsertSkip()">🚀 一键跳过插播</button>
+                        <button class="btn btn-secondary" onclick="aiInsertToSkip()">🤖 去广告处理</button>
+                        <button class="btn btn-secondary" onclick="aiInsertToWatermark()">💧 水印处理</button>
+                    </div>
+                    <div id="aiInsertOutput" style="margin-top:16px;display:none">
+                        <div style="font-size:13px;color:#909399;margin-bottom:4px">纯净版播放链接</div>
+                        <code id="aiInsertOutputUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-ai_watermark">
+            <div class="card">
+                <div class="card-title">💧 AI 水印处理</div>
+                <div style="background:linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
+                    <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能水印处理引擎</div>
+                    <div style="font-size:13px;opacity:0.9">自动识别和处理视频中的水印参数，支持 URL 水印参数去除、TS 文件名水印处理、播放链接净化等功能</div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="aiWatermarkUrl" placeholder="输入视频链接或播放地址，进行水印处理">
+                    <button class="btn btn-primary" onclick="aiWatermarkProcess()">✨ 处理水印</button>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiWatermarkUrlParams" checked> 去除URL水印参数
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiWatermarkFilename" checked> 文件名水印处理
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiWatermarkReferer" checked> 自动处理Referer
+                    </label>
+                </div>
+            </div>
+
+            <div id="aiWatermarkResult" style="display:none">
+                <div class="card">
+                    <div class="card-title">处理结果</div>
+                    <div style="margin-bottom:16px">
+                        <div style="font-size:13px;color:#909399;margin-bottom:8px">原始链接</div>
+                        <code id="aiWatermarkOriginalUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;font-size:12px"></code>
+                    </div>
+                    <div style="margin-bottom:16px">
+                        <div style="font-size:13px;color:#909399;margin-bottom:8px">处理后链接</div>
+                        <code id="aiWatermarkOutputUrl" style="background:#ecfdf5;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;cursor:pointer;color:#059669" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    </div>
+                    <div id="aiWatermarkDetails"></div>
+                    <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
+                        <button class="btn btn-secondary" onclick="copyText(document.getElementById('aiWatermarkOutputUrl').textContent)">📋 复制链接</button>
+                        <button class="btn btn-primary" onclick="window.open(document.getElementById('aiWatermarkOutputUrl').textContent, '_blank')">🔗 打开链接</button>
+                        <button class="btn btn-success" onclick="aiWatermarkToSkip()">🤖 去广告处理</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">水印参数库</div>
+                    <div style="font-size:13px;color:#606266;margin-bottom:12px">已收录常见水印参数，可自动识别并去除</div>
+                    <div id="aiWatermarkLibList"></div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
         </main>
@@ -2065,6 +2233,14 @@ header('Expires: 0');
 
         const MENU_CONFIG = [
             {
+                group: 'AI智能处理',
+                items: [
+                    { page: 'ai_skip', icon: '🤖', text: 'AI自动去广告', badge: 'NEW' },
+                    { page: 'ai_insert', icon: '📺', text: 'AI插播识别', badge: 'NEW' },
+                    { page: 'ai_watermark', icon: '💧', text: 'AI水印处理', badge: 'NEW' },
+                ]
+            },
+            {
                 group: '核心功能',
                 items: [
                     { page: 'analyze', icon: '🎯', text: '视频分析' },
@@ -2108,10 +2284,12 @@ header('Expires: 0');
                 group.items.forEach(item => {
                     const dataPage = item.page ? ' data-page="' + item.page + '"' : '';
                     const onclick = item.action ? ' onclick="' + item.action + '"' : '';
-                    const activeClass = item.page === 'analyze' ? ' active' : '';
+                    const activeClass = item.page === 'ai_skip' ? ' active' : '';
+                    const badgeHtml = item.badge ? '<span class="menu-badge">' + escapeHtml(item.badge) + '</span>' : '';
                     html += '<div class="nav-item' + activeClass + '"' + dataPage + onclick + '>';
                     html += '<span class="menu-icon">' + item.icon + '</span>';
                     html += '<span class="menu-text">' + escapeHtml(item.text) + '</span>';
+                    html += badgeHtml;
                     html += '</div>';
                 });
                 html += '</div>';
@@ -2471,6 +2649,423 @@ header('Expires: 0');
 
         function goToRules() {
             document.querySelector('.nav-item[data-page="rules"]').click();
+        }
+
+        let currentAiSkipData = null;
+        let aiSkipSegmentTab = 'ad';
+
+        async function aiSkipVideo() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'AI处理中...';
+            document.getElementById('aiSkipResult').style.display = 'none';
+            try {
+                const safeguard = document.getElementById('aiSkipSafeguard').checked;
+                const autoLearn = document.getElementById('aiSkipAutoLearn').checked;
+                const deepAnalysis = document.getElementById('aiSkipDeepAnalysis').checked;
+                
+                const params = new URLSearchParams({
+                    action: 'ai/skip',
+                    url: url,
+                    safeguard: safeguard ? '1' : '0',
+                    auto_learn: autoLearn ? '1' : '0',
+                    deep_analysis: deepAnalysis ? '1' : '0'
+                });
+                
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
+                if (!data.success) throw new Error(data.message || '处理失败');
+                currentAiSkipData = data;
+                renderAiSkipResult(data);
+                document.getElementById('aiSkipResult').style.display = 'block';
+                showToast('AI去广告完成', 'success');
+            } catch (e) {
+                showToast('处理失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 AI 去广告';
+            }
+        }
+
+        function renderAiSkipResult(data) {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            const outputUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
+            document.getElementById('aiSkipOutputUrl').textContent = outputUrl;
+            
+            const stats = data.data?.stats || data.stats || {};
+            const statsHtml = `
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#667eea">${stats.totalSegments || stats.total_segments || 0}</div>
+                    <div class="stat-label">总片段数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#f56c6c">${stats.adSegments || stats.ad_segments || 0}</div>
+                    <div class="stat-label">广告片段</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#67c23a">${stats.keptSegments || stats.kept_segments || 0}</div>
+                    <div class="stat-label">保留片段</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#e6a23c">${(stats.adPercentage || stats.ad_percentage || 0).toFixed?.(1) || 0}%</div>
+                    <div class="stat-label">广告占比</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#409eff">${(stats.savedDuration || stats.saved_duration || 0).toFixed?.(1) || 0}s</div>
+                    <div class="stat-label">节省时长</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#909399">${data.data?.processTime || data.process_time || '0'}ms</div>
+                    <div class="stat-label">处理耗时</div>
+                </div>
+            `;
+            document.getElementById('aiSkipStats').innerHTML = statsHtml;
+            
+            renderAiSkipSegmentList();
+        }
+
+        function switchAiSkipTab(el, tab) {
+            aiSkipSegmentTab = tab;
+            document.querySelectorAll('#page-ai_skip .tab-item').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            renderAiSkipSegmentList();
+        }
+
+        function renderAiSkipSegmentList() {
+            const data = currentAiSkipData;
+            if (!data) return;
+            const container = document.getElementById('aiSkipSegmentList');
+            const adSegments = data.data?.adSegments || data.data?.ad_segments || [];
+            const contentSegments = data.data?.contentSegments || data.data?.content_segments || [];
+            
+            if (aiSkipSegmentTab === 'ad') {
+                if (adSegments.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#67c23a;padding:30px">✅ 未检测到广告片段</div>';
+                    return;
+                }
+                container.innerHTML = adSegments.slice(0, 50).map((seg, i) => `
+                    <div class="segment-item">
+                        <div class="segment-index">#${i + 1}</div>
+                        <div class="segment-info">
+                            <div class="segment-name">${seg.uri || seg.url || 'ad_' + i + '.ts'}</div>
+                            <div class="segment-meta">
+                                <span>时长: ${(seg.duration || 0).toFixed(3)}s</span>
+                                <span>序号: ${seg.mediaSequence ?? seg.sequence ?? '-'}</span>
+                            </div>
+                        </div>
+                        <div class="segment-badges">
+                            ${seg.isAd ? '<span class="badge badge-danger">广告</span>' : ''}
+                        </div>
+                    </div>
+                `).join('');
+                if (adSegments.length > 50) {
+                    container.innerHTML += `<div style="text-align:center;color:#909399;padding:12px;font-size:12px">仅显示前 50 条，共 ${adSegments.length} 条</div>`;
+                }
+            } else if (aiSkipSegmentTab === 'content') {
+                if (contentSegments.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#f56c6c;padding:30px">⚠️ 未找到内容片段</div>';
+                    return;
+                }
+                container.innerHTML = contentSegments.slice(0, 50).map((seg, i) => `
+                    <div class="segment-item">
+                        <div class="segment-index">#${i + 1}</div>
+                        <div class="segment-info">
+                            <div class="segment-name">${seg.uri || seg.url || 'content_' + i + '.ts'}</div>
+                            <div class="segment-meta">
+                                <span>时长: ${(seg.duration || 0).toFixed(3)}s</span>
+                                <span>序号: ${seg.mediaSequence ?? seg.sequence ?? '-'}</span>
+                            </div>
+                        </div>
+                        <div class="segment-badges">
+                            <span class="badge badge-success">内容</span>
+                        </div>
+                    </div>
+                `).join('');
+                if (contentSegments.length > 50) {
+                    container.innerHTML += `<div style="text-align:center;color:#909399;padding:12px;font-size:12px">仅显示前 50 条，共 ${contentSegments.length} 条</div>`;
+                }
+            } else {
+                const analysis = data.data?.analysis || data.analysis || {};
+                const methods = data.data?.methods || data.methods || [];
+                let detailHtml = '<div style="font-size:13px;color:#606266">';
+                detailHtml += '<div style="margin-bottom:12px;font-weight:600;color:#303133">AI识别方式：</div>';
+                detailHtml += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">';
+                detailHtml += '<span class="badge badge-primary">时长检测</span>';
+                detailHtml += '<span class="badge badge-warning">不连续标记</span>';
+                detailHtml += '<span class="badge badge-danger">序列号跳跃</span>';
+                detailHtml += '<span class="badge badge-info">文件名模式</span>';
+                detailHtml += '</div>';
+                
+                if (analysis.durationStats) {
+                    detailHtml += '<div style="margin-bottom:12px"><strong>时长统计：</strong></div>';
+                    detailHtml += `<div>平均时长: ${analysis.durationStats.avg?.toFixed(3) || 0}s</div>`;
+                    detailHtml += `<div>最小时长: ${analysis.durationStats.min?.toFixed(3) || 0}s</div>`;
+                    detailHtml += `<div>最大时长: ${analysis.durationStats.max?.toFixed(3) || 0}s</div>`;
+                }
+                
+                detailHtml += '</div>';
+                container.innerHTML = detailHtml;
+            }
+        }
+
+        function playAiSkipVideo() {
+            const url = document.getElementById('aiSkipOutputUrl').textContent;
+            if (!url) return;
+            document.getElementById('aiSkipPlayerContainer').style.display = 'block';
+            document.getElementById('aiSkipPlayStatus').textContent = '正在加载视频...';
+            if (window.dplayerScriptLoaded) {
+                initAiSkipPlayer(url);
+            } else {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/dplayer/dist/DPlayer.min.js';
+                script.onload = () => {
+                    window.dplayerScriptLoaded = true;
+                    initAiSkipPlayer(url);
+                };
+                document.head.appendChild(script);
+            }
+        }
+
+        function initAiSkipPlayer(url) {
+            const container = document.getElementById('aiSkipVideoPlayer');
+            container.innerHTML = '';
+            new DPlayer({
+                container: container,
+                video: {
+                    url: url,
+                    type: 'auto'
+                },
+                autoplay: true
+            });
+            document.getElementById('aiSkipPlayStatus').textContent = '视频已加载';
+        }
+
+        function downloadAiSkipM3u8() {
+            const url = document.getElementById('aiSkipOutputUrl').textContent;
+            if (!url) return;
+            window.open(url, '_blank');
+        }
+
+        function aiSkipGenerateRules() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            showToast('正在生成规则...', 'info');
+            fetch(API_BASE + '?action=rules/generate&url=' + encodeURIComponent(url))
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('规则生成成功，共 ' + data.data?.ruleCount + ' 条规则', 'success');
+                    } else {
+                        showToast('生成失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(e => showToast('生成失败: ' + e.message, 'error'));
+        }
+
+        function aiSkipToInsert() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            document.getElementById('aiInsertUrl').value = url;
+            document.querySelector('.nav-item[data-page="ai_insert"]').click();
+        }
+
+        function aiSkipToWatermark() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            document.getElementById('aiWatermarkUrl').value = url;
+            document.querySelector('.nav-item[data-page="ai_watermark"]').click();
+        }
+
+        let currentAiInsertData = null;
+
+        async function aiInsertDetect() {
+            const url = document.getElementById('aiInsertUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '检测中...';
+            document.getElementById('aiInsertResult').style.display = 'none';
+            try {
+                const opening = document.getElementById('aiInsertOpening').checked;
+                const ending = document.getElementById('aiInsertEnding').checked;
+                const middle = document.getElementById('aiInsertMiddle').checked;
+                
+                const params = new URLSearchParams({
+                    action: 'ai/insert_detect',
+                    url: url,
+                    opening: opening ? '1' : '0',
+                    ending: ending ? '1' : '0',
+                    middle: middle ? '1' : '0'
+                });
+                
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('服务器返回非JSON响应');
+                }
+                
+                if (!data.success) throw new Error(data.message || '检测失败');
+                currentAiInsertData = data;
+                renderAiInsertResult(data);
+                document.getElementById('aiInsertResult').style.display = 'block';
+                showToast('插播检测完成', 'success');
+            } catch (e) {
+                showToast('检测失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔍 检测插播';
+            }
+        }
+
+        function renderAiInsertResult(data) {
+            const insertions = data.data?.insertions || data.insertions || [];
+            const totalInsertions = insertions.length;
+            const totalDuration = insertions.reduce((sum, item) => sum + (item.duration || 0), 0);
+            
+            const statsHtml = `
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#f56c6c">${totalInsertions}</div>
+                    <div class="stat-label">插播数量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#e6a23c">${totalDuration.toFixed(1)}s</div>
+                    <div class="stat-label">插播总时长</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#67c23a">${data.data?.openingCount || 0}</div>
+                    <div class="stat-label">片头插播</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#409eff">${data.data?.middleCount || 0}</div>
+                    <div class="stat-label">中间插播</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color:#909399">${data.data?.endingCount || 0}</div>
+                    <div class="stat-label">片尾插播</div>
+                </div>
+            `;
+            document.getElementById('aiInsertStats').innerHTML = statsHtml;
+            
+            const listHtml = insertions.length === 0 
+                ? '<div style="text-align:center;color:#67c23a;padding:30px">✅ 未检测到插播内容</div>'
+                : insertions.map((item, i) => `
+                    <div style="padding:12px;background:#f5f7fa;border-radius:8px;margin-bottom:8px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <div style="font-weight:600;color:#303133">${item.type === 'opening' ? '片头插播' : item.type === 'ending' ? '片尾插播' : '第' + (i+1) + '处插播'}</div>
+                            <span class="badge badge-danger">${(item.duration || 0).toFixed(1)}s</span>
+                        </div>
+                        <div style="font-size:12px;color:#606266">
+                            位置: 第 ${item.startIndex || 0} - ${item.endIndex || 0} 片段
+                            ${item.reason ? ' | 原因: ' + item.reason : ''}
+                        </div>
+                    </div>
+                `).join('');
+            document.getElementById('aiInsertList').innerHTML = listHtml;
+        }
+
+        function aiInsertSkip() {
+            const url = document.getElementById('aiInsertUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            const outputUrl = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
+            document.getElementById('aiInsertOutputUrl').textContent = outputUrl;
+            document.getElementById('aiInsertOutput').style.display = 'block';
+            showToast('已生成纯净版链接', 'success');
+        }
+
+        function aiInsertToSkip() {
+            const url = document.getElementById('aiInsertUrl').value.trim();
+            document.getElementById('aiSkipUrl').value = url;
+            document.querySelector('.nav-item[data-page="ai_skip"]').click();
+        }
+
+        function aiInsertToWatermark() {
+            const url = document.getElementById('aiInsertUrl').value.trim();
+            document.getElementById('aiWatermarkUrl').value = url;
+            document.querySelector('.nav-item[data-page="ai_watermark"]').click();
+        }
+
+        const WATERMARK_PARAMS = [
+            { name: 'wsip', desc: '水印IP参数' },
+            { name: 'wsh' , desc: '水印哈希参数' },
+            { name: 'wsTime', desc: '水印时间参数' },
+            { name: 'sign', desc: '签名参数' },
+            { name: 'wd', desc: '水印域名参数' },
+            { name: 'hd', desc: '清晰度参数（非水印）' },
+            { name: 'chyuan', desc: '来源参数' },
+            { name: 'x-play', desc: '播放器参数' },
+            { name: 'k_ft', desc: '防盗链参数' },
+            { name: 'k_id', desc: '防盗链ID' },
+        ];
+
+        function aiWatermarkProcess() {
+            const url = document.getElementById('aiWatermarkUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            document.getElementById('aiWatermarkResult').style.display = 'block';
+            document.getElementById('aiWatermarkOriginalUrl').textContent = url;
+            
+            let processedUrl = url;
+            let removedParams = [];
+            let addedParams = [];
+            
+            const removeParams = document.getElementById('aiWatermarkUrlParams').checked;
+            const handleReferer = document.getElementById('aiWatermarkReferer').checked;
+            
+            if (removeParams) {
+                try {
+                    const urlObj = new URL(url);
+                    const paramsToRemove = [];
+                    WATERMARK_PARAMS.forEach(wm => {
+                        if (urlObj.searchParams.has(wm.name)) {
+                            paramsToRemove.push(wm.name + '=' + urlObj.searchParams.get(wm.name));
+                            urlObj.searchParams.delete(wm.name);
+                        }
+                    });
+                    removedParams = paramsToRemove;
+                    processedUrl = urlObj.toString();
+                } catch (e) {
+                }
+            }
+            
+            document.getElementById('aiWatermarkOutputUrl').textContent = processedUrl;
+            
+            let detailsHtml = '';
+            if (removedParams.length > 0) {
+                detailsHtml += `<div style="margin-bottom:12px"><div style="font-weight:600;color:#f56c6c;margin-bottom:6px">已去除的水印参数:</div>`;
+                detailsHtml += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+                removedParams.forEach(p => {
+                    detailsHtml += `<span class="badge badge-danger">${p.substring(0, 30)}${p.length > 30 ? '...' : ''}</span>`;
+                });
+                detailsHtml += `</div></div>`;
+            } else {
+                detailsHtml += `<div style="color:#67c23a;margin-bottom:12px">✅ 未检测到水印参数</div>`;
+            }
+            
+            document.getElementById('aiWatermarkDetails').innerHTML = detailsHtml;
+            
+            const libHtml = WATERMARK_PARAMS.map(wm => `
+                <div style="display:inline-block;background:#f5f7fa;padding:6px 12px;border-radius:6px;margin:4px;font-size:12px">
+                    <strong>${wm.name}</strong> - ${wm.desc}
+                </div>
+            `).join('');
+            document.getElementById('aiWatermarkLibList').innerHTML = libHtml;
+            
+            showToast('水印处理完成', 'success');
+        }
+
+        function aiWatermarkToSkip() {
+            const url = document.getElementById('aiWatermarkOutputUrl').textContent || document.getElementById('aiWatermarkUrl').value.trim();
+            document.getElementById('aiSkipUrl').value = url;
+            document.querySelector('.nav-item[data-page="ai_skip"]').click();
         }
 
         function playVideo() {
