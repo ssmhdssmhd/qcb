@@ -3970,23 +3970,27 @@ try {
                 
                 $adSegments = [];
                 $contentSegments = [];
-                foreach ($result['segments'] as $seg) {
-                    if (!empty($seg['isAd'])) {
-                        $adSegments[] = [
-                            'uri' => $seg['uri'] ?? '',
-                            'duration' => $seg['duration'] ?? 0,
-                            'mediaSequence' => $seg['mediaSequence'] ?? null,
-                            'isAd' => true,
-                            'adReasons' => $seg['adReasons'] ?? []
-                        ];
-                    } else {
-                        $contentSegments[] = [
-                            'uri' => $seg['uri'] ?? '',
-                            'duration' => $seg['duration'] ?? 0,
-                            'mediaSequence' => $seg['mediaSequence'] ?? null,
-                            'isAd' => false
-                        ];
-                    }
+                
+                $removedSegments = $result['filtered']['removedSegments'] ?? [];
+                $keptSegments = $result['filtered']['segments'] ?? [];
+                
+                foreach ($removedSegments as $seg) {
+                    $adSegments[] = [
+                        'uri' => $seg['uri'] ?? '',
+                        'duration' => $seg['duration'] ?? 0,
+                        'mediaSequence' => $seg['mediaSequence'] ?? null,
+                        'isAd' => true,
+                        'adReasons' => $seg['adInfo']['matchedRules'] ?? []
+                    ];
+                }
+                
+                foreach ($keptSegments as $seg) {
+                    $contentSegments[] = [
+                        'uri' => $seg['uri'] ?? '',
+                        'duration' => $seg['duration'] ?? 0,
+                        'mediaSequence' => $seg['mediaSequence'] ?? null,
+                        'isAd' => false
+                    ];
                 }
                 
                 sendJsonResponse([
@@ -4040,7 +4044,7 @@ try {
                 require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
                 
                 $parser = new M3U8Parser();
-                $playlist = $parser->parse(file_get_contents_safe($url));
+                $playlist = $parser->parse($url);
                 $segments = $playlist['segments'] ?? [];
                 
                 $insertions = [];

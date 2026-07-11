@@ -955,7 +955,7 @@ header('Expires: 0');
     </div>
 
     <div class="container">
-        <div class="page active" id="page-analyze">
+        <div class="page" id="page-analyze">
             <div class="card">
                 <div class="card-title">视频广告分析</div>
                 <div class="input-group">
@@ -1820,7 +1820,7 @@ header('Expires: 0');
             </div>
         </div>
 
-        <div class="page" id="page-ai_skip">
+        <div class="page active" id="page-ai_skip">
             <div class="card">
                 <div class="card-title">🤖 AI 自动去广告</div>
                 <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
