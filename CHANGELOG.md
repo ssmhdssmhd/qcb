@@ -5,6 +5,93 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.31.0] - 2026-07-11
+
+### 🎬 新增 LZ 去广告独立接口
+
+**功能**: 新增 `lz/lz.php` 简洁去广告接口，支持用户通过 `域名/lz.php?url=链接` 的方式快速调用去广告功能，输出 JSON 格式数据，方便 PHP 集成调用。
+
+**接口特性**:
+- ✅ 简洁调用：`lz/lz.php?url=视频链接` 即可去广告
+- ✅ JSON 格式输出，便于程序调用
+- ✅ 支持 M3U8 格式直接输出
+- ✅ 内置安全守护机制，防止误判
+- ✅ 自动识别主播放列表并追踪媒体播放列表
+- ✅ 支持 CORS 跨域访问
+- ✅ 完整的错误处理和友好提示
+
+**接口列表**:
+
+| 接口 | 说明 |
+|------|------|
+| `lz/lz.php?url=视频链接` | 去广告解析，返回JSON |
+| `lz/lz.php?action=m3u8&url=视频链接` | 去广告解析，返回M3U8 |
+| `lz/lz.php?action=signatures&domain=域名` | 获取TS广告特征码 |
+| `lz/lz.php?action=sites` | 获取资源站列表 |
+| `lz/lz.php?action=help` | 获取帮助信息 |
+
+### 🔬 新增 TS 广告特征码 API 接口
+
+**功能**: 在 `mx.php` 中新增完整的广告特征码管理 API，支持查询、添加、删除、统计和清理广告特征码，方便用户生成 PHP 调用代码。
+
+**新增接口**:
+
+| 接口 | 说明 |
+|------|------|
+| `mx.php?action=signatures/list&domain=xxx` | 获取指定域名广告特征码列表 |
+| `mx.php?action=signatures/add` | 添加广告特征码 |
+| `mx.php?action=signatures/delete&id=xxx` | 删除广告特征码 |
+| `mx.php?action=signatures/stats[&domain=xxx]` | 广告特征码统计 |
+| `mx.php?action=signatures/clean[&min_confidence=30]` | 清理低置信度特征码 |
+
+**特征码类型**:
+- `duration` - 片段时长特征码
+- `discontinuity` - 不连续标记特征码
+- `sequence` - 序列号跳跃特征码
+- `filename` - 文件名模式特征码
+
+**响应字段说明**:
+- `id`: 特征码ID
+- `type`: 特征码类型
+- `value`: 特征码值
+- `weight`: 权重值（0-100）
+- `hit_count`: 命中次数
+- `confidence`: 置信度（0-100）
+- `first_seen`: 首次发现时间
+- `last_seen`: 最后发现时间
+
+### 📚 新增资源站独立脚本目录
+
+**功能**: 新增 `lz/resource_scripts/` 目录，存放各资源站对应的独立去广告脚本，每个资源站一个脚本文件，方便单独调用和管理。
+
+**已创建文件**:
+- `template.php` - 资源站脚本模板，可复制修改创建新脚本
+- `liangzi.php` - 量子资源站示例脚本
+
+**资源站脚本特性**:
+- ✅ 每个资源站独立脚本，互不影响
+- ✅ 支持 JSON 和 M3U8 两种输出格式
+- ✅ 内置视频搜索功能（基于资源站API）
+- ✅ 自定义规则配置
+- ✅ 统一的响应格式，便于集成
+
+### 📖 完善文档
+
+**新增**:
+- `lz/README.md` - LZ 接口完整使用说明
+- 包含接口调用示例（PHP + JavaScript）
+- 特征码类型说明和权重解释
+- 资源站脚本创建教程
+
+### 🔧 其他优化
+
+- 版本号更新至 v2.31.0
+- 所有新增接口均支持 CORS 跨域
+- 统一的 JSON 响应格式：`{code, msg, data}`
+- 内存保护机制，自动提升内存限制至 256M
+
+---
+
 ## [2.30.4] - 2026-07-08
 
 ### 🚀 统一解析接口内部重构

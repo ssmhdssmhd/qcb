@@ -3781,6 +3781,170 @@ try {
             ]);
             break;
 
+        case 'signatures/list':
+        case 'ad_signatures/list':
+            $domain = $_GET['domain'] ?? '';
+            $type = $_GET['type'] ?? null;
+            if (empty($domain)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain 参数'], 400);
+            }
+            if (!$useDb) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '数据库未启用，广告特征码功能需要数据库支持',
+                    'signatures' => [],
+                    'total' => 0
+                ]);
+                break;
+            }
+            try {
+                $adSig = new DbAdSignature();
+                $sigs = $adSig->getByDomain($domain, $type);
+                $grouped = $adSig->getGroupedByDomain($domain);
+                $stats = $adSig->getStats($domain);
+                sendJsonResponse([
+                    'success' => true,
+                    'domain' => $domain,
+                    'total' => count($sigs),
+                    'by_type' => array_map(function($items) { return count($items); }, $grouped),
+                    'signatures' => array_map(function($sig) {
+                        return [
+                            'id' => (int)$sig['id'],
+                            'type' => $sig['signature_type'],
+                            'value' => $sig['signature_value'],
+                            'weight' => (int)$sig['weight'],
+                            'hit_count' => (int)$sig['hit_count'],
+                            'confidence' => (int)$sig['confidence'],
+                            'first_seen' => $sig['first_seen'],
+                            'last_seen' => $sig['last_seen']
+                        ];
+                    }, $sigs),
+                    'grouped' => $grouped,
+                    'stats' => $stats
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '获取广告特征码失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'signatures/add':
+        case 'ad_signatures/add':
+            $domain = $_GET['domain'] ?? $_POST['domain'] ?? '';
+            $type = $_GET['type'] ?? $_POST['type'] ?? '';
+            $value = $_GET['value'] ?? $_POST['value'] ?? '';
+            $weight = isset($_GET['weight']) ? (int)$_GET['weight'] : (isset($_POST['weight']) ? (int)$_POST['weight'] : 30);
+            $confidence = isset($_GET['confidence']) ? (int)$_GET['confidence'] : (isset($_POST['confidence']) ? (int)$_POST['confidence'] : 50);
+            if (empty($domain) || empty($type) || empty($value)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 domain/type/value 参数'], 400);
+            }
+            if (!$useDb) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '数据库未启用，广告特征码功能需要数据库支持'
+                ], 500);
+                break;
+            }
+            try {
+                $adSig = new DbAdSignature();
+                $id = $adSig->addSignature($domain, $type, $value, $weight, $confidence);
+                sendJsonResponse([
+                    'success' => $id !== false,
+                    'message' => $id !== false ? '特征码添加成功' : '特征码添加失败',
+                    'id' => $id
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '添加广告特征码失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'signatures/delete':
+        case 'ad_signatures/delete':
+            $id = $_GET['id'] ?? $_POST['id'] ?? 0;
+            if (empty($id)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 id 参数'], 400);
+            }
+            if (!$useDb) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '数据库未启用，广告特征码功能需要数据库支持'
+                ], 500);
+                break;
+            }
+            try {
+                $db = Database::getInstance();
+                $result = $db->execute('UPDATE ad_signatures SET status = 0 WHERE id = ?', [$id]);
+                sendJsonResponse([
+                    'success' => $result !== false,
+                    'message' => $result ? '特征码删除成功' : '特征码删除失败'
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '删除广告特征码失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'signatures/stats':
+        case 'ad_signatures/stats':
+            $domain = $_GET['domain'] ?? null;
+            if (!$useDb) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '数据库未启用，广告特征码功能需要数据库支持',
+                    'stats' => ['total' => 0, 'by_type' => []]
+                ]);
+                break;
+            }
+            try {
+                $adSig = new DbAdSignature();
+                $stats = $adSig->getStats($domain);
+                sendJsonResponse([
+                    'success' => true,
+                    'domain' => $domain,
+                    'stats' => $stats
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '获取统计失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
+        case 'signatures/clean':
+        case 'ad_signatures/clean':
+            $minConfidence = isset($_GET['min_confidence']) ? (int)$_GET['min_confidence'] : 30;
+            if (!$useDb) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '数据库未启用，广告特征码功能需要数据库支持'
+                ], 500);
+                break;
+            }
+            try {
+                $adSig = new DbAdSignature();
+                $count = $adSig->cleanLowConfidence($minConfidence);
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '清理完成',
+                    'cleaned_count' => $count,
+                    'min_confidence' => $minConfidence
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '清理失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
@@ -3829,7 +3993,12 @@ try {
                     'auth/config/get' => '获取授权配置',
                     'auth/config/save' => '保存授权配置',
                     'auth/set' => '设置授权码',
-                    'auth/generate' => '生成授权码'
+                    'auth/generate' => '生成授权码',
+                    'signatures/list' => '获取指定域名广告特征码列表',
+                    'signatures/add' => '添加广告特征码',
+                    'signatures/delete' => '删除广告特征码',
+                    'signatures/stats' => '广告特征码统计',
+                    'signatures/clean' => '清理低置信度特征码'
                 ]
             ], 400);
             break;
