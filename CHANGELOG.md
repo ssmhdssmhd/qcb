@@ -5,6 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [2.32.1] - 2026-07-11
+
+### 🐛 修复 AI 智能处理功能问题
+
+**修复内容**:
+- 修复默认激活页面不一致问题：HTML 中 `page-analyze` 有 `active` 类，但 JS 菜单默认激活的是 `ai_skip`，现已统一为 AI 自动去广告页面
+- 修复 `ai/insert_detect` 接口中使用不存在的 `file_get_contents_safe()` 函数的问题，改为使用 `M3U8Parser::parse()` 直接解析 URL
+- 修复 `ai/skip` 接口中访问不存在的 `$result['segments']` 键的问题，改为从 `$result['filtered']['removedSegments']` 和 `$result['filtered']['segments']` 获取正确数据
+- 优化 API 接口返回数据结构，确保广告片段和内容片段信息准确
+
+---
+
 ## [2.32.0] - 2026-07-11
 
 ### 🤖 新增后台 AI 智能处理菜单
