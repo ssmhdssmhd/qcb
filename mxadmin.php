@@ -1969,10 +1969,10 @@ header('Expires: 0');
                     <div class="stat-trend up">↑ 持续增长</div>
                 </div>
                 <div class="stat-card pink">
-                    <div class="stat-icon">🔬</div>
+                    <div class="stat-icon">🤖</div>
                     <div class="stat-value" id="dashMd5">0</div>
-                    <div class="stat-label">MD5特征码</div>
-                    <div class="stat-trend up">↑ 精准识别</div>
+                    <div class="stat-label">AI去广告</div>
+                    <div class="stat-trend up">↑ 智能处理</div>
                 </div>
             </div>
 
@@ -3595,6 +3595,7 @@ header('Expires: 0');
                 currentAnalysis = data;
                 renderAnalysis(data);
                 document.getElementById('analyzeResult').style.display = 'block';
+                saveToHistory(url, 'analyze', data);
                 showToast('分析完成', 'success');
             } catch (e) {
                 showToast('分析失败: ' + e.message, 'error');
@@ -3921,6 +3922,7 @@ header('Expires: 0');
                 currentAiSkipData = data;
                 renderAiSkipResult(data);
                 document.getElementById('aiSkipResult').style.display = 'block';
+                saveToHistory(url, 'ai_skip', data);
                 showToast('AI去广告完成', 'success');
             } catch (e) {
                 showToast('处理失败: ' + e.message, 'error');
@@ -8574,6 +8576,26 @@ header('Expires: 0');
 
         function saveToHistory(url, type, result) {
             const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+            
+            const stats = result?.data?.stats || result?.stats || result || {};
+            const filtered = result?.data?.filtered || result?.filtered || {};
+            
+            const totalSegments = 
+                stats.totalSegments || 
+                stats.total_segments || 
+                filtered.totalSegments ||
+                filtered.total_segments ||
+                result.totalSegments ||
+                0;
+                
+            const adSegments = 
+                stats.adSegments || 
+                stats.ad_segments || 
+                filtered.removedSegments?.length ||
+                filtered.adSegments ||
+                result.adSegments ||
+                0;
+            
             const record = {
                 id: Date.now(),
                 url: url,
@@ -8581,9 +8603,9 @@ header('Expires: 0');
                 type: type,
                 time: new Date().toISOString(),
                 result: result ? {
-                    success: result.success,
-                    totalSegments: result.totalSegments || 0,
-                    adSegments: result.adSegments || 0,
+                    success: result.success !== false,
+                    totalSegments: totalSegments,
+                    adSegments: adSegments,
                     duration: result.duration || 0
                 } : null
             };
@@ -8600,15 +8622,92 @@ header('Expires: 0');
             const domains = new Set(analysisHistory.map(r => r.domain)).size;
             const totalAdRemoved = analysisHistory.reduce((sum, r) => sum + (r.result ? r.result.adSegments || 0 : 0), 0);
             const totalDuration = analysisHistory.reduce((sum, r) => sum + (r.result ? r.result.duration || 0 : 0), 0);
-            const avgTime = total > 0 ? (totalDuration / total / 1000).toFixed(1) + 's' : '0s';
+            const avgTime = successCount > 0 ? (totalDuration / successCount / 1000).toFixed(1) + 's' : '0s';
+            
+            const aiSkipCount = analysisHistory.filter(r => r.type === 'ai_skip').length;
+            const md5Count = analysisHistory.filter(r => r.type === 'md5').length;
+            
+            const today = new Date().toDateString();
+            const todayCount = analysisHistory.filter(r => new Date(r.time).toDateString() === today).length;
+            const todayAdRemoved = analysisHistory.filter(r => new Date(r.time).toDateString() === today)
+                .reduce((sum, r) => sum + (r.result ? r.result.adSegments || 0 : 0), 0);
 
             const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            const setTrend = (id, text, isUp = true) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = (isUp ? '↑ ' : '↓ ') + text;
+                    el.className = 'stat-trend ' + (isUp ? 'up' : 'down');
+                }
+            };
+            
             setVal('dashTotalAnalyze', total);
             setVal('dashAdRemoved', totalAdRemoved);
             setVal('dashDomains', domains);
             setVal('dashAvgTime', avgTime);
             setVal('dashRules', successCount);
-            setVal('dashMd5', Math.floor(total * 0.6));
+            setVal('dashMd5', aiSkipCount);
+            
+            const trendEls = document.querySelectorAll('#page-dashboard .stat-trend');
+            if (trendEls.length >= 6) {
+                trendEls[0].textContent = '↑ 今日 +' + todayCount;
+                trendEls[1].textContent = '↑ 今日 +' + todayAdRemoved;
+                trendEls[2].textContent = '↑ 共 ' + domains + ' 个';
+                trendEls[3].textContent = '↓ 极速模式';
+                trendEls[4].textContent = '↑ 成功率 ' + (total > 0 ? Math.round(successCount / total * 100) : 0) + '%';
+                trendEls[5].textContent = '↑ AI 去广告';
+            }
+            
+            renderTopDomains();
+        }
+        
+        function renderTopDomains() {
+            const container = document.getElementById('dashTopDomains');
+            if (!container) return;
+            
+            const domainCounts = {};
+            analysisHistory.forEach(r => {
+                domainCounts[r.domain] = (domainCounts[r.domain] || 0) + 1;
+            });
+            
+            const sorted = Object.entries(domainCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            if (sorted.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align:center;color:var(--v3-text-muted);padding:30px">
+                        暂无数据，分析更多视频后热门域名将在这里展示
+                    </div>`;
+                return;
+            }
+            
+            const maxCount = sorted[0][1];
+            container.innerHTML = sorted.map(([domain, count], index) => {
+                const percent = Math.round((count / maxCount) * 100);
+                const rankColors = [
+                    'background: linear-gradient(135deg, #f59e0b, #ef4444)',
+                    'background: linear-gradient(135deg, #94a3b8, #64748b)',
+                    'background: linear-gradient(135deg, #b45309, #92400e)',
+                    'background: var(--v3-primary-light)',
+                ];
+                const rankBg = rankColors[index] || 'background: var(--v3-bg-hover)';
+                const rankText = index < 3 ? 'color:white;font-weight:700' : 'color:var(--v3-text-secondary)';
+                return `
+                    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--v3-border-light)">
+                        <div style="width:28px;height:28px;border-radius:8px;${rankBg};display:flex;align-items:center;justify-content:center;font-size:13px;${rankText};flex-shrink:0">${index + 1}</div>
+                        <div style="flex:1;min-width:0">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                                <span style="font-size:13px;font-weight:500;color:var(--v3-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(domain)}</span>
+                                <span style="font-size:12px;color:var(--v3-text-muted);font-weight:600">${count} 次</span>
+                            </div>
+                            <div style="height:6px;background:var(--v3-bg-hover);border-radius:3px;overflow:hidden">
+                                <div style="height:100%;width:${percent}%;background:var(--v3-primary-gradient);border-radius:3px;transition:width 0.5s ease"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function renderDashboardRecent() {
@@ -8761,6 +8860,7 @@ header('Expires: 0');
             if (pageName === 'dashboard') {
                 updateDashboardStats();
                 renderDashboardRecent();
+                renderTopDomains();
             }
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -8829,7 +8929,7 @@ header('Expires: 0');
                 `;
                 resultList.appendChild(item);
 
-                document.getElementById('batchProgress').textContent = Math.round((i / urls.length) * 100) + '%';
+                document.getElementById('batchProgress').textContent = Math.round(((i + 1) / urls.length) * 100) + '%';
 
                 try {
                     const action = aiMode ? 'ai/skip' : 'analyze';
@@ -8872,13 +8972,6 @@ header('Expires: 0');
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            const batchTextarea = document.getElementById('batchUrls');
-            if (batchTextarea) {
-                batchTextarea.addEventListener('input', updateBatchUrlCount);
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
             renderSidebarMenu();
             initTheme();
             refreshRules();
@@ -8889,6 +8982,13 @@ header('Expires: 0');
             loadProxyList();
             updateDashboardStats();
             renderDashboardRecent();
+            renderTopDomains();
+            
+            const batchTextarea = document.getElementById('batchUrls');
+            if (batchTextarea) {
+                batchTextarea.addEventListener('input', updateBatchUrlCount);
+            }
+            
             const savedBgIndex = parseInt(localStorage.getItem('currentBgIndex'));
             if (!isNaN(savedBgIndex) && savedBgIndex >= 0 && savedBgIndex < BG_IMAGES.length) {
                 currentBgIndex = savedBgIndex;
