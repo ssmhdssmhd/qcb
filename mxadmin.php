@@ -3056,6 +3056,33 @@ header('Expires: 0');
                 </div>
 
                 <div class="card">
+                    <div class="card-title">🎯 广告簇分析</div>
+                    <div id="aiSkipAdClusters" style="margin-bottom:16px">
+                        <div style="text-align:center;color:#909399;padding:20px">加载中...</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">⚙️ 自动生成规则</div>
+                    <div style="margin-bottom:16px">
+                        <div style="font-size:13px;color:#606266;margin-bottom:12px">基于视频内容智能分析，自动生成多种去广告规则（包括 DISCONTINUITY 正则规则、时长规则、序列号规则等）</div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap">
+                            <button class="btn btn-primary" onclick="aiSkipGenerateRules()">🤖 智能生成规则</button>
+                            <button class="btn btn-success" onclick="goToRules()">🔧 规则管理</button>
+                        </div>
+                    </div>
+                    <div id="aiSkipGeneratedRules" style="display:none">
+                        <div class="tab-bar">
+                            <div class="tab-item active" onclick="switchGenRuleTab(this, 'discontinuity')">DISCONTINUITY 正则</div>
+                            <div class="tab-item" onclick="switchGenRuleTab(this, 'duration')">时长规则</div>
+                            <div class="tab-item" onclick="switchGenRuleTab(this, 'sequence')">序列号规则</div>
+                            <div class="tab-item" onclick="switchGenRuleTab(this, 'filename')">文件名规则</div>
+                        </div>
+                        <div id="genRuleContent" style="margin-top:12px"></div>
+                    </div>
+                </div>
+
+                <div class="card">
                     <div class="card-title">AI 识别详情</div>
                     <div class="tab-bar">
                         <div class="tab-item active" onclick="switchAiSkipTab(this, 'ad')">广告片段</div>
@@ -3966,7 +3993,179 @@ header('Expires: 0');
             `;
             document.getElementById('aiSkipStats').innerHTML = statsHtml;
             
+            renderAiSkipAdClusters(data);
+            renderAiSkipGeneratedRules(data);
             renderAiSkipSegmentList();
+        }
+
+        function renderAiSkipAdClusters(data) {
+            const container = document.getElementById('aiSkipAdClusters');
+            const adClusters = data.data?.adClusters || data.data?.ad_clusters || [];
+            
+            if (adClusters.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#67c23a;padding:20px">✅ 未检测到明显的广告簇</div>';
+                return;
+            }
+
+            let html = '<div style="margin-bottom:12px;font-size:13px;color:#606266">共检测到 <b style="color:#f56c6c">' + adClusters.length + '</b> 个广告片段集群</div>';
+            html += adClusters.map((cluster, i) => {
+                const positionMap = {
+                    'opening': '片头',
+                    'ending': '片尾',
+                    'middle': '中间',
+                    'unknown': '未知位置'
+                };
+                const posText = positionMap[cluster.position] || cluster.position || '未知';
+                const posColor = cluster.position === 'opening' ? '#e6a23c' : 
+                                 cluster.position === 'ending' ? '#909399' : 
+                                 cluster.position === 'middle' ? '#f56c6c' : '#606266';
+                return `
+                    <div style="padding:14px;background:#fef0f0;border-radius:10px;margin-bottom:10px;border-left:4px solid #f56c6c">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+                            <div style="font-weight:600;color:#303133">第 ${i + 1} 个广告簇 · ${posText}</div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                <span class="badge badge-danger">${cluster.segment_count || cluster.count || 0} 个片段</span>
+                                <span class="badge badge-warning">${(cluster.total_duration || cluster.duration || 0).toFixed?.(1) || 0}s</span>
+                            </div>
+                        </div>
+                        <div style="font-size:12px;color:#606266;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px">
+                            <div>📊 平均时长: ${(cluster.avg_duration || 0).toFixed?.(2) || 0}s</div>
+                            <div>📍 起始索引: #${cluster.start_index ?? cluster.start ?? '-'}</div>
+                            <div>📍 结束索引: #${cluster.end_index ?? cluster.end ?? '-'}</div>
+                            ${cluster.has_discontinuity ? '<div>🔀 含DISCONTINUITY</div>' : ''}
+                            ${cluster.confidence ? '<div>🎯 置信度: ' + cluster.confidence + '%</div>' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            container.innerHTML = html;
+        }
+
+        let genRuleTab = 'discontinuity';
+
+        function switchGenRuleTab(el, tab) {
+            genRuleTab = tab;
+            document.querySelectorAll('#aiSkipGeneratedRules .tab-item').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            renderGenRuleContent();
+        }
+
+        function renderAiSkipGeneratedRules(data) {
+            const container = document.getElementById('aiSkipGeneratedRules');
+            const regexRules = data.data?.discontinuityRegexRules || data.data?.discontinuity_regex_rules || [];
+            
+            if (regexRules.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'block';
+            currentGenRuleData = data;
+            renderGenRuleContent();
+        }
+
+        let currentGenRuleData = null;
+
+        function renderGenRuleContent() {
+            const container = document.getElementById('genRuleContent');
+            const data = currentGenRuleData;
+            if (!data) return;
+
+            const regexRules = data.data?.discontinuityRegexRules || data.data?.discontinuity_regex_rules || [];
+            const rules = data.data?.rules || [];
+
+            if (genRuleTab === 'discontinuity') {
+                if (regexRules.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成 DISCONTINUITY 正则规则</div>';
+                    return;
+                }
+                container.innerHTML = regexRules.map((rule, i) => `
+                    <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+                            <div style="font-weight:600;color:#303133">${rule.name || '规则 ' + (i + 1)}</div>
+                            <div style="display:flex;gap:6px">
+                                <span class="badge badge-primary">置信度 ${rule.confidence || 80}%</span>
+                            </div>
+                        </div>
+                        <div style="font-size:12px;color:#606266;margin-bottom:8px">${rule.description || ''}</div>
+                        <div style="background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #e4e7ed;margin-bottom:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">正则表达式</div>
+                            <code style="font-family:monospace;font-size:12px;color:#f56c6c;word-break:break-all;display:block">${escapeHtml(rule.pattern || '')}</code>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onclick="copyText('${rule.pattern ? rule.pattern.replace(/'/g, "\\'") : ''}')">📋 复制正则</button>
+                            <button class="btn btn-success" style="font-size:12px;padding:4px 10px" onclick="saveGeneratedRule('regex', ${i})">💾 保存规则</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else if (genRuleTab === 'duration') {
+                const durationRules = rules.filter(r => r.type === 'duration');
+                if (durationRules.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成时长规则</div>';
+                    return;
+                }
+                container.innerHTML = durationRules.map((rule, i) => `
+                    <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <div style="font-weight:600;color:#303133">${rule.name || '时长规则 ' + (i + 1)}</div>
+                            <span class="badge badge-warning">${rule.confidence || 75}%</span>
+                        </div>
+                        <div style="font-size:12px;color:#606266">${rule.description || ''}</div>
+                    </div>
+                `).join('');
+            } else if (genRuleTab === 'sequence') {
+                const seqRules = rules.filter(r => r.type === 'sequence');
+                if (seqRules.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成序列号规则</div>';
+                    return;
+                }
+                container.innerHTML = seqRules.map((rule, i) => `
+                    <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <div style="font-weight:600;color:#303133">${rule.name || '序列号规则 ' + (i + 1)}</div>
+                            <span class="badge badge-info">${rule.confidence || 70}%</span>
+                        </div>
+                        <div style="font-size:12px;color:#606266">${rule.description || ''}</div>
+                    </div>
+                `).join('');
+            } else if (genRuleTab === 'filename') {
+                const nameRules = rules.filter(r => r.type === 'filename' || r.type === 'pattern');
+                if (nameRules.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成文件名规则</div>';
+                    return;
+                }
+                container.innerHTML = nameRules.map((rule, i) => `
+                    <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <div style="font-weight:600;color:#303133">${rule.name || '文件名规则 ' + (i + 1)}</div>
+                            <span class="badge badge-success">${rule.confidence || 75}%</span>
+                        </div>
+                        <div style="font-size:12px;color:#606266">${rule.description || ''}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        function saveGeneratedRule(type, index) {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            showToast('正在保存规则...', 'info');
+            fetch(API_BASE + '?action=rules/generate&url=' + encodeURIComponent(url))
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('规则已保存到规则库', 'success');
+                    } else {
+                        showToast('保存失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(e => showToast('保存失败: ' + e.message, 'error'));
         }
 
         function switchAiSkipTab(el, tab) {
@@ -4179,7 +4378,10 @@ header('Expires: 0');
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        showToast('规则生成成功，共 ' + data.data?.ruleCount + ' 条规则', 'success');
+                        showToast('规则生成成功，共 ' + (data.ruleCount || data.data?.ruleCount || 0) + ' 条规则', 'success');
+                        currentGenRuleData = { data: data };
+                        document.getElementById('aiSkipGeneratedRules').style.display = 'block';
+                        renderGenRuleContent();
                     } else {
                         showToast('生成失败: ' + data.message, 'error');
                     }

@@ -868,6 +868,226 @@ class DomainRuleManager {
         return array_merge($defaultRules, $customConfig);
     }
 
+    public function generateDiscontinuityRegexRules($analysisResult, $segments = []) {
+        $rules = [];
+        $adClusters = $analysisResult['adClusters'] ?? [];
+        $discontinuityCount = $analysisResult['discontinuityCount'] ?? 0;
+
+        if ($discontinuityCount === 0 || empty($adClusters)) {
+            return $rules;
+        }
+
+        $adDurations = [];
+        foreach ($adClusters as $cluster) {
+            $clusterDuration = $cluster['duration'] ?? 0;
+            $clusterSegments = $cluster['count'] ?? 0;
+            if ($clusterSegments >= 2 && $clusterDuration > 0) {
+                $adDurations[] = [
+                    'duration' => $clusterDuration,
+                    'segments' => $clusterSegments,
+                    'avg_duration' => round($clusterDuration / $clusterSegments, 3)
+                ];
+            }
+        }
+
+        $hasIntegerDuration = false;
+        $hasDecimalDuration = false;
+
+        if (!empty($segments)) {
+            $inAdCluster = false;
+            foreach ($segments as $seg) {
+                if (!empty($seg['discontinuity'])) {
+                    $inAdCluster = true;
+                }
+                if ($inAdCluster && isset($seg['duration'])) {
+                    $dur = $seg['duration'];
+                    if (floor($dur) == $dur) {
+                        $hasIntegerDuration = true;
+                    } else {
+                        $hasDecimalDuration = true;
+                    }
+                }
+            }
+        }
+
+        if (!$hasIntegerDuration && !$hasDecimalDuration) {
+            foreach ($adDurations as $ad) {
+                $avg = $ad['avg_duration'];
+                if (floor($avg) == $avg) {
+                    $hasIntegerDuration = true;
+                } else {
+                    $hasDecimalDuration = true;
+                }
+            }
+        }
+
+        if ($hasIntegerDuration) {
+            $rules[] = [
+                'name' => 'discontinuity_integer_duration',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                'description' => '整数时长广告片段匹配（暴风模式）',
+                'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5,\\nad.ts\\n',
+                'match_type' => 'discontinuity_group',
+                'confidence' => 85
+            ];
+        }
+
+        if ($hasDecimalDuration) {
+            $rules[] = [
+                'name' => 'discontinuity_decimal_duration',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+\\.\\d{1}\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                'description' => '一位小数时长广告片段匹配（暴风模式）',
+                'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:4.3,\\nad.ts\\n',
+                'match_type' => 'discontinuity_group',
+                'confidence' => 85
+            ];
+        }
+
+        $rules[] = [
+            'name' => 'discontinuity_any_duration',
+            'type' => 'regex',
+            'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+            'description' => '任意时长广告片段匹配（通用模式）',
+            'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5.0,\\nad.ts\\n',
+            'match_type' => 'discontinuity_group',
+            'confidence' => 75
+        ];
+
+        $avgAdSegments = 0;
+        foreach ($adDurations as $ad) {
+            $avgAdSegments += $ad['segments'];
+        }
+        $avgAdSegments = count($adDurations) > 0 ? round($avgAdSegments / count($adDurations)) : 3;
+
+        if ($avgAdSegments >= 2 && $avgAdSegments <= 20) {
+            $rules[] = [
+                'name' => 'discontinuity_fixed_count',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:' . str_repeat('#EXTINF:\\d+(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?', $avgAdSegments) . ')/',
+                'description' => "固定 {$avgAdSegments} 片段广告匹配（精确计数）",
+                'example' => "匹配 DISCONTINUITY 后连续 {$avgAdSegments} 个 EXTINF 片段",
+                'match_type' => 'discontinuity_group_count',
+                'confidence' => 90,
+                'expected_count' => $avgAdSegments
+            ];
+        }
+
+        $shortAdCount = 0;
+        $longAdCount = 0;
+        foreach ($adDurations as $ad) {
+            if ($ad['duration'] < 10) {
+                $shortAdCount++;
+            } elseif ($ad['duration'] > 30) {
+                $longAdCount++;
+            }
+        }
+
+        if ($shortAdCount > 0) {
+            $rules[] = [
+                'name' => 'discontinuity_short_ad',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:[0-5](?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?){1,5}/',
+                'description' => '短广告片段匹配（<5秒/片，1-5片）',
+                'match_type' => 'discontinuity_short',
+                'confidence' => 80
+            ];
+        }
+
+        $uniqueAvgDurations = [];
+        foreach ($adDurations as $ad) {
+            $key = (string)floor($ad['avg_duration']);
+            if (!isset($uniqueAvgDurations[$key])) {
+                $uniqueAvgDurations[$key] = 0;
+            }
+            $uniqueAvgDurations[$key]++;
+        }
+
+        if (count($uniqueAvgDurations) === 1) {
+            $duration = array_key_first($uniqueAvgDurations);
+            $rules[] = [
+                'name' => "discontinuity_uniform_{$duration}s",
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:' . $duration . '(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                'description' => "统一时长约 {$duration} 秒的广告片段匹配",
+                'match_type' => 'discontinuity_uniform',
+                'confidence' => 92,
+                'uniform_duration' => $duration
+            ];
+        }
+
+        return $rules;
+    }
+
+    public function analyzeAdClustersDetail($analysisResult, $segments = []) {
+        $clusters = $analysisResult['adClusters'] ?? [];
+        $totalCount = $analysisResult['totalCount'] ?? 0;
+        $details = [];
+
+        foreach ($clusters as $idx => $cluster) {
+            $startIdx = $cluster['start'] ?? 0;
+            $endIdx = $cluster['end'] ?? 0;
+            $count = $cluster['count'] ?? ($endIdx - $startIdx + 1);
+            $duration = $cluster['duration'] ?? 0;
+
+            $startRatio = $totalCount > 0 ? round($startIdx / $totalCount * 100, 1) : 0;
+            $endRatio = $totalCount > 0 ? round(($endIdx + 1) / $totalCount * 100, 1) : 0;
+
+            $position = 'middle';
+            $positionLabel = '中间插播';
+            if ($startRatio < 15) {
+                $position = 'pre-roll';
+                $positionLabel = '片头广告';
+            } elseif ($endRatio > 85) {
+                $position = 'post-roll';
+                $positionLabel = '片尾广告';
+            }
+
+            $clusterSegments = [];
+            if (!empty($segments) && is_array($segments)) {
+                for ($i = $startIdx; $i <= $endIdx && $i < count($segments); $i++) {
+                    $seg = $segments[$i];
+                    $clusterSegments[] = [
+                        'index' => $i,
+                        'uri' => $seg['uri'] ?? '',
+                        'duration' => $seg['duration'] ?? 0,
+                        'discontinuity' => !empty($seg['discontinuity'])
+                    ];
+                }
+            }
+
+            $hasDiscontinuity = false;
+            if (!empty($clusterSegments)) {
+                foreach ($clusterSegments as $cs) {
+                    if (!empty($cs['discontinuity'])) {
+                        $hasDiscontinuity = true;
+                        break;
+                    }
+                }
+            } else {
+                $hasDiscontinuity = !empty($cluster['has_marker']);
+            }
+
+            $details[] = [
+                'index' => $idx,
+                'start_index' => $startIdx,
+                'end_index' => $endIdx,
+                'segment_count' => $count,
+                'duration' => round($duration, 2),
+                'avg_segment_duration' => $count > 0 ? round($duration / $count, 3) : 0,
+                'start_position_percent' => $startRatio,
+                'end_position_percent' => $endRatio,
+                'position_type' => $position,
+                'position_label' => $positionLabel,
+                'has_discontinuity' => $hasDiscontinuity,
+                'segments' => $clusterSegments
+            ];
+        }
+
+        return $details;
+    }
+
     private function getRuleFilePath($domain) {
         $safeDomain = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $domain);
         return $this->gzDir . '/rules_' . $safeDomain . '.php';

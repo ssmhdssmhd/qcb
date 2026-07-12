@@ -1008,10 +1008,22 @@ try {
             $generatedRules = $ruleManager->createFromAnalysis($domain, $analysis);
             $generatedRules['sample_url'] = $url;
 
+            $discontinuityRegexRules = $ruleManager->generateDiscontinuityRegexRules($analysis, $playlist['segments']);
+            $adClusterDetails = $ruleManager->analyzeAdClustersDetail($analysis, $playlist['segments']);
+
+            $ruleCount = count($generatedRules['duration_rules'] ?? [])
+                + count($generatedRules['discontinuity_rules'] ?? [])
+                + count($generatedRules['sequence_jump_rules'] ?? [])
+                + count($generatedRules['filename_patterns'] ?? [])
+                + count($discontinuityRegexRules);
+
             sendJsonResponse([
                 'success' => true,
                 'domain' => $domain,
                 'rules' => $generatedRules,
+                'ruleCount' => $ruleCount,
+                'discontinuity_regex_rules' => $discontinuityRegexRules,
+                'ad_clusters' => $adClusterDetails,
                 'analysis' => [
                     'totalSegments' => $analysis['totalCount'],
                     'adSegments' => $analysis['adCount'],
@@ -3958,7 +3970,11 @@ try {
             $startTime = microtime(true);
             try {
                 require_once __DIR__ . '/src/M3U8AdSkipper.php';
+                require_once __DIR__ . '/src/M3U8Parser.php';
+                require_once __DIR__ . '/gz/EnhancedAdRuleEngine.php';
+                require_once __DIR__ . '/gz/DomainRuleManager.php';
                 $skipper = new M3U8AdSkipper();
+                $ruleManager = new DomainRuleManager();
                 
                 if ($safeguard) {
                     $result = $skipper->processWithSafeguard($url);
@@ -3973,6 +3989,7 @@ try {
                 
                 $removedSegments = $result['filtered']['removedSegments'] ?? [];
                 $keptSegments = $result['filtered']['segments'] ?? [];
+                $allSegments = $result['original']['segments'] ?? [];
                 
                 foreach ($removedSegments as $seg) {
                     $adSegments[] = [
@@ -3992,12 +4009,32 @@ try {
                         'isAd' => false
                     ];
                 }
+
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+
+                $analysisData = [];
+                $adClusterDetails = [];
+                $discontinuityRegexRules = [];
+                if (!empty($allSegments)) {
+                    $engine = new EnhancedAdRuleEngine([
+                        'checkDiscontinuity' => true,
+                        'checkRepetitiveDuration' => true
+                    ]);
+                    if ($domain) {
+                        $engine->setDomain($domain);
+                    }
+                    $analysisData = $engine->analyzeAllSegments($allSegments);
+                    $adClusterDetails = $ruleManager->analyzeAdClustersDetail($analysisData, $allSegments);
+                    $discontinuityRegexRules = $ruleManager->generateDiscontinuityRegexRules($analysisData, $allSegments);
+                }
                 
                 sendJsonResponse([
                     'success' => true,
                     'message' => 'AI去广告处理完成',
                     'data' => [
                         'original_url' => $url,
+                        'domain' => $domain,
                         'process_time' => $processTime . 'ms',
                         'safeguard_enabled' => $safeguard,
                         'deep_analysis' => $deepAnalysis,
@@ -4011,13 +4048,17 @@ try {
                             'original_duration' => $result['stats']['originalDuration'] ?? 0,
                             'filtered_duration' => $result['stats']['filteredDuration'] ?? 0,
                             'saved_duration' => $result['stats']['savedDuration'] ?? 0,
-                            'ad_percentage' => $result['stats']['adPercentage'] ?? 0
+                            'ad_percentage' => $result['stats']['adPercentage'] ?? 0,
+                            'discontinuity_count' => $analysisData['discontinuityCount'] ?? 0,
+                            'ad_cluster_count' => count($adClusterDetails)
                         ],
                         'ad_segments' => array_slice($adSegments, 0, 100),
                         'content_segments' => array_slice($contentSegments, 0, 100),
                         'ad_segment_count' => count($adSegments),
                         'content_segment_count' => count($contentSegments),
-                        'has_more_segments' => count($adSegments) > 100 || count($contentSegments) > 100
+                        'has_more_segments' => count($adSegments) > 100 || count($contentSegments) > 100,
+                        'ad_clusters' => $adClusterDetails,
+                        'discontinuity_regex_rules' => $discontinuityRegexRules
                     ]
                 ]);
             } catch (Throwable $e) {
