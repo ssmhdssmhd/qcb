@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/ResourceSiteManager.php';
+require_once __DIR__ . '/TitleNormalizer.php';
 
 class OfficialReplaceManager {
     private $configFile;
@@ -342,17 +343,24 @@ class OfficialReplaceManager {
         $seasonNum = $videoInfo['season_num'] ?? null;
         $version = $videoInfo['version'] ?? '';
         $part = $videoInfo['part'] ?? '';
+        $originalTitle = $videoInfo['title'] ?? '';
 
         if (!empty($baseTitle)) {
+            $normalizedBase = TitleNormalizer::normalize($baseTitle);
             $keywords[] = $baseTitle;
+            $keywords[] = $normalizedBase;
 
             if ($seasonNum) {
                 $cnNum = $this->numberToChinese($seasonNum);
                 $keywords[] = $baseTitle . ' 第' . $seasonNum . '季';
+                $keywords[] = $baseTitle . '第' . $seasonNum . '季';
                 if ($cnNum) {
                     $keywords[] = $baseTitle . ' 第' . $cnNum . '季';
+                    $keywords[] = $baseTitle . '第' . $cnNum . '季';
                 }
                 $keywords[] = $baseTitle . $seasonNum;
+                $keywords[] = $baseTitle . ' S' . $seasonNum;
+                $keywords[] = $baseTitle . ' 第' . $seasonNum . '部';
                 if ($seasonNum == 2) {
                     $keywords[] = $baseTitle . ' 第二季';
                     $keywords[] = $baseTitle . 'Ⅱ';
@@ -373,11 +381,16 @@ class OfficialReplaceManager {
             if ($seasonNum && !empty($version)) {
                 $keywords[] = $baseTitle . ' 第' . $seasonNum . '季 ' . $version;
             }
+
+            $keywords[] = $normalizedBase;
         }
 
-        $originalTitle = $videoInfo['title'] ?? '';
         if (!empty($originalTitle) && $originalTitle !== $baseTitle) {
             $keywords[] = $originalTitle;
+            $normalizedOrig = TitleNormalizer::normalize($originalTitle);
+            if ($normalizedOrig !== $baseTitle) {
+                $keywords[] = $normalizedOrig;
+            }
         }
 
         $videoId = $videoInfo['video_id'] ?? '';
@@ -388,6 +401,10 @@ class OfficialReplaceManager {
         $keywords = array_values(array_unique(array_filter($keywords, function($kw) {
             return !empty($kw) && mb_strlen($kw) >= 2;
         })));
+
+        if (count($keywords) > 8) {
+            $keywords = array_slice($keywords, 0, 8);
+        }
 
         return $keywords;
     }
@@ -1448,6 +1465,16 @@ class OfficialReplaceManager {
         if ($str1 === $str2) {
             return 100;
         }
+
+        $norm1 = TitleNormalizer::normalize($str1);
+        $norm2 = TitleNormalizer::normalize($str2);
+
+        if ($norm1 === $norm2 && !empty($norm1)) {
+            return 100;
+        }
+
+        $str1 = $norm1;
+        $str2 = $norm2;
 
         $len1 = mb_strlen($str1);
         $len2 = mb_strlen($str2);
