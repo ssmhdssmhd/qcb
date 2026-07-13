@@ -626,26 +626,36 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
         const hlsConfig = {
             enableWorker: true,
             lowLatencyMode: false,
-            maxBufferLength: 30,
-            maxMaxBufferLength: 600,
-            minBufferLength: 2,
-            maxBufferSize: 60 * 1000 * 1000,
-            maxBufferHole: 0.5,
-            highBufferWatchdogPeriod: 2,
+            maxBufferLength: 60,
+            maxMaxBufferLength: 900,
+            minBufferLength: 5,
+            maxBufferSize: 120 * 1000 * 1000,
+            maxBufferHole: 0.3,
+            highBufferWatchdogPeriod: 0.5,
             startLevel: -1,
-            capLevelToPlayerSize: false,
+            capLevelToPlayerSize: true,
             liveSyncDurationCount: 3,
             liveMaxLatencyDurationCount: 10,
-            fragLoadingTimeOut: 20000,
-            manifestLoadingTimeOut: 15000,
+            fragLoadingTimeOut: 30000,
+            manifestLoadingTimeOut: 20000,
             levelLoadingTimeOut: 15000,
-            backBufferLength: 30,
+            backBufferLength: 60,
             startFragPrefetch: true,
             enableSoftwareAES: true,
-            abrEwmaDefaultEstimate: 500000,
-            abrBandWidthFactor: 0.8,
+            abrEwmaDefaultEstimate: 2000000,
+            abrBandWidthFactor: 0.75,
+            abrEwmaFastLive: 3.0,
+            abrEwmaSlowLive: 9.0,
+            maxFragLookUpTolerance: 0.2,
+            initialLiveManifestSize: 1,
+            debug: false,
+            enableCEA708Captions: false,
+            enableWebVTT: false,
+            enableIMSC1: false,
+            renderTextTracksNatively: false,
             xhrSetup: function(xhr) {
                 xhr.withCredentials = false;
+                xhr.timeout = 30000;
             }
         };
 
@@ -1232,16 +1242,27 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
                                     }
                                 });
 
+                                let seekingTimer = null;
                                 video.addEventListener('seeking', function() {
                                     console.log('跳转到:', video.currentTime.toFixed(2) + 's');
-                                    updatePlayStatus('loading', '跳转中...');
+                                    updatePlayStatus('loading', '跳转中，正在加载数据...');
+                                    if (seekingTimer) clearTimeout(seekingTimer);
+                                    seekingTimer = setTimeout(function() {
+                                        if (video.paused) {
+                                            video.play().catch(function() {});
+                                        }
+                                    }, 500);
                                 });
 
                                 video.addEventListener('seeked', function() {
                                     console.log('跳转完成');
                                     seekRetryCount = 0;
+                                    if (seekingTimer) {
+                                        clearTimeout(seekingTimer);
+                                        seekingTimer = null;
+                                    }
                                     generatePoster(video, dp);
-                                    if (video.paused && autoplay) {
+                                    if (video.paused) {
                                         video.play().catch(function() {});
                                     }
                                 });
