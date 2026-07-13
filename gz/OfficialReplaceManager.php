@@ -1458,17 +1458,76 @@ class OfficialReplaceManager {
 
         $short = $len1 < $len2 ? $str1 : $str2;
         $long = $len1 < $len2 ? $str2 : $str1;
+        $shortLen = mb_strlen($short);
+        $longLen = mb_strlen($long);
 
         if (mb_strpos($long, $short) !== false) {
-            $ratio = mb_strlen($short) / mb_strlen($long);
+            $pos = mb_strpos($long, $short);
+            $ratio = $shortLen / $longLen;
+
+            $startsWith = ($pos === 0);
+            $endsWith = ($pos + $shortLen === $longLen);
+
+            $seasonSuffix = '';
+            $spinOffSuffix = false;
+            if ($startsWith) {
+                $suffix = mb_substr($long, $shortLen);
+                if (preg_match('/^\s*[第\d一二三四五六七八九十百千\s部季期篇辑上下 seasonsS0-9]+$/u', $suffix)) {
+                    $seasonSuffix = $suffix;
+                }
+                if (preg_match('/^\s*[之]/u', $suffix)) {
+                    $spinOffSuffix = true;
+                }
+            }
+
             if ($ratio >= 0.7) {
                 return 100;
             } elseif ($ratio >= 0.5) {
-                return 90;
-            } elseif ($ratio >= 0.3) {
-                return 80;
+                if ($startsWith) {
+                    if ($seasonSuffix) return 95;
+                    if ($spinOffSuffix) return 55;
+                    return 90;
+                }
+                return $endsWith ? 85 : 70;
+            } elseif ($ratio >= 0.35) {
+                if ($startsWith) {
+                    if ($seasonSuffix) return 92;
+                    if ($spinOffSuffix) return 45;
+                    return 75;
+                } elseif ($endsWith) {
+                    return 70;
+                } else {
+                    return 45;
+                }
             } else {
-                return 70;
+                if ($startsWith) {
+                    if ($seasonSuffix) return 85;
+                    if ($spinOffSuffix) return 35;
+                    return 55;
+                } elseif ($endsWith) {
+                    return 45;
+                } else {
+                    return 25;
+                }
+            }
+        }
+
+        $prefixMatchLen = 0;
+        $minLen = min($len1, $len2);
+        for ($i = 0; $i < $minLen; $i++) {
+            if (mb_substr($str1, $i, 1) === mb_substr($str2, $i, 1)) {
+                $prefixMatchLen++;
+            } else {
+                break;
+            }
+        }
+
+        $suffixMatchLen = 0;
+        for ($i = 1; $i <= $minLen; $i++) {
+            if (mb_substr($str1, -$i, 1) === mb_substr($str2, -$i, 1)) {
+                $suffixMatchLen++;
+            } else {
+                break;
             }
         }
 
@@ -1487,7 +1546,19 @@ class OfficialReplaceManager {
         $totalChars = max($len1, $len2);
         $charSimilarity = $totalChars > 0 ? ($commonChars / $totalChars) * 100 : 0;
 
-        return round($charSimilarity * 0.8, 2);
+        $prefixBonus = 0;
+        if ($prefixMatchLen > 0) {
+            $prefixBonus = ($prefixMatchLen / $minLen) * 30;
+        }
+
+        $suffixBonus = 0;
+        if ($suffixMatchLen > 0) {
+            $suffixBonus = ($suffixMatchLen / $minLen) * 15;
+        }
+
+        $finalScore = $charSimilarity * 0.5 + $prefixBonus + $suffixBonus;
+
+        return round(min(100, max(0, $finalScore)), 2);
     }
 
     private function findEpisodeUrl($urls, $episodeInfo) {
