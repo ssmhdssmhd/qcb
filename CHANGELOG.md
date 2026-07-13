@@ -5,6 +5,31 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.3.1] - 2026-07-13
+
+### ✨ 小版本更新：资源站匹配显示集数信息 + M3U8 集数显示
+
+**管理后台官替 API 测试界面增强**，让匹配结果更直观。
+
+**1. 资源站匹配区域新增集数显示** ([mxadmin.php](file:///workspace/mxadmin.php))
+- ✅ **目标集数** - 显示官方视频解析出的集数
+- ✅ **匹配集数** - 显示 M3U8 资源匹配到的集数，匹配成功显示绿色，未精确匹配显示橙色
+- ✅ **总集数** - 显示资源站视频总共有多少集
+- ✅ 采用双列网格布局，信息更紧凑清晰
+
+**2. 其他候选结果新增详细信息** ([mxadmin.php](file:///workspace/mxadmin.php))
+- ✅ 显示季数 + 集数（如"第1季 · 第5集"）
+- ✅ 显示总集数（如"共24集"）
+- ✅ 显示匹配度百分比
+- ✅ 失败时的候选结果也同步增强
+
+**3. 后端匹配数据增强** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ 每个匹配项新增 `video_season` / `video_episode` / `video_part` / `video_version` 字段
+- ✅ 每个匹配项的 video 对象新增 `parsed_season_num` / `parsed_episode_num` / `parsed_episode` / `total_episodes` 等解析字段
+- ✅ 新增 `first_url` 字段，方便前端直接获取播放地址
+
+---
+
 ## [3.3.0] - 2026-07-13
 
 ### 🚀 大版本修复：彻底解决"服务器返回非JSON响应"问题

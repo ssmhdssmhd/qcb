@@ -695,13 +695,27 @@ class DbOfficialReplaceManager {
             $score = min(100, max(0, $score));
 
             if ($score >= $threshold * 0.45) {
+                $matchVideo = $video;
+                $matchVideo['parsed_season'] = $videoSeason;
+                $matchVideo['parsed_season_num'] = $videoSeason;
+                $matchVideo['parsed_episode'] = $videoParsed['episode'] ?? '';
+                $matchVideo['parsed_episode_num'] = $videoEpisode;
+                $matchVideo['parsed_part'] = $videoPart;
+                $matchVideo['parsed_version'] = $videoVersion;
+                $matchVideo['first_url'] = $video['first_url'] ?? $video['url'] ?? '';
+                $matchVideo['total_episodes'] = isset($video['urls']) ? count($video['urls']) : 0;
                 $matches[] = [
-                    'video' => $video,
+                    'video' => $matchVideo,
                     'score' => round($score, 2),
                     'base_score' => round($baseScore, 2),
                     'season_match' => $seasonMatch,
                     'episode_match' => $episodeMatch,
-                    'site' => $video['site'] ?? ''
+                    'site' => $video['site'] ?? '',
+                    'video_season' => $videoSeason,
+                    'video_episode' => $videoEpisode,
+                    'video_part' => $videoPart,
+                    'video_version' => $videoVersion,
+                    'video_name' => $videoBaseTitle
                 ];
             }
         }

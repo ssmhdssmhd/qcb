@@ -8533,7 +8533,11 @@ header('Expires: 0');
                                 <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">资源站</span><div style="font-weight:500">${escapeHtml(data.site || '')}</div></div>
                                 <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">匹配度</span><div style="font-weight:600;color:#67c23a;font-size:16px">${data.match_score || 0}% ${seasonMatchHtml}${episodeMatchHtml}</div></div>
                                 <div style="margin-bottom:6px;font-size:11px;color:#909399">基础匹配度: ${data.base_score || 0}%</div>
-                                ${data.target_episode ? `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">匹配集数</span><div style="font-weight:500;color:#409eff">${escapeHtml(data.target_episode)}</div></div>` : ''}
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+                                    <div><span style="color:#909399;font-size:12px">目标集数</span><div style="font-weight:600;color:#409eff">${data.episode || '-'}</div></div>
+                                    <div><span style="color:#909399;font-size:12px">匹配集数</span><div style="font-weight:600;color:${data.episode_match ? '#67c23a' : '#e6a23c'}">${data.target_episode || '自动匹配'}</div></div>
+                                </div>
+                                ${data.episodes ? `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">总集数</span><div style="font-weight:500;color:#606266">共 ${data.episodes} 集</div></div>` : ''}
                                 <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">M3U8地址</span><div style="font-size:11px;word-break:break-all;color:#606266;font-family:monospace">${escapeHtml(data.m3u8_url || '')}</div></div>
                             </div>
                         </div>
@@ -8545,12 +8549,21 @@ header('Expires: 0');
                     if (data.alternatives && data.alternatives.length > 1) {
                         html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px;color:#606266">其他候选结果</div>';
                         data.alternatives.slice(1, 6).forEach(v => {
+                            const vEp = v.video_episode ? `第${v.video_episode}集` : '';
+                            const vSeason = v.video_season ? `第${v.video_season}季` : '';
+                            const vEpInfo = [vSeason, vEp].filter(Boolean).join(' · ');
+                            const vTotal = v.video && v.video.total_episodes ? `共${v.video.total_episodes}集` : '';
                             html += `<div style="padding:10px;background:#f5f7fa;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
                                 <div style="flex:1;min-width:0">
-                                    <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(v.name || '未知')}</div>
-                                    <div style="font-size:12px;color:#909399">${escapeHtml(v.site || '')}</div>
+                                    <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(v.video?.name || v.name || '未知')}</div>
+                                    <div style="font-size:12px;color:#909399;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                        <span>${escapeHtml(v.site || '')}</span>
+                                        ${vEpInfo ? `<span style="color:#409eff">${escapeHtml(vEpInfo)}</span>` : ''}
+                                        ${vTotal ? `<span style="color:#67c23a">${escapeHtml(vTotal)}</span>` : ''}
+                                        <span style="color:#e6a23c">匹配度: ${v.score || 0}%</span>
+                                    </div>
                                 </div>
-                                <button class="btn btn-sm btn-primary" style="margin-left:8px;flex-shrink:0" onclick="learnFromVideoUrl('${escapeHtml(v.first_url || v.url || '')}', '${escapeHtml(v.name || '')}')">学习</button>
+                                <button class="btn btn-sm btn-primary" style="margin-left:8px;flex-shrink:0" onclick="learnFromVideoUrl('${escapeHtml(v.video?.first_url || v.video?.url || v.first_url || v.url || '')}', '${escapeHtml(v.video?.name || v.name || '')}')">学习</button>
                             </div>`;
                         });
                         html += '</div>';
@@ -8589,9 +8602,18 @@ header('Expires: 0');
                     if (data.candidates && data.candidates.length > 0) {
                         html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">候选结果 (匹配度不足):</div>';
                         data.candidates.forEach(v => {
+                            const vEp = v.video_episode ? `第${v.video_episode}集` : '';
+                            const vSeason = v.video_season ? `第${v.video_season}季` : '';
+                            const vEpInfo = [vSeason, vEp].filter(Boolean).join(' · ');
+                            const vTotal = v.video && v.video.total_episodes ? `共${v.video.total_episodes}集` : '';
                             html += `<div style="padding:8px;background:#f5f7fa;border-radius:6px;margin-bottom:6px">
-                                <div style="font-weight:500">${escapeHtml(v.name || '未知')}</div>
-                                <div style="font-size:12px;color:#909399">${escapeHtml(v.site || '')}</div>
+                                <div style="font-weight:500">${escapeHtml(v.video?.name || v.name || '未知')}</div>
+                                <div style="font-size:12px;color:#909399;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                    <span>${escapeHtml(v.site || '')}</span>
+                                    ${vEpInfo ? `<span style="color:#409eff">${escapeHtml(vEpInfo)}</span>` : ''}
+                                    ${vTotal ? `<span style="color:#67c23a">${escapeHtml(vTotal)}</span>` : ''}
+                                    <span style="color:#e6a23c">匹配度: ${v.score || 0}%</span>
+                                </div>
                             </div>`;
                         });
                         html += '</div>';
