@@ -1,6 +1,7 @@
 <?php
 @ini_set('display_errors', 0);
 @ini_set('html_errors', 0);
+@ini_set('log_errors', 1);
 error_reporting(0);
 
 $memoryLimit = @ini_get('memory_limit');
@@ -20,10 +21,31 @@ function return_bytes_func($val) {
     return $val;
 }
 
-if (ob_get_level()) {
+while (ob_get_level() > 0) {
     ob_end_clean();
 }
-ob_start();
+ob_start(function($buffer) {
+    $trimmed = ltrim($buffer, "\xEF\xBB\xBF");
+    if (defined('JSON_OUTPUT_GUARD') && JSON_OUTPUT_GUARD) {
+        $trimmed = trim($trimmed);
+        if (!empty($trimmed) && $trimmed[0] !== '{' && $trimmed[0] !== '[') {
+            $jsonStart = strpos($trimmed, '{');
+            if ($jsonStart !== false) {
+                $trimmed = substr($trimmed, $jsonStart);
+            } else {
+                $trimmed = json_encode([
+                    'success' => false,
+                    'message' => '服务器响应格式错误',
+                    'error_code' => 'INVALID_RESPONSE',
+                    'raw_length' => strlen($buffer)
+                ], JSON_UNESCAPED_UNICODE);
+            }
+        }
+    }
+    return $trimmed;
+});
+
+define('JSON_OUTPUT_GUARD', true);
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -33,8 +55,18 @@ header('X-Content-Type-Options: nosniff');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
-    ob_end_flush();
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     exit;
+}
+
+function safe_echo_json($data) {
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+    if ($json === false) {
+        $json = '{"success":false,"message":"JSON encoding failed","error_code":"JSON_ENCODE_ERROR"}';
+    }
+    echo $json;
 }
 
 function sendJsonResponse($data, $code = 200) {
@@ -43,15 +75,7 @@ function sendJsonResponse($data, $code = 200) {
         ob_end_clean();
     }
     header('Content-Type: application/json; charset=utf-8');
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
-    if ($json === false) {
-        $json = json_encode([
-            'success' => false,
-            'message' => 'JSON编码失败: ' . json_last_error_msg(),
-            'error_code' => 'JSON_ENCODE_ERROR'
-        ], JSON_UNESCAPED_UNICODE);
-    }
-    echo $json;
+    safe_echo_json($data);
     exit;
 }
 
@@ -433,7 +457,12 @@ function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
     }
     $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
     if (in_array($errno, $fatalTypes)) {
-        @sendJsonResponse([
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        @header('Content-Type: application/json; charset=utf-8');
+        @http_response_code(500);
+        safe_echo_json([
             'success' => false,
             'message' => $errstr,
             'error_detail' => [
@@ -441,7 +470,8 @@ function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
                 'file' => basename($errfile),
                 'line' => $errline
             ]
-        ], 500);
+        ]);
+        exit;
     }
     return true;
 }
@@ -453,9 +483,9 @@ function jsonFatalHandler() {
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
-        http_response_code(500);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode([
+        @header('Content-Type: application/json; charset=utf-8');
+        @http_response_code(500);
+        safe_echo_json([
             'success' => false,
             'message' => $error['message'],
             'error_detail' => [
@@ -463,7 +493,7 @@ function jsonFatalHandler() {
                 'line' => $error['line']
             ],
             'fatal_error' => true
-        ], JSON_UNESCAPED_UNICODE);
+        ]);
     }
 }
 register_shutdown_function('jsonFatalHandler');

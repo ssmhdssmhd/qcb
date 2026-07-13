@@ -2331,57 +2331,76 @@ class DbOfficialReplaceManager {
         $proxyMgr = null;
         $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
         if (file_exists($proxyFile)) {
-            require_once $proxyFile;
-            $proxyMgr = new ProxyManager();
+            @require_once $proxyFile;
+            if (class_exists('ProxyManager')) {
+                $proxyMgr = @new ProxyManager();
+            }
         }
 
         for ($attempt = 0; $attempt <= $retry; $attempt++) {
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
-            curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            $ch = @curl_init();
+            if (!$ch) {
+                $lastError = 'curl_init failed';
+                continue;
+            }
+
+            @curl_setopt($ch, CURLOPT_URL, $url);
+            @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            @curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            @curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            @curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+            @curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
+            @curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
-                'Accept-Encoding: gzip, deflate, br'
+                'Accept-Encoding: gzip, deflate'
             ]);
-            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-            curl_setopt($ch, CURLOPT_COOKIEJAR, tempnam(sys_get_temp_dir(), 'cookie'));
-            curl_setopt($ch, CURLOPT_COOKIEFILE, tempnam(sys_get_temp_dir(), 'cookie'));
+            @curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+            $cookieFile = @tempnam(sys_get_temp_dir(), 'curl_cookie_');
+            if ($cookieFile) {
+                @curl_setopt($ch, CURLOPT_COOKIEJAR, $cookieFile);
+                @curl_setopt($ch, CURLOPT_COOKIEFILE, $cookieFile);
+            }
 
             $currentProxy = null;
-            if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
-                $currentProxy = $proxyMgr->applyProxyToCurl($ch);
+            if ($proxyMgr && @$proxyMgr->isEnabled() && $attempt > 0) {
+                $currentProxy = @$proxyMgr->applyProxyToCurl($ch);
             }
 
             $startTime = microtime(true);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $error = curl_error($ch);
+            $response = @curl_exec($ch);
+            $httpCode = 0;
+            $error = '';
+            if ($ch) {
+                $httpCode = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error = @curl_error($ch);
+                @curl_close($ch);
+            }
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
-            curl_close($ch);
+
+            if ($cookieFile && file_exists($cookieFile)) {
+                @unlink($cookieFile);
+            }
 
             if ($currentProxy) {
                 if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
-                    $proxyMgr->markProxySuccess($currentProxy['id'], $responseTime);
+                    @$proxyMgr->markProxySuccess($currentProxy['id'], $responseTime);
                     return $response;
                 } else {
-                    $proxyMgr->markProxyFailed($currentProxy['id']);
+                    @$proxyMgr->markProxyFailed($currentProxy['id']);
                 }
             }
 
-            if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+            if ($httpCode >= 200 && $httpCode < 300 && $response !== false && is_string($response)) {
                 return $response;
             }
 
             $lastError = $error ? $error : ('HTTP ' . $httpCode);
-            
+
             $isRetryable = $error && (
                 strpos($error, 'Could not resolve') !== false ||
                 strpos($error, 'Connection timed out') !== false ||

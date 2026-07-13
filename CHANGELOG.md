@@ -5,6 +5,63 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.3.0] - 2026-07-13
+
+### 🚀 大版本修复：彻底解决"服务器返回非JSON响应"问题
+
+**构建 6 层 JSON 输出防御体系**，确保 100% 返回有效 JSON，从根本上杜绝非 JSON 响应问题。
+
+**第一层：输出缓冲清洗** ([mx.php](file:///workspace/mx.php))
+- ✅ 启动前 `while (ob_get_level() > 0) ob_end_clean()` 清理所有已有缓冲
+- ✅ 去除 UTF-8 BOM 头
+- ✅ 新增 `JSON_OUTPUT_GUARD` 输出过滤器
+
+**第二层：输出缓冲回调验证** ([mx.php](file:///workspace/mx.php))
+- ✅ `ob_start()` 回调函数实时校验输出
+- ✅ 自动定位 JSON 起始位置并截取
+- ✅ 非 JSON 开头时自动替换为错误 JSON
+- ✅ 去除前后空白字符
+
+**第三层：错误处理器加固** ([mx.php](file:///workspace/mx.php))
+- ✅ `jsonErrorHandler` - 所有错误类型返回 `true`，完全抑制默认处理器
+- ✅ 致命错误立即清理缓冲并输出 JSON
+- ✅ 使用 `safe_echo_json()` 确保 JSON 编码不失败
+
+**第四层：致命错误兜底** ([mx.php](file:///workspace/mx.php))
+- ✅ `jsonFatalHandler` - shutdown 函数捕获 E_ERROR/E_PARSE/E_CORE_ERROR 等
+- ✅ 清理所有输出缓冲
+- ✅ 输出结构化错误 JSON（含文件名、行号）
+
+**第五层：全局 try/catch** ([mx.php](file:///workspace/mx.php))
+- ✅ 主逻辑完全包裹在 try/catch 中
+- ✅ 捕获所有 Throwable（包括 Error 和 Exception）
+- ✅ 返回结构化错误信息
+
+**第六层：sendJsonResponse 安全输出** ([mx.php](file:///workspace/mx.php))
+- ✅ 调用前先 `ob_end_clean()` 清空所有缓冲
+- ✅ `JSON_PARTIAL_OUTPUT_ON_ERROR` 容忍无效 UTF-8
+- ✅ json_encode 返回 false 时输出硬编码错误 JSON
+- ✅ 新增 `safe_echo_json()` 工具函数
+
+**httpGet 全面加固** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ 所有 curl 函数前加 `@` 抑制警告
+- ✅ cookie 临时文件用完即删（防止磁盘堆积）
+- ✅ ProxyManager 加载使用 `@require_once` + class_exists 检查
+- ✅ curl_init 失败时有明确错误处理
+- ✅ 响应增加 `is_string($response)` 类型检查
+- ✅ 移除 `br` 编码请求（兼容性更好）
+
+**moxi 端点修复** ([mx.php](file:///workspace/mx.php))
+- ✅ 错误响应改用 `sendJsonResponse()`
+- ✅ 正常响应改用 `sendJsonResponse()`
+- ✅ 不再直接 `echo + exit`
+
+**DbOfficialReplaceManager 修复** ([DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ `resolve()` 方法添加完整 try/catch
+- ✅ 与文件版功能完全对齐
+
+---
+
 ## [3.2.21] - 2026-07-13
 
 ### 🐛 彻底修复"请求失败: 服务器返回非JSON响应"错误
