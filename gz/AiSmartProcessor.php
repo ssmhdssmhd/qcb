@@ -5,6 +5,7 @@ require_once __DIR__ . '/../src/AdFilter.php';
 require_once __DIR__ . '/../src/OutputGenerator.php';
 require_once __DIR__ . '/EnhancedAdRuleEngine.php';
 require_once __DIR__ . '/DomainRuleManager.php';
+require_once __DIR__ . '/ProfessionalAdDetector.php';
 
 class AiSmartProcessor {
     private $parser;
@@ -13,6 +14,7 @@ class AiSmartProcessor {
     private $outputGenerator;
     private $ruleManager;
     private $domain;
+    private $proDetector;
 
     public function __construct($options = []) {
         $this->parser = new M3U8Parser();
@@ -23,6 +25,7 @@ class AiSmartProcessor {
         $this->filter = new AdFilter($this->enhancedEngine);
         $this->outputGenerator = new OutputGenerator();
         $this->ruleManager = new DomainRuleManager();
+        $this->proDetector = new ProfessionalAdDetector($options);
     }
 
     public function setDomain($domain) {
@@ -53,7 +56,16 @@ class AiSmartProcessor {
             $result['analysis'] = $analysis;
             $result['steps'][] = '🔍 智能分析完成，检测到 ' . ($analysis['discontinuityCount'] ?? 0) . ' 个 DISCONTINUITY 标记';
 
+            // 专业级广告检测
+            $proResult = $this->proDetector->detect($segments);
+            $result['professional_analysis'] = $proResult;
+            $result['steps'][] = '🔬 专业检测完成，识别 ' . $proResult['ad_segment_count'] . ' 个广告片段（置信度评分）';
+
             $adClusters = $this->ruleManager->analyzeAdClustersDetail($analysis, $segments);
+            // 合并专业检测的广告簇
+            if (!empty($proResult['ad_clusters'])) {
+                $adClusters = array_merge($adClusters, $proResult['ad_clusters']);
+            }
             $result['ad_clusters'] = $adClusters;
             $result['steps'][] = '🎯 广告簇分析完成，识别出 ' . count($adClusters) . ' 个广告片段集群';
 
@@ -167,10 +179,17 @@ class AiSmartProcessor {
             $discontinuityRules = $this->ruleManager->generateDiscontinuityRegexRules($analysis, $segments);
             $autoRules = $this->ruleManager->createFromAnalysis($this->domain ?: 'unknown', $analysis);
 
+            // 专业级广告检测
+            $proResult = $this->proDetector->detect($segments);
+            if (!empty($proResult['ad_clusters'])) {
+                $adClusters = array_merge($adClusters, $proResult['ad_clusters']);
+            }
+
             $result = array_merge($result, [
                 'success' => true,
                 'total_segments' => count($segments),
                 'analysis' => $analysis,
+                'professional_analysis' => $proResult,
                 'ad_clusters' => $adClusters,
                 'discontinuity_regex_rules' => $discontinuityRules,
                 'auto_rules' => $autoRules,

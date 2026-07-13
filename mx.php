@@ -4002,6 +4002,37 @@ try {
             }
             break;
 
+        case 'ai/pro_detect':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            try {
+                require_once __DIR__ . '/gz/AiSmartProcessor.php';
+                $processor = new AiSmartProcessor([
+                    'zscore_threshold' => floatval($_GET['zscore'] ?? 2.0),
+                    'confidence_threshold' => intval($_GET['confidence'] ?? 55),
+                ]);
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+                if ($domain) {
+                    $processor->setDomain($domain);
+                }
+                $result = $processor->smartAnalyze($url);
+                sendJsonResponse([
+                    'success' => $result['success'],
+                    'message' => $result['message'] ?? ($result['success'] ? '专业检测完成' : '检测失败'),
+                    'data' => $result
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '专业检测失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
         case 'ai/skip':
             $url = $_GET['url'] ?? '';
             if (empty($url)) {

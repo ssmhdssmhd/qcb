@@ -3010,6 +3010,7 @@ header('Expires: 0');
                     <button class="btn btn-primary" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);border:none" onclick="aiSmartProcess()">✨ 一键智能处理</button>
                     <button class="btn btn-success" onclick="aiSkipVideo()">🚀 AI 去广告</button>
                     <button class="btn btn-secondary" onclick="aiSmartAnalyze()">🔍 智能分析</button>
+                    <button class="btn btn-warning" onclick="aiProDetect()">🔬 专业检测</button>
                 </div>
                 <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
@@ -3054,6 +3055,11 @@ header('Expires: 0');
                         <div id="aiSkipVideoPlayer" style="width:100%;height:360px;border-radius:8px;overflow:hidden;background:#000"></div>
                         <div style="margin-top:8px;font-size:12px;color:#909399" id="aiSkipPlayStatus"></div>
                     </div>
+                </div>
+
+                <div class="card" id="proDetectCard" style="display:none">
+                    <div class="card-title">🔬 专业广告检测报告</div>
+                    <div id="proDetectResult" style="margin-bottom:16px"></div>
                 </div>
 
                 <div class="card">
@@ -4046,6 +4052,178 @@ header('Expires: 0');
                 document.getElementById('smartProcessStepList').innerHTML += '<div style="padding:4px 0;color:#f56c6c">❌ 分析失败: ' + e.message + '</div>';
                 showToast('分析失败: ' + e.message, 'error');
             }
+        }
+
+        async function aiProDetect() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+
+            document.getElementById('smartProcessSteps').style.display = 'block';
+            document.getElementById('smartProcessStepList').innerHTML = '<div style="padding:4px 0">🔬 正在进行专业级广告检测...</div>';
+            document.getElementById('proDetectCard').style.display = 'none';
+            document.getElementById('aiSkipResult').style.display = 'none';
+
+            try {
+                const params = new URLSearchParams({
+                    action: 'ai/pro_detect',
+                    url: url
+                });
+
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const data = await res.json();
+
+                if (!data.success) throw new Error(data.message || '检测失败');
+
+                const result = data.data;
+                const pro = result.professional_analysis || {};
+
+                document.getElementById('smartProcessStepList').innerHTML =
+                    '<div style="padding:4px 0">✅ 解析完成，共 ' + (result.total_segments || 0) + ' 个片段</div>' +
+                    '<div style="padding:4px 0">🔬 统计学异常检测完成</div>' +
+                    '<div style="padding:4px 0">📊 时长聚类分析完成</div>' +
+                    '<div style="padding:4px 0">🔀 DISCONTINUITY 上下文分析完成</div>' +
+                    '<div style="padding:4px 0">🎯 识别 ' + (pro.ad_segment_count || 0) + ' 个广告片段</div>' +
+                    '<div style="padding:4px 0">📦 ' + (pro.ad_cluster_count || 0) + ' 个广告簇</div>' +
+                    '<div style="padding:4px 0">✨ 专业检测完成！</div>';
+
+                renderProDetectResult(pro);
+                document.getElementById('proDetectCard').style.display = 'block';
+                document.getElementById('aiSkipResult').style.display = 'block';
+
+                // 同时渲染广告簇和规则
+                currentAiSkipData = {
+                    data: {
+                        stats: {
+                            totalSegments: result.total_segments || 0,
+                            adSegments: pro.ad_segment_count || 0,
+                            ad_percentage: pro.ad_percentage || 0,
+                            ad_cluster_count: pro.ad_cluster_count || 0
+                        },
+                        process_time: '0ms',
+                        adClusters: result.ad_clusters || [],
+                        ad_clusters: result.ad_clusters || [],
+                        discontinuityRegexRules: result.discontinuity_regex_rules || [],
+                        discontinuity_regex_rules: result.discontinuity_regex_rules || [],
+                        rules: result.auto_rules?.rules || result.auto_rules || [],
+                        ad_segments: (pro.ad_segments || []).map(s => ({
+                            uri: s.uri,
+                            duration: s.duration,
+                            mediaSequence: s.index,
+                            isAd: true,
+                            adReasons: s.reasons || [],
+                            score: s.score,
+                            confidence: s.confidence
+                        })),
+                        content_segments: (pro.content_segments || []).map(s => ({
+                            uri: s.uri,
+                            duration: s.duration,
+                            mediaSequence: s.index,
+                            isAd: false,
+                            score: s.score
+                        }))
+                    }
+                };
+                renderAiSkipAdClusters(currentAiSkipData);
+                renderAiSkipGeneratedRules(currentAiSkipData);
+                renderAiSkipSegmentList();
+
+                saveToHistory(url, 'pro_detect', data);
+                showToast('🔬 专业检测完成！', 'success');
+
+            } catch (e) {
+                document.getElementById('smartProcessStepList').innerHTML += '<div style="padding:4px 0;color:#f56c6c">❌ 检测失败: ' + e.message + '</div>';
+                showToast('检测失败: ' + e.message, 'error');
+            }
+        }
+
+        function renderProDetectResult(pro) {
+            const container = document.getElementById('proDetectResult');
+            if (!pro || !pro.success) {
+                container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂无专业检测数据</div>';
+                return;
+            }
+
+            const stats = pro.duration_stats || {};
+            const conf = pro.confidence_summary || {};
+            const details = pro.analysis_details || {};
+
+            let html = '';
+
+            // 统计概览
+            html += '<div class="stats-grid" style="margin-bottom:16px">';
+            html += '<div class="stat-card"><div class="stat-value" style="color:#667eea">' + (pro.total_segments || 0) + '</div><div class="stat-label">总片段</div></div>';
+            html += '<div class="stat-card"><div class="stat-value" style="color:#f56c6c">' + (pro.ad_segment_count || 0) + '</div><div class="stat-label">广告片段</div></div>';
+            html += '<div class="stat-card"><div class="stat-value" style="color:#67c23a">' + (pro.content_segment_count || 0) + '</div><div class="stat-label">内容片段</div></div>';
+            html += '<div class="stat-card"><div class="stat-value" style="color:#e6a23c">' + (pro.ad_percentage || 0) + '%</div><div class="stat-label">广告占比</div></div>';
+            html += '</div>';
+
+            // 时长统计
+            html += '<div style="padding:12px;background:#f5f7fa;border-radius:8px;margin-bottom:12px">';
+            html += '<div style="font-weight:600;color:#303133;margin-bottom:8px">📊 时长统计分析</div>';
+            html += '<div style="font-size:12px;color:#606266;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px">';
+            html += '<div>均值: ' + (stats.mean || 0) + 's</div>';
+            html += '<div>中位数: ' + (stats.median || 0) + 's</div>';
+            html += '<div>标准差: ' + (stats.stddev || 0) + '</div>';
+            html += '<div>众数: ' + (stats.mode || 0) + 's</div>';
+            html += '<div>最小: ' + (stats.min || 0) + 's</div>';
+            html += '<div>最大: ' + (stats.max || 0) + 's</div>';
+            html += '<div>Q1: ' + (stats.q1 || 0) + 's</div>';
+            html += '<div>Q3: ' + (stats.q3 || 0) + 's</div>';
+            html += '</div></div>';
+
+            // 置信度分布
+            if (conf.very_high !== undefined) {
+                html += '<div style="padding:12px;background:#f5f7fa;border-radius:8px;margin-bottom:12px">';
+                html += '<div style="font-weight:600;color:#303133;margin-bottom:8px">🎯 置信度分布</div>';
+                html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+                html += '<span class="badge badge-danger">极高 ' + (conf.very_high || 0) + '</span>';
+                html += '<span class="badge badge-warning">高 ' + (conf.high || 0) + '</span>';
+                html += '<span class="badge badge-primary">中 ' + (conf.medium || 0) + '</span>';
+                html += '<span class="badge badge-info">低 ' + (conf.low || 0) + '</span>';
+                html += '<span class="badge badge-success">极低 ' + (conf.very_low || 0) + '</span>';
+                html += '</div></div>';
+            }
+
+            // 检测维度
+            if (details.statistical) {
+                const statAnomalies = details.statistical || {};
+                const anomalyCount = Object.keys(statAnomalies).length;
+                html += '<div style="padding:12px;background:#f5f7fa;border-radius:8px;margin-bottom:12px">';
+                html += '<div style="font-weight:600;color:#303133;margin-bottom:8px">🔬 检测维度</div>';
+                html += '<div style="font-size:12px;color:#606266;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px">';
+                html += '<div>📈 统计学异常: ' + anomalyCount + ' 个片段</div>';
+                const clusters = details.duration_clusters || {};
+                html += '<div>📊 时长聚类: 广告群 ' + (clusters.ad_cluster?.count || 0) + ' / 内容群 ' + (clusters.content_cluster?.count || 0) + '</div>';
+                const disc = details.discontinuity || {};
+                html += '<div>🔀 DISCONTINUITY: ' + (disc.count || 0) + ' 个标记, ' + (disc.ad_ranges?.length || 0) + ' 个广告范围</div>';
+                const seq = details.sequence || {};
+                html += '<div>🔢 序列号异常: ' + Object.keys(seq).length + ' 个</div>';
+                html += '</div></div>';
+            }
+
+            // 广告簇列表
+            if (pro.ad_clusters && pro.ad_clusters.length > 0) {
+                html += '<div style="font-weight:600;color:#303133;margin-bottom:8px">📦 广告簇详情</div>';
+                pro.ad_clusters.forEach((cluster, i) => {
+                    const posColor = cluster.position_type === 'opening' ? '#e6a23c' :
+                                     cluster.position_type === 'ending' ? '#909399' : '#f56c6c';
+                    html += '<div style="padding:12px;background:#fef0f0;border-radius:8px;margin-bottom:8px;border-left:4px solid ' + posColor + '">';
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">';
+                    html += '<span style="font-weight:600">广告簇 #' + (i + 1) + ' · ' + (cluster.position || '未知') + '</span>';
+                    html += '<div style="display:flex;gap:6px">';
+                    html += '<span class="badge badge-danger">' + cluster.segment_count + ' 片段</span>';
+                    html += '<span class="badge badge-warning">评分 ' + (cluster.avg_score || 0) + '</span>';
+                    html += '<span class="badge badge-info">' + (cluster.total_duration || 0).toFixed(1) + 's</span>';
+                    html += '</div></div>';
+                    html += '<div style="font-size:12px;color:#606266">片段 #' + cluster.start + ' - #' + cluster.end + '，平均时长 ' + (cluster.avg_duration || 0) + 's</div>';
+                    if (cluster.reasons && cluster.reasons.length > 0) {
+                        html += '<div style="font-size:11px;color:#909399;margin-top:4px">原因: ' + cluster.reasons.join(', ') + '</div>';
+                    }
+                    html += '</div>';
+                });
+            }
+
+            container.innerHTML = html;
         }
 
         async function aiSkipVideo() {
