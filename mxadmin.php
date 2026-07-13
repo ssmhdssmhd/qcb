@@ -8462,7 +8462,15 @@ header('Expires: 0');
 
             try {
                 const res = await fetch(API_BASE + '?action=official_replace/resolve&url=' + encodeURIComponent(url) + '&_t=' + Date.now());
-                const data = await res.json();
+
+                let data;
+                try {
+                    const text = await res.text();
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    console.error('JSON解析失败，响应内容:', jsonErr.message);
+                    throw new Error('服务器返回非JSON响应');
+                }
                 
                 if (data.success) {
                     let seasonHtml = '';
