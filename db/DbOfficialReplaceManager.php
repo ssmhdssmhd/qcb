@@ -8,6 +8,7 @@ require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/DbOfficialReplaceCache.php';
 require_once __DIR__ . '/DbResourceSiteManager.php';
 require_once __DIR__ . '/../gz/ResourceSiteManager.php';
+require_once __DIR__ . '/../gz/TitleNormalizer.php';
 require_once __DIR__ . '/../multi_thread/autoload.php';
 require_once __DIR__ . '/../src/M3U8AdSkipper.php';
 require_once __DIR__ . '/../gz/EnhancedAdRuleEngine.php';
@@ -499,6 +500,10 @@ class DbOfficialReplaceManager {
             return !empty($kw) && mb_strlen($kw) >= 2;
         })));
 
+        if (count($keywords) > 10) {
+            $keywords = array_slice($keywords, 0, 10);
+        }
+
         return $keywords;
     }
 
@@ -563,7 +568,7 @@ class DbOfficialReplaceManager {
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
 
-            if ($baseScore < 60) {
+            if ($baseScore < 50) {
                 continue;
             }
 
@@ -627,7 +632,7 @@ class DbOfficialReplaceManager {
 
             $score = min(100, max(0, $score));
 
-            if ($score >= $threshold * 0.6) {
+            if ($score >= $threshold * 0.5) {
                 $matches[] = [
                     'video' => $video,
                     'score' => round($score, 2),
@@ -829,14 +834,84 @@ class DbOfficialReplaceManager {
                 $response = $this->httpGet($apiUrl);
                 if (!$response) continue;
 
-                $jsonStr = $response;
-                $jsonStr = preg_replace('/^\w+=/', '', $jsonStr);
+                $jsonStr = preg_replace('/^\w+=/', '', $response);
                 $jsonStr = preg_replace('/;$/', '', $jsonStr);
                 $data = json_decode($jsonStr, true);
 
-                if ($data) {
+                if (!$data) continue;
+
+                if (isset($data['c']['title']) && mb_strlen($data['c']['title']) >= 3) {
+                    $result['title'] = $data['c']['title'];
+                    if (!empty($data['c']['pic'])) $result['cover'] = $data['c']['pic'];
+                    break;
+                }
+
+                $found = $this->findTitleInData($data);
+                if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                    $result['title'] = $found['title'];
+                }
+                if (!empty($found['cover']) && empty($result['cover'])) {
+                    $result['cover'] = $found['cover'];
+                }
+
+                if (!empty($result['title'])) break;
+            }
+        }
+
+        if ($platformName === '爱奇艺') {
+            $apiUrls = [
+                'https://pcw-api.iqiyi.com/video/video/baseinfo/' . urlencode($videoId),
+                'https://pcw-api.iqiyi.com/strategy/pcw/data/baseVideoInfo?ids=' . urlencode($videoId),
+                'https://cache.video.iqiyi.com/jp/avlist/20210316/' . urlencode($videoId) . '.json',
+            ];
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
+                $jsonStr = preg_replace('/^\w+=/', '', $response);
+                $jsonStr = preg_replace('/;$/', '', $jsonStr);
+                $data = json_decode($jsonStr, true);
+
+                if (!$data) continue;
+
+                $titleFields = [
+                    ['data', 'name'], ['data', 'title'], ['data', '0', 'name'],
+                    ['name'], ['title'], ['videoName'], ['data', '0', 'title'],
+                    ['data', 'videoInfo', 'name'], ['data', 'videoInfo', 'title']
+                ];
+                foreach ($titleFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && mb_strlen($val) >= 3) {
+                        $result['title'] = $val;
+                        break;
+                    }
+                }
+
+                $coverFields = [
+                    ['data', 'imageUrl'], ['data', '0', 'imageUrl'],
+                    ['data', 'image'], ['data', '0', 'image'],
+                    ['imageUrl'], ['image'], ['data', 'videoInfo', 'imageUrl']
+                ];
+                foreach ($coverFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
+                        $result['cover'] = $val;
+                        break;
+                    }
+                }
+
+                if (empty($result['title'])) {
                     $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
                         $result['title'] = $found['title'];
                     }
                     if (!empty($found['cover']) && empty($result['cover'])) {
@@ -848,35 +923,259 @@ class DbOfficialReplaceManager {
             }
         }
 
-        if ($platformName === '爱奇艺') {
-            $apiUrl = 'https://pcw-api.iqiyi.com/video/video/baseinfo/' . urlencode($videoId);
-            $response = $this->httpGet($apiUrl);
-            if ($response) {
-                $data = json_decode($response, true);
-                if ($data && !empty($data['data']['name'])) {
-                    $result['title'] = $data['data']['name'];
-                    if (!empty($data['data']['imageUrl'])) {
-                        $result['cover'] = $data['data']['imageUrl'];
-                    }
-                }
-            }
-        }
-
         if ($platformName === '芒果TV') {
-            $apiUrl = 'https://pcweb.api.mgtv.com/episode/list?video_id=' . urlencode($videoId);
-            $response = $this->httpGet($apiUrl);
-            if ($response) {
+            $apiUrls = [
+                'https://pcweb.api.mgtv.com/episode/list?video_id=' . urlencode($videoId),
+                'https://pcweb.api.mgtv.com/video/info?video_id=' . urlencode($videoId),
+                'https://pcweb.api.mgtv.com/video/shortSourceInfo?video_id=' . urlencode($videoId),
+            ];
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
                 $data = json_decode($response, true);
-                if ($data && !empty($data['data']['info']['title'])) {
-                    $result['title'] = $data['data']['info']['title'];
-                    if (!empty($data['data']['info']['cover'])) {
-                        $result['cover'] = $data['data']['info']['cover'];
+                if (!$data) continue;
+
+                $titleFields = [
+                    ['data', 'info', 'title'], ['data', 'info', 'title2'],
+                    ['data', 'title'], ['data', '0', 'title'],
+                    ['data', '0', 'desc'], ['data', 'info', 'desc']
+                ];
+                foreach ($titleFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && mb_strlen($val) >= 3) {
+                        $result['title'] = $val;
+                        break;
                     }
                 }
+
+                $coverFields = [
+                    ['data', 'info', 'cover'], ['data', 'info', 'image'],
+                    ['data', '0', 'image'], ['data', 'cover']
+                ];
+                foreach ($coverFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
+                        $result['cover'] = $val;
+                        break;
+                    }
+                }
+
+                if (empty($result['title'])) {
+                    $found = $this->findTitleInData($data);
+                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
+                        $result['title'] = $found['title'];
+                    }
+                    if (!empty($found['cover']) && empty($result['cover'])) {
+                        $result['cover'] = $found['cover'];
+                    }
+                }
+
+                if (!empty($result['title'])) break;
             }
         }
 
-        if (!empty($result['title'])) {
+        if ($platformName === '优酷') {
+            $apiUrls = [
+                'https://v.youku.com/service/getVideoInfo?vid=' . urlencode($videoId),
+                'https://openapi.youku.com/v2/videos/show.json?client_id=23e50e2e09490776&video_id=' . urlencode($videoId),
+            ];
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
+                $jsonStr = preg_replace('/^\w+=/', '', $response);
+                $jsonStr = preg_replace('/;$/', '', $jsonStr);
+                $data = json_decode($jsonStr, true);
+
+                if (!$data) continue;
+
+                $titleFields = [
+                    ['data', 'title'], ['data', 'name'], ['title'], ['name'],
+                    ['data', 'video', 'title'], ['data', '0', 'title']
+                ];
+                foreach ($titleFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && mb_strlen($val) >= 3) {
+                        $result['title'] = $val;
+                        break;
+                    }
+                }
+
+                $coverFields = [
+                    ['data', 'bigPhoto'], ['data', 'photo'], ['bigPhoto'], ['photo'],
+                    ['data', '0', 'bigPhoto'], ['data', 'image'], ['image']
+                ];
+                foreach ($coverFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
+                        $result['cover'] = $val;
+                        break;
+                    }
+                }
+
+                if (empty($result['title'])) {
+                    $found = $this->findTitleInData($data);
+                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
+                        $result['title'] = $found['title'];
+                    }
+                    if (!empty($found['cover']) && empty($result['cover'])) {
+                        $result['cover'] = $found['cover'];
+                    }
+                }
+
+                if (!empty($result['title'])) break;
+            }
+        }
+
+        if ($platformName === '哔哩哔哩') {
+            $apiUrls = [
+                'https://api.bilibili.com/x/web-interface/view?bvid=' . urlencode($videoId),
+            ];
+
+            if (preg_match('/^av(\d+)$/i', $videoId, $avMatch)) {
+                $apiUrls[] = 'https://api.bilibili.com/x/web-interface/view?aid=' . $avMatch[1];
+            } elseif (preg_match('/BV/i', $videoId)) {
+                $apiUrls[] = 'https://api.bilibili.com/x/web-interface/view?aid=' . urlencode($videoId);
+            }
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
+                $data = json_decode($response, true);
+                if (!$data) continue;
+
+                if (isset($data['data']['title']) && mb_strlen($data['data']['title']) >= 3) {
+                    $result['title'] = $data['data']['title'];
+                    if (!empty($data['data']['pic'])) {
+                        $result['cover'] = $data['data']['pic'];
+                    }
+                }
+
+                if (empty($result['title'])) {
+                    $found = $this->findTitleInData($data);
+                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
+                        $result['title'] = $found['title'];
+                    }
+                    if (!empty($found['cover']) && empty($result['cover'])) {
+                        $result['cover'] = $found['cover'];
+                    }
+                }
+
+                if (!empty($result['title'])) break;
+            }
+        }
+
+        if ($platformName === '搜狐视频') {
+            $apiUrls = [
+                'https://sohu.com/api/getVideoInfo?vid=' . urlencode($videoId),
+                'https://tv.sohu.com/continfo/' . urlencode($videoId) . '.json',
+                'https://my.tv.sohu.com/play/videonew.do?id=' . urlencode($videoId),
+            ];
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
+                $jsonStr = preg_replace('/^\w+=/', '', $response);
+                $jsonStr = preg_replace('/;$/', '', $jsonStr);
+                $data = json_decode($jsonStr, true);
+
+                if (!$data) continue;
+
+                $titleFields = [
+                    ['data', 'title'], ['data', 'tvName'], ['data', 'name'],
+                    ['title'], ['tvName'], ['name'],
+                    ['data', 'videoName'], ['videoName']
+                ];
+                foreach ($titleFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && mb_strlen($val) >= 3) {
+                        $result['title'] = $val;
+                        break;
+                    }
+                }
+
+                $coverFields = [
+                    ['data', 'cover'], ['data', 'pic'], ['data', 'image'],
+                    ['cover'], ['pic'], ['image'],
+                    ['data', 'bigCover'], ['bigCover']
+                ];
+                foreach ($coverFields as $path) {
+                    $val = $data;
+                    foreach ($path as $key) {
+                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                        $val = $val[$key];
+                    }
+                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
+                        $result['cover'] = $val;
+                        break;
+                    }
+                }
+
+                if (empty($result['title'])) {
+                    $found = $this->findTitleInData($data);
+                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
+                        $result['title'] = $found['title'];
+                    }
+                    if (!empty($found['cover']) && empty($result['cover'])) {
+                        $result['cover'] = $found['cover'];
+                    }
+                }
+
+                if (!empty($result['title'])) break;
+            }
+        }
+
+        if ($platformName === 'PP视频') {
+            $apiUrls = [
+                'https://api2.pptv.com/v3/api/tv/playlist.json?pid=' . urlencode($videoId),
+                'https://web-api.pptv.com/web/video/info?id=' . urlencode($videoId),
+            ];
+
+            foreach ($apiUrls as $apiUrl) {
+                $response = $this->httpGet($apiUrl);
+                if (!$response) continue;
+
+                $data = json_decode($response, true);
+                if (!$data) continue;
+
+                $found = $this->findTitleInData($data);
+                if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
+                    $result['title'] = $found['title'];
+                }
+                if (!empty($found['cover']) && empty($result['cover'])) {
+                    $result['cover'] = $found['cover'];
+                }
+
+                if (!empty($result['title'])) break;
+            }
+        }
+
+        if (!empty($result['title']) && mb_strlen($result['title']) >= 3) {
             return $result;
         }
         return null;
@@ -1351,7 +1650,7 @@ class DbOfficialReplaceManager {
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
 
-            if ($baseScore < 60) {
+            if ($baseScore < 50) {
                 continue;
             }
 
@@ -1447,6 +1746,27 @@ class DbOfficialReplaceManager {
             return 100;
         }
 
+        $norm1 = TitleNormalizer::normalize($str1);
+        $norm2 = TitleNormalizer::normalize($str2);
+
+        if ($norm1 === $norm2 && !empty($norm1)) {
+            return 100;
+        }
+
+        $season1 = TitleNormalizer::getSeasonInfo($str1);
+        $season2 = TitleNormalizer::getSeasonInfo($str2);
+        $seasonPenalty = 0;
+        if ($season1 !== null && $season2 !== null && $season1 !== $season2) {
+            $seasonPenalty = 40;
+        } elseif ($season1 !== null && $season1 > 1 && $season2 === null) {
+            $seasonPenalty = 20;
+        } elseif ($season2 !== null && $season2 > 1 && $season1 === null) {
+            $seasonPenalty = 20;
+        }
+
+        $str1 = $norm1;
+        $str2 = $norm2;
+
         $len1 = mb_strlen($str1);
         $len2 = mb_strlen($str2);
 
@@ -1456,17 +1776,80 @@ class DbOfficialReplaceManager {
 
         $short = $len1 < $len2 ? $str1 : $str2;
         $long = $len1 < $len2 ? $str2 : $str1;
+        $shortLen = mb_strlen($short);
+        $longLen = mb_strlen($long);
 
         if (mb_strpos($long, $short) !== false) {
-            $ratio = mb_strlen($short) / mb_strlen($long);
-            if ($ratio > 0.8) {
-                return 90;
-            } elseif ($ratio > 0.6) {
-                return 80;
-            } elseif ($ratio > 0.4) {
-                return 70;
+            $pos = mb_strpos($long, $short);
+            $ratio = $shortLen / $longLen;
+
+            $startsWith = ($pos === 0);
+            $endsWith = ($pos + $shortLen === $longLen);
+
+            $seasonSuffix = '';
+            $spinOffSuffix = false;
+            if ($startsWith) {
+                $suffix = mb_substr($long, $shortLen);
+                if (preg_match('/^\s*[第\d一二三四五六七八九十百千\s部季期篇辑上下 seasonsS0-9]+$/u', $suffix)) {
+                    $seasonSuffix = $suffix;
+                }
+                if (preg_match('/^\s*[之]/u', $suffix)) {
+                    $spinOffSuffix = true;
+                }
+            }
+
+            $subScore = 0;
+            if ($ratio >= 0.7) {
+                $subScore = 100;
+            } elseif ($ratio >= 0.5) {
+                if ($startsWith) {
+                    if ($seasonSuffix) $subScore = 95;
+                    elseif ($spinOffSuffix) $subScore = 55;
+                    else $subScore = 90;
+                } else {
+                    $subScore = $endsWith ? 85 : 70;
+                }
+            } elseif ($ratio >= 0.35) {
+                if ($startsWith) {
+                    if ($seasonSuffix) $subScore = 92;
+                    elseif ($spinOffSuffix) $subScore = 45;
+                    else $subScore = 75;
+                } elseif ($endsWith) {
+                    $subScore = 70;
+                } else {
+                    $subScore = 45;
+                }
             } else {
-                return 60;
+                if ($startsWith) {
+                    if ($seasonSuffix) $subScore = 85;
+                    elseif ($spinOffSuffix) $subScore = 35;
+                    else $subScore = 55;
+                } elseif ($endsWith) {
+                    $subScore = 45;
+                } else {
+                    $subScore = 25;
+                }
+            }
+
+            return round(max(0, $subScore - $seasonPenalty), 2);
+        }
+
+        $prefixMatchLen = 0;
+        $minLen = min($len1, $len2);
+        for ($i = 0; $i < $minLen; $i++) {
+            if (mb_substr($str1, $i, 1) === mb_substr($str2, $i, 1)) {
+                $prefixMatchLen++;
+            } else {
+                break;
+            }
+        }
+
+        $suffixMatchLen = 0;
+        for ($i = 1; $i <= $minLen; $i++) {
+            if (mb_substr($str1, -$i, 1) === mb_substr($str2, -$i, 1)) {
+                $suffixMatchLen++;
+            } else {
+                break;
             }
         }
 
@@ -1485,7 +1868,20 @@ class DbOfficialReplaceManager {
         $totalChars = max($len1, $len2);
         $charSimilarity = $totalChars > 0 ? ($commonChars / $totalChars) * 100 : 0;
 
-        return round($charSimilarity * 0.7, 2);
+        $prefixBonus = 0;
+        if ($prefixMatchLen > 0) {
+            $prefixBonus = ($prefixMatchLen / $minLen) * 30;
+        }
+
+        $suffixBonus = 0;
+        if ($suffixMatchLen > 0) {
+            $suffixBonus = ($suffixMatchLen / $minLen) * 15;
+        }
+
+        $finalScore = $charSimilarity * 0.5 + $prefixBonus + $suffixBonus;
+        $finalScore = min(100, max(0, $finalScore - $seasonPenalty));
+
+        return round($finalScore, 2);
     }
 
     private function findEpisodeUrl($urls, $episodeInfo) {

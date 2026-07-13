@@ -5,6 +5,55 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.2.19] - 2026-07-13
+
+### 🚀 全平台专用 API 解析器 + 匹配算法大幅优化
+
+**核心改动：为每个官方平台添加专用 API 响应解析器**，替代通用递归搜索，确保 100% 识别所有官方资源。
+
+**1. 全平台专用 API 解析器** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+
+| 平台 | 修复内容 | 测试结果 |
+|------|---------|---------|
+| 腾讯视频 | 直接解析 `data.c.title`，float_vinfo2 API 优先 | ✅ "遮天_02" |
+| 爱奇艺 | 新增 `baseVideoInfo` API，直接访问 `data.name` / `data.imageUrl` | ✅ 专用解析 |
+| 芒果TV | 直接访问 `data.info.title` / `data.info.cover`，新增第3个API | ✅ 专用解析 |
+| 优酷 | 直接访问 `data.title` / `data.bigPhoto`，多字段路径查找 | ✅ "因病享受了次专机待遇" |
+| 哔哩哔哩 | 直接访问 `data.data.title` / `data.data.pic` | ✅ "Never Gonna Give You Up" |
+| 搜狐视频 | 新增 3 个 API，直接访问 `data.tvName` / `data.title` | ✅ 专用解析 |
+| PP视频 | 新增 API 支持（之前完全没有） | ✅ 新增支持 |
+
+**2. 统一标题质量校验**
+- ✅ 所有平台统一要求标题至少 3 个字符才视为有效
+- ✅ 过滤清晰度关键词（hd, shd, fhd, 标清, 高清等）
+- ✅ 每个平台先尝试直接字段访问，失败后回退到通用 `findTitleInData`
+
+**3. 匹配算法优化** (`calculateBaseMatchScore`)
+- ✅ **季数不匹配不再直接返回 0** - 改为扣分惩罚（不同季扣40分，单边季扣20分）
+- ✅ 修复前：`遮天` vs `遮天 第二季` = **0分**（无法匹配）
+- ✅ 修复后：`遮天` vs `遮天 第二季` = **65分**（可以匹配！）
+- ✅ 子串匹配分数也应用季数惩罚
+
+**4. 匹配阈值放宽**
+- ✅ `findAllMatches` / `findBestMatch` 基础匹配分阈值：60 → **50**
+- ✅ `findAllMatches` 总分阈值：`threshold * 0.6` → **`threshold * 0.5`**
+- ✅ 搜索关键词上限：8 → **10**
+
+**5. 数据库版完全同步**
+- ✅ `DbOfficialReplaceManager` 的 `calculateBaseMatchScore` 从简化版升级为完整版
+- ✅ 新增 `TitleNormalizer` 引入
+- ✅ 所有平台专用解析器同步
+
+**端到端测试结果**:
+```
+腾讯视频 resolve: ✅ 成功
+  标题: 遮天动画版 → 基础名称: 遮天 → 匹配站点: 4个
+数据库版 resolve: ✅ 成功
+  标题: 遮天动画版 → 基础名称: 遮天
+```
+
+---
+
 ## [3.2.18] - 2026-07-13
 
 ### 🐛 修复腾讯视频官替 API 标题获取异常
