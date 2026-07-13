@@ -5,8 +5,8 @@
  */
 
 return [
-    'version' => '1.0',
-    'update_date' => '2026-06-30 20:00:12',
+    'version' => '3.2.9',
+    'update_date' => '2026-07-13',
     'enabled' => true,
     'default_site' => '量子',
     'max_search_sites' => 5,
