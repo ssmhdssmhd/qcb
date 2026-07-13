@@ -248,9 +248,11 @@ class DbOfficialReplaceManager {
                 return ['success' => false, 'message' => '不支持的视频平台'];
             }
 
-            $videoId = $this->extractVideoId($url, $platform);
+            $videoIds = $this->extractVideoId($url, $platform);
+            $videoId = $videoIds['video_id'] ?? '';
+            $coverId = $videoIds['cover_id'] ?? '';
 
-            $videoInfo = $this->fetchVideoInfo($url, $platform);
+            $videoInfo = $this->fetchVideoInfo($url, $platform, $videoIds);
             $videoTitle = '';
 
             if ($videoInfo && !empty($videoInfo['title'])) {
@@ -770,15 +772,20 @@ class DbOfficialReplaceManager {
 
     private function extractVideoId($url, $platform) {
         $videoId = null;
+        $coverId = null;
         $domain = $platform['domain'] ?? '';
 
         if ($domain === 'v.qq.com') {
-            if (preg_match('/\/([a-zA-Z0-9]+)\.html?$/i', $url, $matches)) {
+            if (preg_match('/cover\/([a-zA-Z0-9]+)\/([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $coverId = $matches[1];
+                $videoId = $matches[2];
+            } elseif (preg_match('/\/([a-zA-Z0-9]+)\.html?$/i', $url, $matches)) {
                 $videoId = $matches[1];
             } elseif (preg_match('/vid=([a-zA-Z0-9]+)/i', $url, $matches)) {
                 $videoId = $matches[1];
-            } elseif (preg_match('/cover\/([a-zA-Z0-9]+)\/([a-zA-Z0-9]+)/i', $url, $matches)) {
-                $videoId = $matches[2];
+            } elseif (preg_match('/cover\/([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $coverId = $matches[1];
+                $videoId = $matches[1];
             }
         } elseif ($domain === 'iqiyi.com') {
             if (preg_match('/\/([a-zA-Z0-9]{16,})\.html?$/i', $url, $matches)) {
@@ -810,7 +817,10 @@ class DbOfficialReplaceManager {
             }
         }
 
-        return $videoId;
+        return [
+            'video_id' => $videoId,
+            'cover_id' => $coverId
+        ];
     }
 
     private function detectPlatform($url) {
@@ -823,8 +833,12 @@ class DbOfficialReplaceManager {
         return null;
     }
 
-    private function fetchVideoInfo($url, $platform) {
-        $videoId = $this->extractVideoId($url, $platform);
+    private function fetchVideoInfo($url, $platform, $videoIds = null) {
+        if ($videoIds === null) {
+            $videoIds = $this->extractVideoId($url, $platform);
+        }
+        $videoId = $videoIds['video_id'] ?? '';
+        $coverId = $videoIds['cover_id'] ?? '';
         $title = null;
         $cover = null;
         $episodeInfo = [
@@ -833,7 +847,7 @@ class DbOfficialReplaceManager {
             'total_episodes' => null
         ];
 
-        $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
+        $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform, $coverId, $url);
         if ($apiInfo) {
             if (!empty($apiInfo['title'])) {
                 $title = $apiInfo['title'];
@@ -874,7 +888,8 @@ class DbOfficialReplaceManager {
             'url' => $url,
             'platform' => $platform['name'],
             'episode_info' => $episodeInfo,
-            'video_id' => $videoId
+            'video_id' => $videoId,
+            'cover_id' => $coverId
         ];
     }
 
@@ -944,7 +959,7 @@ class DbOfficialReplaceManager {
         return null;
     }
 
-    private function fetchVideoInfoFromApi($videoId, $platform) {
+    private function fetchVideoInfoFromApi($videoId, $platform, $coverId = '', $originalUrl = '') {
         if (empty($videoId)) {
             return null;
         }
@@ -958,8 +973,14 @@ class DbOfficialReplaceManager {
                 'https://pbaccess.video.qq.com/trpc.vidplay.vidplay_2_0_fcgi.VidPlay2_0Fcgi/GetCmsVidInfoAll?data={"vid":"' . urlencode($videoId) . '","appVer":"3.5.57","platform":"40000"}',
                 'https://access.video.qq.com/cgi-bin/varietycheck?vid=' . urlencode($videoId),
                 'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json',
-                'https://v.qq.com/x/cover/' . urlencode($videoId) . '.html',
             ];
+
+            if (!empty($coverId)) {
+                $apiUrls[] = 'https://v.qq.com/x/cover/' . urlencode($coverId) . '.html';
+            }
+            if (!empty($originalUrl)) {
+                $apiUrls[] = $originalUrl;
+            }
 
             $titlePaths = [
                 ['c', 'title'],
@@ -969,6 +990,8 @@ class DbOfficialReplaceManager {
                 ['title'],
                 ['name'],
                 ['tvName'],
+                ['data', 'videoInfo', 'title'],
+                ['data', 'vl', 'vi', 0, 'ti'],
             ];
 
             $coverPaths = [
@@ -980,6 +1003,8 @@ class DbOfficialReplaceManager {
                 ['pic'],
                 ['cover'],
                 ['imageUrl'],
+                ['data', 'videoInfo', 'cover'],
+                ['data', 'vl', 'vi', 0, 'video_pic'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
@@ -2575,7 +2600,9 @@ class DbOfficialReplaceManager {
         $platform = $this->detectPlatform($url);
         if (!$platform) return null;
 
-        $videoId = $this->extractVideoId($url, $platform);
+        $videoIds = $this->extractVideoId($url, $platform);
+        $videoId = $videoIds['video_id'] ?? '';
+        $coverId = $videoIds['cover_id'] ?? '';
 
         $html = null;
         $apiInfo = null;
@@ -2585,7 +2612,7 @@ class DbOfficialReplaceManager {
             $tasks = [];
             $tasks[] = ['id' => 'html', 'url' => $url, 'type' => 'html'];
             if ($videoId) {
-                $tasks[] = ['id' => 'api', 'video_id' => $videoId, 'platform' => $platform, 'type' => 'api'];
+                $tasks[] = ['id' => 'api', 'video_id' => $videoId, 'cover_id' => $coverId, 'original_url' => $url, 'platform' => $platform, 'type' => 'api'];
             }
 
             $runner = TaskRunner::create([
@@ -2598,7 +2625,7 @@ class DbOfficialReplaceManager {
                 if ($task['type'] === 'html') {
                     return $this->httpGet($task['url']);
                 } else {
-                    return $this->fetchVideoInfoFromApi($task['video_id'], $task['platform']);
+                    return $this->fetchVideoInfoFromApi($task['video_id'], $task['platform'], $task['cover_id'] ?? '', $task['original_url'] ?? '');
                 }
             });
 
@@ -2614,7 +2641,7 @@ class DbOfficialReplaceManager {
         } else {
             $html = $this->httpGet($url);
             if ($videoId) {
-                $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
+                $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform, $coverId, $url);
             }
         }
 
@@ -2647,7 +2674,8 @@ class DbOfficialReplaceManager {
             'episode_num' => $parsed['episode_num'] ?? ($episodeInfo['episode_num'] ?? null),
             'part' => $parsed['part'],
             'version' => $parsed['version'],
-            'video_id' => $videoId
+            'video_id' => $videoId,
+            'cover_id' => $coverId
         ];
     }
 

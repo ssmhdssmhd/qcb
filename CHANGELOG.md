@@ -5,6 +5,35 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.4.1] - 2026-11-11
+
+### 🐛 修复：腾讯视频链接无法获取影视名的问题
+
+**修复腾讯视频 cover 页面链接解析失败问题**，解决类似 `https://v.qq.com/x/cover/mzc00200nfe7al6/x4102k19oq6.html` 这类链接返回 404 HTML 而非 JSON 的问题。
+
+**1. 增强视频ID提取逻辑** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ `extractVideoId` 方法现在返回包含 `video_id` 和 `cover_id` 的数组
+- ✅ 正确区分腾讯视频 cover 页面中的封面ID和视频ID
+- ✅ 支持多种 URL 格式：cover 页面、iframe 播放器、普通视频页
+
+**2. 修复腾讯视频 API 请求 URL** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ 使用正确的 `cover_id` 构建封面页面 URL，而非错误地使用 `video_id`
+- ✅ 修复 404 Not Found 错误（返回 nginx 404 HTML 页面的问题）
+- ✅ 新增 `originalUrl` 参数支持，增加解析成功率
+
+**3. 扩展腾讯视频 API 来源** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ 新增更多视频信息 API 接口
+- ✅ 扩展 title 解析路径（如 `data.vl.vi.0.ti`）
+- ✅ 扩展 cover 解析路径（如 `data.vl.vi.0.video_pic`）
+- ✅ 多 API 源 fallback 机制，提高解析成功率
+
+**4. 同步修复数据库版本** ([DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ `fetchPageInfo` 方法同步适配新的视频ID提取格式
+- ✅ 多线程任务参数同步更新
+- ✅ 返回结果新增 `cover_id` 字段
+
+---
+
 ## [3.4.0] - 2026-07-13
 
 ### 🤖 大版本更新：AI 智能视频匹配，确保 100% 准确匹配
