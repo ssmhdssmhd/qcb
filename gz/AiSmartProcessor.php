@@ -44,6 +44,17 @@ class AiSmartProcessor {
 
         try {
             $playlist = $this->parser->parse($url);
+
+            // 处理 Master Playlist：跟随第一个变体 URL 获取媒体播放列表
+            if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
+                $firstVariant = $playlist['variants'][0]['uri'] ?? '';
+                if ($firstVariant) {
+                    $mediaUrl = $this->resolveMediaUrl($url, $firstVariant);
+                    $result['steps'][] = '📋 检测到主播放列表，跟随变体: ' . $firstVariant;
+                    $playlist = $this->parser->parse($mediaUrl);
+                }
+            }
+
             $segments = $playlist['segments'] ?? [];
             $result['steps'][] = '✅ 解析 M3U8 完成，共 ' . count($segments) . ' 个片段';
 
@@ -167,6 +178,16 @@ class AiSmartProcessor {
 
         try {
             $playlist = $this->parser->parse($url);
+
+            // 处理 Master Playlist：跟随第一个变体 URL 获取媒体播放列表
+            if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
+                $firstVariant = $playlist['variants'][0]['uri'] ?? '';
+                if ($firstVariant) {
+                    $mediaUrl = $this->resolveMediaUrl($url, $firstVariant);
+                    $playlist = $this->parser->parse($mediaUrl);
+                }
+            }
+
             $segments = $playlist['segments'] ?? [];
 
             if (empty($segments)) {
@@ -291,5 +312,24 @@ class AiSmartProcessor {
     private function extractDomain($url) {
         $parsed = parse_url($url);
         return $parsed['host'] ?? '';
+    }
+
+    private function resolveMediaUrl($baseUrl, $variantUri) {
+        if (preg_match('/^https?:\/\//i', $variantUri)) {
+            return $variantUri;
+        }
+        $parsed = parse_url($baseUrl);
+        $base = $parsed['scheme'] . '://' . $parsed['host'];
+        if (!empty($parsed['port'])) {
+            $base .= ':' . $parsed['port'];
+        }
+        $pathDir = dirname($parsed['path'] ?? '');
+        $pathDir = $pathDir === '.' ? '' : $pathDir;
+
+        if (strpos($variantUri, '/') === 0) {
+            return $base . $variantUri;
+        } else {
+            return $base . $pathDir . '/' . ltrim($variantUri, '/');
+        }
     }
 }

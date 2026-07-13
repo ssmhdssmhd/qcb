@@ -46,6 +46,16 @@ class M3U8AdSkipper {
 
     public function process($input, $options = []) {
         $playlist = $this->parser->parse($input);
+
+        // 处理 Master Playlist：跟随第一个变体 URL
+        if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
+            $firstVariant = $playlist['variants'][0]['uri'] ?? '';
+            if ($firstVariant && is_string($input) && preg_match('/^https?:\/\//i', $input)) {
+                $mediaUrl = $this->resolveMediaUrl($input, $firstVariant);
+                $playlist = $this->parser->parse($mediaUrl);
+            }
+        }
+
         $filteredPlaylist = $this->filter->filter($playlist);
         $output = $this->outputGenerator->generate($filteredPlaylist, $options);
 
@@ -59,6 +69,15 @@ class M3U8AdSkipper {
 
     public function processWithSafeguard($input, $options = []) {
         $playlist = $this->parser->parse($input);
+
+        // 处理 Master Playlist：跟随第一个变体 URL
+        if (!empty($playlist['isMaster']) && !empty($playlist['variants'])) {
+            $firstVariant = $playlist['variants'][0]['uri'] ?? '';
+            if ($firstVariant && is_string($input) && preg_match('/^https?:\/\//i', $input)) {
+                $mediaUrl = $this->resolveMediaUrl($input, $firstVariant);
+                $playlist = $this->parser->parse($mediaUrl);
+            }
+        }
 
         if (!empty($playlist['isMaster'])) {
             $filteredPlaylist = $this->filter->filter($playlist);
@@ -244,5 +263,24 @@ class M3U8AdSkipper {
 
     public function getOutputGenerator() {
         return $this->outputGenerator;
+    }
+
+    private function resolveMediaUrl($baseUrl, $variantUri) {
+        if (preg_match('/^https?:\/\//i', $variantUri)) {
+            return $variantUri;
+        }
+        $parsed = parse_url($baseUrl);
+        $base = $parsed['scheme'] . '://' . $parsed['host'];
+        if (!empty($parsed['port'])) {
+            $base .= ':' . $parsed['port'];
+        }
+        $pathDir = dirname($parsed['path'] ?? '');
+        $pathDir = $pathDir === '.' ? '' : $pathDir;
+
+        if (strpos($variantUri, '/') === 0) {
+            return $base . $variantUri;
+        } else {
+            return $base . $pathDir . '/' . ltrim($variantUri, '/');
+        }
     }
 }
