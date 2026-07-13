@@ -220,12 +220,14 @@ class OfficialReplaceManager {
             $targetEpisodeUrl = $bestMatch['video']['first_url'] ?? $bestMatch['video']['url'] ?? '';
             $targetEpisodeName = '';
             $allUrls = $bestMatch['video']['urls'] ?? [];
+            $episodeFromPlaylist = false;
 
             if (!empty($videoInfo['episode_num']) && !empty($allUrls)) {
                 $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num']);
                 if ($epResult) {
                     $targetEpisodeUrl = $epResult['url'];
                     $targetEpisodeName = $epResult['name'];
+                    $episodeFromPlaylist = true;
                 }
             }
 
@@ -277,6 +279,7 @@ class OfficialReplaceManager {
                 'match_score' => $bestMatch['score'],
                 'base_score' => $bestMatch['base_score'],
                 'season_match' => $bestMatch['season_match'],
+                'episode_match' => $episodeFromPlaylist || !empty($bestMatch['episode_match']),
                 'site' => $bestMatch['site'],
                 'video' => $bestMatch['video'],
                 'm3u8_url' => $targetEpisodeUrl,
@@ -429,6 +432,7 @@ class OfficialReplaceManager {
             $videoParsed = $this->parseVideoTitle($fullName);
             $videoBaseTitle = $videoParsed['base_title'];
             $videoSeason = $videoParsed['season_num'];
+            $videoEpisode = $videoParsed['episode_num'];
             $videoPart = $videoParsed['part'];
             $videoVersion = $videoParsed['version'];
 
@@ -445,19 +449,26 @@ class OfficialReplaceManager {
 
             $score = $baseScore;
             $seasonMatch = false;
+            $episodeMatch = false;
 
             if ($targetSeason !== null && $videoSeason !== null) {
                 if ($targetSeason == $videoSeason) {
                     $score += 25;
                     $seasonMatch = true;
                 } else {
-                    $score -= 30;
+                    continue;
                 }
             } elseif ($targetSeason !== null && $videoSeason === null) {
-                if ($targetSeason == 1) {
-                    $score += 5;
-                } else {
-                    $score -= 10;
+                if ($targetSeason > 1) {
+                    continue;
+                }
+            }
+
+            $targetEpisode = $videoInfo['episode_num'] ?? null;
+            if ($targetEpisode !== null && $videoEpisode !== null) {
+                if ($targetEpisode == $videoEpisode) {
+                    $score += 20;
+                    $episodeMatch = true;
                 }
             }
 
@@ -485,6 +496,7 @@ class OfficialReplaceManager {
                     'score' => round($score, 2),
                     'base_score' => round($baseScore, 2),
                     'season_match' => $seasonMatch,
+                    'episode_match' => $episodeMatch,
                     'site' => $video['site'] ?? ''
                 ];
             }
@@ -1385,6 +1397,7 @@ class OfficialReplaceManager {
             $videoParsed = $this->parseVideoTitle($fullName);
             $videoBaseTitle = $videoParsed['base_title'];
             $videoSeason = $videoParsed['season_num'];
+            $videoEpisode = $videoParsed['episode_num'];
             $videoPart = $videoParsed['part'];
             $videoVersion = $videoParsed['version'];
 
@@ -1411,13 +1424,20 @@ class OfficialReplaceManager {
                     $score += 25;
                     $seasonMatch = true;
                 } else {
-                    $score -= 30;
+                    continue;
                 }
             } elseif ($targetSeason !== null && $videoSeason === null) {
-                if ($targetSeason == 1) {
-                    $score += 5;
-                } else {
-                    $score -= 10;
+                if ($targetSeason > 1) {
+                    continue;
+                }
+            }
+
+            $episodeMatch = false;
+            $targetEpisode = $videoInfo['episode_num'] ?? null;
+            if ($targetEpisode !== null && $videoEpisode !== null) {
+                if ($targetEpisode == $videoEpisode) {
+                    $score += 20;
+                    $episodeMatch = true;
                 }
             }
 
@@ -1452,6 +1472,7 @@ class OfficialReplaceManager {
                     'score' => round($score, 2),
                     'base_score' => round($baseScore, 2),
                     'season_match' => $seasonMatch,
+                    'episode_match' => $episodeMatch,
                     'site' => $video['site'] ?? ''
                 ];
             }

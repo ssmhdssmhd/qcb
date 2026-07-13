@@ -5,7 +5,7 @@
  */
 
 return [
-    'version' => '3.2.15',
+    'version' => '3.2.16',
     'update_date' => '2026-07-13',
     'enabled' => true,
     'default_site' => '量子',

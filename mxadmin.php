@@ -2611,7 +2611,7 @@ header('Expires: 0');
   "site": "量子",
   "m3u8_url": "https://.../index.m3u8",
   "ad_skip_url": "https://你的域名/mx.php?action=mxjx&url=...",
-  "episodes": 42
+  "target_episode": "第1集"
 }</pre>
                 </div>
             </div>
@@ -8496,7 +8496,13 @@ header('Expires: 0');
                     let seasonMatchHtml = '';
                     if (data.season_match !== undefined) {
                         seasonMatchHtml = `<span style="color:${data.season_match ? '#67c23a' : '#f56c6c'};font-size:11px;margin-left:6px">
-                            ${data.season_match ? '✓' : '✗'}
+                            ${data.season_match ? '✓' : '✗'}季
+                        </span>`;
+                    }
+                    let episodeMatchHtml = '';
+                    if (data.episode_match !== undefined && data.episode) {
+                        episodeMatchHtml = `<span style="color:${data.episode_match ? '#67c23a' : '#f56c6c'};font-size:11px;margin-left:6px">
+                            ${data.episode_match ? '✓' : '✗'}集
                         </span>`;
                     }
 
@@ -8525,9 +8531,9 @@ header('Expires: 0');
                             </div>
                             <div style="font-size:13px;line-height:1.6">
                                 <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">资源站</span><div style="font-weight:500">${escapeHtml(data.site || '')}</div></div>
-                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">匹配度</span><div style="font-weight:600;color:#67c23a;font-size:16px">${data.match_score || 0}% ${seasonMatchHtml}</div></div>
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">匹配度</span><div style="font-weight:600;color:#67c23a;font-size:16px">${data.match_score || 0}% ${seasonMatchHtml}${episodeMatchHtml}</div></div>
                                 <div style="margin-bottom:6px;font-size:11px;color:#909399">基础匹配度: ${data.base_score || 0}%</div>
-                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">总集数</span><div style="font-weight:500">${(data.all_urls || []).length} 集</div></div>
+                                ${data.target_episode ? `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">匹配集数</span><div style="font-weight:500;color:#409eff">${escapeHtml(data.target_episode)}</div></div>` : ''}
                                 <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">M3U8地址</span><div style="font-size:11px;word-break:break-all;color:#606266;font-family:monospace">${escapeHtml(data.m3u8_url || '')}</div></div>
                             </div>
                         </div>

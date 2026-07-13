@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.2.16] - 2026-07-13
+
+### 🎯 集数匹配逻辑优化 & 显示优化
+
+**集数匹配逻辑优化** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php)):
+- 🐛 **修复 findAllMatches 方法 bug** - 缺少 `$videoEpisode` 变量定义，导致集数匹配逻辑报错
+- 🐛 **修复 episode_match 字段取值错误** - 从 undefined 变量改为从 `$bestMatch['episode_match']` 正确获取
+- ✅ **优化集数匹配策略** - 视频匹配层面不再严格过滤集数（资源站视频标题通常不含具体集数），改为加分项
+- ✅ **基于播放列表的集数匹配** - 找到匹配视频后，通过 `findEpisodeUrl` 从播放列表中匹配具体集数
+- ✅ **episode_match 综合判断** - 综合考虑标题集数匹配和播放列表集数匹配结果
+
+**前端显示优化** ([mxadmin.php](file:///workspace/mxadmin.php)):
+- ✅ **集数只显示对应集数** - 资源站匹配卡片显示"匹配集数"（target_episode），不再显示总集数
+- ✅ **API 返回示例更新** - 返回示例中的 `episodes` 替换为 `target_episode`，更符合实际使用场景
+- ✅ **匹配度显示优化** - 显示季数匹配状态（✓季/✗季）和集数匹配状态（✓集/✗集）
+
+---
+
 ## [3.2.0] - 2026-07-11
 
 ### 🐛 视频统计、分析历史、批量分析修复
