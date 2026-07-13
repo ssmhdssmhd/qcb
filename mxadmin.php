@@ -4738,16 +4738,178 @@ header('Expires: 0');
 
         function initAiSkipPlayer(url) {
             const container = document.getElementById('aiSkipVideoPlayer');
+            const statusEl = document.getElementById('aiSkipPlayStatus');
             container.innerHTML = '';
-            new DPlayer({
+            
+            let firstFrameReady = false;
+            let playAttempted = false;
+            let posterGenerated = false;
+            let hls = null;
+
+            const generatePoster = function(video) {
+                if (posterGenerated || !video) return;
+                if (video.readyState >= 2 && video.videoWidth > 0) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 640;
+                        canvas.height = 360;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, 640, 360);
+                        const posterUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        posterGenerated = true;
+                        
+                        const posterImg = container.querySelector('.dplayer-video-wrap .dplayer-poster');
+                        if (posterImg) {
+                            posterImg.style.backgroundImage = 'url(' + posterUrl + ')';
+                            posterImg.style.backgroundSize = 'cover';
+                            posterImg.style.backgroundPosition = 'center';
+                        }
+                    } catch(e) {
+                        console.warn('生成海报图失败:', e);
+                    }
+                }
+            };
+
+            const tryPlay = function(video) {
+                if (playAttempted) return;
+                if (firstFrameReady && video && video.paused) {
+                    playAttempted = true;
+                    video.play().catch(function(e) {
+                        console.warn('自动播放被阻止:', e);
+                        if (statusEl) statusEl.textContent = '点击播放按钮开始播放';
+                    });
+                }
+            };
+
+            const hlsConfig = {
+                enableWorker: true,
+                lowLatencyMode: false,
+                maxBufferLength: 30,
+                maxMaxBufferLength: 600,
+                minBufferLength: 2,
+                maxBufferSize: 60 * 1000 * 1000,
+                maxBufferHole: 0.5,
+                highBufferWatchdogPeriod: 2,
+                startLevel: -1,
+                capLevelToPlayerSize: false,
+                liveSyncDurationCount: 3,
+                liveMaxLatencyDurationCount: 10,
+                fragLoadingTimeOut: 20000,
+                manifestLoadingTimeOut: 15000,
+                levelLoadingTimeOut: 15000,
+                backBufferLength: 30,
+                startFragPrefetch: true,
+                enableSoftwareAES: true,
+                xhrSetup: function(xhr) {
+                    xhr.withCredentials = false;
+                }
+            };
+
+            const aiSkipDp = new DPlayer({
                 container: container,
                 video: {
                     url: url,
-                    type: 'auto'
+                    type: 'customHls',
+                    customType: {
+                        customHls: function(video, dp) {
+                            if (Hls.isSupported()) {
+                                hls = new Hls(hlsConfig);
+                                hls.loadSource(url);
+                                hls.attachMedia(video);
+                                dp.hls = hls;
+
+                                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                    if (statusEl) statusEl.textContent = '视频解析完成，缓冲中...';
+                                });
+
+                                hls.on(Hls.Events.FRAG_LOADED, function() {
+                                    firstFrameReady = true;
+                                    generatePoster(video);
+                                    if (!playAttempted && statusEl) {
+                                        statusEl.textContent = '首帧加载完成';
+                                    }
+                                    tryPlay(video);
+                                });
+
+                                hls.on(Hls.Events.FRAG_BUFFERED, function() {
+                                    generatePoster(video);
+                                });
+
+                                hls.on(Hls.Events.ERROR, function(event, data) {
+                                    console.error('HLS 错误:', data.type, data.details);
+                                    if (data.fatal) {
+                                        switch (data.type) {
+                                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                                if (statusEl) statusEl.textContent = '网络错误，正在恢复...';
+                                                try { hls.startLoad(); } catch(e) {}
+                                                break;
+                                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                                if (statusEl) statusEl.textContent = '媒体错误，正在恢复...';
+                                                try { hls.recoverMediaError(); } catch(e) {}
+                                                break;
+                                            default:
+                                                if (statusEl) statusEl.textContent = '视频加载失败';
+                                        }
+                                    }
+                                });
+
+                                video.addEventListener('loadedmetadata', function() {
+                                    generatePoster(video);
+                                });
+
+                                video.addEventListener('canplay', function() {
+                                    generatePoster(video);
+                                });
+
+                                video.addEventListener('playing', function() {
+                                    if (statusEl) statusEl.textContent = '正在播放';
+                                });
+
+                                video.addEventListener('waiting', function() {
+                                    if (statusEl) statusEl.textContent = '缓冲中...';
+                                });
+
+                                video.addEventListener('ended', function() {
+                                    if (statusEl) statusEl.textContent = '播放结束';
+                                });
+                            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                                video.src = url;
+                                video.addEventListener('loadedmetadata', function() {
+                                    generatePoster(video);
+                                    firstFrameReady = true;
+                                    tryPlay(video);
+                                });
+                            }
+                        }
+                    }
                 },
-                autoplay: true
+                autoplay: false,
+                theme: '#667eea',
+                lang: 'zh-cn',
+                screenshot: true,
+                hotkey: true,
+                preload: 'auto',
+                volume: 0.7,
+                mutex: true,
+                playbackSpeed: [0.5, 0.75, 1, 1.25, 1.5, 2],
+                danmaku: {
+                    id: 'ai_skip_player_' + Date.now(),
+                    api: 'https://api.prprpr.me/dplayer/',
+                    user: '游客'
+                }
             });
-            document.getElementById('aiSkipPlayStatus').textContent = '视频已加载';
+
+            aiSkipDp.on('play', function() {
+                if (statusEl) statusEl.textContent = '正在播放';
+            });
+
+            aiSkipDp.on('pause', function() {
+                if (statusEl) statusEl.textContent = '已暂停';
+            });
+
+            aiSkipDp.on('loadedmetadata', function() {
+                generatePoster(aiSkipDp.video);
+            });
         }
 
         function downloadAiSkipM3u8() {
