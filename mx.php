@@ -43,7 +43,15 @@ function sendJsonResponse($data, $code = 200) {
         ob_end_clean();
     }
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+    if ($json === false) {
+        $json = json_encode([
+            'success' => false,
+            'message' => 'JSON编码失败: ' . json_last_error_msg(),
+            'error_code' => 'JSON_ENCODE_ERROR'
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    echo $json;
     exit;
 }
 
@@ -421,7 +429,7 @@ function parse_internal_moxi($url, $selfUrl, $officialReplaceMgr = null, $siteMa
 
 function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
     if (!(error_reporting() & $errno)) {
-        return;
+        return true;
     }
     $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
     if (in_array($errno, $fatalTypes)) {
@@ -3125,8 +3133,7 @@ try {
             $playType = $_GET['type'] ?? '';
             
             if (empty($url)) {
-                http_response_code(400);
-                echo json_encode([
+                sendJsonResponse([
                     'code' => 400,
                     'url' => '',
                     'msg' => '缺少 url 参数',
@@ -3134,8 +3141,7 @@ try {
                     'js' => '',
                     'time' => date('Y-m-d H:i:s'),
                     'kfz' => '沫兮API'
-                ], JSON_UNESCAPED_UNICODE);
-                exit;
+                ], 400);
             }
             
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
@@ -3406,9 +3412,8 @@ try {
                 'time' => date('Y-m-d H:i:s'),
                 'kfz' => '沫兮API - 在线视频解析'
             ];
-            
-            echo json_encode($response, JSON_UNESCAPED_UNICODE);
-            exit;
+
+            sendJsonResponse($response, $code);
             break;
 
         case 'db/status':

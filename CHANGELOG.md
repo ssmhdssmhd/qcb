@@ -5,6 +5,30 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.2.21] - 2026-07-13
+
+### 🐛 彻底修复"请求失败: 服务器返回非JSON响应"错误
+
+**根因定位**：moxi/moxi/api 端点使用 `echo json_encode() + exit` 输出 JSON，未调用 `sendJsonResponse()` 清理输出缓冲区，导致 resolve 过程中产生的 PHP notice/warning 残留在缓冲区中，污染了 JSON 响应。
+
+**1. 核心修复：moxi 端点改用 sendJsonResponse** ([mx.php](file:///workspace/mx.php))
+- ✅ 错误响应（缺少url参数）：`echo json_encode() + exit` → `sendJsonResponse()`
+- ✅ 正常响应：`echo json_encode() + exit` → `sendJsonResponse()`
+- ✅ sendJsonResponse 会先 `ob_end_clean()` 清空所有缓冲区，再输出纯净 JSON
+
+**2. sendJsonResponse 增强** ([mx.php](file:///workspace/mx.php))
+- ✅ 添加 `JSON_PARTIAL_OUTPUT_ON_ERROR` 标志，容忍无效 UTF-8 字符
+- ✅ json_encode 返回 false 时，输出明确的错误 JSON 而非空响应
+
+**3. jsonErrorHandler 修复** ([mx.php](file:///workspace/mx.php))
+- ✅ 被忽略的错误返回 `true`（原返回 `void`），完全抑制 PHP 默认错误处理器
+
+**4. DbOfficialReplaceManager::resolve 添加 try/catch** ([DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ 与文件版 `OfficialReplaceManager::resolve()` 保持一致
+- ✅ 捕获所有 Throwable 异常，返回结构化错误 JSON 而非崩溃
+
+---
+
 ## [3.2.20] - 2026-07-13
 
 ### 🐛 修复官替 API 非 JSON 响应问题 + 全平台解析器再次增强 + 匹配算法优化

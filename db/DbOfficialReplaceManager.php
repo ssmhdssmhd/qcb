@@ -233,181 +233,194 @@ class DbOfficialReplaceManager {
     }
 
     public function resolve($url) {
-        if (empty($url)) {
-            return ['success' => false, 'message' => 'URL不能为空'];
-        }
-
-        $config = $this->getConfig();
-        if (empty($config['enabled'])) {
-            return ['success' => false, 'message' => '官替功能已禁用'];
-        }
-
-        $platform = $this->detectPlatform($url);
-        if (!$platform) {
-            return ['success' => false, 'message' => '不支持的视频平台'];
-        }
-
-        $videoId = $this->extractVideoId($url, $platform);
-
-        $videoInfo = $this->fetchVideoInfo($url, $platform);
-        $videoTitle = '';
-
-        if ($videoInfo && !empty($videoInfo['title'])) {
-            $videoTitle = $videoInfo['title'];
-        } elseif ($videoId) {
-            $videoTitle = $videoId;
-        } else {
-            return ['success' => false, 'message' => '无法获取视频信息', 'platform' => $platform['name']];
-        }
-
-        $parsedInfo = $this->parseVideoTitle($videoTitle);
-        $videoInfo['parsed'] = $parsedInfo;
-        $videoInfo['base_title'] = $parsedInfo['base_title'];
-        $videoInfo['season'] = $parsedInfo['season'];
-        $videoInfo['season_num'] = $parsedInfo['season_num'];
-        $videoInfo['episode'] = $parsedInfo['episode'];
-        $videoInfo['episode_num'] = $parsedInfo['episode_num'];
-        $videoInfo['part'] = $parsedInfo['part'];
-        $videoInfo['version'] = $parsedInfo['version'];
-        $videoInfo['video_id'] = $videoId;
-
-        if (empty($videoInfo['episode_num']) && !empty($videoInfo['episode_info']['episode_num'])) {
-            $videoInfo['episode_num'] = $videoInfo['episode_info']['episode_num'];
-            $videoInfo['episode'] = $videoInfo['episode_info']['episode_name'];
-        }
-
-        if (empty($videoInfo['total_episodes']) && !empty($videoInfo['episode_info']['total_episodes'])) {
-            $videoInfo['total_episodes'] = $videoInfo['episode_info']['total_episodes'];
-        }
-
-        $searchKeywords = $this->buildSearchKeywords($videoInfo, $platform);
-        $searchResult = null;
-        $usedKeyword = '';
-
-        foreach ($searchKeywords as $keyword) {
-            if (empty($keyword)) continue;
-            $result = $this->searchInSites($keyword);
-            if ($result['success'] && !empty($result['videos'])) {
-                $searchResult = $result;
-                $usedKeyword = $keyword;
-                break;
+        try {
+            if (empty($url)) {
+                return ['success' => false, 'message' => 'URL不能为空'];
             }
-        }
 
-        if (!$searchResult || empty($searchResult['videos'])) {
-            $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
+            $config = $this->getConfig();
+            if (empty($config['enabled'])) {
+                return ['success' => false, 'message' => '官替功能已禁用'];
+            }
+
+            $platform = $this->detectPlatform($url);
+            if (!$platform) {
+                return ['success' => false, 'message' => '不支持的视频平台'];
+            }
+
+            $videoId = $this->extractVideoId($url, $platform);
+
+            $videoInfo = $this->fetchVideoInfo($url, $platform);
+            $videoTitle = '';
+
+            if ($videoInfo && !empty($videoInfo['title'])) {
+                $videoTitle = $videoInfo['title'];
+            } elseif ($videoId) {
+                $videoTitle = $videoId;
+            } else {
+                return ['success' => false, 'message' => '无法获取视频信息', 'platform' => $platform['name']];
+            }
+
+            $parsedInfo = $this->parseVideoTitle($videoTitle);
+            $videoInfo['parsed'] = $parsedInfo;
+            $videoInfo['base_title'] = $parsedInfo['base_title'];
+            $videoInfo['season'] = $parsedInfo['season'];
+            $videoInfo['season_num'] = $parsedInfo['season_num'];
+            $videoInfo['episode'] = $parsedInfo['episode'];
+            $videoInfo['episode_num'] = $parsedInfo['episode_num'];
+            $videoInfo['part'] = $parsedInfo['part'];
+            $videoInfo['version'] = $parsedInfo['version'];
+            $videoInfo['video_id'] = $videoId;
+
+            if (empty($videoInfo['episode_num']) && !empty($videoInfo['episode_info']['episode_num'])) {
+                $videoInfo['episode_num'] = $videoInfo['episode_info']['episode_num'];
+                $videoInfo['episode'] = $videoInfo['episode_info']['episode_name'];
+            }
+
+            if (empty($videoInfo['total_episodes']) && !empty($videoInfo['episode_info']['total_episodes'])) {
+                $videoInfo['total_episodes'] = $videoInfo['episode_info']['total_episodes'];
+            }
+
+            $searchKeywords = $this->buildSearchKeywords($videoInfo, $platform);
+            $searchResult = null;
+            $usedKeyword = '';
+
+            foreach ($searchKeywords as $keyword) {
+                if (empty($keyword)) continue;
+                $result = $this->searchInSites($keyword);
+                if ($result['success'] && !empty($result['videos'])) {
+                    $searchResult = $result;
+                    $usedKeyword = $keyword;
+                    break;
+                }
+            }
+
+            if (!$searchResult || empty($searchResult['videos'])) {
+                $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
+                return [
+                    'success' => false,
+                    'message' => '未找到匹配的资源',
+                    'platform' => $platform['name'],
+                    'video_title' => $videoTitle,
+                    'base_title' => $videoInfo['base_title'],
+                    'season' => $videoInfo['season'],
+                    'episode' => $videoInfo['episode'],
+                    'video_id' => $videoId,
+                    'search_keywords' => $searchKeywords,
+                    'site_matches' => [],
+                    'matched_sites' => 0
+                ];
+            }
+
+            $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
+            $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
+            $siteMatches = $this->groupMatchesBySite($allMatches);
+
+            if (!$bestMatch) {
+                $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
+                return [
+                    'success' => false,
+                    'message' => '未找到匹配度足够的资源',
+                    'platform' => $platform['name'],
+                    'video_title' => $videoTitle,
+                    'base_title' => $videoInfo['base_title'],
+                    'season' => $videoInfo['season'],
+                    'episode' => $videoInfo['episode'],
+                    'video_id' => $videoId,
+                    'used_keyword' => $usedKeyword,
+                    'candidates' => array_slice($allMatches, 0, 5),
+                    'site_matches' => $siteMatches,
+                    'matched_sites' => count($siteMatches)
+                ];
+            }
+
+            $targetEpisodeUrl = $bestMatch['video']['first_url'] ?? $bestMatch['video']['url'] ?? '';
+            $targetEpisodeName = '';
+            $allUrls = $bestMatch['video']['urls'] ?? [];
+
+            if (!empty($videoInfo['episode_num']) && !empty($allUrls)) {
+                $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num']);
+                if ($epResult) {
+                    $targetEpisodeUrl = $epResult['url'];
+                    $targetEpisodeName = $epResult['name'];
+                }
+            }
+
+            if (empty($targetEpisodeUrl) && !empty($allUrls)) {
+                $firstEpisode = reset($allUrls);
+                if (is_array($firstEpisode) && isset($firstEpisode['url'])) {
+                    $targetEpisodeUrl = $firstEpisode['url'];
+                    $targetEpisodeName = $firstEpisode['name'] ?? '';
+                } elseif (is_string($firstEpisode)) {
+                    $targetEpisodeUrl = $firstEpisode;
+                }
+            }
+
+            $targetEpisodeUrl = preg_replace('/#.*$/', '', $targetEpisodeUrl);
+
+            foreach ($allUrls as &$urlItem) {
+                if (is_array($urlItem) && isset($urlItem['url'])) {
+                    $urlItem['url'] = preg_replace('/#.*$/', '', $urlItem['url']);
+                } elseif (is_string($urlItem)) {
+                    $urlItem = preg_replace('/#.*$/', '', $urlItem);
+                }
+            }
+            unset($urlItem);
+
+            $adSkipUrl = '';
+            if (!empty($targetEpisodeUrl)) {
+                $adSkipUrl = $this->buildAdSkipUrl($targetEpisodeUrl);
+            }
+
+            $this->logResolve($url, $platform['name'], $videoTitle, $bestMatch['score'] ?? 0, $bestMatch['site'] ?? '', $targetEpisodeUrl, !empty($targetEpisodeUrl));
+
             return [
-                'success' => false,
-                'message' => '未找到匹配的资源',
+                'success' => true,
                 'platform' => $platform['name'],
-                'video_title' => $videoTitle,
+                'original_url' => $url,
+                'video_title' => $bestMatch['video']['name'] ?: $videoTitle,
+                'video_name' => $bestMatch['video']['name'] ?? '',
+                'video_pic' => $bestMatch['video']['pic'] ?? '',
+                'video_remarks' => $bestMatch['video']['remarks'] ?? '',
+                'original_title' => $videoTitle,
                 'base_title' => $videoInfo['base_title'],
                 'season' => $videoInfo['season'],
+                'season_num' => $videoInfo['season_num'],
                 'episode' => $videoInfo['episode'],
+                'episode_num' => $videoInfo['episode_num'],
+                'part' => $videoInfo['part'],
+                'version' => $videoInfo['version'],
                 'video_id' => $videoId,
-                'search_keywords' => $searchKeywords,
-                'site_matches' => [],
-                'matched_sites' => 0
-            ];
-        }
-
-        $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
-        $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
-        $siteMatches = $this->groupMatchesBySite($allMatches);
-
-        if (!$bestMatch) {
-            $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
-            return [
-                'success' => false,
-                'message' => '未找到匹配度足够的资源',
-                'platform' => $platform['name'],
-                'video_title' => $videoTitle,
-                'base_title' => $videoInfo['base_title'],
-                'season' => $videoInfo['season'],
-                'episode' => $videoInfo['episode'],
-                'video_id' => $videoId,
-                'used_keyword' => $usedKeyword,
-                'candidates' => array_slice($allMatches, 0, 5),
+                'match_score' => $bestMatch['score'],
+                'base_score' => $bestMatch['base_score'],
+                'season_match' => $bestMatch['season_match'],
+                'site' => $bestMatch['site'],
+                'video' => $bestMatch['video'],
+                'm3u8_url' => $targetEpisodeUrl,
+                'ad_skip_url' => $adSkipUrl,
+                'target_episode' => $targetEpisodeName,
+                'all_urls' => $allUrls,
+                'episodes' => count($allUrls),
+                'alternatives' => array_slice($allMatches, 1, 5),
+                'all_matches' => $allMatches,
                 'site_matches' => $siteMatches,
-                'matched_sites' => count($siteMatches)
+                'matched_sites' => count($siteMatches),
+                'used_keyword' => $usedKeyword,
+                'search_keywords' => $searchKeywords,
+                'request_time' => time()
+            ];
+        } catch (Throwable $e) {
+            $this->logResolve($url, '', '', 0, '', '', false);
+            return [
+                'success' => false,
+                'message' => '处理异常: ' . $e->getMessage(),
+                'error_code' => 'INTERNAL_ERROR',
+                'debug_info' => [
+                    'file' => basename($e->getFile()),
+                    'line' => $e->getLine()
+                ]
             ];
         }
-
-        $targetEpisodeUrl = $bestMatch['video']['first_url'] ?? $bestMatch['video']['url'] ?? '';
-        $targetEpisodeName = '';
-        $allUrls = $bestMatch['video']['urls'] ?? [];
-
-        if (!empty($videoInfo['episode_num']) && !empty($allUrls)) {
-            $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num']);
-            if ($epResult) {
-                $targetEpisodeUrl = $epResult['url'];
-                $targetEpisodeName = $epResult['name'];
-            }
-        }
-
-        if (empty($targetEpisodeUrl) && !empty($allUrls)) {
-            $firstEpisode = reset($allUrls);
-            if (is_array($firstEpisode) && isset($firstEpisode['url'])) {
-                $targetEpisodeUrl = $firstEpisode['url'];
-                $targetEpisodeName = $firstEpisode['name'] ?? '';
-            } elseif (is_string($firstEpisode)) {
-                $targetEpisodeUrl = $firstEpisode;
-            }
-        }
-
-        $targetEpisodeUrl = preg_replace('/#.*$/', '', $targetEpisodeUrl);
-        
-        foreach ($allUrls as &$urlItem) {
-            if (is_array($urlItem) && isset($urlItem['url'])) {
-                $urlItem['url'] = preg_replace('/#.*$/', '', $urlItem['url']);
-            } elseif (is_string($urlItem)) {
-                $urlItem = preg_replace('/#.*$/', '', $urlItem);
-            }
-        }
-        unset($urlItem);
-
-        $adSkipUrl = '';
-        if (!empty($targetEpisodeUrl)) {
-            $adSkipUrl = $this->buildAdSkipUrl($targetEpisodeUrl);
-        }
-
-        $this->logResolve($url, $platform['name'], $videoTitle, $bestMatch['score'] ?? 0, $bestMatch['site'] ?? '', $targetEpisodeUrl, !empty($targetEpisodeUrl));
-
-        return [
-            'success' => true,
-            'platform' => $platform['name'],
-            'original_url' => $url,
-            'video_title' => $bestMatch['video']['name'] ?: $videoTitle,
-            'video_name' => $bestMatch['video']['name'] ?? '',
-            'video_pic' => $bestMatch['video']['pic'] ?? '',
-            'video_remarks' => $bestMatch['video']['remarks'] ?? '',
-            'original_title' => $videoTitle,
-            'base_title' => $videoInfo['base_title'],
-            'season' => $videoInfo['season'],
-            'season_num' => $videoInfo['season_num'],
-            'episode' => $videoInfo['episode'],
-            'episode_num' => $videoInfo['episode_num'],
-            'part' => $videoInfo['part'],
-            'version' => $videoInfo['version'],
-            'video_id' => $videoId,
-            'match_score' => $bestMatch['score'],
-            'base_score' => $bestMatch['base_score'],
-            'season_match' => $bestMatch['season_match'],
-            'site' => $bestMatch['site'],
-            'video' => $bestMatch['video'],
-            'm3u8_url' => $targetEpisodeUrl,
-            'ad_skip_url' => $adSkipUrl,
-            'target_episode' => $targetEpisodeName,
-            'all_urls' => $allUrls,
-            'episodes' => count($allUrls),
-            'alternatives' => array_slice($allMatches, 1, 5),
-            'all_matches' => $allMatches,
-            'site_matches' => $siteMatches,
-            'matched_sites' => count($siteMatches),
-            'used_keyword' => $usedKeyword,
-            'search_keywords' => $searchKeywords,
-            'request_time' => time()
-        ];
     }
 
     public function resolveUrl($url) {
