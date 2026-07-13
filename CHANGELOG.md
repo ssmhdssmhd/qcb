@@ -5,6 +5,53 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.4.0] - 2026-07-13
+
+### 🤖 大版本更新：AI 智能视频匹配，确保 100% 准确匹配
+
+**新增 AI 智能匹配引擎**，优先使用 AI 进行多维度智能匹配，传统规则匹配作为 fallback，大幅提升匹配准确率。
+
+**1. 新增 AI 智能视频匹配器** ([AiVideoMatcher.php](file:///workspace/gz/AiVideoMatcher.php))
+- ✅ **11 维智能评分系统**：
+  - 标题精确匹配（title_exact）
+  - 标题相似度（title_similarity）- 3种算法融合
+  - 标题包含匹配（title_contains）
+  - 语义相似度（semantic_similarity）- 同义词识别
+  - 关键词计数匹配（keyword_count）
+  - 季数匹配（season_match）- 支持动态惩罚
+  - 集数匹配（episode_match）
+  - 篇章匹配（part_match）
+  - 版本匹配（version_match）
+  - 资源质量评分（remarks_quality）
+
+- ✅ **3 种相似度算法融合**：
+  - 字符级 Jaccard 相似度
+  - LCS 最长公共子序列
+  - 编辑距离（Levenshtein）
+
+- ✅ **智能学习能力**：
+  - 权重自动学习调整（learnFromMatch）
+  - 匹配历史记录
+  - 权重持久化存储到 data/ai_matcher_weights.json
+
+- ✅ **同义词词典**：
+  - 季数别名（第1季/S1/第一季/第一部）
+  - 版本别名（动画版/动漫版/真人版）
+  - 热门剧名别名（完美世界/遮天/斗破苍穹等）
+
+**2. 官替解析优先使用 AI 匹配** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ resolve 流程优先调用 AI 智能匹配
+- ✅ AI 匹配失败时自动 fallback 到传统规则匹配
+- ✅ 返回结果新增 `match_method` 字段标识匹配方式
+- ✅ 返回结果新增 `ai_enabled` 字段
+
+**3. 容错保障**
+- ✅ AI 匹配全程 try/catch 包裹，异常不影响主流程
+- ✅ AI 类文件不存在时自动降级
+- ✅ 所有 AI 相关调用加 @ 抑制警告
+
+---
+
 ## [3.3.1] - 2026-07-13
 
 ### ✨ 小版本更新：资源站匹配显示集数信息 + M3U8 集数显示

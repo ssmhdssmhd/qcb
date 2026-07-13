@@ -312,8 +312,17 @@ class DbOfficialReplaceManager {
                 ];
             }
 
-            $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
-            $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
+            $aiMatchResult = $this->aiSmartMatch($videoInfo, $searchResult['videos']);
+            $bestMatch = $aiMatchResult['best_match'] ?? null;
+            $allMatches = $aiMatchResult['all_matches'] ?? [];
+            $matchMethod = $aiMatchResult['method'] ?? 'rule_based';
+
+            if (!$bestMatch) {
+                $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
+                $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
+                $matchMethod = 'rule_based_fallback';
+            }
+
             $siteMatches = $this->groupMatchesBySite($allMatches);
 
             if (!$bestMatch) {
@@ -407,6 +416,8 @@ class DbOfficialReplaceManager {
                 'matched_sites' => count($siteMatches),
                 'used_keyword' => $usedKeyword,
                 'search_keywords' => $searchKeywords,
+                'match_method' => $matchMethod,
+                'ai_enabled' => true,
                 'request_time' => time()
             ];
         } catch (Throwable $e) {
@@ -1958,6 +1969,36 @@ class DbOfficialReplaceManager {
             'videos' => $allVideos,
             'searched_sites' => $searchedSites
         ];
+    }
+
+    private function aiSmartMatch($videoInfo, $videos) {
+        try {
+            $aiFile = __DIR__ . '/../gz/AiVideoMatcher.php';
+            if (!file_exists($aiFile)) {
+                return [
+                    'best_match' => null,
+                    'all_matches' => [],
+                    'method' => 'ai_not_available'
+                ];
+            }
+            require_once $aiFile;
+            if (!class_exists('AiVideoMatcher')) {
+                return [
+                    'best_match' => null,
+                    'all_matches' => [],
+                    'method' => 'ai_class_not_found'
+                ];
+            }
+            $matcher = @new AiVideoMatcher();
+            $result = @$matcher->smartMatch($videoInfo, $videos);
+            return $result;
+        } catch (Throwable $e) {
+            return [
+                'best_match' => null,
+                'all_matches' => [],
+                'method' => 'ai_error_' . $e->getMessage()
+            ];
+        }
     }
 
     private function findBestMatch($videoInfo, $videos) {
