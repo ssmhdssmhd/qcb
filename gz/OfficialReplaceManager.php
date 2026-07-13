@@ -438,6 +438,11 @@ class OfficialReplaceManager {
             $targetVersion = $videoInfo['version'] ?? null;
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+
+            if ($baseScore < 100) {
+                continue;
+            }
+
             $score = $baseScore;
             $seasonMatch = false;
 
@@ -1384,6 +1389,11 @@ class OfficialReplaceManager {
             $videoVersion = $videoParsed['version'];
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+
+            if ($baseScore < 100) {
+                continue;
+            }
+
             $score = $baseScore;
 
             if ($keyword && $videoBaseTitle) {
