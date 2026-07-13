@@ -8475,60 +8475,76 @@ header('Expires: 0');
                 if (data.success) {
                     let seasonHtml = '';
                     if (data.season) {
-                        seasonHtml = `<p><strong>季数:</strong> <span style="color:#409eff">${escapeHtml(data.season)}</span></p>`;
+                        seasonHtml = `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">季数</span><div style="color:#409eff;font-weight:600">${escapeHtml(data.season)}</div></div>`;
                     }
                     let episodeHtml = '';
                     if (data.episode) {
-                        episodeHtml = `<p><strong>集数:</strong> <span style="color:#409eff">${escapeHtml(data.episode)}</span>`;
+                        let epTarget = '';
                         if (data.target_episode) {
-                            episodeHtml += ` → 定位到: <span style="color:#67c23a">${escapeHtml(data.target_episode)}</span>`;
+                            epTarget = `<div style="font-size:11px;color:#67c23a">→ ${escapeHtml(data.target_episode)}</div>`;
                         }
-                        episodeHtml += '</p>';
+                        episodeHtml = `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">集数</span><div style="color:#409eff;font-weight:600">${escapeHtml(data.episode)}${epTarget}</div></div>`;
                     }
                     let partHtml = '';
                     if (data.part) {
-                        partHtml = `<p><strong>篇章:</strong> <span style="color:#e6a23c">${escapeHtml(data.part)}</span></p>`;
+                        partHtml = `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">篇章</span><div style="color:#e6a23c;font-weight:600">${escapeHtml(data.part)}</div></div>`;
                     }
                     let versionHtml = '';
                     if (data.version) {
-                        versionHtml = `<p><strong>版本:</strong> <span style="color:#909399">${escapeHtml(data.version)}</span></p>`;
+                        versionHtml = `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">版本</span><div style="color:#909399;font-weight:500">${escapeHtml(data.version)}</div></div>`;
                     }
                     let seasonMatchHtml = '';
                     if (data.season_match !== undefined) {
-                        seasonMatchHtml = `<span style="color:${data.season_match ? '#67c23a' : '#f56c6c'};margin-left:8px;font-size:11px">
-                            ${data.season_match ? '季数匹配 ✓' : '季数不匹配 ✗'}
+                        seasonMatchHtml = `<span style="color:${data.season_match ? '#67c23a' : '#f56c6c'};font-size:11px;margin-left:6px">
+                            ${data.season_match ? '✓' : '✗'}
                         </span>`;
                     }
 
-                    let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
-                        <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 解析成功</div>
-                        <div style="font-size:13px;line-height:2">
-                            <p><strong>平台:</strong> ${escapeHtml(data.platform || '')}</p>
-                            <p><strong>原始标题:</strong> ${escapeHtml(data.video_title || '')}</p>
-                            <p><strong>基础名称:</strong> <code>${escapeHtml(data.base_title || '')}</code></p>
-                            ${seasonHtml}
-                            ${episodeHtml}
-                            ${partHtml}
-                            ${versionHtml}
-                            <p><strong>匹配资源站:</strong> ${escapeHtml(data.site || '')}</p>
-                            <p><strong>总匹配度:</strong> <span style="color:#67c23a;font-size:16px;font-weight:600">${data.match_score || 0}%</span>
-                                ${seasonMatchHtml}
-                            </p>
-                            <p style="font-size:11px;color:#909399">基础匹配度: ${data.base_score || 0}%</p>
-                            <p><strong>M3U8 地址:</strong> <code style="word-break:break-all;font-size:11px">${escapeHtml(data.m3u8_url || '')}</code></p>
-                            <p><strong>总集数:</strong> ${(data.all_urls || []).length} 集</p>
+                    let html = `
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                        <div style="background:#ecf5ff;border:1px solid #d9ecff;border-radius:10px;padding:14px">
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+                                <div style="width:6px;height:16px;background:#409eff;border-radius:3px"></div>
+                                <span style="font-weight:600;color:#409eff;font-size:14px">平台解析</span>
+                            </div>
+                            <div style="font-size:13px;line-height:1.6">
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">平台</span><div style="font-weight:500">${escapeHtml(data.platform || '')}</div></div>
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">原始标题</span><div style="font-weight:500;word-break:break-all">${escapeHtml(data.video_title || '')}</div></div>
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">基础名称</span><div style="font-weight:600;color:#606266">${escapeHtml(data.base_title || '')}</div></div>
+                                ${seasonHtml}
+                                ${episodeHtml}
+                                ${partHtml}
+                                ${versionHtml}
+                            </div>
                         </div>
+                        <div style="background:#f0f9eb;border:1px solid #e1f3d8;border-radius:10px;padding:14px">
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+                                <div style="width:6px;height:16px;background:#67c23a;border-radius:3px"></div>
+                                <span style="font-weight:600;color:#67c23a;font-size:14px">资源站匹配</span>
+                                <span style="margin-left:auto;background:#67c23a;color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${data.match_score || 0}%</span>
+                            </div>
+                            <div style="font-size:13px;line-height:1.6">
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">资源站</span><div style="font-weight:500">${escapeHtml(data.site || '')}</div></div>
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">匹配度</span><div style="font-weight:600;color:#67c23a;font-size:16px">${data.match_score || 0}% ${seasonMatchHtml}</div></div>
+                                <div style="margin-bottom:6px;font-size:11px;color:#909399">基础匹配度: ${data.base_score || 0}%</div>
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">总集数</span><div style="font-weight:500">${(data.all_urls || []).length} 集</div></div>
+                                <div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">M3U8地址</span><div style="font-size:11px;word-break:break-all;color:#606266;font-family:monospace">${escapeHtml(data.m3u8_url || '')}</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;text-align:center">
+                        <span style="color:#67c23a;font-weight:600">✓ 解析成功</span>
                     </div>`;
                     
                     if (data.alternatives && data.alternatives.length > 1) {
-                        html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">其他候选结果:</div>';
+                        html += '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px;color:#606266">其他候选结果</div>';
                         data.alternatives.slice(1, 6).forEach(v => {
-                            html += `<div style="padding:8px;background:#f5f7fa;border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
-                                <div>
-                                    <div style="font-weight:500">${escapeHtml(v.name || '未知')}</div>
+                            html += `<div style="padding:10px;background:#f5f7fa;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+                                <div style="flex:1;min-width:0">
+                                    <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(v.name || '未知')}</div>
                                     <div style="font-size:12px;color:#909399">${escapeHtml(v.site || '')}</div>
                                 </div>
-                                <button class="btn btn-sm btn-primary" onclick="learnFromVideoUrl('${escapeHtml(v.first_url || v.url || '')}', '${escapeHtml(v.name || '')}')">学习</button>
+                                <button class="btn btn-sm btn-primary" style="margin-left:8px;flex-shrink:0" onclick="learnFromVideoUrl('${escapeHtml(v.first_url || v.url || '')}', '${escapeHtml(v.name || '')}')">学习</button>
                             </div>`;
                         });
                         html += '</div>';
@@ -8537,23 +8553,31 @@ header('Expires: 0');
                 } else {
                     let seasonHtml = '';
                     if (data.season) {
-                        seasonHtml = `<p><strong>解析季数:</strong> ${escapeHtml(data.season)}</p>`;
+                        seasonHtml = `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">季数</span><div style="color:#409eff;font-weight:600">${escapeHtml(data.season)}</div></div>`;
                     }
                     let episodeHtml = '';
                     if (data.episode) {
-                        episodeHtml = `<p><strong>解析集数:</strong> ${escapeHtml(data.episode)}</p>`;
+                        episodeHtml = `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">集数</span><div style="color:#409eff;font-weight:600">${escapeHtml(data.episode)}</div></div>`;
                     }
 
-                    let html = `<div style="background:#fef0f0;padding:16px;border-radius:8px;border:1px solid #fbc4c4">
-                        <div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 解析失败</div>
-                        <div style="font-size:13px;line-height:2">
-                            <p><strong>原因:</strong> ${escapeHtml(data.message || '未知错误')}</p>
-                            ${data.platform ? `<p><strong>识别平台:</strong> ${escapeHtml(data.platform)}</p>` : ''}
-                            ${data.video_title ? `<p><strong>提取标题:</strong> ${escapeHtml(data.video_title)}</p>` : ''}
-                            ${data.base_title ? `<p><strong>基础名称:</strong> <code>${escapeHtml(data.base_title)}</code></p>` : ''}
-                            ${seasonHtml}
-                            ${episodeHtml}
+                    let html = `
+                    <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
+                        <div style="background:#ecf5ff;border:1px solid #d9ecff;border-radius:10px;padding:14px">
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+                                <div style="width:6px;height:16px;background:#409eff;border-radius:3px"></div>
+                                <span style="font-weight:600;color:#409eff;font-size:14px">平台解析</span>
+                            </div>
+                            <div style="font-size:13px;line-height:1.6">
+                                ${data.platform ? `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">平台</span><div style="font-weight:500">${escapeHtml(data.platform)}</div></div>` : ''}
+                                ${data.video_title ? `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">原始标题</span><div style="font-weight:500;word-break:break-all">${escapeHtml(data.video_title)}</div></div>` : ''}
+                                ${data.base_title ? `<div style="margin-bottom:6px"><span style="color:#909399;font-size:12px">基础名称</span><div style="font-weight:600;color:#606266">${escapeHtml(data.base_title)}</div></div>` : ''}
+                                ${seasonHtml}
+                                ${episodeHtml}
+                            </div>
                         </div>
+                    </div>
+                    <div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;text-align:center">
+                        <span style="color:#f56c6c;font-weight:600">✗ ${escapeHtml(data.message || '解析失败')}</span>
                     </div>`;
                     
                     if (data.candidates && data.candidates.length > 0) {
