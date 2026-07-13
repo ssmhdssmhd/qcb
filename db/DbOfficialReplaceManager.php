@@ -819,6 +819,7 @@ class DbOfficialReplaceManager {
 
         if ($platformName === '腾讯视频') {
             $apiUrls = [
+                'https://node.video.qq.com/x/api/float_vinfo2?vid=' . urlencode($videoId),
                 'https://pbaccess.video.qq.com/trpc.vidplay.vidplay_2_0_fcgi.VidPlay2_0Fcgi/GetCmsVidInfoAll?data={"vid":"' . urlencode($videoId) . '","appVer":"3.5.57","platform":"40000"}',
                 'https://access.video.qq.com/cgi-bin/varietycheck?vid=' . urlencode($videoId),
                 'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json',
@@ -835,7 +836,7 @@ class DbOfficialReplaceManager {
 
                 if ($data) {
                     $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && empty($result['title'])) {
+                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
                         $result['title'] = $found['title'];
                     }
                     if (!empty($found['cover']) && empty($result['cover'])) {
@@ -844,20 +845,6 @@ class DbOfficialReplaceManager {
                 }
 
                 if (!empty($result['title'])) break;
-            }
-
-            if (empty($result['title'])) {
-                $apiUrl2 = 'https://node.video.qq.com/x/api/float_vinfo2?vid=' . urlencode($videoId);
-                $response2 = $this->httpGet($apiUrl2);
-                if ($response2) {
-                    $data2 = json_decode($response2, true);
-                    if ($data2 && isset($data2['c']['title'])) {
-                        $result['title'] = $data2['c']['title'];
-                        if (!empty($data2['c']['pic'])) {
-                            $result['cover'] = $data2['c']['pic'];
-                        }
-                    }
-                }
             }
         }
 
@@ -902,10 +889,28 @@ class DbOfficialReplaceManager {
         $titleKeys = ['title', 'name', 'ti', 'videoName', 'video_title', 'vidName', 'subTitle', 'mainTitle'];
         $coverKeys = ['cover', 'pic', 'image', 'imageUrl', 'poster', 'thumb', 'thumbnail', 'vpic'];
 
-        array_walk_recursive($data, function($value, $key) use (&$result, $titleKeys, $coverKeys) {
+        $invalidTitles = [
+            'hd', 'shd', 'fhd', '4k', '8k', '标清', '高清', '超清', '蓝光', '1080p', '720p',
+            'sd', 'md', 'ld', '流畅', '准高清', 'vip', '免费', '预告', '花絮'
+        ];
+
+        $candidates = [];
+
+        array_walk_recursive($data, function($value, $key) use (&$result, $titleKeys, $coverKeys, $invalidTitles, &$candidates) {
             if (in_array($key, $titleKeys) && is_string($value) && mb_strlen($value) >= 2 && mb_strlen($value) <= 100) {
-                if (empty($result['title']) && preg_match('/[\x{4e00}-\x{9fa5}a-zA-Z]/u', $value)) {
-                    $result['title'] = $value;
+                $lowerValue = mb_strtolower($value);
+                $isInvalid = false;
+                foreach ($invalidTitles as $inv) {
+                    if ($lowerValue === mb_strtolower($inv) || mb_strpos($lowerValue, mb_strtolower($inv)) !== false && mb_strlen($value) < 6) {
+                        $isInvalid = true;
+                        break;
+                    }
+                }
+                if (!$isInvalid && preg_match('/[\x{4e00}-\x{9fa5}a-zA-Z]/u', $value)) {
+                    $candidates[] = $value;
+                    if (empty($result['title']) && mb_strlen($value) >= 3) {
+                        $result['title'] = $value;
+                    }
                 }
             }
             if (in_array($key, $coverKeys) && is_string($value) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $value)) {
@@ -1105,32 +1110,14 @@ class DbOfficialReplaceManager {
             }
         }
 
-        if ($result['season_num'] === null) {
-            if (preg_match('/^(.+?)(\d{1,2})\s*第.*集$/u', $cleanTitle, $matches)) {
-                $basePart = trim($matches[1]);
-                $numPart = intval($matches[2]);
-                if (mb_strlen($basePart) >= 2 && $numPart >= 1 && $numPart <= 99) {
-                    $result['season'] = $matches[2];
-                    $result['season_num'] = $numPart;
-                }
-            } elseif (preg_match('/^(.+?)(\d{1,2})$/u', $cleanTitle, $matches)) {
-                $basePart = trim($matches[1]);
-                $numPart = intval($matches[2]);
-                if (mb_strlen($basePart) >= 2 && $numPart >= 1 && $numPart <= 99) {
-                    if (!preg_match('/^\d+$/u', $cleanTitle)) {
-                        $result['season'] = $matches[2];
-                        $result['season_num'] = $numPart;
-                    }
-                }
-            }
-        }
-
         $episodePatterns = [
             '/第\s*(\d+)\s*集/u' => 'num',
             '/第\s*([一二三四五六七八九十百千\d]+)\s*集/u' => 'cn',
             '/EP\s*(\d+)/i' => 'num',
             '/E\s*(\d+)/i' => 'num',
             '/(\d+)集/u' => 'num_suffix',
+            '/_(\d{1,3})$/u' => 'underscore_num',
+            '/-(\d{1,3})$/u' => 'dash_num',
         ];
 
         foreach ($episodePatterns as $pattern => $type) {
@@ -1147,8 +1134,34 @@ class DbOfficialReplaceManager {
                         $result['episode'] = $matches[0];
                         $result['episode_num'] = intval($matches[1]);
                     }
+                } elseif ($type === 'underscore_num' || $type === 'dash_num') {
+                    $epNum = intval($matches[1]);
+                    if ($epNum >= 1 && $epNum <= 200) {
+                        $result['episode'] = $matches[0];
+                        $result['episode_num'] = $epNum;
+                    }
                 }
                 break;
+            }
+        }
+
+        if ($result['season_num'] === null && $result['episode_num'] === null) {
+            if (preg_match('/^(.+?)(\d{1,2})\s*第.*集$/u', $cleanTitle, $matches)) {
+                $basePart = trim($matches[1]);
+                $numPart = intval($matches[2]);
+                if (mb_strlen($basePart) >= 2 && $numPart >= 1 && $numPart <= 99) {
+                    $result['season'] = $matches[2];
+                    $result['season_num'] = $numPart;
+                }
+            } elseif (preg_match('/^(.+?)(\d{1,2})$/u', $cleanTitle, $matches)) {
+                $basePart = trim($matches[1]);
+                $numPart = intval($matches[2]);
+                if (mb_strlen($basePart) >= 2 && $numPart >= 1 && $numPart <= 99) {
+                    if (!preg_match('/^\d+$/u', $cleanTitle)) {
+                        $result['episode'] = $matches[2];
+                        $result['episode_num'] = $numPart;
+                    }
+                }
             }
         }
 
