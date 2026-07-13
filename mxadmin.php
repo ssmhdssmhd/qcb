@@ -3000,15 +3000,16 @@ header('Expires: 0');
 
         <div class="page" id="page-ai_skip">
             <div class="card">
-                <div class="card-title">🤖 AI 自动去广告</div>
+                <div class="card-title">🤖 AI 智能处理中心</div>
                 <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
-                    <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能广告识别引擎</div>
-                    <div style="font-size:13px;opacity:0.9">基于多维度特征分析，自动识别并移除 M3U8 视频中的广告片段，支持时长检测、不连续标记、序列号跳跃、文件名模式等多种识别算法</div>
+                    <div style="font-size:18px;font-weight:600;margin-bottom:8px">🧠 AI 智能处理引擎</div>
+                    <div style="font-size:13px;opacity:0.9">一站式智能去广告解决方案：自动分析 → 识别广告簇 → 自动生成规则 → 智能过滤 → 自动学习，全流程自动化处理</div>
                 </div>
                 <div class="input-group">
                     <input type="text" id="aiSkipUrl" placeholder="输入 M3U8 视频链接，例如：https://example.com/video/index.m3u8">
-                    <button class="btn btn-primary" onclick="aiSkipVideo()">🚀 AI 去广告</button>
-                    <button class="btn btn-success" onclick="aiMd5Analyze()">🔬 MD5分析</button>
+                    <button class="btn btn-primary" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);border:none" onclick="aiSmartProcess()">✨ 一键智能处理</button>
+                    <button class="btn btn-success" onclick="aiSkipVideo()">🚀 AI 去广告</button>
+                    <button class="btn btn-secondary" onclick="aiSmartAnalyze()">🔍 智能分析</button>
                 </div>
                 <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
@@ -3018,17 +3019,17 @@ header('Expires: 0');
                         <input type="checkbox" id="aiSkipAutoLearn" checked> 自动学习规则
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <input type="checkbox" id="aiSkipAutoSave"> 自动保存规则
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
                         <input type="checkbox" id="aiSkipDeepAnalysis"> 深度分析模式
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipMd5Mode" checked> MD5特征识别
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipFastMode" checked> ⚡ 极速模式
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipSaveMd5"> 保存特征码
-                    </label>
+                </div>
+                <div id="smartProcessSteps" style="display:none;margin-top:16px;padding:14px;background:#f5f7fa;border-radius:8px">
+                    <div style="font-weight:600;color:#303133;margin-bottom:10px">⚡ 智能处理进度</div>
+                    <div id="smartProcessStepList" style="font-size:13px;color:#606266">
+                        <div style="padding:4px 0">⏳ 正在初始化...</div>
+                    </div>
                 </div>
             </div>
 
@@ -3915,6 +3916,137 @@ header('Expires: 0');
 
         let currentAiSkipData = null;
         let aiSkipSegmentTab = 'ad';
+
+        async function aiSmartProcess() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+
+            const autoSave = document.getElementById('aiSkipAutoSave').checked;
+
+            document.getElementById('smartProcessSteps').style.display = 'block';
+            document.getElementById('smartProcessStepList').innerHTML = '<div style="padding:4px 0">⏳ 正在初始化...</div>';
+            document.getElementById('aiSkipResult').style.display = 'none';
+
+            try {
+                const params = new URLSearchParams({
+                    action: 'ai/smart_process',
+                    url: url,
+                    mode: 'full',
+                    auto_save: autoSave ? '1' : '0'
+                });
+
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const data = await res.json();
+
+                if (!data.success) throw new Error(data.message || '处理失败');
+
+                const result = data.data;
+
+                if (result.steps && result.steps.length > 0) {
+                    document.getElementById('smartProcessStepList').innerHTML = result.steps.map(s =>
+                        '<div style="padding:4px 0">' + s + '</div>'
+                    ).join('');
+                }
+
+                currentAiSkipData = {
+                    data: {
+                        stats: result.stats || {},
+                        process_time: result.process_time ? result.process_time + 'ms' : '0ms',
+                        adClusters: result.ad_clusters || [],
+                        ad_clusters: result.ad_clusters || [],
+                        discontinuityRegexRules: result.discontinuity_regex_rules || [],
+                        discontinuity_regex_rules: result.discontinuity_regex_rules || [],
+                        rules: result.auto_rules?.rules || result.auto_rules || [],
+                        ad_segments: (result.filtered?.removedSegments || []).map(s => ({
+                            uri: s.uri,
+                            duration: s.duration,
+                            mediaSequence: s.mediaSequence,
+                            isAd: true,
+                            adReasons: s.adInfo?.matchedRules || []
+                        })),
+                        content_segments: (result.filtered?.segments || []).map(s => ({
+                            uri: s.uri,
+                            duration: s.duration,
+                            mediaSequence: s.mediaSequence,
+                            isAd: false
+                        }))
+                    }
+                };
+
+                renderAiSkipResult(currentAiSkipData);
+                document.getElementById('aiSkipResult').style.display = 'block';
+                document.getElementById('aiSkipOutputUrl').textContent = API_BASE + '?action=mxjx&url=' + encodeURIComponent(url);
+
+                saveToHistory(url, 'ai_smart', data);
+                showToast('✨ 智能处理完成！', 'success');
+
+            } catch (e) {
+                document.getElementById('smartProcessStepList').innerHTML += '<div style="padding:4px 0;color:#f56c6c">❌ 处理失败: ' + e.message + '</div>';
+                showToast('处理失败: ' + e.message, 'error');
+            }
+        }
+
+        async function aiSmartAnalyze() {
+            const url = document.getElementById('aiSkipUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+
+            document.getElementById('smartProcessSteps').style.display = 'block';
+            document.getElementById('smartProcessStepList').innerHTML = '<div style="padding:4px 0">🔍 正在进行智能分析...</div>';
+            document.getElementById('aiSkipResult').style.display = 'none';
+
+            try {
+                const params = new URLSearchParams({
+                    action: 'ai/smart_process',
+                    url: url,
+                    mode: 'analyze'
+                });
+
+                const res = await fetch(API_BASE + '?' + params.toString());
+                const data = await res.json();
+
+                if (!data.success) throw new Error(data.message || '分析失败');
+
+                const result = data.data;
+
+                document.getElementById('smartProcessStepList').innerHTML =
+                    '<div style="padding:4px 0">✅ 解析完成，共 ' + (result.total_segments || 0) + ' 个片段</div>' +
+                    '<div style="padding:4px 0">🔍 智能分析完成</div>' +
+                    '<div style="padding:4px 0">🎯 识别出 ' + (result.ad_clusters || []).length + ' 个广告片段集群</div>' +
+                    '<div style="padding:4px 0">⚙️ 生成 ' + (result.discontinuity_regex_rules || []).length + ' 条 DISCONTINUITY 正则规则</div>' +
+                    '<div style="padding:4px 0">✨ 分析完成！</div>';
+
+                currentAiSkipData = {
+                    data: {
+                        stats: {
+                            totalSegments: result.total_segments || 0,
+                            adSegments: result.ad_summary?.ad_count || 0,
+                            ad_percentage: result.ad_summary?.ad_percentage || 0,
+                            discontinuity_count: result.analysis?.discontinuityCount || 0,
+                            ad_cluster_count: (result.ad_clusters || []).length
+                        },
+                        process_time: '0ms',
+                        adClusters: result.ad_clusters || [],
+                        ad_clusters: result.ad_clusters || [],
+                        discontinuityRegexRules: result.discontinuity_regex_rules || [],
+                        discontinuity_regex_rules: result.discontinuity_regex_rules || [],
+                        rules: result.auto_rules?.rules || result.auto_rules || [],
+                        ad_segments: [],
+                        content_segments: []
+                    }
+                };
+
+                renderAiSkipAdClusters(currentAiSkipData);
+                renderAiSkipGeneratedRules(currentAiSkipData);
+                document.getElementById('aiSkipResult').style.display = 'block';
+
+                saveToHistory(url, 'ai_analyze', data);
+                showToast('🔍 智能分析完成！', 'success');
+
+            } catch (e) {
+                document.getElementById('smartProcessStepList').innerHTML += '<div style="padding:4px 0;color:#f56c6c">❌ 分析失败: ' + e.message + '</div>';
+                showToast('分析失败: ' + e.message, 'error');
+            }
+        }
 
         async function aiSkipVideo() {
             const url = document.getElementById('aiSkipUrl').value.trim();

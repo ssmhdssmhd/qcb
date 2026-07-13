@@ -3957,6 +3957,51 @@ try {
             }
             break;
 
+        case 'ai/smart_process':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            $mode = $_GET['mode'] ?? $_POST['mode'] ?? 'full';
+            $autoSave = isset($_GET['auto_save']) ? ($_GET['auto_save'] === '1' || $_GET['auto_save'] === 'true') : false;
+
+            try {
+                require_once __DIR__ . '/gz/AiSmartProcessor.php';
+                $processor = new AiSmartProcessor();
+
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+                if ($domain) {
+                    $processor->setDomain($domain);
+                }
+
+                if ($mode === 'analyze') {
+                    $result = $processor->smartAnalyze($url);
+                } else {
+                    $result = $processor->processUrl($url);
+                }
+
+                if ($autoSave && !empty($domain) && !empty($result['auto_rules'])) {
+                    require_once __DIR__ . '/gz/DomainRuleManager.php';
+                    $ruleManager = new DomainRuleManager();
+                    $ruleManager->saveRules($domain, $result['auto_rules']);
+                    $result['rules_saved'] = true;
+                }
+
+                sendJsonResponse([
+                    'success' => $result['success'],
+                    'message' => $result['message'] ?? ($result['success'] ? '智能处理完成' : '处理失败'),
+                    'data' => $result
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '智能处理失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
         case 'ai/skip':
             $url = $_GET['url'] ?? '';
             if (empty($url)) {
