@@ -4540,13 +4540,15 @@ header('Expires: 0');
             const url = document.getElementById('aiSkipUrl').value.trim();
             if (!url) { showToast('请输入视频链接', 'error'); return; }
             showToast('正在保存规则...', 'info');
-            fetch(API_BASE + '?action=rules/generate&url=' + encodeURIComponent(url))
+            fetch(API_BASE + '?action=rules/learn&url=' + encodeURIComponent(url))
                 .then(res => res.json())
                 .then(data => {
-                    if (data.success) {
-                        showToast('规则已保存到规则库', 'success');
+                    if (data.success && !data.skipped) {
+                        showToast('规则已保存到规则库（学习次数: ' + (data.learn_count || 1) + '）', 'success');
+                    } else if (data.skipped) {
+                        showToast('保存跳过: ' + (data.reason || '未知原因'), 'warning');
                     } else {
-                        showToast('保存失败: ' + data.message, 'error');
+                        showToast('保存失败: ' + (data.message || data.reason || '未知错误'), 'error');
                     }
                 })
                 .catch(e => showToast('保存失败: ' + e.message, 'error'));

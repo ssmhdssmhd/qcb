@@ -73,9 +73,30 @@ class AiSmartProcessor {
             $result['steps'][] = '🔬 专业检测完成，识别 ' . $proResult['ad_segment_count'] . ' 个广告片段（置信度评分）';
 
             $adClusters = $this->ruleManager->analyzeAdClustersDetail($analysis, $segments);
-            // 合并专业检测的广告簇
+            // 合并专业检测的广告簇（转换 segments 为详情数组）
             if (!empty($proResult['ad_clusters'])) {
-                $adClusters = array_merge($adClusters, $proResult['ad_clusters']);
+                foreach ($proResult['ad_clusters'] as $cluster) {
+                    $clusterSegments = [];
+                    foreach ($cluster['segments'] as $segIdx) {
+                        if (isset($segments[$segIdx])) {
+                            $seg = $segments[$segIdx];
+                            $clusterSegments[] = [
+                                'index' => $segIdx,
+                                'uri' => $seg['uri'] ?? '',
+                                'duration' => $seg['duration'] ?? 0,
+                                'discontinuity' => !empty($seg['discontinuity']),
+                                'media_sequence' => $seg['mediaSequence'] ?? null,
+                                'title' => $seg['title'] ?? ''
+                            ];
+                        }
+                    }
+                    $cluster['segments'] = $clusterSegments;
+                    $cluster['segment_count'] = count($clusterSegments);
+                    $cluster['start_index'] = $cluster['start'];
+                    $cluster['end_index'] = $cluster['end'];
+                    $cluster['confidence'] = min(100, 70 + count($clusterSegments) * 5);
+                    $adClusters[] = $cluster;
+                }
             }
             $result['ad_clusters'] = $adClusters;
             $result['steps'][] = '🎯 广告簇分析完成，识别出 ' . count($adClusters) . ' 个广告片段集群';
@@ -203,7 +224,28 @@ class AiSmartProcessor {
             // 专业级广告检测
             $proResult = $this->proDetector->detect($segments);
             if (!empty($proResult['ad_clusters'])) {
-                $adClusters = array_merge($adClusters, $proResult['ad_clusters']);
+                foreach ($proResult['ad_clusters'] as $cluster) {
+                    $clusterSegments = [];
+                    foreach ($cluster['segments'] as $segIdx) {
+                        if (isset($segments[$segIdx])) {
+                            $seg = $segments[$segIdx];
+                            $clusterSegments[] = [
+                                'index' => $segIdx,
+                                'uri' => $seg['uri'] ?? '',
+                                'duration' => $seg['duration'] ?? 0,
+                                'discontinuity' => !empty($seg['discontinuity']),
+                                'media_sequence' => $seg['mediaSequence'] ?? null,
+                                'title' => $seg['title'] ?? ''
+                            ];
+                        }
+                    }
+                    $cluster['segments'] = $clusterSegments;
+                    $cluster['segment_count'] = count($clusterSegments);
+                    $cluster['start_index'] = $cluster['start'];
+                    $cluster['end_index'] = $cluster['end'];
+                    $cluster['confidence'] = min(100, 70 + count($clusterSegments) * 5);
+                    $adClusters[] = $cluster;
+                }
             }
 
             $result = array_merge($result, [

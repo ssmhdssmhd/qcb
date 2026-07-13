@@ -1045,4 +1045,304 @@ class DbDomainRuleManager {
         ];
         return array_merge($defaultRules, $customConfig);
     }
+
+    public function generateDiscontinuityRegexRules($analysisResult, $segments = []) {
+        $rules = [];
+        $adClusters = $analysisResult['adClusters'] ?? [];
+        $discontinuityCount = $analysisResult['discontinuityCount'] ?? 0;
+
+        if ($discontinuityCount === 0 || empty($adClusters)) {
+            return $rules;
+        }
+
+        $adDurations = [];
+        foreach ($adClusters as $cluster) {
+            $clusterDuration = $cluster['duration'] ?? 0;
+            $clusterSegments = $cluster['count'] ?? 0;
+            if ($clusterSegments >= 2 && $clusterDuration > 0) {
+                $adDurations[] = [
+                    'duration' => $clusterDuration,
+                    'segments' => $clusterSegments,
+                    'avg_duration' => round($clusterDuration / $clusterSegments, 3)
+                ];
+            }
+        }
+
+        $hasIntegerDuration = false;
+        $hasDecimalDuration = false;
+        $specificDurations = [];
+
+        if (!empty($segments)) {
+            $inAdCluster = false;
+            foreach ($segments as $seg) {
+                if (!empty($seg['discontinuity'])) {
+                    $inAdCluster = true;
+                }
+                if ($inAdCluster && isset($seg['duration'])) {
+                    $dur = $seg['duration'];
+                    $specificDurations[] = $dur;
+                    if (floor($dur) == $dur) {
+                        $hasIntegerDuration = true;
+                    } else {
+                        $hasDecimalDuration = true;
+                    }
+                }
+            }
+        }
+
+        if (!$hasIntegerDuration && !$hasDecimalDuration) {
+            foreach ($adDurations as $ad) {
+                $avg = $ad['avg_duration'];
+                $specificDurations[] = $avg;
+                if (floor($avg) == $avg) {
+                    $hasIntegerDuration = true;
+                } else {
+                    $hasDecimalDuration = true;
+                }
+            }
+        }
+
+        // 基于实际数据的精确规则（最高置信度 100%）
+        if (!empty($specificDurations)) {
+            $durationCounts = [];
+            foreach ($specificDurations as $d) {
+                $key = (string)$d;
+                $durationCounts[$key] = ($durationCounts[$key] ?? 0) + 1;
+            }
+            arsort($durationCounts);
+            foreach ($durationCounts as $dur => $cnt) {
+                if ($cnt >= 2) {
+                    $rules[] = [
+                        'name' => "discontinuity_exact_{$dur}s",
+                        'type' => 'regex',
+                        'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:' . $dur . '\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                        'description' => "精确匹配 {$dur} 秒时长的广告片段（数据驱动，置信度 100%）",
+                        'example' => "#EXT-X-DISCONTINUITY\\n#EXTINF:{$dur},\\nad.ts\\n",
+                        'match_type' => 'discontinuity_exact',
+                        'confidence' => 100,
+                        'duration_sources' => $cnt,
+                        'exact_duration' => $dur
+                    ];
+                }
+            }
+        }
+
+        // 整数时长广告正则规则（暴风模式）
+        if ($hasIntegerDuration) {
+            $rules[] = [
+                'name' => 'discontinuity_integer_duration',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                'description' => '整数时长广告片段匹配（暴风模式）',
+                'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5,\\nad.ts\\n',
+                'match_type' => 'discontinuity_group',
+                'confidence' => 95
+            ];
+        }
+
+        // 一位小数时长广告正则规则（暴风模式）
+        if ($hasDecimalDuration) {
+            $rules[] = [
+                'name' => 'discontinuity_decimal_duration',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+\\.\\d{1}\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                'description' => '一位小数时长广告片段匹配（暴风模式）',
+                'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:4.3,\\nad.ts\\n',
+                'match_type' => 'discontinuity_group',
+                'confidence' => 95
+            ];
+        }
+
+        // 任意时长通用模式
+        $rules[] = [
+            'name' => 'discontinuity_any_duration',
+            'type' => 'regex',
+            'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+            'description' => '任意时长广告片段匹配（通用模式）',
+            'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5.0,\\nad.ts\\n',
+            'match_type' => 'discontinuity_group',
+            'confidence' => 85
+        ];
+
+        // 固定片段数精确匹配
+        $avgAdSegments = 0;
+        foreach ($adDurations as $ad) {
+            $avgAdSegments += $ad['segments'];
+        }
+        $avgAdSegments = count($adDurations) > 0 ? round($avgAdSegments / count($adDurations)) : 3;
+
+        if ($avgAdSegments >= 2 && $avgAdSegments <= 20) {
+            $rules[] = [
+                'name' => 'discontinuity_fixed_count',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:' . str_repeat('#EXTINF:\\d+(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?', $avgAdSegments) . ')/',
+                'description' => "固定 {$avgAdSegments} 片段广告匹配（精确计数）",
+                'example' => "匹配 DISCONTINUITY 后连续 {$avgAdSegments} 个 EXTINF 片段",
+                'match_type' => 'discontinuity_group_count',
+                'confidence' => 95,
+                'expected_count' => $avgAdSegments
+            ];
+        }
+
+        // 短广告片段匹配
+        $shortAdCount = 0;
+        $longAdCount = 0;
+        foreach ($adDurations as $ad) {
+            if ($ad['duration'] < 10) {
+                $shortAdCount++;
+            } elseif ($ad['duration'] > 30) {
+                $longAdCount++;
+            }
+        }
+
+        if ($shortAdCount > 0) {
+            $rules[] = [
+                'name' => 'discontinuity_short_ad',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:[0-5](?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?){1,5}/',
+                'description' => '短广告片段匹配（<5秒/片，1-5片）',
+                'match_type' => 'discontinuity_short',
+                'confidence' => 90
+            ];
+        }
+
+        // 长广告片段匹配
+        if ($longAdCount > 0) {
+            $rules[] = [
+                'name' => 'discontinuity_long_ad',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d{2,}(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?){2,}/',
+                'description' => '长广告片段匹配（>=10秒/片，2片以上）',
+                'match_type' => 'discontinuity_long',
+                'confidence' => 85
+            ];
+        }
+
+        // 统一时长匹配
+        $uniqueAvgDurations = [];
+        foreach ($adDurations as $ad) {
+            $key = (string)floor($ad['avg_duration']);
+            if (!isset($uniqueAvgDurations[$key])) {
+                $uniqueAvgDurations[$key] = 0;
+            }
+            $uniqueAvgDurations[$key]++;
+        }
+
+        if (count($uniqueAvgDurations) === 1) {
+            $duration = array_key_first($uniqueAvgDurations);
+            $rules[] = [
+                'name' => "discontinuity_uniform_{$duration}s",
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:' . $duration . '(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                'description' => "统一时长约 {$duration} 秒的广告片段匹配",
+                'match_type' => 'discontinuity_uniform',
+                'confidence' => 98,
+                'uniform_duration' => $duration
+            ];
+        }
+
+        // DISCONTINUITY 对匹配（广告簇边界）
+        if ($discontinuityCount >= 2) {
+            $rules[] = [
+                'name' => 'discontinuity_pair',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+?#EXT-X-DISCONTINUITY/',
+                'description' => '匹配两个 DISCONTINUITY 标记之间的所有片段（广告簇完整匹配）',
+                'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5,\\nad1.ts\\n#EXTINF:5,\\nad2.ts\\n#EXT-X-DISCONTINUITY',
+                'match_type' => 'discontinuity_pair',
+                'confidence' => 98,
+                'discontinuity_pair_count' => floor($discontinuityCount / 2)
+            ];
+        }
+
+        return $rules;
+    }
+
+    public function analyzeAdClustersDetail($analysisResult, $segments = []) {
+        $clusters = $analysisResult['adClusters'] ?? [];
+        $totalCount = $analysisResult['totalCount'] ?? 0;
+        $details = [];
+
+        foreach ($clusters as $idx => $cluster) {
+            $startIdx = $cluster['start'] ?? 0;
+            $endIdx = $cluster['end'] ?? 0;
+            $count = $cluster['count'] ?? ($endIdx - $startIdx + 1);
+            $duration = $cluster['duration'] ?? 0;
+
+            $startRatio = $totalCount > 0 ? round($startIdx / $totalCount * 100, 1) : 0;
+            $endRatio = $totalCount > 0 ? round(($endIdx + 1) / $totalCount * 100, 1) : 0;
+
+            $position = 'middle';
+            $positionLabel = '中间插播';
+            if ($startRatio < 15) {
+                $position = 'opening';
+                $positionLabel = '片头广告';
+            } elseif ($endRatio > 85) {
+                $position = 'ending';
+                $positionLabel = '片尾广告';
+            }
+
+            $clusterSegments = [];
+            $discontinuityPositions = [];
+            $discontinuityCount = 0;
+            if (!empty($segments) && is_array($segments)) {
+                for ($i = $startIdx; $i <= $endIdx && $i < count($segments); $i++) {
+                    $seg = $segments[$i];
+                    $hasDisc = !empty($seg['discontinuity']);
+                    if ($hasDisc) {
+                        $discontinuityCount++;
+                        $discontinuityPositions[] = $i;
+                    }
+                    $clusterSegments[] = [
+                        'index' => $i,
+                        'uri' => $seg['uri'] ?? '',
+                        'duration' => $seg['duration'] ?? 0,
+                        'discontinuity' => $hasDisc,
+                        'media_sequence' => $seg['mediaSequence'] ?? null,
+                        'title' => $seg['title'] ?? ''
+                    ];
+                }
+            }
+
+            $hasDiscontinuity = $discontinuityCount > 0;
+            if (!$hasDiscontinuity && !empty($clusterSegments)) {
+                $hasDiscontinuity = !empty($cluster['has_marker']);
+            } else if (!$hasDiscontinuity) {
+                $hasDiscontinuity = !empty($cluster['has_marker']);
+            }
+
+            // 计算置信度：综合 DISCONTINUITY 数量、时长特征、位置等
+            $confidence = 70;
+            if ($discontinuityCount > 0) {
+                $confidence += $discontinuityCount * 10;
+            }
+            if ($count >= 2) {
+                $confidence += 10;
+            }
+            if ($position === 'opening' || $position === 'ending') {
+                $confidence += 5;
+            }
+            $confidence = min(100, $confidence);
+
+            $details[] = [
+                'index' => $idx,
+                'start_index' => $startIdx,
+                'end_index' => $endIdx,
+                'segment_count' => $count,
+                'duration' => round($duration, 2),
+                'avg_segment_duration' => $count > 0 ? round($duration / $count, 3) : 0,
+                'start_position_percent' => $startRatio,
+                'end_position_percent' => $endRatio,
+                'position_type' => $position,
+                'position_label' => $positionLabel,
+                'has_discontinuity' => $hasDiscontinuity,
+                'discontinuity_count' => $discontinuityCount,
+                'discontinuity_positions' => $discontinuityPositions,
+                'confidence' => $confidence,
+                'segments' => $clusterSegments
+            ];
+        }
+
+        return $details;
+    }
 }
