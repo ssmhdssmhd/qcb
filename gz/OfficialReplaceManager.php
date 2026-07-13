@@ -1473,6 +1473,18 @@ class OfficialReplaceManager {
             return 100;
         }
 
+        $season1 = TitleNormalizer::getSeasonInfo($str1);
+        $season2 = TitleNormalizer::getSeasonInfo($str2);
+        if ($season1 !== null && $season2 !== null && $season1 !== $season2) {
+            return 0;
+        }
+        if ($season1 !== null && $season1 > 1 && $season2 === null) {
+            return 0;
+        }
+        if ($season2 !== null && $season2 > 1 && $season1 === null) {
+            return 0;
+        }
+
         $str1 = $norm1;
         $str2 = $norm2;
 
