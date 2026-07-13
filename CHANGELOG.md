@@ -5,6 +5,61 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.2.20] - 2026-07-13
+
+### 🐛 修复官替 API 非 JSON 响应问题 + 全平台解析器再次增强 + 匹配算法优化
+
+**核心修复：解决"请求失败: 服务器返回非JSON响应"错误**，大幅提升官方资源识别率和资源站匹配率。
+
+**1. 新增 safeJsonDecode 安全 JSON 解析器** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+
+- ✅ 支持去除注释块 `/* ... */`
+- ✅ 支持 JSONP 回调函数包裹（如 `callback({...})`、`varName={`）
+- ✅ 支持去除变量赋值前缀（如 `data= {...}`）
+- ✅ 支持去除末尾分号和多余符号
+- ✅ 二次尝试解析（处理更多非标准格式）
+- ✅ 所有平台 API 解析统一使用 safeJsonDecode
+
+**2. 全平台专用 API 解析器再次增强**
+
+| 平台 | 新增功能 |
+|------|---------|
+| 腾讯视频 | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+| 爱奇艺 | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+| 芒果TV | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+| 优酷 | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+| 哔哩哔哩 | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+| 搜狐视频 | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+| PP视频 | 新增 2 个备用 API + HTML 页面 fallback + try-catch 异常捕获 |
+
+**3. HTML 页面解析 fallback**
+- ✅ 所有平台均添加官方视频页面作为最后备用信息源
+- ✅ 从 HTML meta 标签（og:title, og:image 等）提取标题和封面
+- ✅ 从页面标题、h1 标签等提取标题信息
+- ✅ API 全部失败时仍能获取基本视频信息
+
+**4. 匹配算法再次优化** (`findAllMatches`)
+- ✅ **多关键词匹配** - 构建多个搜索关键词（基础标题、标准化标题、原始标题等），取最佳匹配分数
+- ✅ **季数惩罚优化** - 从固定扣 30 分改为按季数差异动态计算（`min(25, 15 + seasonDiff * 5)`）
+- ✅ **降低基础分数门槛** - 从 50 分降至 40 分
+- ✅ **降低收录阈值** - 从 `threshold * 0.5` 降至 `threshold * 0.45`
+- ✅ **similar_text 补充匹配** - 使用 `similar_text` 函数计算相似度作为补充
+- ✅ **新增目标季数为空时的加分逻辑** - 视频季数为 1 时加 3 分
+- ✅ **版本惩罚降低** - 从不匹配扣 5 分改为扣 3 分
+- ✅ **部分惩罚降低** - 从不匹配扣 15 分改为扣 10 分
+
+**5. 数据库版完全同步**
+- ✅ `DbOfficialReplaceManager` 新增 `safeJsonDecode` 方法
+- ✅ 所有平台专用解析器同步增强（备用 API + HTML fallback + try-catch）
+- ✅ 匹配算法同步优化（多关键词、动态季数惩罚、similar_text 等）
+
+**6. 错误处理增强**
+- ✅ 每个 API 请求都包裹在 try-catch 中，防止单个接口异常导致整个方法失败
+- ✅ resolve 方法全局 try-catch 捕获所有异常，确保始终返回有效 JSON
+- ✅ mx.php 顶部设置 error_reporting(0) + display_errors=0，避免 PHP 警告污染 JSON 响应
+
+---
+
 ## [3.2.19] - 2026-07-13
 
 ### 🚀 全平台专用 API 解析器 + 匹配算法大幅优化

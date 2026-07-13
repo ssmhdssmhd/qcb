@@ -449,6 +449,30 @@ class OfficialReplaceManager {
             '/OST/i',
         ];
 
+        $keyword = $videoInfo['base_title'] ?? $videoInfo['title'];
+        $targetSeason = $videoInfo['season_num'] ?? null;
+        $targetPart = $videoInfo['part'] ?? null;
+        $targetVersion = $videoInfo['version'] ?? null;
+        $targetEpisode = $videoInfo['episode_num'] ?? null;
+        $originalTitle = $videoInfo['title'] ?? '';
+
+        $searchKeywords = [];
+        if (!empty($keyword)) {
+            $searchKeywords[] = $keyword;
+            $normKeyword = TitleNormalizer::normalize($keyword);
+            if ($normKeyword !== $keyword) {
+                $searchKeywords[] = $normKeyword;
+            }
+        }
+        if (!empty($originalTitle) && $originalTitle !== $keyword) {
+            $searchKeywords[] = $originalTitle;
+            $normOrig = TitleNormalizer::normalize($originalTitle);
+            if ($normOrig !== $originalTitle) {
+                $searchKeywords[] = $normOrig;
+            }
+        }
+        $searchKeywords = array_values(array_unique(array_filter($searchKeywords)));
+
         foreach ($videos as $video) {
             $videoName = $video['name'] ?? '';
             $videoRemarks = $video['remarks'] ?? '';
@@ -472,14 +496,17 @@ class OfficialReplaceManager {
             $videoPart = $videoParsed['part'];
             $videoVersion = $videoParsed['version'];
 
-            $keyword = $videoInfo['base_title'] ?? $videoInfo['title'];
-            $targetSeason = $videoInfo['season_num'] ?? null;
-            $targetPart = $videoInfo['part'] ?? null;
-            $targetVersion = $videoInfo['version'] ?? null;
+            $bestBaseScore = 0;
+            foreach ($searchKeywords as $kw) {
+                $currentScore = $this->calculateBaseMatchScore($kw, $videoBaseTitle);
+                if ($currentScore > $bestBaseScore) {
+                    $bestBaseScore = $currentScore;
+                }
+            }
 
-            $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+            $baseScore = $bestBaseScore;
 
-            if ($baseScore < 50) {
+            if ($baseScore < 40) {
                 continue;
             }
 
@@ -487,12 +514,18 @@ class OfficialReplaceManager {
             $seasonMatch = false;
             $episodeMatch = false;
 
-            if ($keyword && $videoBaseTitle) {
-                if (mb_strpos($videoBaseTitle, $keyword) !== false) {
-                    $score += 10;
+            if (!empty($videoBaseTitle)) {
+                foreach ($searchKeywords as $kw) {
+                    if (mb_strpos($videoBaseTitle, $kw) !== false) {
+                        $score += 8;
+                        break;
+                    }
                 }
-                if (mb_strpos($keyword, $videoBaseTitle) !== false) {
-                    $score += 5;
+                foreach ($searchKeywords as $kw) {
+                    if (mb_strpos($kw, $videoBaseTitle) !== false) {
+                        $score += 4;
+                        break;
+                    }
                 }
             }
 
@@ -501,17 +534,22 @@ class OfficialReplaceManager {
                     $score += 25;
                     $seasonMatch = true;
                 } else {
-                    $score -= 30;
+                    $seasonDiff = abs($targetSeason - $videoSeason);
+                    $penalty = min(25, 15 + $seasonDiff * 5);
+                    $score -= $penalty;
                 }
             } elseif ($targetSeason !== null && $videoSeason === null) {
                 if ($targetSeason == 1) {
-                    $score += 5;
+                    $score += 8;
                 } else {
-                    $score -= 10;
+                    $score -= 5;
+                }
+            } elseif ($targetSeason === null && $videoSeason !== null) {
+                if ($videoSeason == 1) {
+                    $score += 3;
                 }
             }
 
-            $targetEpisode = $videoInfo['episode_num'] ?? null;
             if ($targetEpisode !== null && $videoEpisode !== null) {
                 if ($targetEpisode == $videoEpisode) {
                     $score += 20;
@@ -523,7 +561,7 @@ class OfficialReplaceManager {
                 if ($targetPart == $videoPart) {
                     $score += 15;
                 } else {
-                    $score -= 15;
+                    $score -= 10;
                 }
             }
 
@@ -531,7 +569,7 @@ class OfficialReplaceManager {
                 if ($targetVersion == $videoVersion) {
                     $score += 10;
                 } else {
-                    $score -= 5;
+                    $score -= 3;
                 }
             }
 
@@ -541,9 +579,20 @@ class OfficialReplaceManager {
                 }
             }
 
+            if (!empty($videoName) && !empty($keyword)) {
+                $videoNorm = TitleNormalizer::normalize($videoName);
+                $keywordNorm = TitleNormalizer::normalize($keyword);
+                if (!empty($videoNorm) && !empty($keywordNorm)) {
+                    similar_text($keywordNorm, $videoNorm, $simScore);
+                    if ($simScore > $baseScore) {
+                        $score = max($score, $simScore * 0.8);
+                    }
+                }
+            }
+
             $score = min(100, max(0, $score));
 
-            if ($score >= $threshold * 0.5) {
+            if ($score >= $threshold * 0.45) {
                 $matches[] = [
                     'video' => $video,
                     'score' => round($score, 2),
@@ -785,6 +834,49 @@ class OfficialReplaceManager {
         return null;
     }
 
+    private function safeJsonDecode($response) {
+        if (empty($response) || !is_string($response)) {
+            return null;
+        }
+
+        $cleaned = trim($response);
+
+        $cleaned = preg_replace('/^\/\*[\s\S]*?\*\//', '', $cleaned);
+        $cleaned = trim($cleaned);
+
+        $cleaned = preg_replace('/^(?:var|let|const)\s+\w+\s*=\s*/', '', $cleaned);
+        $cleaned = preg_replace('/^\w+\s*=\s*/', '', $cleaned);
+        $cleaned = trim($cleaned);
+
+        if (preg_match('/^\w+\s*\(/', $cleaned)) {
+            $cleaned = preg_replace('/^\w+\s*\(/', '', $cleaned);
+            $cleaned = preg_replace('/\)\s*;?\s*$/', '', $cleaned);
+            $cleaned = trim($cleaned);
+        }
+
+        $cleaned = rtrim($cleaned, ';');
+        $cleaned = trim($cleaned);
+
+        if (empty($cleaned)) {
+            return null;
+        }
+
+        $data = json_decode($cleaned, true);
+        if ($data !== null) {
+            return $data;
+        }
+
+        $cleaned = preg_replace('/^\s*\w+\s*:\s*/', '', $cleaned);
+        $cleaned = rtrim($cleaned, ';');
+        $cleaned = trim($cleaned);
+        $data = json_decode($cleaned, true);
+        if ($data !== null) {
+            return $data;
+        }
+
+        return null;
+    }
+
     private function fetchVideoInfoFromApi($videoId, $platform) {
         if (empty($videoId)) {
             return null;
@@ -799,33 +891,90 @@ class OfficialReplaceManager {
                 'https://pbaccess.video.qq.com/trpc.vidplay.vidplay_2_0_fcgi.VidPlay2_0Fcgi/GetCmsVidInfoAll?data={"vid":"' . urlencode($videoId) . '","appVer":"3.5.57","platform":"40000"}',
                 'https://access.video.qq.com/cgi-bin/varietycheck?vid=' . urlencode($videoId),
                 'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json',
+                'https://v.qq.com/x/cover/' . urlencode($videoId) . '.html',
+            ];
+
+            $titlePaths = [
+                ['c', 'title'],
+                ['data', 'c', 'title'],
+                ['VideoInfo', 'title'],
+                ['videoInfo', 'title'],
+                ['title'],
+                ['name'],
+                ['tvName'],
+            ];
+
+            $coverPaths = [
+                ['c', 'pic'],
+                ['data', 'c', 'pic'],
+                ['c', 'cover'],
+                ['VideoInfo', 'pic'],
+                ['videoInfo', 'cover'],
+                ['pic'],
+                ['cover'],
+                ['imageUrl'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $jsonStr = preg_replace('/^\w+=/', '', $response);
-                $jsonStr = preg_replace('/;$/', '', $jsonStr);
-                $data = json_decode($jsonStr, true);
+                    $isHtml = stripos($apiUrl, '.html') !== false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
+                    }
 
-                if (!$data) continue;
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
 
-                if (isset($data['c']['title']) && mb_strlen($data['c']['title']) >= 3) {
-                    $result['title'] = $data['c']['title'];
-                    if (!empty($data['c']['pic'])) $result['cover'] = $data['c']['pic'];
-                    break;
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
+                    }
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
+                    }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-
-                $found = $this->findTitleInData($data);
-                if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
-                    $result['title'] = $found['title'];
-                }
-                if (!empty($found['cover']) && empty($result['cover'])) {
-                    $result['cover'] = $found['cover'];
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
@@ -834,63 +983,83 @@ class OfficialReplaceManager {
                 'https://pcw-api.iqiyi.com/video/video/baseinfo/' . urlencode($videoId),
                 'https://pcw-api.iqiyi.com/strategy/pcw/data/baseVideoInfo?ids=' . urlencode($videoId),
                 'https://cache.video.iqiyi.com/jp/avlist/20210316/' . urlencode($videoId) . '.json',
+                'https://www.iqiyi.com/v_' . urlencode($videoId) . '.html',
+            ];
+
+            $titlePaths = [
+                ['data', 'name'], ['data', 'title'], ['data', '0', 'name'],
+                ['name'], ['title'], ['videoName'], ['data', '0', 'title'],
+                ['data', 'videoInfo', 'name'], ['data', 'videoInfo', 'title'],
+                ['data', 'albumInfo', 'name'], ['data', 'albumInfo', 'title'],
+            ];
+
+            $coverPaths = [
+                ['data', 'imageUrl'], ['data', '0', 'imageUrl'],
+                ['data', 'image'], ['data', '0', 'image'],
+                ['imageUrl'], ['image'], ['data', 'videoInfo', 'imageUrl'],
+                ['data', 'albumInfo', 'imageUrl'], ['data', 'albumInfo', 'cover'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $jsonStr = preg_replace('/^\w+=/', '', $response);
-                $jsonStr = preg_replace('/;$/', '', $jsonStr);
-                $data = json_decode($jsonStr, true);
-
-                if (!$data) continue;
-
-                $titleFields = [
-                    ['data', 'name'], ['data', 'title'], ['data', '0', 'name'],
-                    ['name'], ['title'], ['videoName'], ['data', '0', 'title'],
-                    ['data', 'videoInfo', 'name'], ['data', 'videoInfo', 'title']
-                ];
-                foreach ($titleFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
+                    $isHtml = stripos($apiUrl, '.html') !== false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
                     }
-                    if (is_string($val) && mb_strlen($val) >= 3) {
-                        $result['title'] = $val;
-                        break;
+
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
+
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
                     }
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
+                    }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-
-                $coverFields = [
-                    ['data', 'imageUrl'], ['data', '0', 'imageUrl'],
-                    ['data', 'image'], ['data', '0', 'image'],
-                    ['imageUrl'], ['image'], ['data', 'videoInfo', 'imageUrl']
-                ];
-                foreach ($coverFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
-                    }
-                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
-                        $result['cover'] = $val;
-                        break;
-                    }
-                }
-
-                if (empty($result['title'])) {
-                    $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
-                        $result['title'] = $found['title'];
-                    }
-                    if (!empty($found['cover']) && empty($result['cover'])) {
-                        $result['cover'] = $found['cover'];
-                    }
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
@@ -899,59 +1068,82 @@ class OfficialReplaceManager {
                 'https://pcweb.api.mgtv.com/episode/list?video_id=' . urlencode($videoId),
                 'https://pcweb.api.mgtv.com/video/info?video_id=' . urlencode($videoId),
                 'https://pcweb.api.mgtv.com/video/shortSourceInfo?video_id=' . urlencode($videoId),
+                'https://www.mgtv.com/b/' . urlencode($videoId) . '.html',
+            ];
+
+            $titlePaths = [
+                ['data', 'info', 'title'], ['data', 'info', 'title2'],
+                ['data', 'title'], ['data', '0', 'title'],
+                ['data', '0', 'desc'], ['data', 'info', 'desc'],
+                ['data', 'clipInfo', 'title'], ['data', 'videoInfo', 'title'],
+            ];
+
+            $coverPaths = [
+                ['data', 'info', 'cover'], ['data', 'info', 'image'],
+                ['data', '0', 'image'], ['data', 'cover'],
+                ['data', 'clipInfo', 'cover'], ['data', 'videoInfo', 'cover'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $data = json_decode($response, true);
-                if (!$data) continue;
+                    $isHtml = stripos($apiUrl, '.html') !== false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
+                    }
 
-                $titleFields = [
-                    ['data', 'info', 'title'], ['data', 'info', 'title2'],
-                    ['data', 'title'], ['data', '0', 'title'],
-                    ['data', '0', 'desc'], ['data', 'info', 'desc']
-                ];
-                foreach ($titleFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
+
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
                     }
-                    if (is_string($val) && mb_strlen($val) >= 3) {
-                        $result['title'] = $val;
-                        break;
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
                     }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-
-                $coverFields = [
-                    ['data', 'info', 'cover'], ['data', 'info', 'image'],
-                    ['data', '0', 'image'], ['data', 'cover']
-                ];
-                foreach ($coverFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
-                    }
-                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
-                        $result['cover'] = $val;
-                        break;
-                    }
-                }
-
-                if (empty($result['title'])) {
-                    $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
-                        $result['title'] = $found['title'];
-                    }
-                    if (!empty($found['cover']) && empty($result['cover'])) {
-                        $result['cover'] = $found['cover'];
-                    }
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
@@ -959,61 +1151,81 @@ class OfficialReplaceManager {
             $apiUrls = [
                 'https://v.youku.com/service/getVideoInfo?vid=' . urlencode($videoId),
                 'https://openapi.youku.com/v2/videos/show.json?client_id=23e50e2e09490776&video_id=' . urlencode($videoId),
+                'https://v.youku.com/v_show/id_' . urlencode($videoId) . '.html',
+            ];
+
+            $titlePaths = [
+                ['data', 'title'], ['data', 'name'], ['title'], ['name'],
+                ['data', 'video', 'title'], ['data', '0', 'title'],
+                ['data', 'videoInfo', 'title'], ['data', 'show', 'title'],
+            ];
+
+            $coverPaths = [
+                ['data', 'bigPhoto'], ['data', 'photo'], ['bigPhoto'], ['photo'],
+                ['data', '0', 'bigPhoto'], ['data', 'image'], ['image'],
+                ['data', 'videoInfo', 'cover'], ['data', 'show', 'cover'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $jsonStr = preg_replace('/^\w+=/', '', $response);
-                $jsonStr = preg_replace('/;$/', '', $jsonStr);
-                $data = json_decode($jsonStr, true);
-
-                if (!$data) continue;
-
-                $titleFields = [
-                    ['data', 'title'], ['data', 'name'], ['title'], ['name'],
-                    ['data', 'video', 'title'], ['data', '0', 'title']
-                ];
-                foreach ($titleFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
+                    $isHtml = stripos($apiUrl, '.html') !== false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
                     }
-                    if (is_string($val) && mb_strlen($val) >= 3) {
-                        $result['title'] = $val;
-                        break;
+
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
+
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
                     }
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
+                    }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-
-                $coverFields = [
-                    ['data', 'bigPhoto'], ['data', 'photo'], ['bigPhoto'], ['photo'],
-                    ['data', '0', 'bigPhoto'], ['data', 'image'], ['image']
-                ];
-                foreach ($coverFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
-                    }
-                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
-                        $result['cover'] = $val;
-                        break;
-                    }
-                }
-
-                if (empty($result['title'])) {
-                    $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
-                        $result['title'] = $found['title'];
-                    }
-                    if (!empty($found['cover']) && empty($result['cover'])) {
-                        $result['cover'] = $found['cover'];
-                    }
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
@@ -1028,31 +1240,78 @@ class OfficialReplaceManager {
                 $apiUrls[] = 'https://api.bilibili.com/x/web-interface/view?aid=' . urlencode($videoId);
             }
 
+            $apiUrls[] = 'https://www.bilibili.com/video/' . urlencode($videoId);
+
+            $titlePaths = [
+                ['data', 'title'], ['data', 'info', 'title'],
+                ['title'], ['name'],
+            ];
+
+            $coverPaths = [
+                ['data', 'pic'], ['data', 'cover'],
+                ['data', 'info', 'pic'], ['pic'], ['cover'],
+            ];
+
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $data = json_decode($response, true);
-                if (!$data) continue;
-
-                if (isset($data['data']['title']) && mb_strlen($data['data']['title']) >= 3) {
-                    $result['title'] = $data['data']['title'];
-                    if (!empty($data['data']['pic'])) {
-                        $result['cover'] = $data['data']['pic'];
+                    $isHtml = stripos($apiUrl, '/video/') !== false && stripos($apiUrl, 'api.') === false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
                     }
+
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
+
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
+                    }
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
+                    }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-
-                if (empty($result['title'])) {
-                    $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
-                        $result['title'] = $found['title'];
-                    }
-                    if (!empty($found['cover']) && empty($result['cover'])) {
-                        $result['cover'] = $found['cover'];
-                    }
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
@@ -1061,63 +1320,83 @@ class OfficialReplaceManager {
                 'https://sohu.com/api/getVideoInfo?vid=' . urlencode($videoId),
                 'https://tv.sohu.com/continfo/' . urlencode($videoId) . '.json',
                 'https://my.tv.sohu.com/play/videonew.do?id=' . urlencode($videoId),
+                'https://tv.sohu.com/v/' . urlencode($videoId) . '.shtml',
+            ];
+
+            $titlePaths = [
+                ['data', 'title'], ['data', 'tvName'], ['data', 'name'],
+                ['title'], ['tvName'], ['name'],
+                ['data', 'videoName'], ['videoName'],
+                ['data', 'videoInfo', 'title'], ['data', 'albumInfo', 'name'],
+            ];
+
+            $coverPaths = [
+                ['data', 'cover'], ['data', 'pic'], ['data', 'image'],
+                ['cover'], ['pic'], ['image'],
+                ['data', 'bigCover'], ['bigCover'],
+                ['data', 'videoInfo', 'cover'], ['data', 'albumInfo', 'cover'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $jsonStr = preg_replace('/^\w+=/', '', $response);
-                $jsonStr = preg_replace('/;$/', '', $jsonStr);
-                $data = json_decode($jsonStr, true);
-
-                if (!$data) continue;
-
-                $titleFields = [
-                    ['data', 'title'], ['data', 'tvName'], ['data', 'name'],
-                    ['title'], ['tvName'], ['name'],
-                    ['data', 'videoName'], ['videoName']
-                ];
-                foreach ($titleFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
+                    $isHtml = stripos($apiUrl, '.shtml') !== false || stripos($apiUrl, '.html') !== false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
                     }
-                    if (is_string($val) && mb_strlen($val) >= 3) {
-                        $result['title'] = $val;
-                        break;
+
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
+
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
                     }
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
+                    }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-
-                $coverFields = [
-                    ['data', 'cover'], ['data', 'pic'], ['data', 'image'],
-                    ['cover'], ['pic'], ['image'],
-                    ['data', 'bigCover'], ['bigCover']
-                ];
-                foreach ($coverFields as $path) {
-                    $val = $data;
-                    foreach ($path as $key) {
-                        if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
-                        $val = $val[$key];
-                    }
-                    if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
-                        $result['cover'] = $val;
-                        break;
-                    }
-                }
-
-                if (empty($result['title'])) {
-                    $found = $this->findTitleInData($data);
-                    if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
-                        $result['title'] = $found['title'];
-                    }
-                    if (!empty($found['cover']) && empty($result['cover'])) {
-                        $result['cover'] = $found['cover'];
-                    }
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
@@ -1125,24 +1404,81 @@ class OfficialReplaceManager {
             $apiUrls = [
                 'https://api2.pptv.com/v3/api/tv/playlist.json?pid=' . urlencode($videoId),
                 'https://web-api.pptv.com/web/video/info?id=' . urlencode($videoId),
+                'https://v.pptv.com/show/' . urlencode($videoId) . '.html',
+            ];
+
+            $titlePaths = [
+                ['data', 'title'], ['data', 'name'],
+                ['title'], ['name'], ['tvName'],
+                ['data', 'videoInfo', 'title'], ['data', 'info', 'title'],
+            ];
+
+            $coverPaths = [
+                ['data', 'cover'], ['data', 'pic'], ['data', 'image'],
+                ['cover'], ['pic'], ['image'],
+                ['data', 'videoInfo', 'cover'], ['data', 'info', 'cover'],
             ];
 
             foreach ($apiUrls as $apiUrl) {
-                $response = $this->httpGet($apiUrl);
-                if (!$response) continue;
+                try {
+                    $response = $this->httpGet($apiUrl);
+                    if (!$response) continue;
 
-                $data = json_decode($response, true);
-                if (!$data) continue;
+                    $isHtml = stripos($apiUrl, '.html') !== false;
+                    if ($isHtml) {
+                        $htmlTitle = $this->extractTitle($response, $platform);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
+                            $result['title'] = $htmlTitle;
+                        }
+                        $htmlCover = $this->extractCover($response);
+                        if (!empty($htmlCover) && empty($result['cover'])) {
+                            $result['cover'] = $htmlCover;
+                        }
+                        if (!empty($result['title'])) break;
+                        continue;
+                    }
 
-                $found = $this->findTitleInData($data);
-                if (!empty($found['title']) && mb_strlen($found['title']) >= 3) {
-                    $result['title'] = $found['title'];
+                    $data = $this->safeJsonDecode($response);
+                    if (!$data) continue;
+
+                    foreach ($titlePaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && mb_strlen($val) >= 3 && empty($result['title'])) {
+                            $result['title'] = $val;
+                            break;
+                        }
+                    }
+
+                    foreach ($coverPaths as $path) {
+                        $val = $data;
+                        foreach ($path as $key) {
+                            if (!is_array($val) || !isset($val[$key])) { $val = null; break; }
+                            $val = $val[$key];
+                        }
+                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val) && empty($result['cover'])) {
+                            $result['cover'] = $val;
+                            break;
+                        }
+                    }
+
+                    if (empty($result['title']) || empty($result['cover'])) {
+                        $found = $this->findTitleInData($data);
+                        if (!empty($found['title']) && mb_strlen($found['title']) >= 3 && empty($result['title'])) {
+                            $result['title'] = $found['title'];
+                        }
+                        if (!empty($found['cover']) && empty($result['cover'])) {
+                            $result['cover'] = $found['cover'];
+                        }
+                    }
+
+                    if (!empty($result['title'])) break;
+                } catch (Throwable $e) {
+                    continue;
                 }
-                if (!empty($found['cover']) && empty($result['cover'])) {
-                    $result['cover'] = $found['cover'];
-                }
-
-                if (!empty($result['title'])) break;
             }
         }
 
