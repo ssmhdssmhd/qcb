@@ -787,7 +787,9 @@ class DomainRuleManager {
                     'operator' => '<',
                     'threshold' => 2,
                     'reason' => '极短片段 (<2秒) 可能是广告',
-                    'weight' => 30
+                    'weight' => 30,
+                    'confidence' => 75,
+                    'description' => '过滤极短片段（<2秒），通常为广告或片头'
                 ]
             ],
             'discontinuity_rules' => [
@@ -796,7 +798,9 @@ class DomainRuleManager {
                     'enabled' => $analysisResult['discontinuityCount'] > 5,
                     'type' => 'discontinuity',
                     'reason' => 'DISCONTINUITY 标记表示插播切换',
-                    'weight' => 80
+                    'weight' => 80,
+                    'confidence' => 90,
+                    'description' => '检测 #EXT-X-DISCONTINUITY 标记，用于识别插播内容'
                 ]
             ],
             'sequence_jump_rules' => [
@@ -807,7 +811,9 @@ class DomainRuleManager {
                     'direction' => 'forward',
                     'threshold' => 100000,
                     'reason' => '序列号向前跳跃可能表示广告插播',
-                    'weight' => 90
+                    'weight' => 90,
+                    'confidence' => 85,
+                    'description' => '序列号向前跳跃检测，识别广告开始'
                 ],
                 [
                     'name' => 'sequence_jump_backward',
@@ -816,7 +822,9 @@ class DomainRuleManager {
                     'direction' => 'backward',
                     'threshold' => 100000,
                     'reason' => '序列号向后跳跃可能表示广告结束',
-                    'weight' => 90
+                    'weight' => 90,
+                    'confidence' => 85,
+                    'description' => '序列号向后跳跃检测，识别广告结束'
                 ]
             ],
             'marker_detection' => [
@@ -863,8 +871,48 @@ class DomainRuleManager {
                 'sequenceJumps' => is_array($analysisResult['sequenceJumps'] ?? null) ? count($analysisResult['sequenceJumps']) : 0,
                 'adClusters' => is_array($analysisResult['adClusters'] ?? null) ? count($analysisResult['adClusters']) : 0,
                 'confidence' => $analysisResult['confidence'] ?? 0
-            ]
+            ],
+            'rules' => []
         ];
+
+        // 构建扁平化规则数组，供前端显示
+        $rules = [];
+        foreach ($defaultRules['duration_rules'] as $r) {
+            $rules[] = array_merge($r, ['category' => 'duration']);
+        }
+        foreach ($defaultRules['discontinuity_rules'] as $r) {
+            $rules[] = array_merge($r, ['category' => 'discontinuity']);
+        }
+        foreach ($defaultRules['sequence_jump_rules'] as $r) {
+            $rules[] = array_merge($r, ['category' => 'sequence']);
+        }
+
+        // 添加文件名规则
+        $rules[] = [
+            'name' => 'ad_keyword_filename',
+            'enabled' => true,
+            'type' => 'filename',
+            'category' => 'filename',
+            'pattern' => '/(?:ad|advert|commercial|promo|sponsor|pre-roll|mid-roll|post-roll)/i',
+            'reason' => '文件名包含广告关键词',
+            'weight' => 70,
+            'confidence' => 80,
+            'description' => '检测文件名中包含广告相关关键词'
+        ];
+        $rules[] = [
+            'name' => 'ad_path_keyword',
+            'enabled' => true,
+            'type' => 'filename',
+            'category' => 'filename',
+            'pattern' => '/\/(?:ad|advert|commercial|promo|sponsor)\//i',
+            'reason' => '路径包含广告关键词',
+            'weight' => 85,
+            'confidence' => 90,
+            'description' => '检测 URL 路径中包含广告相关目录名'
+        ];
+
+        $defaultRules['rules'] = $rules;
+
         return array_merge($defaultRules, $customConfig);
     }
 
@@ -892,6 +940,7 @@ class DomainRuleManager {
 
         $hasIntegerDuration = false;
         $hasDecimalDuration = false;
+        $specificDurations = [];
 
         if (!empty($segments)) {
             $inAdCluster = false;
@@ -901,6 +950,7 @@ class DomainRuleManager {
                 }
                 if ($inAdCluster && isset($seg['duration'])) {
                     $dur = $seg['duration'];
+                    $specificDurations[] = $dur;
                     if (floor($dur) == $dur) {
                         $hasIntegerDuration = true;
                     } else {
@@ -913,6 +963,7 @@ class DomainRuleManager {
         if (!$hasIntegerDuration && !$hasDecimalDuration) {
             foreach ($adDurations as $ad) {
                 $avg = $ad['avg_duration'];
+                $specificDurations[] = $avg;
                 if (floor($avg) == $avg) {
                     $hasIntegerDuration = true;
                 } else {
@@ -921,6 +972,32 @@ class DomainRuleManager {
             }
         }
 
+        // 基于实际数据的精确规则（最高置信度 100%）
+        if (!empty($specificDurations)) {
+            $durationCounts = [];
+            foreach ($specificDurations as $d) {
+                $key = (string)$d;
+                $durationCounts[$key] = ($durationCounts[$key] ?? 0) + 1;
+            }
+            arsort($durationCounts);
+            foreach ($durationCounts as $dur => $cnt) {
+                if ($cnt >= 2) {
+                    $rules[] = [
+                        'name' => "discontinuity_exact_{$dur}s",
+                        'type' => 'regex',
+                        'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:' . $dur . '\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
+                        'description' => "精确匹配 {$dur} 秒时长的广告片段（数据驱动，置信度 100%）",
+                        'example' => "#EXT-X-DISCONTINUITY\\n#EXTINF:{$dur},\\nad.ts\\n",
+                        'match_type' => 'discontinuity_exact',
+                        'confidence' => 100,
+                        'duration_sources' => $cnt,
+                        'exact_duration' => $dur
+                    ];
+                }
+            }
+        }
+
+        // 整数时长广告正则规则（暴风模式）
         if ($hasIntegerDuration) {
             $rules[] = [
                 'name' => 'discontinuity_integer_duration',
@@ -929,10 +1006,11 @@ class DomainRuleManager {
                 'description' => '整数时长广告片段匹配（暴风模式）',
                 'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5,\\nad.ts\\n',
                 'match_type' => 'discontinuity_group',
-                'confidence' => 85
+                'confidence' => 95
             ];
         }
 
+        // 一位小数时长广告正则规则（暴风模式）
         if ($hasDecimalDuration) {
             $rules[] = [
                 'name' => 'discontinuity_decimal_duration',
@@ -941,10 +1019,11 @@ class DomainRuleManager {
                 'description' => '一位小数时长广告片段匹配（暴风模式）',
                 'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:4.3,\\nad.ts\\n',
                 'match_type' => 'discontinuity_group',
-                'confidence' => 85
+                'confidence' => 95
             ];
         }
 
+        // 任意时长通用模式
         $rules[] = [
             'name' => 'discontinuity_any_duration',
             'type' => 'regex',
@@ -952,9 +1031,10 @@ class DomainRuleManager {
             'description' => '任意时长广告片段匹配（通用模式）',
             'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5.0,\\nad.ts\\n',
             'match_type' => 'discontinuity_group',
-            'confidence' => 75
+            'confidence' => 85
         ];
 
+        // 固定片段数精确匹配
         $avgAdSegments = 0;
         foreach ($adDurations as $ad) {
             $avgAdSegments += $ad['segments'];
@@ -969,11 +1049,12 @@ class DomainRuleManager {
                 'description' => "固定 {$avgAdSegments} 片段广告匹配（精确计数）",
                 'example' => "匹配 DISCONTINUITY 后连续 {$avgAdSegments} 个 EXTINF 片段",
                 'match_type' => 'discontinuity_group_count',
-                'confidence' => 90,
+                'confidence' => 95,
                 'expected_count' => $avgAdSegments
             ];
         }
 
+        // 短广告片段匹配
         $shortAdCount = 0;
         $longAdCount = 0;
         foreach ($adDurations as $ad) {
@@ -991,10 +1072,23 @@ class DomainRuleManager {
                 'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:[0-5](?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?){1,5}/',
                 'description' => '短广告片段匹配（<5秒/片，1-5片）',
                 'match_type' => 'discontinuity_short',
-                'confidence' => 80
+                'confidence' => 90
             ];
         }
 
+        // 长广告片段匹配
+        if ($longAdCount > 0) {
+            $rules[] = [
+                'name' => 'discontinuity_long_ad',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d{2,}(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?){2,}/',
+                'description' => '长广告片段匹配（>=10秒/片，2片以上）',
+                'match_type' => 'discontinuity_long',
+                'confidence' => 85
+            ];
+        }
+
+        // 统一时长匹配
         $uniqueAvgDurations = [];
         foreach ($adDurations as $ad) {
             $key = (string)floor($ad['avg_duration']);
@@ -1012,8 +1106,22 @@ class DomainRuleManager {
                 'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:' . $duration . '(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+/',
                 'description' => "统一时长约 {$duration} 秒的广告片段匹配",
                 'match_type' => 'discontinuity_uniform',
-                'confidence' => 92,
+                'confidence' => 98,
                 'uniform_duration' => $duration
+            ];
+        }
+
+        // DISCONTINUITY 对匹配（广告簇边界）
+        if ($discontinuityCount >= 2) {
+            $rules[] = [
+                'name' => 'discontinuity_pair',
+                'type' => 'regex',
+                'pattern' => '/#EXT-X-DISCONTINUITY\\r?\\n(?:#EXTINF:\\d+(?:\\.\\d+)?\\,\\r?\\n[^\\r\\n]+\\r?\\n?)+?#EXT-X-DISCONTINUITY/',
+                'description' => '匹配两个 DISCONTINUITY 标记之间的所有片段（广告簇完整匹配）',
+                'example' => '#EXT-X-DISCONTINUITY\\n#EXTINF:5,\\nad1.ts\\n#EXTINF:5,\\nad2.ts\\n#EXT-X-DISCONTINUITY',
+                'match_type' => 'discontinuity_pair',
+                'confidence' => 98,
+                'discontinuity_pair_count' => floor($discontinuityCount / 2)
             ];
         }
 
@@ -1037,37 +1145,54 @@ class DomainRuleManager {
             $position = 'middle';
             $positionLabel = '中间插播';
             if ($startRatio < 15) {
-                $position = 'pre-roll';
+                $position = 'opening';
                 $positionLabel = '片头广告';
             } elseif ($endRatio > 85) {
-                $position = 'post-roll';
+                $position = 'ending';
                 $positionLabel = '片尾广告';
             }
 
             $clusterSegments = [];
+            $discontinuityPositions = [];
+            $discontinuityCount = 0;
             if (!empty($segments) && is_array($segments)) {
                 for ($i = $startIdx; $i <= $endIdx && $i < count($segments); $i++) {
                     $seg = $segments[$i];
+                    $hasDisc = !empty($seg['discontinuity']);
+                    if ($hasDisc) {
+                        $discontinuityCount++;
+                        $discontinuityPositions[] = $i;
+                    }
                     $clusterSegments[] = [
                         'index' => $i,
                         'uri' => $seg['uri'] ?? '',
                         'duration' => $seg['duration'] ?? 0,
-                        'discontinuity' => !empty($seg['discontinuity'])
+                        'discontinuity' => $hasDisc,
+                        'media_sequence' => $seg['mediaSequence'] ?? null,
+                        'title' => $seg['title'] ?? ''
                     ];
                 }
             }
 
-            $hasDiscontinuity = false;
-            if (!empty($clusterSegments)) {
-                foreach ($clusterSegments as $cs) {
-                    if (!empty($cs['discontinuity'])) {
-                        $hasDiscontinuity = true;
-                        break;
-                    }
-                }
-            } else {
+            $hasDiscontinuity = $discontinuityCount > 0;
+            if (!$hasDiscontinuity && !empty($clusterSegments)) {
+                $hasDiscontinuity = !empty($cluster['has_marker']);
+            } else if (!$hasDiscontinuity) {
                 $hasDiscontinuity = !empty($cluster['has_marker']);
             }
+
+            // 计算置信度：综合 DISCONTINUITY 数量、时长特征、位置等
+            $confidence = 70;
+            if ($discontinuityCount > 0) {
+                $confidence += $discontinuityCount * 10;
+            }
+            if ($count >= 2) {
+                $confidence += 10;
+            }
+            if ($position === 'opening' || $position === 'ending') {
+                $confidence += 5;
+            }
+            $confidence = min(100, $confidence);
 
             $details[] = [
                 'index' => $idx,
@@ -1081,6 +1206,9 @@ class DomainRuleManager {
                 'position_type' => $position,
                 'position_label' => $positionLabel,
                 'has_discontinuity' => $hasDiscontinuity,
+                'discontinuity_count' => $discontinuityCount,
+                'discontinuity_positions' => $discontinuityPositions,
+                'confidence' => $confidence,
                 'segments' => $clusterSegments
             ];
         }

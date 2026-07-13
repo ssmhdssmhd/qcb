@@ -4325,26 +4325,55 @@ header('Expires: 0');
                     'middle': '中间',
                     'unknown': '未知位置'
                 };
-                const posText = positionMap[cluster.position] || cluster.position || '未知';
-                const posColor = cluster.position === 'opening' ? '#e6a23c' : 
-                                 cluster.position === 'ending' ? '#909399' : 
-                                 cluster.position === 'middle' ? '#f56c6c' : '#606266';
+                const posText = positionMap[cluster.position] || cluster.position || cluster.position_label || '未知';
+                const posColor = cluster.position === 'opening' || cluster.position_type === 'opening' ? '#e6a23c' : 
+                                 cluster.position === 'ending' || cluster.position_type === 'ending' ? '#909399' : 
+                                 '#f56c6c';
+
+                const confidence = cluster.confidence ?? 70;
+                const confColor = confidence >= 90 ? '#67c23a' : confidence >= 75 ? '#e6a23c' : confidence >= 60 ? '#f56c6c' : '#909399';
+
+                let discInfo = '';
+                if (cluster.has_discontinuity || cluster.discontinuity_count > 0) {
+                    discInfo = `<div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <span class="badge badge-danger">DISCONTINUITY ×${cluster.discontinuity_count || 1}</span>
+                        ${cluster.discontinuity_positions && cluster.discontinuity_positions.length > 0 
+                            ? '<span class="badge badge-info">位置: #' + cluster.discontinuity_positions.join(',#') + '</span>' 
+                            : ''}
+                    </div>`;
+                }
+
+                let segmentList = '';
+                if (cluster.segments && cluster.segments.length > 0) {
+                    segmentList = '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ebeef5">';
+                    segmentList += '<div style="font-size:11px;color:#909399;margin-bottom:4px">片段详情:</div>';
+                    segmentList += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+                    cluster.segments.forEach((seg, si) => {
+                        const discMark = seg.discontinuity ? '<span style="color:#f56c6c;margin-left:2px">🔀</span>' : '';
+                        segmentList += `<span style="font-size:11px;background:#fff;padding:2px 6px;border-radius:4px;border:1px solid #e4e7ed;color:#606266">
+                            #${seg.index} ${seg.duration}s${discMark}
+                        </span>`;
+                    });
+                    segmentList += '</div></div>';
+                }
+
                 return `
-                    <div style="padding:14px;background:#fef0f0;border-radius:10px;margin-bottom:10px;border-left:4px solid #f56c6c">
+                    <div style="padding:14px;background:#fef0f0;border-radius:10px;margin-bottom:10px;border-left:4px solid ${posColor}">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
                             <div style="font-weight:600;color:#303133">第 ${i + 1} 个广告簇 · ${posText}</div>
                             <div style="display:flex;gap:6px;flex-wrap:wrap">
                                 <span class="badge badge-danger">${cluster.segment_count || cluster.count || 0} 个片段</span>
                                 <span class="badge badge-warning">${(cluster.total_duration || cluster.duration || 0).toFixed?.(1) || 0}s</span>
+                                <span class="badge" style="background:${confColor};color:white">置信度 ${confidence}%</span>
                             </div>
                         </div>
                         <div style="font-size:12px;color:#606266;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px">
-                            <div>📊 平均时长: ${(cluster.avg_duration || 0).toFixed?.(2) || 0}s</div>
+                            <div>📊 平均时长: ${(cluster.avg_duration || cluster.avg_segment_duration || 0).toFixed?.(2) || 0}s</div>
                             <div>📍 起始索引: #${cluster.start_index ?? cluster.start ?? '-'}</div>
                             <div>📍 结束索引: #${cluster.end_index ?? cluster.end ?? '-'}</div>
-                            ${cluster.has_discontinuity ? '<div>🔀 含DISCONTINUITY</div>' : ''}
-                            ${cluster.confidence ? '<div>🎯 置信度: ' + cluster.confidence + '%</div>' : ''}
+                            ${discInfo}
                         </div>
+                        ${segmentList}
                     </div>
                 `;
             }).join('');
@@ -4389,12 +4418,31 @@ header('Expires: 0');
                     container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成 DISCONTINUITY 正则规则</div>';
                     return;
                 }
-                container.innerHTML = regexRules.map((rule, i) => `
+                container.innerHTML = regexRules.map((rule, i) => {
+                    const conf = rule.confidence || 80;
+                    const confColor = conf === 100 ? '#67c23a' : conf >= 95 ? '#54a0ff' : conf >= 90 ? '#e6a23c' : conf >= 80 ? '#f56c6c' : '#909399';
+                    const confLabel = conf === 100 ? '极高' : conf >= 95 ? '很高' : conf >= 90 ? '高' : conf >= 80 ? '中' : '低';
+
+                    let extraInfo = '';
+                    if (rule.exact_duration) {
+                        extraInfo += `<div style="font-size:11px;color:#54a0ff;margin-top:4px">🎯 精确时长: ${rule.exact_duration}秒（数据来源: ${rule.duration_sources}个片段）</div>`;
+                    }
+                    if (rule.uniform_duration) {
+                        extraInfo += `<div style="font-size:11px;color:#54a0ff;margin-top:4px">📊 统一时长: ${rule.uniform_duration}秒</div>`;
+                    }
+                    if (rule.expected_count) {
+                        extraInfo += `<div style="font-size:11px;color:#54a0ff;margin-top:4px">🔢 预期片段数: ${rule.expected_count}个</div>`;
+                    }
+                    if (rule.discontinuity_pair_count) {
+                        extraInfo += `<div style="font-size:11px;color:#54a0ff;margin-top:4px">🔀 DISCONTINUITY 对: ${rule.discontinuity_pair_count}组</div>`;
+                    }
+
+                    return `
                     <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
                             <div style="font-weight:600;color:#303133">${rule.name || '规则 ' + (i + 1)}</div>
                             <div style="display:flex;gap:6px">
-                                <span class="badge badge-primary">置信度 ${rule.confidence || 80}%</span>
+                                <span class="badge" style="background:${confColor};color:white;font-weight:bold">${confLabel} ${conf}%</span>
                             </div>
                         </div>
                         <div style="font-size:12px;color:#606266;margin-bottom:8px">${rule.description || ''}</div>
@@ -4402,57 +4450,83 @@ header('Expires: 0');
                             <div style="font-size:12px;color:#909399;margin-bottom:4px">正则表达式</div>
                             <code style="font-family:monospace;font-size:12px;color:#f56c6c;word-break:break-all;display:block">${escapeHtml(rule.pattern || '')}</code>
                         </div>
+                        ${rule.example ? `<div style="font-size:11px;color:#909399;margin-bottom:8px">示例: ${escapeHtml(rule.example)}</div>` : ''}
+                        ${extraInfo}
                         <div style="display:flex;gap:8px;flex-wrap:wrap">
                             <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onclick="copyText('${rule.pattern ? rule.pattern.replace(/'/g, "\\'") : ''}')">📋 复制正则</button>
                             <button class="btn btn-success" style="font-size:12px;padding:4px 10px" onclick="saveGeneratedRule('regex', ${i})">💾 保存规则</button>
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
             } else if (genRuleTab === 'duration') {
-                const durationRules = rules.filter(r => r.type === 'duration');
+                const durationRules = rules.filter(r => r.category === 'duration' || r.type === 'duration');
                 if (durationRules.length === 0) {
                     container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成时长规则</div>';
                     return;
                 }
-                container.innerHTML = durationRules.map((rule, i) => `
+                container.innerHTML = durationRules.map((rule, i) => {
+                    const conf = rule.confidence || 75;
+                    const confColor = conf >= 90 ? '#67c23a' : conf >= 75 ? '#e6a23c' : '#f56c6c';
+                    return `
                     <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                             <div style="font-weight:600;color:#303133">${rule.name || '时长规则 ' + (i + 1)}</div>
-                            <span class="badge badge-warning">${rule.confidence || 75}%</span>
+                            <span class="badge" style="background:${confColor};color:white">${conf}%</span>
                         </div>
-                        <div style="font-size:12px;color:#606266">${rule.description || ''}</div>
+                        <div style="font-size:12px;color:#606266">${rule.description || rule.reason || ''}</div>
+                        <div style="font-size:11px;color:#909399;margin-top:4px">
+                            ${rule.operator ? `条件: 时长 ${rule.operator} ${rule.threshold}秒` : ''}
+                            ${rule.weight ? ` · 权重: ${rule.weight}` : ''}
+                        </div>
                     </div>
-                `).join('');
+                `}).join('');
             } else if (genRuleTab === 'sequence') {
-                const seqRules = rules.filter(r => r.type === 'sequence');
+                const seqRules = rules.filter(r => r.category === 'sequence' || r.type === 'sequence_jump');
                 if (seqRules.length === 0) {
                     container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成序列号规则</div>';
                     return;
                 }
-                container.innerHTML = seqRules.map((rule, i) => `
+                container.innerHTML = seqRules.map((rule, i) => {
+                    const conf = rule.confidence || 80;
+                    const confColor = conf >= 90 ? '#67c23a' : conf >= 75 ? '#e6a23c' : '#f56c6c';
+                    const dirText = rule.direction === 'forward' ? '向前跳跃' : '向后跳跃';
+                    return `
                     <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                             <div style="font-weight:600;color:#303133">${rule.name || '序列号规则 ' + (i + 1)}</div>
-                            <span class="badge badge-info">${rule.confidence || 70}%</span>
+                            <span class="badge" style="background:${confColor};color:white">${conf}%</span>
                         </div>
-                        <div style="font-size:12px;color:#606266">${rule.description || ''}</div>
+                        <div style="font-size:12px;color:#606266">${rule.description || rule.reason || ''}</div>
+                        <div style="font-size:11px;color:#909399;margin-top:4px">
+                            方向: ${dirText} · 阈值: ${rule.threshold || '100000'} · 权重: ${rule.weight || 90}
+                        </div>
                     </div>
-                `).join('');
+                `}).join('');
             } else if (genRuleTab === 'filename') {
-                const nameRules = rules.filter(r => r.type === 'filename' || r.type === 'pattern');
+                const nameRules = rules.filter(r => r.category === 'filename' || r.type === 'filename' || r.type === 'pattern');
                 if (nameRules.length === 0) {
                     container.innerHTML = '<div style="text-align:center;color:#909399;padding:20px">暂未生成文件名规则</div>';
                     return;
                 }
-                container.innerHTML = nameRules.map((rule, i) => `
+                container.innerHTML = nameRules.map((rule, i) => {
+                    const conf = rule.confidence || 80;
+                    const confColor = conf >= 90 ? '#67c23a' : conf >= 75 ? '#e6a23c' : '#f56c6c';
+                    return `
                     <div style="padding:14px;background:#f5f7fa;border-radius:10px;margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                             <div style="font-weight:600;color:#303133">${rule.name || '文件名规则 ' + (i + 1)}</div>
-                            <span class="badge badge-success">${rule.confidence || 75}%</span>
+                            <span class="badge" style="background:${confColor};color:white">${conf}%</span>
                         </div>
-                        <div style="font-size:12px;color:#606266">${rule.description || ''}</div>
+                        <div style="font-size:12px;color:#606266">${rule.description || rule.reason || ''}</div>
+                        ${rule.pattern ? `
+                        <div style="background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #e4e7ed;margin-top:6px">
+                            <div style="font-size:11px;color:#909399;margin-bottom:2px">匹配模式</div>
+                            <code style="font-family:monospace;font-size:11px;color:#54a0ff">${escapeHtml(rule.pattern)}</code>
+                        </div>
+                        ` : ''}
+                        ${rule.weight ? `<div style="font-size:11px;color:#909399;margin-top:4px">权重: ${rule.weight}</div>` : ''}
                     </div>
-                `).join('');
+                `}).join('');
             }
         }
 
