@@ -76,8 +76,14 @@ class OutputGenerator {
             $output .= "# Removed segments: " . count($playlist['removedSegments'] ?? []) . "\n";
         }
 
+        $prevOriginalIndex = -1;
         for ($i = 0; $i < count($segments); $i++) {
             $segment = $segments[$i];
+            $currentOriginalIndex = $segment['originalIndex'] ?? $i;
+
+            if ($i > 0 && $currentOriginalIndex !== $prevOriginalIndex + 1) {
+                $output .= "#EXT-X-DISCONTINUITY\n";
+            }
 
             if (!empty($segment['discontinuity']) && $i > 0) {
                 $output .= "#EXT-X-DISCONTINUITY\n";
@@ -95,6 +101,8 @@ class OutputGenerator {
                 ? $segment['absoluteUri']
                 : $segment['uri'];
             $output .= $uri . "\n";
+
+            $prevOriginalIndex = $currentOriginalIndex;
         }
 
         if (!isset($playlist['endlist']) || $playlist['endlist'] !== false) {

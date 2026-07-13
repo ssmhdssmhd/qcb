@@ -16,6 +16,7 @@ class AdFilter {
 
     private function filterMediaPlaylist($playlist) {
         $segments = isset($playlist['segments']) ? $playlist['segments'] : [];
+        $segments = $this->preserveOriginalIndices($segments);
         $results = $this->ruleEngine->checkAllSegments($segments);
 
         $keptSegments = [];
@@ -65,6 +66,16 @@ class AdFilter {
         return $result;
     }
 
+    private function preserveOriginalIndices($segments, $offset = 0) {
+        $result = [];
+        foreach ($segments as $index => $segment) {
+            $result[] = array_merge($segment, [
+                'originalIndex' => $offset + $index
+            ]);
+        }
+        return $result;
+    }
+
     private function buildProxyUri($originalUri) {
         return $originalUri;
     }
@@ -78,6 +89,7 @@ class AdFilter {
             ]);
         }
 
+        $segments = $this->preserveOriginalIndices($segments);
         $results = $this->ruleEngine->checkAllSegments($segments);
 
         $adIndices = [];
