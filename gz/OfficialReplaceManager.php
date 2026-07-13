@@ -1124,16 +1124,20 @@ class OfficialReplaceManager {
         $searchedSites = 0;
 
         if (empty($sites)) {
-            $result = $siteMgr->searchAllSites($keyword, 3, 5);
-            if ($result['success']) {
-                foreach (($result['results'] ?? []) as $siteResult) {
-                    if (!empty($siteResult['videos'])) {
-                        foreach ($siteResult['videos'] as $v) {
-                            $v['site'] = $siteResult['site'];
-                            $allVideos[] = $v;
-                        }
-                        $searchedSites++;
+            $activeSites = $siteMgr->getAllSites(false);
+            foreach ($activeSites as $site) {
+                $apiUrl = $site['api_url'] ?? '';
+                if (empty($apiUrl)) continue;
+                $result = $siteMgr->searchVideos($apiUrl, $keyword, 1, 10);
+                if ($result && $result['success'] && !empty($result['videos'])) {
+                    foreach ($result['videos'] as $v) {
+                        $v['site'] = $site['name'];
+                        $allVideos[] = $v;
                     }
+                    $searchedSites++;
+                }
+                if ($searchedSites >= ($this->config['max_search_sites'] ?? count($activeSites))) {
+                    break;
                 }
             }
         } else {
@@ -1311,14 +1315,14 @@ class OfficialReplaceManager {
 
         if (mb_strpos($long, $short) !== false) {
             $ratio = mb_strlen($short) / mb_strlen($long);
-            if ($ratio > 0.8) {
+            if ($ratio >= 0.7) {
+                return 100;
+            } elseif ($ratio >= 0.5) {
                 return 90;
-            } elseif ($ratio > 0.6) {
+            } elseif ($ratio >= 0.3) {
                 return 80;
-            } elseif ($ratio > 0.4) {
-                return 70;
             } else {
-                return 60;
+                return 70;
             }
         }
 
@@ -1337,7 +1341,7 @@ class OfficialReplaceManager {
         $totalChars = max($len1, $len2);
         $charSimilarity = $totalChars > 0 ? ($commonChars / $totalChars) * 100 : 0;
 
-        return round($charSimilarity * 0.7, 2);
+        return round($charSimilarity * 0.8, 2);
     }
 
     private function findEpisodeUrl($urls, $episodeInfo) {

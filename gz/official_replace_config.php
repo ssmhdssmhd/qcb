@@ -69,11 +69,6 @@ return [
             'priority' => 2
         ]
     ],
-    'search_sites' => [
-        '量子',
-        '最大',
-        '猫眼',
-        '红牛'
-    ],
+    'search_sites' => [],
     'match_threshold' => 60
 ];
