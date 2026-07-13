@@ -136,6 +136,10 @@ class OfficialReplaceManager {
             $videoInfo = $this->fetchVideoInfo($url, $platform);
             $videoTitle = '';
 
+            if ($videoInfo && !empty($videoInfo['is_expired'])) {
+                return ['success' => false, 'message' => '链接已失效', 'platform' => $platform['name']];
+            }
+
             if ($videoInfo && !empty($videoInfo['title'])) {
                 $videoTitle = $videoInfo['title'];
             } elseif ($videoId) {
@@ -559,6 +563,7 @@ class OfficialReplaceManager {
             'episode_name' => '',
             'total_episodes' => null
         ];
+        $isExpired = false;
 
         $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform);
         if ($apiInfo) {
@@ -595,14 +600,49 @@ class OfficialReplaceManager {
             }
         }
 
+        if ($title && $this->isExpiredVideoTitle($title)) {
+            $isExpired = true;
+        }
+
         return [
             'title' => $title,
             'cover' => $cover,
             'url' => $url,
             'platform' => $platform['name'],
             'episode_info' => $episodeInfo,
-            'video_id' => $videoId
+            'video_id' => $videoId,
+            'is_expired' => $isExpired
         ];
+    }
+
+    private function isExpiredVideoTitle($title) {
+        $expiredKeywords = [
+            '那条视频不见了',
+            '视频不存在',
+            '视频已删除',
+            '视频已下架',
+            '视频失效',
+            '链接失效',
+            '该视频不存在',
+            '该视频已删除',
+            '该视频已下架',
+            '无法找到该视频',
+            '抱歉，该视频',
+            '视频无法播放',
+            '已失效',
+            'invalid',
+            'not found',
+            '404',
+            'error'
+        ];
+
+        $lowerTitle = strtolower($title);
+        foreach ($expiredKeywords as $keyword) {
+            if (stripos($title, $keyword) !== false || stripos($lowerTitle, strtolower($keyword)) !== false) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function extractTitleFromUrl($url, $platform) {
