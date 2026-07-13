@@ -304,12 +304,15 @@ class DbOfficialReplaceManager {
                 'season' => $videoInfo['season'],
                 'episode' => $videoInfo['episode'],
                 'video_id' => $videoId,
-                'search_keywords' => $searchKeywords
+                'search_keywords' => $searchKeywords,
+                'site_matches' => [],
+                'matched_sites' => 0
             ];
         }
 
         $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
         $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
+        $siteMatches = $this->groupMatchesBySite($allMatches);
 
         if (!$bestMatch) {
             $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
@@ -323,7 +326,9 @@ class DbOfficialReplaceManager {
                 'episode' => $videoInfo['episode'],
                 'video_id' => $videoId,
                 'used_keyword' => $usedKeyword,
-                'candidates' => array_slice($allMatches, 0, 5)
+                'candidates' => array_slice($allMatches, 0, 5),
+                'site_matches' => $siteMatches,
+                'matched_sites' => count($siteMatches)
             ];
         }
 
@@ -396,6 +401,8 @@ class DbOfficialReplaceManager {
             'episodes' => count($allUrls),
             'alternatives' => array_slice($allMatches, 1, 5),
             'all_matches' => $allMatches,
+            'site_matches' => $siteMatches,
+            'matched_sites' => count($siteMatches),
             'used_keyword' => $usedKeyword,
             'search_keywords' => $searchKeywords,
             'request_time' => time()
@@ -508,14 +515,44 @@ class DbOfficialReplaceManager {
         $threshold = $config['match_threshold'] ?? 60;
         $matches = [];
 
+        $excludePatterns = [
+            '/电影解说/i',
+            '/预告片/i',
+            '/片花/i',
+            '/花絮/i',
+            '/剪辑/i',
+            '/解说/i',
+            '/速看/i',
+            '/混剪/i',
+            '/盘点/i',
+            '/reaction/i',
+            '/MV/i',
+            '/主题曲/i',
+            '/片尾曲/i',
+            '/片头曲/i',
+            '/OST/i',
+        ];
+
         foreach ($videos as $video) {
             $videoName = $video['name'] ?? '';
             $videoRemarks = $video['remarks'] ?? '';
             $fullName = $videoName . ' ' . $videoRemarks;
 
+            $isExcluded = false;
+            foreach ($excludePatterns as $pattern) {
+                if (preg_match($pattern, $videoName)) {
+                    $isExcluded = true;
+                    break;
+                }
+            }
+            if ($isExcluded) {
+                continue;
+            }
+
             $videoParsed = $this->parseVideoTitle($fullName);
             $videoBaseTitle = $videoParsed['base_title'];
             $videoSeason = $videoParsed['season_num'];
+            $videoEpisode = $videoParsed['episode_num'];
             $videoPart = $videoParsed['part'];
             $videoVersion = $videoParsed['version'];
 
@@ -525,8 +562,23 @@ class DbOfficialReplaceManager {
             $targetVersion = $videoInfo['version'] ?? null;
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+
+            if ($baseScore < 60) {
+                continue;
+            }
+
             $score = $baseScore;
             $seasonMatch = false;
+            $episodeMatch = false;
+
+            if ($keyword && $videoBaseTitle) {
+                if (mb_strpos($videoBaseTitle, $keyword) !== false) {
+                    $score += 10;
+                }
+                if (mb_strpos($keyword, $videoBaseTitle) !== false) {
+                    $score += 5;
+                }
+            }
 
             if ($targetSeason !== null && $videoSeason !== null) {
                 if ($targetSeason == $videoSeason) {
@@ -540,6 +592,14 @@ class DbOfficialReplaceManager {
                     $score += 5;
                 } else {
                     $score -= 10;
+                }
+            }
+
+            $targetEpisode = $videoInfo['episode_num'] ?? null;
+            if ($targetEpisode !== null && $videoEpisode !== null) {
+                if ($targetEpisode == $videoEpisode) {
+                    $score += 20;
+                    $episodeMatch = true;
                 }
             }
 
@@ -559,14 +619,21 @@ class DbOfficialReplaceManager {
                 }
             }
 
+            if (!empty($videoRemarks)) {
+                if (preg_match('/更新至|连载|全\d+集|共\d+集|已完结|HD|高清|正片/u', $videoRemarks)) {
+                    $score += 5;
+                }
+            }
+
             $score = min(100, max(0, $score));
 
-            if ($score >= $threshold * 0.8) {
+            if ($score >= $threshold * 0.6) {
                 $matches[] = [
                     'video' => $video,
                     'score' => round($score, 2),
                     'base_score' => round($baseScore, 2),
                     'season_match' => $seasonMatch,
+                    'episode_match' => $episodeMatch,
                     'site' => $video['site'] ?? ''
                 ];
             }
@@ -577,6 +644,36 @@ class DbOfficialReplaceManager {
         });
 
         return $matches;
+    }
+
+    private function groupMatchesBySite($matches) {
+        $siteMap = [];
+
+        foreach ($matches as $match) {
+            $siteName = $match['site'] ?? '未知';
+            if (!isset($siteMap[$siteName])) {
+                $siteMap[$siteName] = [
+                    'site' => $siteName,
+                    'match_count' => 0,
+                    'best_score' => 0,
+                    'best_match' => null,
+                    'matches' => []
+                ];
+            }
+            $siteMap[$siteName]['match_count']++;
+            $siteMap[$siteName]['matches'][] = $match;
+            if ($match['score'] > $siteMap[$siteName]['best_score']) {
+                $siteMap[$siteName]['best_score'] = $match['score'];
+                $siteMap[$siteName]['best_match'] = $match;
+            }
+        }
+
+        $result = array_values($siteMap);
+        usort($result, function($a, $b) {
+            return $b['best_score'] - $a['best_score'];
+        });
+
+        return $result;
     }
 
     private function extractVideoId($url, $platform) {
@@ -1235,10 +1332,16 @@ class DbOfficialReplaceManager {
             $videoParsed = $this->parseVideoTitle($fullName);
             $videoBaseTitle = $videoParsed['base_title'];
             $videoSeason = $videoParsed['season_num'];
+            $videoEpisode = $videoParsed['episode_num'];
             $videoPart = $videoParsed['part'];
             $videoVersion = $videoParsed['version'];
 
             $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+
+            if ($baseScore < 60) {
+                continue;
+            }
+
             $score = $baseScore;
 
             if ($keyword && $videoBaseTitle) {
@@ -1251,6 +1354,7 @@ class DbOfficialReplaceManager {
             }
 
             $seasonMatch = false;
+            $episodeMatch = false;
             if ($targetSeason !== null && $videoSeason !== null) {
                 if ($targetSeason == $videoSeason) {
                     $score += 25;
@@ -1263,6 +1367,14 @@ class DbOfficialReplaceManager {
                     $score += 5;
                 } else {
                     $score -= 10;
+                }
+            }
+
+            $targetEpisode = $videoInfo['episode_num'] ?? null;
+            if ($targetEpisode !== null && $videoEpisode !== null) {
+                if ($targetEpisode == $videoEpisode) {
+                    $score += 20;
+                    $episodeMatch = true;
                 }
             }
 
@@ -1297,6 +1409,7 @@ class DbOfficialReplaceManager {
                     'score' => round($score, 2),
                     'base_score' => round($baseScore, 2),
                     'season_match' => $seasonMatch,
+                    'episode_match' => $episodeMatch,
                     'site' => $video['site'] ?? ''
                 ];
             }

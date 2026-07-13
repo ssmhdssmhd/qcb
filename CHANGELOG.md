@@ -5,6 +5,40 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.2.17] - 2026-07-13
+
+### 🔄 官替 API 显示所有资源站匹配（以基础名称为准）
+
+**匹配算法优化** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php)):
+- ✅ **匹配门槛放宽** - 基础名称匹配分从 100 分降至 60 分，让更多相关资源能被匹配到
+- ✅ **以基础名称为核心** - 匹配优先基于 `base_title`（基础名称），季数/集数/版本等作为加分项
+- ✅ **季数匹配优化** - 季数不匹配从"直接跳过"改为"减分处理"，避免因季数标注差异导致遗漏
+- ✅ **新增垃圾内容过滤** - 过滤电影解说、预告片、片花、花絮、剪辑等非正片内容
+- ✅ **统一排除模式** - findAllMatches 和 findBestMatch 使用相同的排除规则，保持一致性
+- ✅ **新增 episode_match 字段** - all_matches 中每条匹配都包含集数匹配状态
+
+**新增按站点分组匹配** (`site_matches` 字段):
+- ✅ **site_matches** - 按资源站分组的匹配结果，每个站点包含：
+  - `site`: 站点名称
+  - `match_count`: 该站点匹配的视频数量
+  - `best_score`: 该站点最高匹配度
+  - `best_match`: 该站点最佳匹配详情
+  - `matches`: 该站点所有匹配列表
+- ✅ **matched_sites** - 有匹配结果的资源站数量
+- ✅ **按匹配度排序** - 站点列表按最高匹配度从高到低排序
+
+**响应字段新增**:
+| 字段 | 说明 |
+|------|------|
+| `site_matches` | 按站点分组的匹配结果数组 |
+| `matched_sites` | 匹配到的资源站数量 |
+
+**文件版 & 数据库版同步升级**:
+- [OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) - 文件配置版
+- [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php) - 数据库版
+
+---
+
 ## [3.2.16] - 2026-07-13
 
 ### 🎯 集数匹配逻辑优化 & 显示优化
