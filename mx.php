@@ -3087,13 +3087,17 @@ try {
             
             if ($result['success']) {
                 $m3u8Url = $result['m3u8_url'] ?? '';
-                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-                $basePath = dirname($requestUri);
-                $basePath = $basePath === '/' ? '' : $basePath;
-                $selfUrl = $scheme . '://' . $host . $basePath;
-                $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                $adSkipUrl = $result['ad_skip_url'] ?? '';
+                
+                if (empty($adSkipUrl) && !empty($m3u8Url)) {
+                    $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                    $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+                    $basePath = dirname($requestUri);
+                    $basePath = $basePath === '/' ? '' : $basePath;
+                    $selfUrl = $scheme . '://' . $host . $basePath;
+                    $adSkipUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                }
                 
                 sendJsonResponse([
                     'success' => true,
@@ -3107,10 +3111,10 @@ try {
                     'site' => $result['site'],
                     'm3u8_url' => $m3u8Url,
                     'target_episode' => $result['target_episode'] ?? '',
-                    'ad_skip_url' => $mxjxUrl,
+                    'ad_skip_url' => $adSkipUrl,
                     'all_urls' => $result['all_urls'],
                     'episodes' => $result['episodes'] ?? count($result['all_urls']),
-                    'timestamp' => time() // 添加时间戳便于追踪
+                    'timestamp' => time()
                 ]);
             } else {
                 sendJsonResponse($result, 404);

@@ -330,10 +330,20 @@ class OfficialReplaceManager {
     private function buildAdSkipUrl($m3u8Url) {
         $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
-        $basePath = dirname($requestUri);
-        $basePath = $basePath === '/' ? '' : $basePath;
-        $selfUrl = $scheme . '://' . $host . $basePath;
+        $rootDir = dirname(__DIR__);
+        $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        $relativePath = '';
+        if (!empty($documentRoot)) {
+            $rootDirReal = realpath($rootDir);
+            $docRootReal = realpath($documentRoot);
+            if ($rootDirReal && $docRootReal && strpos($rootDirReal, $docRootReal) === 0) {
+                $relativePath = substr($rootDirReal, strlen($docRootReal));
+            }
+        }
+        if (empty($relativePath)) {
+            $relativePath = '';
+        }
+        $selfUrl = $scheme . '://' . $host . $relativePath;
         return $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
     }
 
