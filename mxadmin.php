@@ -9130,7 +9130,7 @@ header('Expires: 0');
                 }
 
                 if (data.success) {
-                    const playUrl = data.ad_skip_url || (API_BASE + '?action=mxjx&url=' + encodeURIComponent(data.m3u8_url || ''));
+                    const playUrl = data.ad_skip_url || (API_BASE + '?action=mxjx&deep=1&url=' + encodeURIComponent(data.m3u8_url || ''));
                     let html = `<div style="background:#f0f9eb;padding:16px;border-radius:8px;border:1px solid #e1f3d8">
                         <div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 官替解析成功</div>
                         <div style="font-size:13px;line-height:2">
@@ -9216,11 +9216,11 @@ header('Expires: 0');
                     return;
                 }
 
-                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 2/3：AI 去广告处理中...</div>';
+                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 2/4：AI 去广告处理中...</div>';
 
                 const m3u8Url = data.m3u8_url || '';
-                const playUrl = m3u8Url || data.ad_skip_url || '';
-                if (!playUrl) {
+                let playUrl = data.ad_skip_url || (API_BASE + '?action=mxjx&deep=1&url=' + encodeURIComponent(m3u8Url));
+                if (!playUrl || !m3u8Url) {
                     statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 未获取到播放地址</div>';
                     return;
                 }
@@ -9231,30 +9231,80 @@ header('Expires: 0');
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
                         <span style="color:#67c23a;font-weight:600">✓ 匹配成功</span>
                         <span style="color:#909399;font-size:11px">匹配度 ${data.match_score || 0}%</span>
+                        <span style="background:#e6a23c;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">深度去广告</span>
                     </div>
                     <div style="color:#606266"><strong>平台:</strong> ${escapeHtml(data.platform || '')}</div>
                     <div style="color:#606266"><strong>视频:</strong> ${escapeHtml(data.video_title || '')}</div>
                     ${data.target_episode ? '<div style="color:#606266"><strong>集数:</strong> ' + escapeHtml(data.target_episode) + '</div>' : ''}
                     <div style="color:#606266"><strong>来源:</strong> ${escapeHtml(data.site || '')}</div>
+                    <div style="color:#909399;font-size:11px;margin-top:6px">💡 已启用三重去广告：标签过滤 + 规则引擎 + TS 内容分析 + 前端自动跳过</div>
                 </div>`;
 
-                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 3/3：加载播放器...</div>';
+                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 3/4：获取广告时间段...</div>';
+
+                let adSegments = [];
+                try {
+                    const deepUrl = API_BASE + '?action=mxjx/deep&url=' + encodeURIComponent(m3u8Url) + '&_t=' + Date.now();
+                    const deepRes = await fetch(deepUrl);
+                    const deepText = await deepRes.text();
+                    const deepData = JSON.parse(deepText);
+                    if (deepData && deepData.ad_segments) {
+                        adSegments = deepData.ad_segments;
+                    }
+                } catch (e) {}
+
+                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 4/4：加载播放器...</div>';
 
                 containerEl.style.display = 'block';
-                orPlayInitHls(playUrl, statusEl);
+                orPlayInitHls(playUrl, statusEl, adSegments);
             } catch (e) {
                 statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 请求失败：' + escapeHtml(e.message) + '</div>';
             }
         }
 
-        function orPlayInitHls(url, statusEl) {
+        let orPlayAdSegments = [];
+        let orPlayAdSkipTimer = null;
+        let orPlayLastSkippedIndex = -1;
+
+        function orPlayInitHls(url, statusEl, adSegments) {
             const video = document.getElementById('orPlayVideo');
+            orPlayAdSegments = adSegments || [];
+            orPlayLastSkippedIndex = -1;
+
+            if (orPlayAdSkipTimer) {
+                clearInterval(orPlayAdSkipTimer);
+                orPlayAdSkipTimer = null;
+            }
+
             if (orPlayHls) {
                 try { orPlayHls.destroy(); } catch(e) {}
                 orPlayHls = null;
             }
             video.removeAttribute('src');
             video.load();
+
+            function checkAndSkipAds() {
+                if (!orPlayAdSegments || orPlayAdSegments.length === 0) return;
+                const currentTime = video.currentTime;
+                for (let i = 0; i < orPlayAdSegments.length; i++) {
+                    const seg = orPlayAdSegments[i];
+                    if (currentTime >= seg.start && currentTime < seg.end) {
+                        if (i !== orPlayLastSkippedIndex) {
+                            orPlayLastSkippedIndex = i;
+                            video.currentTime = seg.end;
+                            if (statusEl) {
+                                statusEl.innerHTML = '<div style="background:#e6a23c;padding:12px;border-radius:8px;border:1px solid #faecd8;color:#fff;font-size:13px">⏭ 已自动跳过广告片段（第 ' + (i + 1) + ' 段，' + (seg.duration || 0).toFixed(1) + '秒）</div>';
+                                setTimeout(function() {
+                                    if (statusEl) {
+                                        statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 正在播放（已去广告）</div>';
+                                    }
+                                }, 2000);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
 
             if (Hls.isSupported()) {
                 const hlsConfig = {
@@ -9308,11 +9358,14 @@ header('Expires: 0');
                 video.addEventListener('waiting', function() {
                     statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 缓冲中...</div>';
                 });
+
+                orPlayAdSkipTimer = setInterval(checkAndSkipAds, 500);
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = url;
                 video.addEventListener('loadedmetadata', function() {
                     statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 正在播放（已去广告）</div>';
                     video.play().catch(function() {});
+                    orPlayAdSkipTimer = setInterval(checkAndSkipAds, 500);
                 });
             } else {
                 statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 当前浏览器不支持 HLS 播放</div>';

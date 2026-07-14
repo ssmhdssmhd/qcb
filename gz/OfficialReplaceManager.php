@@ -344,7 +344,7 @@ class OfficialReplaceManager {
             $relativePath = '';
         }
         $selfUrl = $scheme . '://' . $host . $relativePath;
-        return $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+        return $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
     }
 
     private function logResolve($url, $platform, $title, $score, $site, $m3u8Url, $success) {

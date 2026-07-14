@@ -370,7 +370,7 @@ function parse_internal_moxi($url, $selfUrl, $officialReplaceMgr = null, $siteMa
         $result = $officialReplaceMgr->resolve($url);
         if ($result['success']) {
             $m3u8Url = $result['m3u8_url'] ?? '';
-            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+            $playUrl = $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
             $juMing = $result['video_title'] ?? '';
             $jiShu = $result['target_episode'] ?? ($result['episode'] ?? '');
             if (empty($jiShu)) $jiShu = '正片';
@@ -3516,7 +3516,7 @@ try {
                     $basePath = dirname($requestUri);
                     $basePath = $basePath === '/' ? '' : $basePath;
                     $selfUrl = $scheme . '://' . $host . $basePath;
-                    $adSkipUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                    $adSkipUrl = $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
                 }
                 
                 sendJsonResponse([

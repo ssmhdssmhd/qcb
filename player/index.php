@@ -822,12 +822,13 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
                     
                     let playUrl = '';
                     let rawUrl = '';
-                    if (data.m3u8_url) {
-                        playUrl = data.m3u8_url;
-                        rawUrl = data.m3u8_url;
-                    } else if (data.ad_skip_url) {
+                    if (data.ad_skip_url) {
                         playUrl = data.ad_skip_url;
                         rawUrl = data.ad_skip_url;
+                    } else if (data.m3u8_url) {
+                        const apiBase = officialReplaceUrl.substring(0, officialReplaceUrl.indexOf('?action='));
+                        playUrl = apiBase + '?action=mxjx&deep=1&url=' + encodeURIComponent(data.m3u8_url);
+                        rawUrl = data.m3u8_url;
                     } else {
                         throw new Error('未获取到播放地址');
                     }

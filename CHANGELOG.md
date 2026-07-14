@@ -5,6 +5,31 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [4.1.0] - 2026-07-15
+
+### 🐛 修复：官替资源站资源广告、插播未去干净的问题
+
+**本次更新全面修复了官替（官方链接替换）资源的广告和插播未去干净的问题，确保从接口返回、前端播放到备用地址的全链路都启用深度去广告。**
+
+**1. 修复数据库版官替管理器未启用深度去广告** ([DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- 🔧 **问题**：`buildAdSkipUrl()` 方法生成的去广告 URL 缺少 `deep=1` 参数，导致未启用 TS 片段 MD5 内容分析
+- 🔧 **修复**：在生成的 URL 中添加 `deep=1` 参数，启用三重去广告（标签过滤 + 规则引擎 + TS 内容分析）
+
+**2. 修复播放器页面播放地址优先级错误** ([player/index.php](file:///workspace/player/index.php))
+- 🔧 **问题**：官替解析成功后，优先使用原始 `m3u8_url`（带广告）而非 `ad_skip_url`（去广告地址）
+- 🔧 **修复**：调整优先级，优先使用 `ad_skip_url`；如果没有则自动构建带 `deep=1` 的去广告地址
+
+**3. 修复沫兮解析接口官替资源未启用深度去广告** ([mx.php](file:///workspace/mx.php))
+- 🔧 **问题**：`parse_internal_moxi()` 函数中，官替解析成功后生成的播放地址缺少 `deep=1` 参数
+- 🔧 **修复**：为官替资源的播放地址添加 `deep=1` 参数，启用深度去广告模式
+
+**4. 已有修复（本次确认有效）：**
+- ✅ `gz/OfficialReplaceManager.php` 中 `buildAdSkipUrl()` 已添加 `deep=1`
+- ✅ `mx.php` 中 `official_replace/info` 接口自动生成的 `ad_skip_url` 已添加 `deep=1`
+- ✅ `mxadmin.php` 中官替在线播放优先使用 `ad_skip_url`，备用地址带 `deep=1`
+- ✅ `mxadmin.php` 中官替播放已添加前端广告时间段自动跳过功能
+- ✅ `player/index.php` 中已有前端广告时间段自动跳过功能
+
 ## [4.0.0] - 2026-07-14
 
 ### 🚀 V2 统一接口大版本：一个接口搞定所有功能
