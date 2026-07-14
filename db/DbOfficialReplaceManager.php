@@ -407,7 +407,7 @@ class DbOfficialReplaceManager {
                 'season_match' => $bestMatch['season_match'],
                 'site' => $bestMatch['site'],
                 'video' => $bestMatch['video'],
-                'm3u8_url' => $adSkipUrl ?: $targetEpisodeUrl,
+                'm3u8_url' => $targetEpisodeUrl,
                 'ad_skip_url' => $adSkipUrl,
                 'target_episode' => $targetEpisodeName,
                 'all_urls' => $allUrls,
