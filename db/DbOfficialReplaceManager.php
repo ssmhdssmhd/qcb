@@ -259,6 +259,8 @@ class DbOfficialReplaceManager {
                 $videoTitle = $videoInfo['title'];
             } elseif ($videoId) {
                 $videoTitle = $videoId;
+            } elseif (!empty($coverId)) {
+                $videoTitle = $coverId;
             } else {
                 return ['success' => false, 'message' => '无法获取视频信息', 'platform' => $platform['name']];
             }
@@ -779,12 +781,16 @@ class DbOfficialReplaceManager {
             if (preg_match('/cover\/([a-zA-Z0-9]+)\/([a-zA-Z0-9]+)/i', $url, $matches)) {
                 $coverId = $matches[1];
                 $videoId = $matches[2];
+            } elseif (preg_match('/cover\/([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $coverId = $matches[1];
+                $videoId = null;
             } elseif (preg_match('/\/([a-zA-Z0-9]+)\.html?$/i', $url, $matches)) {
                 $videoId = $matches[1];
             } elseif (preg_match('/vid=([a-zA-Z0-9]+)/i', $url, $matches)) {
                 $videoId = $matches[1];
-            } elseif (preg_match('/cover\/([a-zA-Z0-9]+)/i', $url, $matches)) {
-                $coverId = $matches[1];
+            } elseif (preg_match('/play\/([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/x\/page\/([a-zA-Z0-9]+)/i', $url, $matches)) {
                 $videoId = $matches[1];
             }
         } elseif ($domain === 'iqiyi.com') {
@@ -960,14 +966,19 @@ class DbOfficialReplaceManager {
     }
 
     private function fetchVideoInfoFromApi($videoId, $platform, $coverId = '', $originalUrl = '') {
-        if (empty($videoId)) {
+        if (empty($videoId) && empty($coverId)) {
             return null;
         }
 
         $platformName = $platform['name'] ?? '';
         $result = ['title' => null, 'cover' => null];
+        $isCoverOnly = empty($videoId) && !empty($coverId);
 
         if ($platformName === '腾讯视频') {
+            if ($isCoverOnly) {
+                return $this->fetchTencentCoverInfo($coverId, $originalUrl);
+            }
+
             $apiUrls = [
                 'https://node.video.qq.com/x/api/float_vinfo2?vid=' . urlencode($videoId),
                 'https://pbaccess.video.qq.com/trpc.vidplay.vidplay_2_0_fcgi.VidPlay2_0Fcgi/GetCmsVidInfoAll?data={"vid":"' . urlencode($videoId) . '","appVer":"3.5.57","platform":"40000"}',
@@ -1619,6 +1630,75 @@ class DbOfficialReplaceManager {
         });
 
         return $result;
+    }
+
+    private function fetchTencentCoverInfo($coverId, $originalUrl = '') {
+        $result = ['title' => null, 'cover' => null];
+
+        if (empty($coverId)) {
+            return $result;
+        }
+
+        $coverUrl = !empty($originalUrl) ? $originalUrl : 'https://v.qq.com/x/cover/' . $coverId . '.html';
+
+        try {
+            $html = $this->httpGet($coverUrl, 10, 1);
+            if ($html) {
+                $htmlTitle = $this->extractTitle($html, ['name' => '腾讯视频', 'domain' => 'v.qq.com']);
+                if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && $htmlTitle !== '腾讯视频') {
+                    $result['title'] = $htmlTitle;
+                }
+                $htmlCover = $this->extractCover($html);
+                if (!empty($htmlCover)) {
+                    $result['cover'] = $htmlCover;
+                }
+
+                if (empty($result['title'])) {
+                    $altTitle = $this->extractTencentTitleFromHtml($html);
+                    if (!empty($altTitle) && mb_strlen($altTitle) >= 3) {
+                        $result['title'] = $altTitle;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+
+        return $result;
+    }
+
+    private function extractTencentTitleFromHtml($html) {
+        $patterns = [
+            '/<a[^>]+class="crumb[^"]*"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i',
+            '/<div[^>]+class="[^"]*album[^"]*title[^"]*"[^>]*>([^<]+)<\/div>/i',
+            '/<div[^>]+class="[^"]*cover[^"]*name[^"]*"[^>]*>([^<]+)<\/div>/i',
+            '/<div[^>]+class="[^"]*video[^"]*name[^"]*"[^>]*>([^<]+)<\/div>/i',
+            '/"title"\s*:\s*"([^"]+)"/i',
+            '/"tvName"\s*:\s*"([^"]+)"/i',
+            '/"video_title"\s*:\s*"([^"]+)"/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $html, $matches)) {
+                $title = trim($matches[1]);
+                if (!empty($title) && mb_strlen($title) >= 2 && $title !== '腾讯视频') {
+                    return $this->cleanTitle($title);
+                }
+            }
+        }
+
+        if (preg_match('/window\.__INJECT_HEAD_DATA__\s*=\s*(\{.*?\})\s*;/s', $html, $matches)) {
+            $data = json_decode($matches[1], true);
+            if ($data) {
+                if (isset($data['title']) && is_string($data['title'])) {
+                    $title = trim($data['title']);
+                    if (!empty($title) && mb_strlen($title) >= 2 && $title !== '腾讯视频') {
+                        return $this->cleanTitle($title);
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     private function extractEpisodeFromHtml($html, $platform) {
