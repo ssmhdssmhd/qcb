@@ -1399,6 +1399,7 @@ try {
                 $filterEngineProp->setAccessible(true);
                 $filterEngineProp->setValue($filter, $enhancedEngine);
 
+                $deepMode = ($_GET['deep'] ?? '0') === '1';
                 $result = $skipper->processWithSafeguard($url, ['filterSubtitles' => true, 'filterAdTags' => true]);
                 $safeguardTriggered = !empty($result['safeguardTriggered']);
                 $safeguardReason = $result['safeguardReason'] ?? '';
@@ -1415,6 +1416,122 @@ try {
                 }
 
                 $newM3U8Content = $result['output'];
+
+                // 深度去广告：TS片段MD5内容分析
+                $deepAdSegments = [];
+                $deepAdRemoved = 0;
+                if ($deepMode && !$safeguardTriggered && strpos($url, 'http') === 0) {
+                    try {
+                        if (!class_exists('TsMd5Analyzer')) {
+                            require_once __DIR__ . '/src/TsMd5Analyzer.php';
+                        }
+
+                        $parser = $skipper->getParser();
+                        $parsedPlaylist = $parser->parse($newM3U8Content);
+                        $keptSegments = $parsedPlaylist['segments'] ?? [];
+
+                        if (count($keptSegments) > 3) {
+                            $tsAnalyzer = new TsMd5Analyzer($domain);
+                            $tsAnalyzer->setFastMode(true);
+
+                            $tsBaseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                            if (isset($parsedUrl['port'])) {
+                                $tsBaseUrl .= ':' . $parsedUrl['port'];
+                            }
+                            $tsPathDir = dirname($parsedUrl['path'] ?? '');
+                            $tsPathDir = $tsPathDir === '.' ? '' : $tsPathDir;
+                            $tsBasePath = $tsBaseUrl . $tsPathDir;
+
+                            $tsAnalysis = $tsAnalyzer->analyzeMd5Signatures(
+                                $keptSegments,
+                                $tsBasePath,
+                                ['max_count' => 30, 'sample_mode' => 'auto']
+                            );
+
+                            $adMd5Set = [];
+                            foreach ($tsAnalysis['ad_candidates'] as $adCandidate) {
+                                if ($adCandidate['count'] >= 2) {
+                                    $adMd5Set[$adCandidate['md5']] = true;
+                                }
+                            }
+
+                            if ($useDb) {
+                                foreach ($keptSegments as $seg) {
+                                    $tsUri = $seg['uri'] ?? '';
+                                    if (empty($tsUri)) continue;
+                                    $tsUrl = $tsUri;
+                                    if (!filter_var($tsUrl, FILTER_VALIDATE_URL)) {
+                                        $tsUrl = rtrim($tsBasePath, '/') . '/' . ltrim($tsUri, '/');
+                                    }
+                                    $md5 = $tsAnalyzer->calculateTsMd5($tsUrl);
+                                    if ($md5) {
+                                        $detectResult = $tsAnalyzer->detectAdByMd5($md5, $domain);
+                                        if ($detectResult['is_ad']) {
+                                            $adMd5Set[$md5] = true;
+                                        }
+                                        if (isset($adMd5Set[$md5])) {
+                                            $deepAdSegments[] = [
+                                                'index' => $seg['originalIndex'] ?? 0,
+                                                'uri' => $tsUri,
+                                                'duration' => $seg['duration'] ?? 0,
+                                                'md5' => $md5,
+                                                'source' => isset($detectResult) && $detectResult['is_ad'] ? 'db' : 'analysis'
+                                            ];
+                                        }
+                                    }
+                                }
+                            } else {
+                                $md5Data = $tsAnalysis['md5_details'] ?? [];
+                                foreach ($md5Data as $item) {
+                                    if (isset($adMd5Set[$item['md5']])) {
+                                        $deepAdSegments[] = [
+                                            'index' => $item['index'] ?? 0,
+                                            'uri' => $item['uri'] ?? '',
+                                            'duration' => $item['duration'] ?? 0,
+                                            'md5' => $item['md5'],
+                                            'source' => 'analysis'
+                                        ];
+                                    }
+                                }
+                            }
+
+                            // 从m3u8中移除深度检测到的广告片段
+                            if (!empty($deepAdSegments)) {
+                                $adUris = [];
+                                foreach ($deepAdSegments as $adSeg) {
+                                    $adUris[$adSeg['uri']] = true;
+                                }
+
+                                $lines = explode("\n", $newM3U8Content);
+                                $newLines = [];
+                                $lineCount = count($lines);
+                                for ($li = 0; $li < $lineCount; $li++) {
+                                    $line = $lines[$li];
+                                    $trimmed = trim($line);
+                                    if (strpos($trimmed, '#EXTINF:') === 0) {
+                                        $nextLine = ($li + 1 < $lineCount) ? trim($lines[$li + 1]) : null;
+                                        if ($nextLine && isset($adUris[$nextLine])) {
+                                            $deepAdRemoved++;
+                                            continue;
+                                        }
+                                    }
+                                    if (isset($adUris[$trimmed])) {
+                                        continue;
+                                    }
+                                    $newLines[] = $line;
+                                }
+                                $newM3U8Content = implode("\n", $newLines);
+
+                                if ($useDb && !empty($deepAdSegments)) {
+                                    $tsAnalyzer->saveMd5Signatures($domain, array_map(function($s) {
+                                        return ['md5' => $s['md5'], 'count' => 1, 'avg_duration' => $s['duration']];
+                                    }, $deepAdSegments));
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) {
+                    }
+                }
 
                 $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
 
@@ -1459,6 +1576,11 @@ try {
                     header('X-Safeguard-Method: ' . $safeguardMethod);
                 } else {
                     header('X-Safeguard: not_triggered');
+                }
+                if ($deepMode) {
+                    header('X-Deep-Ad-Mode: enabled');
+                    header('X-Deep-Ad-Removed: ' . $deepAdRemoved);
+                    header('X-Deep-Ad-Segments: ' . count($deepAdSegments));
                 }
                 ob_clean();
                 echo $newM3U8Content;
@@ -1586,6 +1708,294 @@ try {
                     ]
                 ]
             ]);
+            break;
+
+        case 'mxjx/deep':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse([
+                    'code' => 400,
+                    'success' => false,
+                    'message' => '缺少 url 参数'
+                ], 400);
+            }
+
+            @set_time_limit(60);
+            try {
+                $parsedUrl = parse_url($url);
+                $domain = $parsedUrl['host'] ?? '';
+                $mediaUrl = resolveMasterPlaylist($url);
+                if ($mediaUrl !== $url) {
+                    $parsedUrl = parse_url($mediaUrl);
+                    $domain = $parsedUrl['host'] ?? '';
+                }
+                $url = $mediaUrl;
+
+                $skipper = new M3U8AdSkipper();
+                $reflection = new ReflectionClass($skipper);
+                $ruleEngineProp = $reflection->getProperty('ruleEngine');
+                $ruleEngineProp->setAccessible(true);
+
+                $enhancedEngine = new EnhancedAdRuleEngine([
+                    'checkDiscontinuity' => true,
+                    'checkRepetitiveDuration' => true
+                ]);
+                $enhancedEngine->setDomain($domain);
+
+                if ($useDb) {
+                    $dbRules = $ruleManager->getRules($domain);
+                    if (!empty($dbRules)) {
+                        $engineReflection = new ReflectionClass($enhancedEngine);
+                        $applyMethod = $engineReflection->getMethod('applyDomainRules');
+                        $applyMethod->setAccessible(true);
+                        $applyMethod->invoke($enhancedEngine, $dbRules);
+                    }
+                    $adSignature = new DbAdSignature();
+                    $sigRules = $adSignature->getRulesForDomain($domain);
+                    if (!empty($sigRules)) {
+                        $engineReflection = new ReflectionClass($enhancedEngine);
+                        $applyMethod = $engineReflection->getMethod('applyDomainRules');
+                        $applyMethod->setAccessible(true);
+                        $applyMethod->invoke($enhancedEngine, $sigRules);
+                    }
+                }
+
+                $ruleEngineProp->setValue($skipper, $enhancedEngine);
+                $filterProp = $reflection->getProperty('filter');
+                $filterProp->setAccessible(true);
+                $filter = $filterProp->getValue($skipper);
+                $filterReflection = new ReflectionClass($filter);
+                $filterEngineProp = $filterReflection->getProperty('ruleEngine');
+                $filterEngineProp->setAccessible(true);
+                $filterEngineProp->setValue($filter, $enhancedEngine);
+
+                $result = $skipper->processWithSafeguard($url, ['filterSubtitles' => true, 'filterAdTags' => true]);
+                $safeguardTriggered = !empty($result['safeguardTriggered']);
+                $stats = $result['stats'] ?? [];
+
+                // 获取规则过滤后的广告时间段
+                $adTimeRanges = [];
+                $filteredPlaylist = $result['filtered'] ?? [];
+                $removedSegments = $filteredPlaylist['removedSegments'] ?? [];
+                $originalPlaylist = $result['original'] ?? [];
+                $allSegments = $originalPlaylist['segments'] ?? [];
+                $currentTime = 0;
+                $removedUriSet = [];
+                foreach ($removedSegments as $rm) {
+                    $removedUriSet[$rm['uri'] ?? ''] = true;
+                }
+                foreach ($allSegments as $seg) {
+                    $segDur = $seg['duration'] ?? 0;
+                    if (isset($removedUriSet[$seg['uri'] ?? ''])) {
+                        $adTimeRanges[] = [
+                            'start' => round($currentTime, 2),
+                            'end' => round($currentTime + $segDur, 2),
+                            'duration' => round($segDur, 2),
+                            'source' => 'rule'
+                        ];
+                    }
+                    $currentTime += $segDur;
+                }
+
+                // 深度TS MD5分析
+                $deepAdRemoved = 0;
+                $deepAdRanges = [];
+                $newM3U8Content = $result['output'] ?? '';
+
+                if (!$safeguardTriggered && strpos($url, 'http') === 0) {
+                    try {
+                        if (!class_exists('TsMd5Analyzer')) {
+                            require_once __DIR__ . '/src/TsMd5Analyzer.php';
+                        }
+
+                        $parser = $skipper->getParser();
+                        $parsedPlaylist = $parser->parse($newM3U8Content);
+                        $keptSegments = $parsedPlaylist['segments'] ?? [];
+
+                        if (count($keptSegments) > 3) {
+                            $tsAnalyzer = new TsMd5Analyzer($domain);
+                            $tsAnalyzer->setFastMode(true);
+
+                            $tsBaseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                            if (isset($parsedUrl['port'])) {
+                                $tsBaseUrl .= ':' . $parsedUrl['port'];
+                            }
+                            $tsPathDir = dirname($parsedUrl['path'] ?? '');
+                            $tsPathDir = $tsPathDir === '.' ? '' : $tsPathDir;
+                            $tsBasePath = $tsBaseUrl . $tsPathDir;
+
+                            $tsAnalysis = $tsAnalyzer->analyzeMd5Signatures(
+                                $keptSegments,
+                                $tsBasePath,
+                                ['max_count' => 30, 'sample_mode' => 'auto']
+                            );
+
+                            $adMd5Set = [];
+                            foreach ($tsAnalysis['ad_candidates'] as $adCandidate) {
+                                if ($adCandidate['count'] >= 2) {
+                                    $adMd5Set[$adCandidate['md5']] = true;
+                                }
+                            }
+
+                            // 计算深度检测到的广告时间段
+                            $deepAdUris = [];
+                            $currentTime = 0;
+                            foreach ($keptSegments as $seg) {
+                                $tsUri = $seg['uri'] ?? '';
+                                $segDur = $seg['duration'] ?? 0;
+
+                                $isDeepAd = false;
+                                if ($useDb) {
+                                    $tsUrl = $tsUri;
+                                    if (!filter_var($tsUrl, FILTER_VALIDATE_URL)) {
+                                        $tsUrl = rtrim($tsBasePath, '/') . '/' . ltrim($tsUri, '/');
+                                    }
+                                    $md5 = $tsAnalyzer->calculateTsMd5($tsUrl);
+                                    if ($md5) {
+                                        $detectResult = $tsAnalyzer->detectAdByMd5($md5, $domain);
+                                        if ($detectResult['is_ad']) {
+                                            $isDeepAd = true;
+                                            $adMd5Set[$md5] = true;
+                                        }
+                                    }
+                                } else {
+                                    foreach ($tsAnalysis['md5_details'] ?? [] as $item) {
+                                        if ($item['uri'] === $tsUri && isset($adMd5Set[$item['md5']])) {
+                                            $isDeepAd = true;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if ($isDeepAd) {
+                                    $deepAdUris[$tsUri] = true;
+                                    $deepAdRanges[] = [
+                                        'start' => round($currentTime, 2),
+                                        'end' => round($currentTime + $segDur, 2),
+                                        'duration' => round($segDur, 2),
+                                        'source' => 'ts_md5'
+                                    ];
+                                }
+                                $currentTime += $segDur;
+                            }
+
+                            // 从m3u8中移除深度检测到的广告片段
+                            if (!empty($deepAdUris)) {
+                                $lines = explode("\n", $newM3U8Content);
+                                $newLines = [];
+                                $lineCount = count($lines);
+                                for ($li = 0; $li < $lineCount; $li++) {
+                                    $line = $lines[$li];
+                                    $trimmed = trim($line);
+                                    if (strpos($trimmed, '#EXTINF:') === 0) {
+                                        $nextLine = ($li + 1 < $lineCount) ? trim($lines[$li + 1]) : null;
+                                        if ($nextLine && isset($deepAdUris[$nextLine])) {
+                                            $deepAdRemoved++;
+                                            continue;
+                                        }
+                                    }
+                                    if (isset($deepAdUris[$trimmed])) {
+                                        continue;
+                                    }
+                                    $newLines[] = $line;
+                                }
+                                $newM3U8Content = implode("\n", $newLines);
+
+                                if ($useDb && !empty($deepAdUris)) {
+                                    $tsAnalyzer->saveMd5Signatures($domain, array_map(function($s) use ($deepAdRanges) {
+                                        return ['md5' => '', 'count' => 1, 'avg_duration' => $s['duration'] ?? 0];
+                                    }, $deepAdRanges));
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) {
+                    }
+                }
+
+                // URL重写
+                $isRemote = strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
+                if ($isRemote) {
+                    $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+                    if (isset($parsedUrl['port'])) {
+                        $baseUrl .= ':' . $parsedUrl['port'];
+                    }
+                    $pathDir = dirname($parsedUrl['path'] ?? '');
+                    $pathDir = $pathDir === '.' ? '' : $pathDir;
+                    $lines = explode("\n", $newM3U8Content);
+                    $newLines = [];
+                    foreach ($lines as $line) {
+                        if (!empty(trim($line)) &&
+                            strpos($line, '#') !== 0 &&
+                            strpos($line, 'http://') !== 0 &&
+                            strpos($line, 'https://') !== 0) {
+                            if ($pathDir === '' || $pathDir === '/') {
+                                $line = $baseUrl . '/' . ltrim($line, '/');
+                            } else {
+                                $line = $baseUrl . $pathDir . '/' . ltrim($line, '/');
+                            }
+                        }
+                        $newLines[] = $line;
+                    }
+                    $newM3U8Content = implode("\n", $newLines);
+                }
+
+                // 合并所有广告时间段
+                $allAdRanges = array_merge($adTimeRanges, $deepAdRanges);
+                // 按start排序并合并相邻时间段
+                usort($allAdRanges, function($a, $b) { return $a['start'] <=> $b['start']; });
+                $mergedRanges = [];
+                foreach ($allAdRanges as $range) {
+                    if (!empty($mergedRanges) && $range['start'] <= $mergedRanges[count($mergedRanges)-1]['end'] + 0.5) {
+                        $mergedRanges[count($mergedRanges)-1]['end'] = max($mergedRanges[count($mergedRanges)-1]['end'], $range['end']);
+                        $mergedRanges[count($mergedRanges)-1]['duration'] = round($mergedRanges[count($mergedRanges)-1]['end'] - $mergedRanges[count($mergedRanges)-1]['start'], 2);
+                    } else {
+                        $mergedRanges[] = $range;
+                    }
+                }
+
+                $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? '';
+                $selfPath = dirname(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '');
+                $selfPath = $selfPath === '.' ? '' : $selfPath;
+                $selfBase = $protocol . '://' . $host . $selfPath;
+                $deepPlayUrl = $selfBase . '/mx.php?action=mxjx&deep=1&url=' . urlencode($mediaUrl);
+
+                sendJsonResponse([
+                    'code' => 200,
+                    'success' => true,
+                    'message' => '深度去广告分析完成',
+                    'data' => [
+                        'original_url' => $_GET['url'] ?? '',
+                        'media_url' => $mediaUrl,
+                        'domain' => $domain,
+                        'm3u8_content' => $newM3U8Content,
+                        'deep_play_url' => $deepPlayUrl,
+                        'safeguard_triggered' => $safeguardTriggered,
+                        'safeguard_reason' => $result['safeguardReason'] ?? '',
+                        'stats' => [
+                            'total_segments' => $stats['totalSegments'] ?? 0,
+                            'kept_segments' => $stats['keptSegments'] ?? 0,
+                            'removed_segments' => $stats['removedSegments'] ?? 0,
+                            'deep_ad_removed' => $deepAdRemoved,
+                            'original_duration' => $stats['originalDuration'] ?? 0,
+                            'filtered_duration' => $stats['filteredDuration'] ?? 0,
+                            'saved_duration' => $stats['savedDuration'] ?? 0,
+                            'ad_percentage' => $stats['adPercentage'] ?? 0
+                        ],
+                        'ad_time_ranges' => $mergedRanges,
+                        'ad_ranges_count' => count($mergedRanges),
+                        'deep_ad_ranges' => $deepAdRanges,
+                        'rule_ad_ranges' => $adTimeRanges
+                    ]
+                ]);
+            } catch (Exception $e) {
+                sendJsonResponse([
+                    'code' => 500,
+                    'success' => false,
+                    'message' => '深度去广告分析失败',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
             break;
 
         case 'xiami_jx':
@@ -4721,6 +5131,7 @@ try {
                     'moxi/api' => '沫兮API接口(别名)',
                     'skip' => '去广告接口',
                     'mxjx' => '去广告m3u8输出',
+                    'mxjx/deep' => '深度去广告分析（TS MD5+标签+规则三重过滤）',
                     'parse/list' => '统一解析接口列表',
                     'parse' => '统一解析视频（智能解析）',
                     'parse/info' => '统一解析详情',

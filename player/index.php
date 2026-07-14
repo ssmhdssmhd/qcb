@@ -696,6 +696,7 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
         }
 
         function destroyPlayer() {
+            stopAdSkipCheck();
             if (hls) {
                 try { hls.destroy(); } catch(e) {}
                 hls = null;
@@ -789,6 +790,8 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
         let currentPlayUrl = '';
         let currentRawUrl = '';
         let useAdSkip = true;
+        let adTimeRanges = [];
+        let adSkipCheckInterval = null;
         
         async function handleOfficialUrl() {
             if (!isOfficialUrl) {
@@ -860,6 +863,10 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
         
         function toggleAdSkip() {
             useAdSkip = !useAdSkip;
+            if (!useAdSkip) {
+                adTimeRanges = [];
+                stopAdSkipCheck();
+            }
             const btn = document.getElementById('toggleAdBtn');
             if (useAdSkip) {
                 btn.innerHTML = '<span>📺</span> 去广告播放';
@@ -894,6 +901,12 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
                 hls.destroy();
             }
             clearLoadTimeout();
+            stopAdSkipCheck();
+
+            // 如果使用去广告URL，异步获取广告时间段用于二次跳过
+            if (useAdSkip && url && url.indexOf('mxjx') !== -1) {
+                fetchAdTimeRanges(url);
+            }
             
             if (Hls.isSupported()) {
                 hls = new Hls(hlsConfig);
@@ -910,6 +923,7 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
                 hls.on(Hls.Events.MANIFEST_PARSED, function () {
                     console.log('HLS 加载完成');
                     clearLoadTimeout();
+                    startAdSkipCheck(video);
                 });
                 hls.on(Hls.Events.ERROR, function (event, data) {
                     console.error('HLS 错误:', data);
@@ -951,6 +965,55 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
             }
         }
         
+        function fetchAdTimeRanges(mxjxUrl) {
+            adTimeRanges = [];
+            try {
+                const deepUrl = mxjxUrl.replace('action=mxjx', 'action=mxjx/deep');
+                fetch(deepUrl, { method: 'GET' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.data && data.data.ad_time_ranges) {
+                            adTimeRanges = data.data.ad_time_ranges;
+                            if (adTimeRanges.length > 0) {
+                                console.log('获取到广告时间段:', adTimeRanges.length, '个');
+                                showToast('深度去广告：检测到' + adTimeRanges.length + '段广告/插播，将自动跳过', 'success');
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('获取广告时间段失败:', err);
+                    });
+            } catch(e) {
+                console.warn('获取广告时间段异常:', e);
+            }
+        }
+
+        function startAdSkipCheck(video) {
+            stopAdSkipCheck();
+            if (!adTimeRanges || adTimeRanges.length === 0) return;
+
+            adSkipCheckInterval = setInterval(function() {
+                if (!video || video.paused || video.ended) return;
+                var currentTime = video.currentTime;
+                for (var i = 0; i < adTimeRanges.length; i++) {
+                    var range = adTimeRanges[i];
+                    if (currentTime >= range.start && currentTime < range.end) {
+                        console.log('跳过广告时间段:', range.start, '-', range.end, '当前:', currentTime);
+                        video.currentTime = range.end + 0.1;
+                        showToast('已跳过广告/插播片段', 'info');
+                        break;
+                    }
+                }
+            }, 500);
+        }
+
+        function stopAdSkipCheck() {
+            if (adSkipCheckInterval) {
+                clearInterval(adSkipCheckInterval);
+                adSkipCheckInterval = null;
+            }
+        }
+
         function updatePlayStatus(type, message) {
             const statusEl = document.getElementById('status');
             if (!statusEl) return;
