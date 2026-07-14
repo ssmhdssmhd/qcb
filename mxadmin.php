@@ -765,36 +765,232 @@ header('Expires: 0');
         .copy-btn {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
             background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 4px;
+            border-radius: 10px;
             color: white;
-            font-size: 11px;
+            font-size: 12px;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             margin-left: 8px;
+            white-space: nowrap;
         }
         .copy-btn:hover {
             background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .copy-btn:active {
-            transform: scale(0.95);
+            transform: translateY(0) scale(0.98);
         }
         .access-item {
             display: flex;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 4px;
+            flex-wrap: nowrap;
+            gap: 8px;
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            padding: 10px 14px;
+            min-width: 0;
         }
         .access-item code {
             cursor: pointer;
             user-select: all;
             word-break: break-all;
+            font-size: 12px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            flex: 1;
+            min-width: 0;
+            line-height: 1.5;
         }
         .access-item code:hover {
-            text-decoration: underline;
+            opacity: 0.9;
+        }
+        
+        .api-preview-section {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .api-preview-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        
+        .api-preview-section::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            left: 5%;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        
+        .api-preview-bottom {
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 24px;
+            background: var(--v3-bg-page);
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 24'%3E%3Cpath fill='white' d='M0,24 L0,12 C100,20 200,24 300,24 C400,24 500,20 600,12 C700,4 800,0 900,0 C1000,0 1100,4 1200,12 L1200,24 Z'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 24'%3E%3Cpath fill='white' d='M0,24 L0,12 C100,20 200,24 300,24 C400,24 500,20 600,12 C700,4 800,0 900,0 C1000,0 1100,4 1200,12 L1200,24 Z'/%3E%3C/svg%3E");
+            -webkit-mask-size: 100% 100%;
+            mask-size: 100% 100%;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            z-index: 2;
+        }
+        
+        .api-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        
+        .api-card-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .api-card-label {
+            font-size: 11px;
+            opacity: 0.75;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .api-card-name {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        
+        .api-type-select {
+            background: rgba(255,255,255,0.18) !important;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: white !important;
+            border: 1px solid rgba(255,255,255,0.28) !important;
+            border-radius: 10px !important;
+            padding: 10px 14px !important;
+            font-size: 13px !important;
+            font-weight: 500;
+            cursor: pointer;
+            flex-shrink: 0;
+            min-width: 180px;
+            transition: all 0.3s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 8L1 3h10z'/%3E%3C/svg%3E") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 12px center !important;
+            padding-right: 36px !important;
+        }
+        
+        .api-type-select:hover {
+            background: rgba(255,255,255,0.25) !important;
+            border-color: rgba(255,255,255,0.4) !important;
+        }
+        
+        .api-type-select:focus {
+            outline: none;
+            border-color: rgba(255,255,255,0.5) !important;
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
+        }
+        
+        .api-type-select option {
+            color: #333;
+            background: white;
+        }
+        
+        .api-url-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+        
+        .api-hint {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+            font-size: 11px;
+            opacity: 0.7;
+        }
+        
+        .api-hint-dot {
+            width: 4px;
+            height: 4px;
+            background: currentColor;
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+        
+        .admin-preview-card {
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 14px;
+            padding: 16px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .admin-preview-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        
+        .admin-preview-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        
+        .admin-preview-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        
+        .admin-preview-subtitle {
+            font-size: 11px;
+            opacity: 0.7;
         }
         .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 10px 0; }
         .bar {
@@ -1812,6 +2008,31 @@ header('Expires: 0');
                 padding: 16px;
                 border-radius: var(--v3-radius-md);
             }
+            
+            #accessPreview {
+                padding: 16px 20px !important;
+            }
+            
+            #accessPreview > div {
+                grid-template-columns: 1fr !important;
+                gap: 16px !important;
+            }
+            
+            .api-url-row {
+                flex-direction: column;
+            }
+            
+            .api-type-select {
+                min-width: 100% !important;
+            }
+            
+            .api-card-name {
+                font-size: 13px;
+            }
+            
+            .admin-preview-card {
+                padding: 14px;
+            }
         }
 
         @media (max-width: 480px) {
@@ -1877,12 +2098,18 @@ header('Expires: 0');
                 </div>
             </div>
 
-    <div id="accessPreview" style="background:var(--primary-gradient);color:white;padding:20px 30px;font-size:13px">
-        <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end">
-            <div style="flex:2;min-width:300px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">🚀 V2 统一接口（支持所有类型，type参数切换）</div>
-                <div style="display:flex;gap:8px;align-items:center">
-                    <select id="v2TypeSelect" onchange="updateV2ApiUrl()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;flex-shrink:0">
+    <div id="accessPreview" class="api-preview-section" style="background:var(--primary-gradient);color:white;padding:24px 32px;font-size:13px;position:relative">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:stretch;position:relative;z-index:1">
+            <div style="display:flex;flex-direction:column;gap:14px">
+                <div class="api-card-title">
+                    <div class="api-card-icon">🚀</div>
+                    <div>
+                        <div class="api-card-label">V2 统一接口</div>
+                        <div class="api-card-name">支持所有类型，通过 type 参数切换</div>
+                    </div>
+                </div>
+                <div class="api-url-row">
+                    <select id="v2TypeSelect" onchange="updateV2ApiUrl()" class="api-type-select">
                         <option value="parse" style="color:#333">parse - 统一解析</option>
                         <option value="info" style="color:#333">info - 解析详情</option>
                         <option value="mxjx" style="color:#333">mxjx - 去广告M3U8</option>
@@ -1894,19 +2121,29 @@ header('Expires: 0');
                     </select>
                     <div class="access-item" style="flex:1">
                         <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制"></code>
-                        <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">复制</button>
+                        <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">📋 复制</button>
                     </div>
                 </div>
-                <div style="opacity:0.7;font-size:11px;margin-top:6px">提示：修改下方类型后，URL会自动更新。也可直接在URL中通过 ?type=xxx 指定类型</div>
+                <div class="api-hint">
+                    <span class="api-hint-dot"></span>
+                    <span>修改下拉类型后，URL 会自动更新。也可直接在 URL 中通过 <code style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:4px;font-size:10px">?type=xxx</code> 指定类型</span>
+                </div>
             </div>
-            <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">后台管理</div>
+            <div class="admin-preview-card">
+                <div class="admin-preview-header">
+                    <div class="admin-preview-icon">⚙️</div>
+                    <div>
+                        <div class="admin-preview-title">后台管理</div>
+                        <div class="admin-preview-subtitle">管理入口</div>
+                    </div>
+                </div>
                 <div class="access-item">
-                    <code id="preview-admin" onclick="copyText(this.textContent)" title="点击复制"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-admin').textContent)">复制</button>
+                    <code id="preview-admin" onclick="copyText(this.textContent)" title="点击复制" style="font-size:11px"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-admin').textContent)">📋 复制</button>
                 </div>
             </div>
         </div>
+        <div class="api-preview-bottom"></div>
     </div>
 
     <div class="container">
