@@ -4388,6 +4388,68 @@ try {
             }
             break;
 
+        case 'ai/subtitle_detect':
+            $url = $_GET['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+                break;
+            }
+            $sampleCount = isset($_GET['samples']) ? intval($_GET['samples']) : 10;
+            $scanWidth = isset($_GET['width']) ? intval($_GET['width']) : 640;
+            $detectionMode = $_GET['mode'] ?? 'fast';
+            
+            $startTime = microtime(true);
+            try {
+                require_once __DIR__ . '/src/M3U8Parser.php';
+                require_once __DIR__ . '/src/SubtitleAdDetector.php';
+                
+                $parser = new M3U8Parser();
+                $playlist = $parser->parse($url);
+                $segments = $playlist['segments'] ?? [];
+                
+                if (empty($segments)) {
+                    sendJsonResponse(['success' => false, 'message' => '未解析到视频片段']);
+                    break;
+                }
+                
+                $detector = new SubtitleAdDetector();
+                $detector->setMode($detectionMode);
+                $detector->setSampleCount($sampleCount);
+                $detector->setScanWidth($scanWidth);
+                
+                $result = $detector->analyze($segments, $url);
+                
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '滚动字幕分析完成',
+                    'data' => [
+                        'original_url' => $url,
+                        'process_time' => $processTime . 'ms',
+                        'detection_mode' => $detectionMode,
+                        'sample_count' => $sampleCount,
+                        'total_segments' => count($segments),
+                        'has_subtitle_ad' => $result['has_subtitle_ad'] ?? false,
+                        'subtitle_positions' => $result['positions'] ?? [],
+                        'scrolling_detected' => $result['scrolling_detected'] ?? false,
+                        'scroll_speed' => $result['scroll_speed'] ?? 0,
+                        'scroll_direction' => $result['scroll_direction'] ?? 'unknown',
+                        'ad_text_samples' => $result['ad_text_samples'] ?? [],
+                        'ad_regions' => $result['ad_regions'] ?? [],
+                        'confidence' => $result['confidence'] ?? 0,
+                        'sampled_segments' => $result['sampled_segments'] ?? [],
+                        'total_duration' => $result['total_duration'] ?? 0
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '分析失败: ' . $e->getMessage()
+                ], 500);
+            }
+            break;
+
         case 'ai/md5_analyze':
             $url = $_GET['url'] ?? '';
             if (empty($url)) {
@@ -4622,6 +4684,7 @@ try {
                 'available_actions' => [
                     'ai/skip' => 'AI自动去广告',
                     'ai/insert_detect' => 'AI插播识别检测',
+                    'ai/subtitle_detect' => 'AI滚动字幕分析',
                     'ai/watermark' => 'AI水印处理',
                     'ai/md5_analyze' => 'AI-MD5特征码分析',
                     'ai/md5_signatures' => 'AI-MD5特征码列表',

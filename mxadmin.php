@@ -3198,6 +3198,102 @@ header('Expires: 0');
             </div>
         </div>
 
+        <div class="page" id="page-ai_subtitle">
+            <div class="card">
+                <div class="card-title">📝 AI 滚动字幕分析</div>
+                <div style="background:linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);color:#333;padding:20px;border-radius:12px;margin-bottom:20px">
+                    <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能滚动字幕广告检测</div>
+                    <div style="font-size:13px;opacity:0.85">快速分析视频中的滚动字幕广告，识别顶部/底部滚动文字、插播字幕等非正片内容，支持多模式检测和置信度评估</div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="aiSubtitleUrl" placeholder="输入视频链接或 M3U8 地址，分析滚动字幕广告">
+                    <button class="btn btn-primary" onclick="aiSubtitleAnalyze()">⚡ 快速分析</button>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <span style="font-size:13px;color:#606266">检测模式:</span>
+                    </label>
+                    <select id="aiSubtitleMode" style="padding:6px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:13px;background:white">
+                        <option value="fast">快速模式（采样10段）</option>
+                        <option value="deep">深度模式（采样20段）</option>
+                    </select>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <span style="font-size:13px;color:#606266">采样数:</span>
+                    </label>
+                    <select id="aiSubtitleSamples" style="padding:6px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:13px;background:white">
+                        <option value="5">5 段</option>
+                        <option value="10" selected>10 段</option>
+                        <option value="20">20 段</option>
+                        <option value="30">30 段</option>
+                    </select>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                    <span style="color:#909399;font-size:12px">示例：</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('aiSubtitleUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';aiSubtitleAnalyze()" style="color:#409eff;text-decoration:none;font-size:12px">腾讯视频</a>
+                    <span style="color:#ddd;font-size:12px">|</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('aiSubtitleUrl').value='https://www.iqiyi.com/v_1f0q2q3q3q8.html';aiSubtitleAnalyze()" style="color:#409eff;text-decoration:none;font-size:12px">爱奇艺</a>
+                </div>
+            </div>
+
+            <div id="aiSubtitleResult" style="display:none">
+                <div class="card">
+                    <div class="card-title">分析结果</div>
+                    <div id="aiSubtitleStatus"></div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:16px">
+                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">是否有字幕广告</div>
+                            <div id="aiSubtitleHasAd" style="font-size:18px;font-weight:600">-</div>
+                        </div>
+                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">检测模式</div>
+                            <div id="aiSubtitleModeResult" style="font-size:18px;font-weight:600">-</div>
+                        </div>
+                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">滚动检测</div>
+                            <div id="aiSubtitleScroll" style="font-size:18px;font-weight:600">-</div>
+                        </div>
+                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">置信度</div>
+                            <div id="aiSubtitleConfidence" style="font-size:18px;font-weight:600">-</div>
+                        </div>
+                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">处理耗时</div>
+                            <div id="aiSubtitleTime" style="font-size:18px;font-weight:600">-</div>
+                        </div>
+                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
+                            <div style="font-size:12px;color:#909399;margin-bottom:4px">采样片段</div>
+                            <div id="aiSubtitleSamplesResult" style="font-size:18px;font-weight:600">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" id="aiSubtitleRegionsCard" style="display:none">
+                    <div class="card-title">广告区域分布</div>
+                    <div id="aiSubtitleRegions"></div>
+                </div>
+
+                <div class="card" id="aiSubtitleAdTextsCard" style="display:none">
+                    <div class="card-title">检测到的广告文字样本</div>
+                    <div id="aiSubtitleAdTexts" style="display:flex;flex-direction:column;gap:8px"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">采样片段详情</div>
+                    <div style="font-size:13px;color:#909399;margin-bottom:12px">共 <span id="aiSubtitleSampleCount">0</span> 个采样片段</div>
+                    <div id="aiSubtitleSampleList" style="max-height:400px;overflow-y:auto"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">快捷操作</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <button class="btn btn-secondary" onclick="aiSubtitleCopyResult()">📋 复制结果</button>
+                        <button class="btn btn-primary" onclick="aiSubtitleGoSkip()">🤖 AI去广告</button>
+                        <button class="btn btn-success" onclick="aiSubtitleReAnalyze()">🔄 重新分析</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="page" id="page-ai_watermark">
             <div class="card">
                 <div class="card-title">💧 AI 水印处理</div>
@@ -3532,6 +3628,7 @@ header('Expires: 0');
                 items: [
                     { page: 'ai_skip', icon: '🤖', text: 'AI自动去广告', badge: 'HOT' },
                     { page: 'ai_insert', icon: '📺', text: 'AI插播识别' },
+                    { page: 'ai_subtitle', icon: '📝', text: 'AI滚动字幕' },
                     { page: 'ai_watermark', icon: '💧', text: 'AI水印处理' },
                 ]
             },
@@ -5262,6 +5359,155 @@ header('Expires: 0');
             { name: 'k_ft', desc: '防盗链参数' },
             { name: 'k_id', desc: '防盗链ID' },
         ];
+
+        let aiSubtitleLastData = null;
+
+        async function aiSubtitleAnalyze() {
+            const url = document.getElementById('aiSubtitleUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+
+            const mode = document.getElementById('aiSubtitleMode').value;
+            const samples = document.getElementById('aiSubtitleSamples').value;
+
+            const resultEl = document.getElementById('aiSubtitleResult');
+            const statusEl = document.getElementById('aiSubtitleStatus');
+            resultEl.style.display = 'block';
+            statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 正在分析滚动字幕广告，请稍候...</div>';
+
+            try {
+                const apiUrl = API_BASE + '?action=ai/subtitle_detect&url=' + encodeURIComponent(url)
+                    + '&mode=' + mode + '&samples=' + samples + '&_t=' + Date.now();
+                const res = await fetch(apiUrl);
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应: ' + text.substring(0, 200));
+                }
+
+                if (!data.success) {
+                    statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 分析失败: ' + escapeHtml(data.message || '') + '</div>';
+                    return;
+                }
+
+                aiSubtitleLastData = data.data;
+                aiSubtitleRenderResult(data.data);
+            } catch (e) {
+                statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 请求失败: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function aiSubtitleRenderResult(d) {
+            const statusEl = document.getElementById('aiSubtitleStatus');
+            const hasAd = d.has_subtitle_ad;
+
+            if (hasAd) {
+                statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">⚠ 检测到滚动字幕广告（置信度 ' + d.confidence + '%）</div>';
+            } else {
+                statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 未检测到滚动字幕广告</div>';
+            }
+
+            document.getElementById('aiSubtitleHasAd').innerHTML = hasAd
+                ? '<span style="color:#f56c6c">检测到广告</span>'
+                : '<span style="color:#67c23a">未检测到</span>';
+            document.getElementById('aiSubtitleModeResult').textContent = d.detection_mode === 'fast' ? '快速模式' : '深度模式';
+            document.getElementById('aiSubtitleScroll').innerHTML = d.scrolling_detected
+                ? '<span style="color:#e6a23c">滚动中</span>'
+                : '<span style="color:#67c23a">无滚动</span>';
+            document.getElementById('aiSubtitleConfidence').textContent = d.confidence + '%';
+            document.getElementById('aiSubtitleTime').textContent = d.process_time;
+            document.getElementById('aiSubtitleSamplesResult').textContent = d.sample_count + ' / ' + d.total_segments;
+
+            const regionsCard = document.getElementById('aiSubtitleRegionsCard');
+            const regionsEl = document.getElementById('aiSubtitleRegions');
+            if (d.ad_regions && Object.keys(d.ad_regions).length > 0) {
+                regionsCard.style.display = 'block';
+                const regionNames = {
+                    'top': '顶部区域',
+                    'bottom': '底部区域',
+                    'top_scroll': '顶部滚动',
+                    'bottom_scroll': '底部滚动'
+                };
+                let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">';
+                let total = 0;
+                Object.values(d.ad_regions).forEach(function(v) { total += v; });
+                Object.keys(d.ad_regions).forEach(function(key) {
+                    const count = d.ad_regions[key];
+                    const pct = total > 0 ? Math.round(count / total * 100) : 0;
+                    const name = regionNames[key] || key;
+                    html += '<div style="background:#fff;border:1px solid #e4e7ed;border-radius:8px;padding:12px">'
+                        + '<div style="font-size:12px;color:#909399;margin-bottom:4px">' + escapeHtml(name) + '</div>'
+                        + '<div style="font-size:20px;font-weight:600;color:#f56c6c">' + count + ' 次</div>'
+                        + '<div style="margin-top:6px;background:#f0f2f5;border-radius:4px;height:6px;overflow:hidden">'
+                        + '<div style="background:linear-gradient(90deg,#f56c6c,#e6a23c);height:100%;width:' + pct + '%"></div>'
+                        + '</div></div>';
+                });
+                html += '</div>';
+                regionsEl.innerHTML = html;
+            } else {
+                regionsCard.style.display = 'none';
+            }
+
+            const adTextsCard = document.getElementById('aiSubtitleAdTextsCard');
+            const adTextsEl = document.getElementById('aiSubtitleAdTexts');
+            if (d.ad_text_samples && d.ad_text_samples.length > 0) {
+                adTextsCard.style.display = 'block';
+                let html = '';
+                d.ad_text_samples.forEach(function(t, i) {
+                    html += '<div style="background:#fef0f0;border-left:4px solid #f56c6c;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:#606266">'
+                        + '<span style="color:#f56c6c;font-weight:600">#' + (i+1) + '</span> ' + escapeHtml(t)
+                        + '</div>';
+                });
+                adTextsEl.innerHTML = html;
+            } else {
+                adTextsCard.style.display = 'none';
+            }
+
+            document.getElementById('aiSubtitleSampleCount').textContent = d.sampled_segments ? d.sampled_segments.length : 0;
+            const sampleListEl = document.getElementById('aiSubtitleSampleList');
+            if (d.sampled_segments && d.sampled_segments.length > 0) {
+                let html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+                    + '<thead><tr style="background:#f5f7fa">'
+                    + '<th style="padding:10px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266;font-weight:500">#</th>'
+                    + '<th style="padding:10px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266;font-weight:500">片段索引</th>'
+                    + '<th style="padding:10px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266;font-weight:500">时长</th>'
+                    + '<th style="padding:10px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266;font-weight:500">广告</th>'
+                    + '<th style="padding:10px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266;font-weight:500">区域</th>'
+                    + '<th style="padding:10px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266;font-weight:500">置信度</th>'
+                    + '</tr></thead><tbody>';
+                d.sampled_segments.forEach(function(s, i) {
+                    const adColor = s.has_ad ? '#f56c6c' : '#67c23a';
+                    html += '<tr style="border-bottom:1px solid #f5f7fa">'
+                        + '<td style="padding:10px;color:#909399">' + (i+1) + '</td>'
+                        + '<td style="padding:10px;color:#606266">' + s.index + '</td>'
+                        + '<td style="padding:10px;color:#606266">' + s.duration + 's</td>'
+                        + '<td style="padding:10px;color:' + adColor + ';font-weight:500">' + (s.has_ad ? '是' : '否') + '</td>'
+                        + '<td style="padding:10px;color:#606266">' + escapeHtml(s.region || '-') + '</td>'
+                        + '<td style="padding:10px;color:#606266">' + s.confidence + '%</td>'
+                        + '</tr>';
+                });
+                html += '</tbody></table>';
+                sampleListEl.innerHTML = html;
+            }
+        }
+
+        function aiSubtitleCopyResult() {
+            if (!aiSubtitleLastData) { showToast('暂无结果', 'error'); return; }
+            copyText(JSON.stringify(aiSubtitleLastData, null, 2));
+            showToast('分析结果已复制', 'success');
+        }
+
+        function aiSubtitleGoSkip() {
+            const url = document.getElementById('aiSubtitleUrl').value.trim();
+            if (!url) { showToast('请输入视频链接', 'error'); return; }
+            document.getElementById('aiSkipUrl').value = url;
+            document.querySelector('.nav-item[data-page="ai_skip"]').click();
+        }
+
+        function aiSubtitleReAnalyze() {
+            aiSubtitleAnalyze();
+        }
 
         function aiWatermarkProcess() {
             const url = document.getElementById('aiWatermarkUrl').value.trim();
