@@ -190,6 +190,7 @@ class M3U8Parser {
             'segments' => [],
             'isMaster' => false,
             'variants' => [],
+            'mediaTags' => [],
             'endlist' => false,
             'adMarkers' => [],
             'cueMarkers' => [],
@@ -237,6 +238,24 @@ class M3U8Parser {
                 continue;
             }
 
+            if (strpos($line, '#EXT-X-MEDIA:') === 0) {
+                $attrs = $this->parseAttributes(substr($line, 15));
+                $playlist['mediaTags'][] = [
+                    'type' => isset($attrs['TYPE']) ? strtoupper($attrs['TYPE']) : '',
+                    'uri' => isset($attrs['URI']) ? $attrs['URI'] : '',
+                    'group_id' => isset($attrs['GROUP-ID']) ? $attrs['GROUP-ID'] : '',
+                    'name' => isset($attrs['NAME']) ? $attrs['NAME'] : '',
+                    'language' => isset($attrs['LANGUAGE']) ? $attrs['LANGUAGE'] : '',
+                    'autoselect' => isset($attrs['AUTOSELECT']) ? strtoupper($attrs['AUTOSELECT']) === 'YES' : false,
+                    'default' => isset($attrs['DEFAULT']) ? strtoupper($attrs['DEFAULT']) === 'YES' : false,
+                    'forced' => isset($attrs['FORCED']) ? strtoupper($attrs['FORCED']) === 'YES' : false,
+                    'instream_id' => isset($attrs['INSTREAM-ID']) ? $attrs['INSTREAM-ID'] : '',
+                    'raw' => $line
+                ];
+                $i++;
+                continue;
+            }
+
             if (strpos($line, '#EXT-X-STREAM-INF:') === 0) {
                 $playlist['isMaster'] = true;
                 $attrs = $this->parseAttributes(substr($line, 18));
@@ -247,7 +266,11 @@ class M3U8Parser {
                         'bandwidth' => isset($attrs['BANDWIDTH']) ? (int)$attrs['BANDWIDTH'] : 0,
                         'resolution' => isset($attrs['RESOLUTION']) ? $attrs['RESOLUTION'] : '',
                         'codecs' => isset($attrs['CODECS']) ? $attrs['CODECS'] : '',
-                        'name' => isset($attrs['NAME']) ? $attrs['NAME'] : ''
+                        'name' => isset($attrs['NAME']) ? $attrs['NAME'] : '',
+                        'audio' => isset($attrs['AUDIO']) ? $attrs['AUDIO'] : '',
+                        'video' => isset($attrs['VIDEO']) ? $attrs['VIDEO'] : '',
+                        'subtitles' => isset($attrs['SUBTITLES']) ? $attrs['SUBTITLES'] : '',
+                        'closed_captions' => isset($attrs['CLOSED-CAPTIONS']) ? $attrs['CLOSED-CAPTIONS'] : ''
                     ];
                 }
                 $i++;
