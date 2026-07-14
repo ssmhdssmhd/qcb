@@ -451,6 +451,126 @@ function parse_internal_moxi($url, $selfUrl, $officialReplaceMgr = null, $siteMa
     ];
 }
 
+function parse_internal_unified($url, $selfUrl, $parseType = 'parse', $officialReplaceMgr = null, $siteManager = null) {
+    $officialDomains = ['v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'bilibili.com', 'sohu.com', 'pptv.com'];
+    $parsedUrl = parse_url($url);
+    $urlHost = $parsedUrl['host'] ?? '';
+    $path = $parsedUrl['path'] ?? '';
+
+    $isOfficialUrl = false;
+    foreach ($officialDomains as $domain) {
+        if (strpos($urlHost, $domain) !== false) {
+            $isOfficialUrl = true;
+            break;
+        }
+    }
+    $isM3u8Url = (stripos($path, '.m3u8') !== false);
+
+    if ($parseType === 'parse' || $parseType === 'auto' || $parseType === '智能') {
+        if ($isM3u8Url) {
+            $parseType = 'mxjx';
+        } elseif ($isOfficialUrl) {
+            $parseType = 'xiami';
+        } else {
+            $parseType = 'mxjx';
+        }
+    }
+
+    $playUrl = '';
+    $videoName = '';
+    $msg = '';
+    $code = 200;
+    $typeName = '';
+    $extra = [];
+
+    switch ($parseType) {
+        case 'mxjx':
+        case 'adskip':
+        case '去广告':
+            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+            $msg = '去广告解析';
+            $typeName = '去广告解析';
+            break;
+
+        case 'xiami':
+        case '虾米':
+        case '虾米解析':
+            $xiamiResult = parse_internal_xiami($url);
+            if (!empty($xiamiResult['success'])) {
+                $playUrl = $xiamiResult['play_url'];
+                $videoName = '';
+                $msg = '虾米解析成功';
+                $extra = $xiamiResult;
+            } else {
+                $code = 500;
+                $msg = $xiamiResult['message'] ?? '虾米解析失败';
+            }
+            $typeName = '虾米解析';
+            break;
+
+        case 'moxi':
+        case '沫兮':
+        case '沫兮解析':
+            $moxiResult = parse_internal_moxi($url, $selfUrl, $officialReplaceMgr, $siteManager);
+            if (!empty($moxiResult['success'])) {
+                $playUrl = $moxiResult['play_url'];
+                $videoName = $moxiResult['video_name'] ?? '';
+                $msg = '沫兮解析成功';
+                $extra = $moxiResult;
+            } else {
+                $code = 500;
+                $msg = $moxiResult['message'] ?? '沫兮解析失败';
+            }
+            $typeName = '沫兮解析';
+            break;
+
+        case 'official':
+        case '官替':
+        case '官方替换':
+            if ($officialReplaceMgr) {
+                $orResult = $officialReplaceMgr->resolve($url);
+                if (!empty($orResult['success'])) {
+                    $m3u8Url = $orResult['m3u8_url'] ?? '';
+                    $playUrl = $m3u8Url;
+                    $videoName = $orResult['video_title'] ?? '';
+                    $msg = '官方替换成功';
+                    $extra = $orResult;
+                } else {
+                    $code = 500;
+                    $msg = $orResult['message'] ?? '未找到匹配资源';
+                }
+            } else {
+                $code = 500;
+                $msg = '官方替换模块未初始化';
+            }
+            $typeName = '官方替换';
+            break;
+
+        default:
+            $code = 400;
+            $msg = '不支持的解析类型: ' . $parseType;
+            $typeName = '未知类型';
+            break;
+    }
+
+    $response = [
+        'success' => ($code == 200),
+        'code' => $code,
+        'message' => $msg,
+        'type' => $parseType,
+        'type_name' => $typeName,
+        'original_url' => $url,
+        'play_url' => $playUrl,
+        'video_name' => $videoName,
+        'is_official' => $isOfficialUrl,
+        'is_m3u8' => $isM3u8Url,
+    ];
+    if (!empty($extra)) {
+        $response['raw'] = $extra;
+    }
+    return $response;
+}
+
 function jsonErrorHandler($errno, $errstr, $errfile, $errline) {
     if (!(error_reporting() & $errno)) {
         return true;
@@ -3678,28 +3798,29 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
 
-            $parsedUrl = parse_url($parseUrl);
-            $urlHost = $parsedUrl['host'] ?? '';
-            $path = $parsedUrl['path'] ?? '';
+            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            $basePath = dirname($requestUri);
+            $basePath = $basePath === '/' ? '' : $basePath;
+            $selfUrl = $scheme . '://' . $host . $basePath;
 
-            $officialDomains = ['v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'bilibili.com', 'sohu.com', 'pptv.com'];
-            $isOfficialUrl = false;
-            foreach ($officialDomains as $domain) {
-                if (strpos($urlHost, $domain) !== false) {
-                    $isOfficialUrl = true;
-                    break;
-                }
-            }
-            $isM3u8Url = (stripos($path, '.m3u8') !== false);
+            $result = parse_internal_unified(
+                $parseUrl,
+                $selfUrl,
+                $parseType,
+                $officialReplaceMgr ?? null,
+                $siteManager ?? null
+            );
+            sendJsonResponse($result);
+            break;
 
-            if ($parseType === 'parse' || $parseType === 'auto' || $parseType === '智能') {
-                if ($isM3u8Url) {
-                    $parseType = 'mxjx';
-                } elseif ($isOfficialUrl) {
-                    $parseType = 'xiami';
-                } else {
-                    $parseType = 'mxjx';
-                }
+        case 'parse/info':
+        case 'jx/info':
+            $parseUrl = $_GET['url'] ?? $_POST['url'] ?? '';
+            $parseType = $_GET['type'] ?? $_POST['type'] ?? 'parse';
+            if (empty($parseUrl)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
 
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
@@ -3709,106 +3830,14 @@ try {
             $basePath = $basePath === '/' ? '' : $basePath;
             $selfUrl = $scheme . '://' . $host . $basePath;
 
-            $playUrl = '';
-            $videoName = '';
-            $msg = '';
-            $code = 200;
-            $typeName = '';
-            $extra = [];
-
-            switch ($parseType) {
-                case 'mxjx':
-                case 'adskip':
-                case '去广告':
-                    $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($parseUrl);
-                    $msg = '去广告解析';
-                    $typeName = '去广告解析';
-                    break;
-
-                case 'xiami':
-                case '虾米':
-                case '虾米解析':
-                    $xiamiResult = parse_internal_xiami($parseUrl);
-                    if (!empty($xiamiResult['success'])) {
-                        $playUrl = $xiamiResult['play_url'];
-                        $videoName = '';
-                        $msg = '虾米解析成功';
-                        $extra = $xiamiResult;
-                    } else {
-                        $code = 500;
-                        $msg = $xiamiResult['message'] ?? '虾米解析失败';
-                    }
-                    $typeName = '虾米解析';
-                    break;
-
-                case 'moxi':
-                case '沫兮':
-                case '沫兮解析':
-                    $moxiResult = parse_internal_moxi($parseUrl, $selfUrl, $officialReplaceMgr ?? null, $siteManager ?? null);
-                    if (!empty($moxiResult['success'])) {
-                        $playUrl = $moxiResult['play_url'];
-                        $videoName = $moxiResult['video_name'] ?? '';
-                        $msg = '沫兮解析成功';
-                        $extra = $moxiResult;
-                    } else {
-                        $code = 500;
-                        $msg = $moxiResult['message'] ?? '沫兮解析失败';
-                    }
-                    $typeName = '沫兮解析';
-                    break;
-
-                case 'official':
-                case '官替':
-                case '官方替换':
-                    if (isset($officialReplaceMgr)) {
-                        $orResult = $officialReplaceMgr->resolve($parseUrl);
-                        if (!empty($orResult['success'])) {
-                            $m3u8Url = $orResult['m3u8_url'] ?? '';
-                            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
-                            $videoName = $orResult['video_title'] ?? '';
-                            $msg = '官方替换成功';
-                            $extra = $orResult;
-                        } else {
-                            $code = 500;
-                            $msg = $orResult['message'] ?? '未找到匹配资源';
-                        }
-                    } else {
-                        $code = 500;
-                        $msg = '官方替换模块未初始化';
-                    }
-                    $typeName = '官方替换';
-                    break;
-
-                default:
-                    $code = 400;
-                    $msg = '不支持的解析类型: ' . $parseType;
-                    $typeName = '未知类型';
-                    break;
-            }
-
-            $response = [
-                'success' => ($code == 200),
-                'code' => $code,
-                'message' => $msg,
-                'type' => $parseType,
-                'type_name' => $typeName,
-                'original_url' => $parseUrl,
-                'play_url' => $playUrl,
-                'video_name' => $videoName,
-                'is_official' => $isOfficialUrl,
-                'is_m3u8' => $isM3u8Url,
-            ];
-            if (!empty($extra)) {
-                $response['raw'] = $extra;
-            }
-            sendJsonResponse($response);
-            break;
-
-        case 'parse/info':
-        case 'jx/info':
-            $_GET['action'] = 'parse/parse';
-            include __FILE__;
-            exit;
+            $result = parse_internal_unified(
+                $parseUrl,
+                $selfUrl,
+                $parseType,
+                $officialReplaceMgr ?? null,
+                $siteManager ?? null
+            );
+            sendJsonResponse($result);
             break;
 
         case 'proxies/list':

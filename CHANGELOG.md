@@ -5,6 +5,42 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [3.5.0] - 2026-07-14
+
+### 🚀 大版本更新：解析接口全面修复 + 后台接口统一
+
+**本次更新修复了解析接口无法解析的问题，并统一了后台显示的接口与API文档，避免用户混淆。**
+
+**1. 修复 parse/info 解析接口无法解析的问题** ([mx.php](file:///workspace/mx.php))
+- ✅ **问题**：`parse/info` 接口使用 `include __FILE__` 方式实现，导致重复加载、变量作用域问题，解析失败
+- ✅ **修复**：新增 `parse_internal_unified()` 统一解析函数，`parse` 和 `parse/info` 都直接调用该函数
+- ✅ **优化**：消除了 include 带来的性能损耗和潜在错误，解析更稳定可靠
+
+**2. 官替 m3u8_url 返回去插播后的链接** ([OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) / [DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php))
+- ✅ `m3u8_url` 字段现在优先返回去插播后的链接（`mxjx` 接口地址）
+- ✅ 如果去插播链接为空，则回退到原始 M3U8 地址
+- ✅ `ad_skip_url` 字段保持不变，仍然返回去插播链接
+
+**3. 修复官替解析双重嵌套问题** ([mx.php](file:///workspace/mx.php))
+- ✅ **问题**：官替 `m3u8_url` 已经是去插播链接，但在 `parse` 接口的 `official` 类型中又包了一层 `mxjx`，导致双重嵌套
+- ✅ **修复**：统一解析函数中，官替类型直接使用 `m3u8_url` 作为播放地址，不再二次包装
+
+**4. 后台顶部接口与API文档统一** ([mxadmin.php](file:///workspace/mxadmin.php))
+- ✅ **分析接口** → **统一解析接口(推荐)**：`mx.php?action=parse&url=`
+- ✅ **网页播放器已去插播去广告接口** → **去广告解析接口**：`mx.php?action=mxjx&url=`
+- ✅ **信息接口(JSON)** → **解析详情接口(JSON)**：`mx.php?action=parse/info&url=`
+- ✅ **官替API接口** → **官替解析接口**：名称保持一致
+- ✅ **沫兮API接口** → **沫兮解析接口**：改用统一解析方式 `mx.php?action=parse&type=moxi&url=`
+- ✅ 所有接口命名与 API 文档保持一致，用户不再困惑
+
+**5. 新增统一解析函数** ([mx.php](file:///workspace/mx.php))
+- ✅ `parse_internal_unified()` 函数封装所有解析逻辑
+- ✅ 支持 5 种解析类型：`mxjx` / `xiami` / `moxi` / `official` / `parse`(智能)
+- ✅ 智能解析自动判断视频类型选择最佳解析方式
+- ✅ 所有解析接口统一调用，确保行为一致
+
+---
+
 ## [3.4.1] - 2026-11-11
 
 ### 🐛 修复：腾讯视频链接无法获取影视名的问题

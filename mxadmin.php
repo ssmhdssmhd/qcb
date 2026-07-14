@@ -1887,35 +1887,35 @@ header('Expires: 0');
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">分析接口</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">统一解析接口(推荐)</div>
                 <div class="access-item">
                     <code id="preview-api" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-api').textContent)">复制</button>
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">网页播放器已去插播去广告接口</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">去广告解析接口</div>
                 <div class="access-item">
                     <code id="preview-parse" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-parse').textContent)">复制</button>
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">信息接口(JSON)</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">解析详情接口(JSON)</div>
                 <div class="access-item">
                     <code id="preview-player" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-player').textContent)">复制</button>
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">官替API接口</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">官替解析接口</div>
                 <div class="access-item">
                     <code id="preview-official-replace" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-official-replace').textContent)">复制</button>
                 </div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">沫兮API接口</div>
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">沫兮解析接口</div>
                 <div class="access-item">
                     <code id="preview-moxi" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-moxi').textContent)">复制</button>
@@ -8249,11 +8249,11 @@ header('Expires: 0');
             const base = protocol + '//' + host + baseDir;
 
             document.getElementById('preview-admin').textContent = base + '/mxadmin.php';
-            document.getElementById('preview-api').textContent = base + '/mx.php?action=analyze&url=';
+            document.getElementById('preview-api').textContent = base + '/mx.php?action=parse&url=';
             document.getElementById('preview-parse').textContent = base + '/mx.php?action=mxjx&url=';
-            document.getElementById('preview-player').textContent = base + '/mx.php?action=mxjx/info&url=';
+            document.getElementById('preview-player').textContent = base + '/mx.php?action=parse/info&url=';
             document.getElementById('preview-official-replace').textContent = base + '/mx.php?action=official_replace/info&url=';
-            document.getElementById('preview-moxi').textContent = base + '/mx.php?action=moxi&url=';
+            document.getElementById('preview-moxi').textContent = base + '/mx.php?action=parse&type=moxi&url=';
             
             const moxiApiUrl = base + '/mx.php?action=moxi&url=';
             const moxiApiEl = document.getElementById('moxi-api-url');
