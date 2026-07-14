@@ -5,6 +5,34 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [4.4.0] - 2026-07-14
+
+### 🐛 修复：官替功能支持爱奇艺等视频网站链接替换
+
+**本次更新修复了官替（官方链接替换）功能中爱奇艺等网站链接无法替换的问题，大幅提升了视频标题获取的成功率。**
+
+**问题原因**：
+- 爱奇艺 PC 端页面使用前端 JS 动态渲染视频标题，HTML 源码中没有标题信息
+- 导致获取视频标题失败，只能用 video_id 当标题去搜索，当然搜不到资源
+
+**修复方案**（双管齐下）：
+
+**1. 新增移动端 UA 回退机制**
+- 当 PC 端页面获取不到标题时，自动使用移动端 UA 重试
+- 移动端页面通常有完整的服务端渲染（SSR），标题信息更全
+- 支持平台：爱奇艺、优酷、芒果TV、搜狐视频、PP视频
+- 新增 `httpGetMobile()` 方法，使用 iPhone/Android 移动端 UA
+
+**2. 增强标题提取能力**
+- 新增从页面内联 JSON 数据中提取标题的能力
+- 支持 title/name/videoName/albumName/tvName/showName 等多种字段
+- 自动过滤平台名称等无效内容
+- 优先选择包含"第X集"等剧集信息的标题
+
+**修改的文件**：
+- [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) - 文件版官替管理器
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php) - 数据库版官替管理器
+
 ## [4.3.0] - 2026-07-14
 
 ### ✨ 优化：顶部蓝色区域重构 + 新增远程公告功能

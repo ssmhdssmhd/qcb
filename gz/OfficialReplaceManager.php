@@ -807,6 +807,28 @@ class OfficialReplaceManager {
                     $episodeInfo = $htmlEpisodeInfo;
                 }
             }
+            
+            if ((empty($title) || mb_strlen($title) < 3) && in_array($platform['domain'], ['iqiyi.com', 'youku.com', 'mgtv.com', 'sohu.com', 'pptv.com'])) {
+                $mobileHtml = $this->httpGetMobile($url);
+                if ($mobileHtml) {
+                    $mobileTitle = $this->extractTitle($mobileHtml, $platform);
+                    if (!empty($mobileTitle) && mb_strlen($mobileTitle) >= 3) {
+                        $title = $mobileTitle;
+                    }
+                    if (empty($cover)) {
+                        $mobileCover = $this->extractCover($mobileHtml);
+                        if (!empty($mobileCover)) {
+                            $cover = $mobileCover;
+                        }
+                    }
+                    if (empty($episodeInfo['episode_num'])) {
+                        $mobileEpisodeInfo = $this->extractEpisodeFromHtml($mobileHtml, $platform);
+                        if (!empty($mobileEpisodeInfo['episode_num'])) {
+                            $episodeInfo = $mobileEpisodeInfo;
+                        }
+                    }
+                }
+            }
         }
 
         if (empty($title) || mb_strlen($title) < 3) {
@@ -1664,6 +1686,43 @@ class OfficialReplaceManager {
                     if (isset($data['headline'])) {
                         $candidates[] = $data['headline'];
                     }
+                }
+            }
+        }
+
+        $inlineJsonPatterns = [
+            '/"title"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"name"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"videoName"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"albumName"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"tvName"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"showName"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"videoTitle"\s*:\s*"([^"\\\]{3,80})"/i',
+            '/"albumTitle"\s*:\s*"([^"\\\]{3,80})"/i',
+        ];
+        
+        $foundInlineTitles = [];
+        foreach ($inlineJsonPatterns as $pattern) {
+            if (preg_match_all($pattern, $html, $matches)) {
+                foreach ($matches[1] as $title) {
+                    $decoded = json_decode('"' . $title . '"');
+                    if ($decoded) {
+                        $foundInlineTitles[] = $decoded;
+                    } else {
+                        $foundInlineTitles[] = $title;
+                    }
+                }
+            }
+        }
+        
+        $foundInlineTitles = array_unique($foundInlineTitles);
+        foreach ($foundInlineTitles as $title) {
+            $title = trim($title);
+            if (mb_strlen($title) >= 3 && mb_strlen($title) <= 100) {
+                $isCommonWord = in_array($title, ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', '搜狐视频', 'PP视频']);
+                $hasChinese = preg_match('/[\x{4e00}-\x{9fa5}]/u', $title);
+                if (!$isCommonWord && $hasChinese) {
+                    $candidates[] = $title;
                 }
             }
         }
@@ -2558,6 +2617,46 @@ class OfficialReplaceManager {
         }
 
         $this->lastHttpError = $lastError;
+        return false;
+    }
+
+    private function httpGetMobile($url, $timeout = 20) {
+        $ch = @curl_init();
+        if (!$ch) {
+            return false;
+        }
+
+        $mobileUserAgents = [
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        ];
+
+        @curl_setopt($ch, CURLOPT_URL, $url);
+        @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        @curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+        @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        @curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        @curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+        @curl_setopt($ch, CURLOPT_USERAGENT, $mobileUserAgents[array_rand($mobileUserAgents)]);
+        @curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
+        ]);
+        @curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+        $response = @curl_exec($ch);
+        $httpCode = 0;
+        if ($ch) {
+            $httpCode = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            @curl_close($ch);
+        }
+
+        if ($httpCode >= 200 && $httpCode < 300 && $response !== false && is_string($response)) {
+            return $response;
+        }
+
         return false;
     }
 
