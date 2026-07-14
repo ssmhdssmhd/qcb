@@ -2588,6 +2588,33 @@ header('Expires: 0');
             </div>
 
             <div class="card">
+                <div class="card-title">官替在线播放</div>
+                <div style="font-size:12px;color:#909399;margin-bottom:12px">
+                    输入官方链接 → 自动匹配资源 → AI 去广告/插播 → 正片播放
+                </div>
+                <div class="input-group">
+                    <input type="text" id="orPlayUrl" placeholder="输入官方视频链接，如：https://v.qq.com/x/cover/xxx.html" style="flex:1">
+                    <button class="btn btn-primary" onclick="orPlayStart()">解析播放</button>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                    <a href="javascript:void(0)" onclick="document.getElementById('orPlayUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';orPlayStart()" style="color:#409eff;text-decoration:none;font-size:12px">腾讯视频示例</a>
+                    <span style="color:#ddd;font-size:12px">|</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('orPlayUrl').value='https://www.iqiyi.com/v_1f0q2q3q3q8.html';orPlayStart()" style="color:#409eff;text-decoration:none;font-size:12px">爱奇艺示例</a>
+                </div>
+                <div id="orPlayStatus" style="display:none;margin-bottom:12px"></div>
+                <div id="orPlayInfo" style="display:none;margin-bottom:12px"></div>
+                <div id="orPlayerContainer" style="display:none">
+                    <div style="position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden">
+                        <video id="orPlayVideo" style="width:100%;height:100%;object-fit:contain" controls autoplay playsinline></video>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                        <button class="btn btn-sm btn-secondary" onclick="orPlayCopyUrl()">复制播放地址</button>
+                        <button class="btn btn-sm btn-secondary" onclick="orPlayOpenNew()">新窗口打开</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
                 <div class="card-title">API 接口说明</div>
                 <div style="font-size:13px;line-height:1.8;color:#606266">
                     <p><strong>完整解析接口：</strong></p>
@@ -8897,6 +8924,163 @@ header('Expires: 0');
                 }
             } catch (e) {
                 infoEl.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">请求失败: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        let orPlayCurrentUrl = '';
+        let orPlayHls = null;
+
+        async function orPlayStart() {
+            const url = document.getElementById('orPlayUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+
+            const statusEl = document.getElementById('orPlayStatus');
+            const infoEl = document.getElementById('orPlayInfo');
+            const containerEl = document.getElementById('orPlayerContainer');
+
+            containerEl.style.display = 'none';
+            infoEl.style.display = 'none';
+            statusEl.style.display = 'block';
+            statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 1/3：正在匹配官方链接...</div>';
+
+            if (orPlayHls) {
+                try { orPlayHls.destroy(); } catch(e) {}
+                orPlayHls = null;
+            }
+
+            try {
+                const resUrl = API_BASE + '?action=official_replace/info&url=' + encodeURIComponent(url) + '&_t=' + Date.now();
+                const res = await fetch(resUrl);
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 服务器返回非JSON响应</div>';
+                    return;
+                }
+
+                if (!data.success) {
+                    statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 匹配失败：' + escapeHtml(data.message || '未找到匹配资源') + '</div>';
+                    return;
+                }
+
+                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 2/3：AI 去广告处理中...</div>';
+
+                const m3u8Url = data.m3u8_url || '';
+                const playUrl = m3u8Url || data.ad_skip_url || '';
+                if (!playUrl) {
+                    statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 未获取到播放地址</div>';
+                    return;
+                }
+                orPlayCurrentUrl = playUrl;
+
+                infoEl.style.display = 'block';
+                infoEl.innerHTML = `<div style="background:#f0f9eb;padding:14px;border-radius:8px;border:1px solid #e1f3d8;font-size:13px;line-height:1.8">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                        <span style="color:#67c23a;font-weight:600">✓ 匹配成功</span>
+                        <span style="color:#909399;font-size:11px">匹配度 ${data.match_score || 0}%</span>
+                    </div>
+                    <div style="color:#606266"><strong>平台:</strong> ${escapeHtml(data.platform || '')}</div>
+                    <div style="color:#606266"><strong>视频:</strong> ${escapeHtml(data.video_title || '')}</div>
+                    ${data.target_episode ? '<div style="color:#606266"><strong>集数:</strong> ' + escapeHtml(data.target_episode) + '</div>' : ''}
+                    <div style="color:#606266"><strong>来源:</strong> ${escapeHtml(data.site || '')}</div>
+                </div>`;
+
+                statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 步骤 3/3：加载播放器...</div>';
+
+                containerEl.style.display = 'block';
+                orPlayInitHls(playUrl, statusEl);
+            } catch (e) {
+                statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 请求失败：' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function orPlayInitHls(url, statusEl) {
+            const video = document.getElementById('orPlayVideo');
+            if (orPlayHls) {
+                try { orPlayHls.destroy(); } catch(e) {}
+                orPlayHls = null;
+            }
+            video.removeAttribute('src');
+            video.load();
+
+            if (Hls.isSupported()) {
+                const hlsConfig = {
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    backBufferLength: 60,
+                    enableCEA708Captions: false,
+                    enableWebVTT: false,
+                    enableIMSC1: false,
+                    renderTextTracksNatively: false,
+                    xhrSetup: function(xhr) {
+                        xhr.withCredentials = false;
+                        xhr.timeout = 30000;
+                    }
+                };
+                orPlayHls = new Hls(hlsConfig);
+                orPlayHls.loadSource(url);
+                orPlayHls.attachMedia(video);
+
+                orPlayHls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 播放就绪，缓冲中...</div>';
+                    video.play().catch(function() {});
+                });
+
+                orPlayHls.on(Hls.Events.FRAG_LOADED, function() {
+                    statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 正在播放（已去广告）</div>';
+                });
+
+                orPlayHls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                statusEl.innerHTML = '<div style="background:#fdf6ec;padding:12px;border-radius:8px;border:1px solid #faecd8;color:#e6a23c;font-size:13px">⚠ 网络错误，正在恢复...</div>';
+                                try { orPlayHls.startLoad(); } catch(e) {}
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                statusEl.innerHTML = '<div style="background:#fdf6ec;padding:12px;border-radius:8px;border:1px solid #faecd8;color:#e6a23c;font-size:13px">⚠ 媒体错误，正在恢复...</div>';
+                                try { orPlayHls.recoverMediaError(); } catch(e) {}
+                                break;
+                            default:
+                                statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 视频加载失败</div>';
+                                try { orPlayHls.destroy(); } catch(e) {}
+                                orPlayHls = null;
+                        }
+                    }
+                });
+
+                video.addEventListener('playing', function() {
+                    statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 正在播放（已去广告）</div>';
+                });
+                video.addEventListener('waiting', function() {
+                    statusEl.innerHTML = '<div style="background:#ecf5ff;padding:12px;border-radius:8px;border:1px solid #d9ecff;color:#409eff;font-size:13px">⏳ 缓冲中...</div>';
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', function() {
+                    statusEl.innerHTML = '<div style="background:#f0f9eb;padding:12px;border-radius:8px;border:1px solid #e1f3d8;color:#67c23a;font-size:13px">✓ 正在播放（已去广告）</div>';
+                    video.play().catch(function() {});
+                });
+            } else {
+                statusEl.innerHTML = '<div style="background:#fef0f0;padding:12px;border-radius:8px;border:1px solid #fbc4c4;color:#f56c6c;font-size:13px">✗ 当前浏览器不支持 HLS 播放</div>';
+            }
+        }
+
+        function orPlayCopyUrl() {
+            if (orPlayCurrentUrl) {
+                copyText(orPlayCurrentUrl);
+                showToast('播放地址已复制', 'success');
+            }
+        }
+
+        function orPlayOpenNew() {
+            if (orPlayCurrentUrl) {
+                window.open(orPlayCurrentUrl, '_blank');
             }
         }
 
