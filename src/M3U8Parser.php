@@ -191,6 +191,8 @@ class M3U8Parser {
             'isMaster' => false,
             'variants' => [],
             'mediaTags' => [],
+            'dateRangeTags' => [],
+            'extraAdTags' => [],
             'endlist' => false,
             'adMarkers' => [],
             'cueMarkers' => [],
@@ -338,6 +340,77 @@ class M3U8Parser {
                 ];
                 $playlist['adMarkers'][] = $adMarker;
                 $pendingAdMarkers[] = $adMarker;
+                $i++;
+                continue;
+            }
+
+            if (strpos($line, '#EXT-X-DATERANGE:') === 0) {
+                $attrs = $this->parseAttributes(substr($line, 17));
+                $class = $attrs['CLASS'] ?? '';
+                $isAd = (
+                    stripos($class, 'ad') !== false ||
+                    stripos($class, 'companion') !== false ||
+                    stripos($class, 'break') !== false ||
+                    isset($attrs['SCTE35-CMD']) ||
+                    isset($attrs['SCTE35-OUT']) ||
+                    isset($attrs['SCTE35-IN'])
+                );
+                $dateRangeTag = [
+                    'type' => 'daterange',
+                    'class' => $class,
+                    'is_ad' => $isAd,
+                    'start_date' => $attrs['START-DATE'] ?? '',
+                    'duration' => $attrs['DURATION'] ?? '',
+                    'planned_duration' => $attrs['PLANNED-DURATION'] ?? '',
+                    'scte35_cmd' => $attrs['SCTE35-CMD'] ?? '',
+                    'scte35_out' => $attrs['SCTE35-OUT'] ?? '',
+                    'scte35_in' => $attrs['SCTE35-IN'] ?? '',
+                    'raw' => $line
+                ];
+                $playlist['dateRangeTags'][] = $dateRangeTag;
+                if ($isAd) {
+                    $pendingAdMarkers[] = $dateRangeTag;
+                }
+                $i++;
+                continue;
+            }
+
+            $adTagPrefixes = [
+                '#EXT-X-BREAK',
+                '#EXT-X-AD-START',
+                '#EXT-X-AD-END',
+                '#EXT-X-AD-INSERT',
+                '#EXT-X-AD-SIGNAL',
+                '#EXT-X-AD-OPPORTUNITY',
+                '#EXT-X-MARKER',
+                '#EXT-X-PLAYOUT',
+                '#EXT-X-SPLICE',
+                '#EXT-X-CUE-POINT',
+                '#EXT-X-PRIV',
+                '#EXTOMCL',
+                '#EXT-X-ASSET',
+                '#EXT-X-CONTENT-STEERING',
+            ];
+            $matchedAdPrefix = false;
+            foreach ($adTagPrefixes as $prefix) {
+                if (strpos($line, $prefix) === 0) {
+                    $playlist['extraAdTags'][] = [
+                        'type' => 'extra-ad',
+                        'tag' => $line,
+                        'index' => count($playlist['segments']),
+                        'raw' => $line
+                    ];
+                    $pendingAdMarkers[] = [
+                        'type' => 'extra-ad',
+                        'tag' => $line,
+                        'index' => count($playlist['segments']),
+                        'raw' => $line
+                    ];
+                    $matchedAdPrefix = true;
+                    break;
+                }
+            }
+            if ($matchedAdPrefix) {
                 $i++;
                 continue;
             }

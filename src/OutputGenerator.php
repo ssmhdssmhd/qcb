@@ -9,7 +9,30 @@ class OutputGenerator {
             'includeAdMarkers' => isset($options['includeAdMarkers']) ? $options['includeAdMarkers'] : false,
             'addSkipperComment' => !isset($options['addSkipperComment']) || $options['addSkipperComment'] !== false,
             'filterSubtitles' => isset($options['filterSubtitles']) ? $options['filterSubtitles'] : true,
-            'subtitleTypes' => ['SUBTITLES', 'CLOSED-CAPTIONS']
+            'subtitleTypes' => ['SUBTITLES', 'CLOSED-CAPTIONS'],
+            'filterAdTags' => isset($options['filterAdTags']) ? $options['filterAdTags'] : true,
+            'adTagPrefixes' => [
+                '#EXT-X-DATERANGE',
+                '#EXT-X-AD',
+                '#EXT-X-BREAK',
+                '#EXT-X-AD-START',
+                '#EXT-X-AD-END',
+                '#EXT-X-AD-INSERT',
+                '#EXT-X-AD-SIGNAL',
+                '#EXT-X-AD-OPPORTUNITY',
+                '#EXT-X-MARKER',
+                '#EXT-X-PLAYOUT',
+                '#EXT-X-SPLICE',
+                '#EXT-X-CUE-POINT',
+                '#EXT-X-PRIV',
+                '#EXTOMCL',
+                '#EXT-X-ASSET',
+                '#EXT-X-CONTENT-STEERING',
+                '#EXT-X-CUE-OUT',
+                '#EXT-X-CUE-IN',
+                '#EXT-OATCLS-SCTE35',
+                '#EXT-X-SCTE35',
+            ]
         ], $options);
     }
 
@@ -120,7 +143,14 @@ class OutputGenerator {
             $originalCount = count($segments) + count($playlist['removedSegments'] ?? []);
             $output .= "# Original segments: " . $originalCount . "\n";
             $output .= "# Removed segments: " . count($playlist['removedSegments'] ?? []) . "\n";
+            if (!empty($opts['filterAdTags'])) {
+                $adTagCount = count($playlist['adMarkers'] ?? []) + count($playlist['extraAdTags'] ?? []) + count($playlist['dateRangeTags'] ?? []) + count($playlist['cueMarkers'] ?? []) + count($playlist['scte35Markers'] ?? []);
+                $output .= "# Filtered ad tags: " . $adTagCount . "\n";
+            }
         }
+
+        $filterAdTags = !empty($opts['filterAdTags']);
+        $adTagPrefixes = $opts['adTagPrefixes'] ?? [];
 
         $prevOriginalIndex = -1;
         for ($i = 0; $i < count($segments); $i++) {

@@ -1399,7 +1399,7 @@ try {
                 $filterEngineProp->setAccessible(true);
                 $filterEngineProp->setValue($filter, $enhancedEngine);
 
-                $result = $skipper->processWithSafeguard($url, ['filterSubtitles' => true]);
+                $result = $skipper->processWithSafeguard($url, ['filterSubtitles' => true, 'filterAdTags' => true]);
                 $safeguardTriggered = !empty($result['safeguardTriggered']);
                 $safeguardReason = $result['safeguardReason'] ?? '';
                 $safeguardMethod = $result['safeguardMethod'] ?? '';
