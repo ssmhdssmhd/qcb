@@ -4814,7 +4814,8 @@ try {
                 require_once __DIR__ . '/src/SubtitleAdDetector.php';
                 
                 $parser = new M3U8Parser();
-                $playlist = $parser->parse($url);
+                $mediaUrl = resolveMasterPlaylist($url);
+                $playlist = $parser->parse($mediaUrl);
                 $segments = $playlist['segments'] ?? [];
                 
                 if (empty($segments)) {
@@ -4827,7 +4828,7 @@ try {
                 $detector->setSampleCount($sampleCount);
                 $detector->setScanWidth($scanWidth);
                 
-                $result = $detector->analyze($segments, $url);
+                $result = $detector->analyze($segments, $mediaUrl);
                 
                 $processTime = round((microtime(true) - $startTime) * 1000, 2);
                 
@@ -4836,6 +4837,7 @@ try {
                     'message' => '滚动字幕分析完成',
                     'data' => [
                         'original_url' => $url,
+                        'media_url' => $mediaUrl,
                         'process_time' => $processTime . 'ms',
                         'detection_mode' => $detectionMode,
                         'sample_count' => $sampleCount,
@@ -4878,10 +4880,11 @@ try {
                 require_once __DIR__ . '/src/TsMd5Analyzer.php';
                 
                 $parser = new M3U8Parser();
-                $playlist = $parser->parse($url);
+                $mediaUrl = resolveMasterPlaylist($url);
+                $playlist = $parser->parse($mediaUrl);
                 $segments = $playlist['segments'] ?? [];
                 
-                $parsedUrl = parse_url($url);
+                $parsedUrl = parse_url($mediaUrl);
                 $domain = $parsedUrl['host'] ?? '';
                 
                 $analyzer = new TsMd5Analyzer($domain);
@@ -4891,7 +4894,7 @@ try {
                     $analyzer->setFastMode(true);
                 }
                 
-                $result = $analyzer->analyzeMd5Signatures($segments, $url, [
+                $result = $analyzer->analyzeMd5Signatures($segments, $mediaUrl, [
                     'max_count' => $maxCount,
                     'sample_mode' => $sampleMode
                 ]);
@@ -5087,6 +5090,138 @@ try {
             }
             break;
 
+        case 'api/v2':
+            $type = $_GET['type'] ?? $_POST['type'] ?? 'parse';
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+
+            if (empty($url)) {
+                sendJsonResponse([
+                    'success' => false,
+                    'code' => 400,
+                    'message' => '缺少 url 参数',
+                    'data' => null
+                ], 400);
+                break;
+            }
+
+            @set_time_limit(120);
+            $startTime = microtime(true);
+
+            $apiBase = dirname(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '');
+            $apiBase = $apiBase === '.' ? '' : $apiBase;
+            $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $baseUrl = $protocol . '://' . $host . $apiBase . '/mx.php?action=';
+
+            $internalActions = [
+                'parse' => 'parse',
+                'moxi' => 'parse',
+                'info' => 'parse/info',
+                'detail' => 'parse/info',
+                'mxjx' => 'mxjx',
+                'ad_skip' => 'mxjx',
+                'deep' => 'mxjx/deep',
+                'deep_ad' => 'mxjx/deep',
+                'official' => 'official_replace/info',
+                'official_replace' => 'official_replace/info',
+                'analyze' => 'analyze',
+                'ad_analyze' => 'analyze',
+                'subtitle' => 'ai/subtitle_detect',
+                'subtitle_detect' => 'ai/subtitle_detect',
+                'md5' => 'ai/md5_analyze',
+                'md5_analyze' => 'ai/md5_analyze'
+            ];
+
+            if (!isset($internalActions[$type])) {
+                sendJsonResponse([
+                    'success' => false,
+                    'code' => 400,
+                    'message' => '不支持的 type 参数',
+                    'available_types' => [
+                        'parse' => '统一解析视频',
+                        'info' => '解析详情',
+                        'mxjx' => '去广告M3U8输出',
+                        'deep' => '深度去广告分析',
+                        'official' => '官替解析',
+                        'analyze' => '广告分析',
+                        'subtitle' => 'AI滚动字幕分析',
+                        'md5' => 'AI-MD5特征码分析'
+                    ],
+                    'api_version' => 'v2',
+                    'data' => null
+                ], 400);
+                break;
+            }
+
+            $action = $internalActions[$type];
+
+            if ($action === 'mxjx' || $action === 'mxjx/deep') {
+                $forwardUrl = $baseUrl . $action . '&url=' . urlencode($url);
+                foreach ($_GET as $key => $val) {
+                    if ($key !== 'action' && $key !== 'type' && $key !== 'url') {
+                        $forwardUrl .= '&' . $key . '=' . urlencode($val);
+                    }
+                }
+                header('Location: ' . $forwardUrl, true, 302);
+                break;
+            }
+
+            try {
+                $forwardParams = $_GET;
+                unset($forwardParams['action'], $forwardParams['type']);
+                $forwardParams['url'] = $url;
+                $forwardUrl = $baseUrl . $action;
+                $queryStr = http_build_query($forwardParams);
+
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $forwardUrl . '&' . $queryStr);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-API-v2/1.0');
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+                curl_close($ch);
+
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                if (strpos($contentType, 'json') !== false) {
+                    $data = json_decode($response, true);
+                    if (is_array($data)) {
+                        $data['api_version'] = 'v2';
+                        $data['type'] = $type;
+                        $data['process_time'] = $processTime . 'ms';
+                        sendJsonResponse($data, $httpCode);
+                    } else {
+                        sendJsonResponse([
+                            'success' => false,
+                            'code' => 500,
+                            'message' => '接口返回非JSON数据',
+                            'type' => $type,
+                            'api_version' => 'v2',
+                            'process_time' => $processTime . 'ms',
+                            'raw_response' => substr($response, 0, 1000)
+                        ], 500);
+                    }
+                } else {
+                    header('Content-Type: ' . $contentType);
+                    echo $response;
+                }
+            } catch (Throwable $e) {
+                $processTime = round((microtime(true) - $startTime) * 1000, 2);
+                sendJsonResponse([
+                    'success' => false,
+                    'code' => 500,
+                    'message' => '处理失败: ' . $e->getMessage(),
+                    'type' => $type,
+                    'api_version' => 'v2',
+                    'process_time' => $processTime . 'ms',
+                    'data' => null
+                ], 500);
+            }
+            break;
+
         default:
             sendJsonResponse([
                 'success' => false,
@@ -5099,6 +5234,7 @@ try {
                     'ai/md5_analyze' => 'AI-MD5特征码分析',
                     'ai/md5_signatures' => 'AI-MD5特征码列表',
                     'ai/md5_detect' => 'AI-MD5智能去广告',
+                    'api/v2' => 'v2统一接口（type参数指定类型，整合所有接口）',
                     'analyze' => '分析视频广告',
                     'rules/list' => '获取所有域名规则',
                     'rules/get' => '获取指定域名规则',

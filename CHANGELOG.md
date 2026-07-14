@@ -5,6 +5,46 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [4.0.0] - 2026-07-14
+
+### 🚀 V2 统一接口大版本：一个接口搞定所有功能
+
+**本次更新重构了接口体系，将分散的多个接口整合为一个统一的 V2 接口，使用更简单。**
+
+**1. 新增 `api/v2` 统一接口** ([mx.php](file:///workspace/mx.php))
+
+通过 `type` 参数切换功能，支持 8 种类型：
+
+| type值 | 对应功能 | 说明 |
+|--------|---------|------|
+| `parse` | 统一解析视频 | 智能解析视频源 |
+| `info` / `detail` | 解析详情 | 返回详细的解析信息 |
+| `mxjx` / `ad_skip` | 去广告M3U8输出 | 返回去广告后的m3u8内容 |
+| `deep` / `deep_ad` | 深度去广告分析 | TS MD5+标签+规则三重过滤 + 广告时间段 |
+| `official` / `official_replace` | 官替解析 | 官方链接替换解析 |
+| `analyze` / `ad_analyze` | 广告分析 | 分析视频中的广告 |
+| `subtitle` / `subtitle_detect` | AI滚动字幕分析 | 检测滚动字幕广告 |
+| `md5` / `md5_analyze` | AI-MD5特征码分析 | TS片段MD5特征码分析 |
+
+使用示例：
+```
+mx.php?action=api/v2&type=parse&url=<视频地址>
+mx.php?action=api/v2&type=mxjx&url=<m3u8地址>
+mx.php?action=api/v2&type=deep&url=<m3u8地址>
+```
+
+**2. 管理后台界面优化** ([mxadmin.php](file:///workspace/mxadmin.php))
+
+- ✅ **去掉蓝色区域的分散接口**：移除了6个分散的接口展示（统一解析、去广告、详情、官替、沫兮等）
+- ✅ **新增 V2 统一接口入口**：一个接口 + 下拉选择器切换类型，URL 自动更新
+- ✅ **更简洁的顶部区域**：只保留 V2 统一接口和后台管理入口
+
+**3. 修复报错：AI 滚动字幕分析「未解析到视频片段」** ([mx.php](file:///workspace/mx.php))
+
+- 🔧 **问题原因**：当输入的是 Master Playlist（多清晰度索引）时，`ai/subtitle_detect` 和 `ai/md5_analyze` 接口直接解析导致 segments 为空
+- 🔧 **修复方案**：添加 `resolveMasterPlaylist()` 处理，自动跟随第一个变体的媒体播放列表
+- 🔧 **同时修复**：`ai/md5_analyze` 接口的相同问题
+
 ## [3.6.0] - 2026-07-14
 
 ### 🚀 深度去广告：TS片段内容分析 + 前端广告时间段跳过

@@ -1878,47 +1878,32 @@ header('Expires: 0');
             </div>
 
     <div id="accessPreview" style="background:var(--primary-gradient);color:white;padding:20px 30px;font-size:13px">
-        <div style="display:flex;flex-wrap:wrap;gap:20px">
+        <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end">
+            <div style="flex:2;min-width:300px">
+                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">🚀 V2 统一接口（支持所有类型，type参数切换）</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <select id="v2TypeSelect" onchange="updateV2ApiUrl()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;flex-shrink:0">
+                        <option value="parse" style="color:#333">parse - 统一解析</option>
+                        <option value="info" style="color:#333">info - 解析详情</option>
+                        <option value="mxjx" style="color:#333">mxjx - 去广告M3U8</option>
+                        <option value="deep" style="color:#333">deep - 深度去广告</option>
+                        <option value="official" style="color:#333">official - 官替解析</option>
+                        <option value="analyze" style="color:#333">analyze - 广告分析</option>
+                        <option value="subtitle" style="color:#333">subtitle - 字幕分析</option>
+                        <option value="md5" style="color:#333">md5 - MD5特征码</option>
+                    </select>
+                    <div class="access-item" style="flex:1">
+                        <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制"></code>
+                        <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">复制</button>
+                    </div>
+                </div>
+                <div style="opacity:0.7;font-size:11px;margin-top:6px">提示：修改下方类型后，URL会自动更新。也可直接在URL中通过 ?type=xxx 指定类型</div>
+            </div>
             <div style="flex:1;min-width:200px">
                 <div style="opacity:0.8;font-size:11px;margin-bottom:4px">后台管理</div>
                 <div class="access-item">
                     <code id="preview-admin" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-admin').textContent)">复制</button>
-                </div>
-            </div>
-            <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">统一解析接口(推荐)</div>
-                <div class="access-item">
-                    <code id="preview-api" onclick="copyText(this.textContent)" title="点击复制"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-api').textContent)">复制</button>
-                </div>
-            </div>
-            <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">去广告解析接口</div>
-                <div class="access-item">
-                    <code id="preview-parse" onclick="copyText(this.textContent)" title="点击复制"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-parse').textContent)">复制</button>
-                </div>
-            </div>
-            <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">解析详情接口(JSON)</div>
-                <div class="access-item">
-                    <code id="preview-player" onclick="copyText(this.textContent)" title="点击复制"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-player').textContent)">复制</button>
-                </div>
-            </div>
-            <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">官替解析接口</div>
-                <div class="access-item">
-                    <code id="preview-official-replace" onclick="copyText(this.textContent)" title="点击复制"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-official-replace').textContent)">复制</button>
-                </div>
-            </div>
-            <div style="flex:1;min-width:200px">
-                <div style="opacity:0.8;font-size:11px;margin-bottom:4px">沫兮解析接口</div>
-                <div class="access-item">
-                    <code id="preview-moxi" onclick="copyText(this.textContent)" title="点击复制"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-moxi').textContent)">复制</button>
                 </div>
             </div>
         </div>
@@ -8529,16 +8514,22 @@ header('Expires: 0');
             const base = protocol + '//' + host + baseDir;
 
             document.getElementById('preview-admin').textContent = base + '/mxadmin.php';
-            document.getElementById('preview-api').textContent = base + '/mx.php?action=parse&url=';
-            document.getElementById('preview-parse').textContent = base + '/mx.php?action=mxjx&url=';
-            document.getElementById('preview-player').textContent = base + '/mx.php?action=parse/info&url=';
-            document.getElementById('preview-official-replace').textContent = base + '/mx.php?action=official_replace/info&url=';
-            document.getElementById('preview-moxi').textContent = base + '/mx.php?action=parse&type=moxi&url=';
+            updateV2ApiUrl();
             
             const moxiApiUrl = base + '/mx.php?action=moxi&url=';
             const moxiApiEl = document.getElementById('moxi-api-url');
             if (moxiApiEl) {
                 moxiApiEl.textContent = moxiApiUrl;
+            }
+        }
+
+        function updateV2ApiUrl() {
+            const base = window.location.origin + window.location.pathname.replace(/mxadmin\.php$/, '').replace(/\/$/, '');
+            const typeSelect = document.getElementById('v2TypeSelect');
+            const type = typeSelect ? typeSelect.value : 'parse';
+            const urlEl = document.getElementById('preview-v2-api');
+            if (urlEl) {
+                urlEl.textContent = base + '/mx.php?action=api/v2&type=' + type + '&url=';
             }
         }
 
