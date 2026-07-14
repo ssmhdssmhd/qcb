@@ -813,12 +813,12 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
                     
                     let playUrl = '';
                     let rawUrl = '';
-                    if (data.ad_skip_url) {
+                    if (data.m3u8_url) {
+                        playUrl = data.m3u8_url;
+                        rawUrl = data.m3u8_url;
+                    } else if (data.ad_skip_url) {
                         playUrl = data.ad_skip_url;
-                        rawUrl = data.m3u8_url;
-                    } else if (data.m3u8_url) {
-                        playUrl = apiUrl + encodeURIComponent(data.m3u8_url);
-                        rawUrl = data.m3u8_url;
+                        rawUrl = data.ad_skip_url;
                     } else {
                         throw new Error('未获取到播放地址');
                     }
