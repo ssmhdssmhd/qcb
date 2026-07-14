@@ -992,6 +992,148 @@ header('Expires: 0');
             font-size: 11px;
             opacity: 0.7;
         }
+        
+        .announcement-card {
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 14px;
+            padding: 16px 18px;
+            transition: all 0.3s;
+        }
+        
+        .announcement-card:hover {
+            background: rgba(255,255,255,0.16);
+            border-color: rgba(255,255,255,0.3);
+        }
+        
+        .announcement-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        
+        .announcement-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            animation: announcementPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes announcementPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .announcement-title {
+            font-size: 15px;
+            font-weight: 600;
+            flex: 1;
+        }
+        
+        .announcement-loading {
+            font-size: 11px;
+            opacity: 0.6;
+            animation: blink 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 0.3; }
+        }
+        
+        .announcement-content {
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 13px;
+            line-height: 1.7;
+            max-height: 120px;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .announcement-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .announcement-content::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        
+        .announcement-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+        
+        .announcement-content::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.5);
+        }
+        
+        .announcement-item {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        
+        .announcement-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        
+        .announcement-item:first-child {
+            padding-top: 0;
+        }
+        
+        .announcement-dot {
+            width: 6px;
+            height: 6px;
+            background: rgba(255,255,255,0.6);
+            border-radius: 50%;
+            margin-top: 7px;
+            flex-shrink: 0;
+        }
+        
+        .announcement-item.new .announcement-dot {
+            background: #ff6b6b;
+            box-shadow: 0 0 8px rgba(255,107,107,0.6);
+        }
+        
+        .announcement-text {
+            flex: 1;
+            word-break: break-all;
+        }
+        
+        .announcement-date {
+            font-size: 11px;
+            opacity: 0.6;
+            margin-top: 4px;
+        }
+        
+        .announcement-error {
+            text-align: center;
+            opacity: 0.6;
+            font-size: 12px;
+            padding: 10px 0;
+        }
+        
+        .announcement-empty {
+            text-align: center;
+            opacity: 0.5;
+            font-size: 12px;
+            padding: 10px 0;
+        }
         .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 10px 0; }
         .bar {
             flex: 1;
@@ -2014,7 +2156,6 @@ header('Expires: 0');
             }
             
             #accessPreview > div {
-                grid-template-columns: 1fr !important;
                 gap: 16px !important;
             }
             
@@ -2030,8 +2171,13 @@ header('Expires: 0');
                 font-size: 13px;
             }
             
-            .admin-preview-card {
+            .announcement-card {
                 padding: 14px;
+            }
+            
+            .announcement-content {
+                max-height: 100px;
+                font-size: 12px;
             }
         }
 
@@ -2099,7 +2245,7 @@ header('Expires: 0');
             </div>
 
     <div id="accessPreview" class="api-preview-section" style="background:var(--primary-gradient);color:white;padding:24px 32px;font-size:13px;position:relative">
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:stretch;position:relative;z-index:1">
+        <div style="display:flex;flex-direction:column;gap:20px;position:relative;z-index:1">
             <div style="display:flex;flex-direction:column;gap:14px">
                 <div class="api-card-title">
                     <div class="api-card-icon">🚀</div>
@@ -2129,17 +2275,14 @@ header('Expires: 0');
                     <span>修改下拉类型后，URL 会自动更新。也可直接在 URL 中通过 <code style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:4px;font-size:10px">?type=xxx</code> 指定类型</span>
                 </div>
             </div>
-            <div class="admin-preview-card">
-                <div class="admin-preview-header">
-                    <div class="admin-preview-icon">⚙️</div>
-                    <div>
-                        <div class="admin-preview-title">后台管理</div>
-                        <div class="admin-preview-subtitle">管理入口</div>
-                    </div>
+            <div class="announcement-card">
+                <div class="announcement-header">
+                    <div class="announcement-icon">📢</div>
+                    <div class="announcement-title">最新公告</div>
+                    <div class="announcement-loading" id="announcementLoading">加载中...</div>
                 </div>
-                <div class="access-item">
-                    <code id="preview-admin" onclick="copyText(this.textContent)" title="点击复制" style="font-size:11px"></code>
-                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-admin').textContent)">📋 复制</button>
+                <div class="announcement-content" id="announcementContent">
+                    <div style="opacity:0.7">正在获取最新公告...</div>
                 </div>
             </div>
         </div>
@@ -8750,14 +8893,74 @@ header('Expires: 0');
             const baseDir = path.substring(0, path.lastIndexOf('/'));
             const base = protocol + '//' + host + baseDir;
 
-            document.getElementById('preview-admin').textContent = base + '/mxadmin.php';
             updateV2ApiUrl();
+            loadAnnouncement(base);
             
             const moxiApiUrl = base + '/mx.php?action=moxi&url=';
             const moxiApiEl = document.getElementById('moxi-api-url');
             if (moxiApiEl) {
                 moxiApiEl.textContent = moxiApiUrl;
             }
+        }
+
+        function loadAnnouncement(baseUrl) {
+            const contentEl = document.getElementById('announcementContent');
+            const loadingEl = document.getElementById('announcementLoading');
+            if (!contentEl) return;
+
+            const announcementUrl = baseUrl + '/gg.txt?_t=' + Date.now();
+            
+            fetch(announcementUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.text();
+                })
+                .then(text => {
+                    if (loadingEl) {
+                        loadingEl.style.display = 'none';
+                    }
+                    
+                    const lines = text.trim().split('\n').filter(line => line.trim());
+                    
+                    if (lines.length === 0) {
+                        contentEl.innerHTML = '<div class="announcement-empty">📭 暂无公告</div>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    lines.forEach((line, index) => {
+                        const isNew = index === 0;
+                        let dateText = '';
+                        let contentText = line.trim();
+                        
+                        const dateMatch = line.match(/^\[(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})\]\s*(.+)/);
+                        if (dateMatch) {
+                            dateText = dateMatch[1];
+                            contentText = dateMatch[2].trim();
+                        }
+                        
+                        html += `
+                            <div class="announcement-item ${isNew ? 'new' : ''}">
+                                <div class="announcement-dot"></div>
+                                <div class="announcement-text">
+                                    <div>${escapeHtml(contentText)}</div>
+                                    ${dateText ? '<div class="announcement-date">' + dateText + '</div>' : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    contentEl.innerHTML = html;
+                })
+                .catch(err => {
+                    console.warn('加载公告失败:', err);
+                    if (loadingEl) {
+                        loadingEl.style.display = 'none';
+                    }
+                    contentEl.innerHTML = '<div class="announcement-error">⚠️ 公告加载失败</div>';
+                });
         }
 
         function updateV2ApiUrl() {
