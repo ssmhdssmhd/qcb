@@ -3069,7 +3069,12 @@ try {
             if (empty($url)) {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
-            $result = $officialReplaceMgr->resolve($url);
+            @set_time_limit(120);
+            try {
+                $result = $officialReplaceMgr->resolve($url);
+            } catch (Throwable $e) {
+                $result = ['success' => false, 'message' => '解析异常: ' . $e->getMessage()];
+            }
             sendJsonResponse($result, $result['success'] ? 200 : 404);
             break;
 
@@ -3083,7 +3088,12 @@ try {
             if (empty($url)) {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
-            $result = $officialReplaceMgr->resolve($url);
+            @set_time_limit(120);
+            try {
+                $result = $officialReplaceMgr->resolve($url);
+            } catch (Throwable $e) {
+                $result = ['success' => false, 'message' => '解析异常: ' . $e->getMessage()];
+            }
             
             if ($result['success']) {
                 $m3u8Url = $result['m3u8_url'] ?? '';

@@ -803,7 +803,13 @@ $commercialConfig = $playerConfig['commercial_players'] ?? [];
                 showToast('正在解析官解链接...', 'success');
                 const timestamp = Date.now();
                 const response = await fetch(officialReplaceUrl + encodeURIComponent(originalUrl) + '&_t=' + timestamp);
-                const data = await response.json();
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应: ' + responseText.substring(0, 200));
+                }
                 if (data.success) {
                     if (data.video_title) {
                         document.getElementById('videoTitleLabel').style.display = 'block';
