@@ -528,10 +528,17 @@ class DbOfficialReplaceManager {
         $seasonNum = $videoInfo['season_num'] ?? null;
         $version = $videoInfo['version'] ?? '';
         $part = $videoInfo['part'] ?? '';
+        $videoTitle = $videoInfo['title'] ?? '';
 
+        // 以 video_title 和 base_title 为准，作为最优先搜索词
+        if (!empty($videoTitle)) {
+            $keywords[] = $videoTitle;
+        }
         if (!empty($baseTitle)) {
             $keywords[] = $baseTitle;
+        }
 
+        if (!empty($baseTitle)) {
             // 添加去标点版本
             $noPunctTitle = preg_replace('/[:：,，\s]+/u', '', $baseTitle);
             if ($noPunctTitle && $noPunctTitle !== $baseTitle) {
@@ -573,16 +580,6 @@ class DbOfficialReplaceManager {
             if ($seasonNum && !empty($version)) {
                 $keywords[] = $baseTitle . ' 第' . $seasonNum . '季 ' . $version;
             }
-        }
-
-        $originalTitle = $videoInfo['title'] ?? '';
-        if (!empty($originalTitle) && $originalTitle !== $baseTitle) {
-            $keywords[] = $originalTitle;
-        }
-
-        $videoId = $videoInfo['video_id'] ?? '';
-        if (!empty($videoId)) {
-            $keywords[] = $videoId;
         }
 
         $keywords = array_values(array_unique(array_filter($keywords, function($kw) {

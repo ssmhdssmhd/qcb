@@ -1,5 +1,38 @@
 # 更新日志
 
+## v4.0.4 (2026-07-15)
+
+### 优化
+
+1. **官替搜索关键词以 video_title 和 base_title 为准**
+   - 搜索关键词顺序调整：`video_title`（完整标题，如"我只想要个公平 第2集"）作为第1优先搜索词
+   - `base_title`（基础标题，如"我只想要个公平"）作为第2优先搜索词
+   - 移除 `video_id` 作为搜索词（视频ID在资源站搜不到内容）
+   - 季节变体、去标点版本、主标题提取等辅助搜索词保留，但排在 video_title/base_title 之后
+   - 同步更新 [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) 和 [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php)
+
+### 效果示例
+
+```
+video_title = "我只想要个公平 第2集"
+base_title  = "我只想要个公平"
+
+搜索关键词顺序：
+  1. 我只想要个公平 第2集    ← video_title（最优先）
+  2. 我只想要个公平          ← base_title（次优先）
+```
+
+### 影响文件
+
+- [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php#L415-L501)
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php#L525-L594)
+- [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php)
+- [pt/pt_config.php](file:///workspace/pt/pt_config.php)
+- [gz/sites_config.php](file:///workspace/gz/sites_config.php)
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v4.0.3 (2026-07-15)
 
 ### 优化

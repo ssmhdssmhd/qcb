@@ -418,12 +418,21 @@ class OfficialReplaceManager {
         $seasonNum = $videoInfo['season_num'] ?? null;
         $version = $videoInfo['version'] ?? '';
         $part = $videoInfo['part'] ?? '';
-        $originalTitle = $videoInfo['title'] ?? '';
+        $videoTitle = $videoInfo['title'] ?? '';
+
+        // 以 video_title 和 base_title 为准，作为最优先搜索词
+        if (!empty($videoTitle)) {
+            $keywords[] = $videoTitle;
+        }
+        if (!empty($baseTitle)) {
+            $keywords[] = $baseTitle;
+        }
 
         if (!empty($baseTitle)) {
             $normalizedBase = TitleNormalizer::normalize($baseTitle);
-            $keywords[] = $baseTitle;
-            $keywords[] = $normalizedBase;
+            if ($normalizedBase && $normalizedBase !== $baseTitle) {
+                $keywords[] = $normalizedBase;
+            }
 
             // 添加去标点版本
             $noPunctTitle = preg_replace('/[:：,，\s]+/u', '', $baseTitle);
@@ -470,21 +479,14 @@ class OfficialReplaceManager {
             if ($seasonNum && !empty($version)) {
                 $keywords[] = $baseTitle . ' 第' . $seasonNum . '季 ' . $version;
             }
-
-            $keywords[] = $normalizedBase;
         }
 
-        if (!empty($originalTitle) && $originalTitle !== $baseTitle) {
-            $keywords[] = $originalTitle;
-            $normalizedOrig = TitleNormalizer::normalize($originalTitle);
-            if ($normalizedOrig !== $baseTitle) {
-                $keywords[] = $normalizedOrig;
+        // video_title 归一化版本（如有）
+        if (!empty($videoTitle)) {
+            $normalizedVideo = TitleNormalizer::normalize($videoTitle);
+            if ($normalizedVideo && $normalizedVideo !== $videoTitle && $normalizedVideo !== $baseTitle) {
+                $keywords[] = $normalizedVideo;
             }
-        }
-
-        $videoId = $videoInfo['video_id'] ?? '';
-        if (!empty($videoId)) {
-            $keywords[] = $videoId;
         }
 
         $keywords = array_values(array_unique(array_filter($keywords, function($kw) {
