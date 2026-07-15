@@ -250,6 +250,10 @@ function extractVideoByChromeHeadless(string $videoUrl): ?string
  */
 function isChromeAvailable(): bool
 {
+    if (!function_exists('shell_exec') || !function_exists('exec')) {
+        return false;
+    }
+
     $chromePaths = [
         'chromium-browser',
         'chromium',
@@ -257,7 +261,7 @@ function isChromeAvailable(): bool
         'google-chrome-stable',
     ];
     foreach ($chromePaths as $cmd) {
-        $check = shell_exec(sprintf('which %s 2>/dev/null', escapeshellcmd($cmd)));
+        $check = @shell_exec(sprintf('which %s 2>/dev/null', escapeshellcmd($cmd)));
         if (!empty($check)) {
             return true;
         }
