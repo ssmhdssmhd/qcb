@@ -1,5 +1,25 @@
 # 更新日志
 
+## v4.0.3 (2026-07-15)
+
+### 优化
+
+1. **手机端蓝色区域（API预览区）适配优化**
+   - 手机端（≤480px）蓝色区域 padding 从 24px 32px 减少到 12px 16px，节省垂直空间
+   - API URL 行改为垂直排列，下拉选择框占满宽度
+   - 公告卡片 padding 从 16px 18px 减少到 12px
+   - 标题间距从 14px 减少到 10px
+
+### 影响文件
+
+- [mxadmin.php](file:///workspace/mxadmin.php)
+- [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php)
+- [pt/pt_config.php](file:///workspace/pt/pt_config.php)
+- [gz/sites_config.php](file:///workspace/gz/sites_config.php)
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v4.0.2 (2026-07-15)
 
 ### 优化

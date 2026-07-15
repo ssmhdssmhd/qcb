@@ -2201,6 +2201,22 @@ header('Expires: 0');
                 height: 44px;
                 font-size: 14px;
             }
+            .api-preview-section {
+                padding: 12px 16px !important;
+            }
+            .api-preview-section .api-card-title {
+                gap: 10px;
+            }
+            .api-preview-section .api-url-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .api-preview-section .api-type-select {
+                width: 100%;
+            }
+            .announcement-card {
+                padding: 12px;
+            }
         }
 
     </style>
