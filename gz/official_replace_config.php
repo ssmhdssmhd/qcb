@@ -5,11 +5,11 @@
  */
 
 return [
-    'version' => '3.2.18',
+    'version' => '3.2.19',
     'update_date' => '2026-07-15',
     'enabled' => true,
     'default_site' => '量子',
-    'max_search_sites' => 5,
+    'max_search_sites' => 10,
     'cache_ttl' => 3600,
     'platforms' => [
         [
@@ -69,6 +69,6 @@ return [
             'priority' => 2
         ]
     ],
-    'search_sites' => ['量子', '暴风', '非凡', '天影', '猫眼', '最大', '索尼', 'OK资源'],
-    'match_threshold' => 60
+    'search_sites' => ['量子', '暴风', '非凡', '天影', '猫眼', '最大', '索尼', 'OK资源', '红牛'],
+    'match_threshold' => 75
 ];

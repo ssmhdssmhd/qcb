@@ -136,10 +136,10 @@ class DbOfficialReplaceManager {
             'update_date' => date('Y-m-d H:i:s'),
             'enabled' => true,
             'default_site' => '量子',
-            'max_search_sites' => 5,
+            'max_search_sites' => 10,
             'cache_ttl' => 3600,
-            'search_sites' => ['量子', '最大', '猫眼', '红牛'],
-            'match_threshold' => 60
+            'search_sites' => ['量子', '暴风', '非凡', '天影', '猫眼', '最大', '索尼', 'OK资源', '红牛'],
+            'match_threshold' => 75
         ];
     }
 
@@ -263,6 +263,11 @@ class DbOfficialReplaceManager {
                 $videoTitle = $coverId;
             } else {
                 return ['success' => false, 'message' => '无法获取视频信息', 'platform' => $platform['name']];
+            }
+
+            $cleanTitle = $this->cleanTitle($videoTitle);
+            if (!empty($cleanTitle)) {
+                $videoTitle = $cleanTitle;
             }
 
             $parsedInfo = $this->parseVideoTitle($videoTitle);
@@ -484,6 +489,20 @@ class DbOfficialReplaceManager {
 
         if (!empty($baseTitle)) {
             $keywords[] = $baseTitle;
+
+            // 添加去标点版本
+            $noPunctTitle = preg_replace('/[:：,，\s]+/u', '', $baseTitle);
+            if ($noPunctTitle && $noPunctTitle !== $baseTitle) {
+                $keywords[] = $noPunctTitle;
+            }
+
+            // 提取主标题（冒号、破折号前）
+            if (preg_match('/^(.+?)[:：]/u', $baseTitle, $mainMatch)) {
+                $mainTitle = trim($mainMatch[1]);
+                if (mb_strlen($mainTitle) >= 2) {
+                    $keywords[] = $mainTitle;
+                }
+            }
 
             if ($seasonNum) {
                 $cnNum = $this->numberToChinese($seasonNum);
@@ -1882,7 +1901,11 @@ class DbOfficialReplaceManager {
         $title = trim($title);
         if (empty($title)) return null;
 
-        $title = preg_replace('/[-_|【】\[\]（）()].*?$/u', '', $title);
+        // 优先提取书名号、引号内的纯标题
+        $title = $this->extractPureTitle($title);
+
+        // 清理常见后缀描述文字
+        $title = preg_replace('/[-_|【】《》\[\]（）()].*?$/u', '', $title);
         $title = preg_replace('/在线观看.*?$/u', '', $title);
         $title = preg_replace('/高清.*?$/u', '', $title);
         $title = preg_replace('/完整版.*?$/u', '', $title);
@@ -1893,8 +1916,6 @@ class DbOfficialReplaceManager {
         $title = preg_replace('/\s+/', ' ', $title);
         $title = trim($title, " \t\n\r\0\x0B-_—|·");
         $title = trim($title);
-
-        $title = $this->extractPureTitle($title);
 
         $title = preg_replace('/\s+/', ' ', $title);
         $title = trim($title);
@@ -1914,7 +1935,7 @@ class DbOfficialReplaceManager {
     }
 
     private function extractPureTitle($title) {
-        if (preg_match('/^《([^《》]+)》/', $title, $matches)) {
+        if (preg_match('/^《([^《》]+)》/u', $title, $matches)) {
             return $matches[1];
         }
 
@@ -1940,6 +1961,8 @@ class DbOfficialReplaceManager {
     }
 
     private function parseVideoTitle($title) {
+        $title = $this->cleanTitle($title) ?: $title;
+
         $result = [
             'base_title' => $title,
             'season' => null,
@@ -2333,6 +2356,11 @@ class DbOfficialReplaceManager {
             return $bestMatch;
         }
 
+        // 最佳努力匹配：只要有合理分数就返回，避免阈值过高导致漏配
+        if ($bestScore >= 50) {
+            return $bestMatch;
+        }
+
         return null;
     }
 
@@ -2480,7 +2508,15 @@ class DbOfficialReplaceManager {
             $suffixBonus = ($suffixMatchLen / $minLen) * 15;
         }
 
-        $finalScore = $charSimilarity * 0.5 + $prefixBonus + $suffixBonus;
+        // 高字符相似度时直接给高分，避免单个数字差异（如阿凡达2 vs 阿凡达）导致漏配
+        if ($charSimilarity >= 90) {
+            return round(min(100, 90 + $prefixBonus * 0.1 + $suffixBonus * 0.1 - $seasonPenalty), 2);
+        }
+        if ($charSimilarity >= 80) {
+            return round(min(100, 80 + $prefixBonus * 0.2 + $suffixBonus * 0.2 - $seasonPenalty), 2);
+        }
+
+        $finalScore = $charSimilarity * 0.6 + $prefixBonus + $suffixBonus;
         $finalScore = min(100, max(0, $finalScore - $seasonPenalty));
 
         return round($finalScore, 2);

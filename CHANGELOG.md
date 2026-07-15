@@ -1,5 +1,45 @@
 # 更新日志
 
+## v3.2.19 (2026-07-15)
+
+### 修复
+
+1. **修复标题清理未生效导致官替无法匹配资源的问题**
+   - 问题：extractPureTitle 中书名号正则缺少 `u` 修饰符，导致无法从《阿凡达：水之道》中提取纯标题
+   - 问题：cleanTitle 字符类未包含书名号《》，无法清理"《阿凡达：水之道》充满创意和想象力"中的描述文字
+   - 修复：
+     - 为书名号正则添加 `u` 修饰符
+     - 在 cleanTitle 字符类中添加《》
+     - 将 extractPureTitle 提前到 cleanTitle 最开始执行
+     - 在 resolve 中显式调用 cleanTitle 清理视频标题
+     - 在 parseVideoTitle 中也调用 cleanTitle 作为防御性处理
+
+2. **修复匹配阈值过高导致"搜索到但无法匹配"的问题**
+   - 问题：默认匹配阈值 60，但数据库/配置中可能设置为 100，导致资源站能搜到但无法匹配
+   - 修复：
+     - 将默认匹配阈值从 60 调整为 75
+     - 添加最佳努力匹配机制：当最佳匹配分数 >= 50 时即使未达阈值也返回
+     - 改进 calculateBaseMatchScore：高字符相似度（>=80%）时直接给高分，避免"阿凡达2" vs "阿凡达"这类单个数字差异导致漏配
+
+3. **优化搜索站点和关键词**
+   - 默认搜索站点从 5 个增加到 9 个：量子、暴风、非凡、天影、猫眼、最大、索尼、OK资源、红牛
+   - 最大搜索站点数从 5 增加到 10
+   - buildSearchKeywords 增加去标点版本和主标题提取（如"阿凡达：水之道"会额外搜索"阿凡达水之道"和"阿凡达"）
+
+4. **修复文件版官替默认配置中的优酷正则**
+   - OfficialReplaceManager.php 默认配置中优酷 pattern 仍不支持 `=` 字符
+   - 已同步修复为 `/youku\.com\/.*?id_([a-zA-Z0-9=]+)/i`
+
+### 影响文件
+
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php)
+- [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php)
+- [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php)
+- [gz/sites_config.php](file:///workspace/gz/sites_config.php)
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v3.2.18 (2026-07-15)
 
 ### 修复
