@@ -1,5 +1,33 @@
 # 更新日志
 
+## v4.0.1 (2026-07-15)
+
+### 优化
+
+1. **官替搜索站点扩展为资源站列表全部 active 站点**
+   - 搜索站点从 9 个增加到 34 个，覆盖资源站列表中所有 status=active 的站点
+   - 按优先级排序：优先搜索高优先级站点（量子/暴风/非凡等），低优先级站点作为补充
+   - max_search_sites 从 10 提升到 40，确保能遍历全部活跃站点
+   - 新增站点：6度资源、豆包、快车、闪电、丫丫（鸭鸭）、无尽、速播、豪华、光速、蓝光、魔都、看看、樱花、好花、电影天堂、茅台、13大众、百度、爱奇艺资、牛牛6、蓝志、天逸、如意、天繁、西瓜
+
+2. **同步更新所有配置文件**
+   - [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php) 版本 4.0.1
+   - [pt/pt_config.php](file:///workspace/pt/pt_config.php) 版本 4.0.1
+   - [gz/sites_config.php](file:///workspace/gz/sites_config.php) 版本 4.0.1
+   - [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php) 默认配置同步
+   - [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php) 默认配置同步
+
+### 影响文件
+
+- [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php)
+- [pt/pt_config.php](file:///workspace/pt/pt_config.php)
+- [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php)
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php)
+- [gz/sites_config.php](file:///workspace/gz/sites_config.php)
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v4.0.0 (2026-07-15)
 
 ### 大版本更新 - 平台官替深度优化

@@ -33,7 +33,7 @@ class OfficialReplaceManager {
             'update_date' => date('Y-m-d H:i:s'),
             'enabled' => true,
             'default_site' => '量子',
-            'max_search_sites' => 10,
+            'max_search_sites' => 40,
             'cache_ttl' => 3600,
             'platforms' => [
                 [
@@ -93,7 +93,7 @@ class OfficialReplaceManager {
                     'priority' => 2
                 ]
             ],
-            'search_sites' => ['量子', '暴风', '非凡', '天影', '猫眼', '最大', '索尼', 'OK资源', '红牛'],
+            'search_sites' => ['量子', '暴风', '非凡', '天影', '6度资源', '豆包', '猫眼', '索尼', '最大', 'OK资源', '快车', '闪电', '丫丫（鸭鸭）', '无尽', '速播', '红牛', '豪华', '光速', '蓝光', '魔都', '看看', '樱花', '好花', '电影天堂', '茅台', '13大众', '百度', '爱奇艺资', '牛牛6', '蓝志', '天逸', '如意', '天繁', '西瓜'],
             'match_threshold' => 75
         ];
     }
