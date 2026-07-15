@@ -32,12 +32,12 @@
    - 识别规则：URI 模式（adjump/ad//advertisement 等）、关键词匹配、短时长检测（<2s）
    - 空白分片使用 `data:video/mp2t;base64,...` 最小 TS 数据，避免黑屏闪烁
    - 安全防护：广告占比 >40% 且无内容分片时保留原始 M3U8，避免误判清空正片
-   - 通过 `pt/adskip?m3u8_url=...` API 调用，提供处理后内容
+   - 通过 `mx.php?action=pt/adskip&url=...` API 调用，提供处理后内容
 
-5. **新增 pt 管理 API 端点**
-   - `mx.php?api=pt/status` — 查看 pt 引擎状态、已注册适配器
-   - `mx.php?api=pt/test` — 测试 pt 引擎识别与匹配
-   - `mx.php?api=pt/adskip` — 调用去广告引擎处理 M3U8
+5. **新增 pt 管理 API 端点**（通过 `action` 参数访问）
+   - `mx.php?action=pt/status` — 查看 pt 引擎状态、已注册适配器
+   - `mx.php?action=pt/test&url=...` — 测试 pt 引擎识别与匹配
+   - `mx.php?action=pt/adskip&url=...` — 调用去广告引擎处理 M3U8
 
 #### 优化
 

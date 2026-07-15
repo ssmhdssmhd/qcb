@@ -634,6 +634,7 @@ try {
         $rootDir . '/gz/ResourceSiteManager.php',
         $rootDir . '/gz/OfficialSiteManager.php',
         $rootDir . '/gz/OfficialReplaceManager.php',
+        $rootDir . '/pt/PtManager.php',
         $rootDir . '/multi_thread/autoload.php',
     ];
 
@@ -5319,6 +5320,9 @@ try {
                     'official_replace/platform/delete' => '删除官替平台',
                     'official_replace/resolve' => '官替解析-完整结果',
                     'official_replace/info' => '官替解析-精简信息',
+                    'pt/status' => 'pt引擎状态（平台适配器/AI/去广告）',
+                    'pt/test' => 'pt引擎匹配测试（url参数指定视频链接）',
+                    'pt/adskip' => 'pt去广告处理（url参数指定m3u8链接）',
                     'moxi' => '沫兮API接口',
                     'moxi/api' => '沫兮API接口(别名)',
                     'skip' => '去广告接口',
