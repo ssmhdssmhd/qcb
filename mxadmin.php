@@ -1329,14 +1329,14 @@ header('Expires: 0');
             border-right: 1px solid rgba(255, 255, 255, 0.1);
         }
         body.bg-image-mode .header {
-            background: rgba(255, 255, 255, 0.85);
+            background: var(--primary-gradient);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+            border-bottom: none;
         }
         [data-theme="dark"].bg-image-mode .header {
-            background: rgba(30, 41, 59, 0.85);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--primary-gradient);
+            border-bottom: none;
         }
         body.bg-image-mode .stat-card {
             background: rgba(255, 255, 255, 0.85);
@@ -1529,49 +1529,90 @@ header('Expires: 0');
 
         /* ===== 顶部栏 v3 ===== */
         .header {
-            background: var(--v3-bg-card);
-            color: var(--v3-text-primary);
-            padding: 16px 32px;
-            box-shadow: var(--v3-shadow-sm);
-            border-bottom: 1px solid var(--v3-border);
-            position: sticky;
-            top: 0;
-            z-index: 50;
+            background: var(--primary-gradient);
+            color: white;
+            padding: 24px 32px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            position: relative;
+            overflow: hidden;
+            border-bottom: none;
         }
-        .header::before { display: none; }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            display: block;
+        }
+        .header-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .header-left {
+            flex: 1;
+        }
         .header h1 { 
-            font-size: 20px; 
+            font-size: 26px; 
             font-weight: 700; 
-            color: var(--v3-text-primary);
-            letter-spacing: -0.3px;
+            color: white;
+            letter-spacing: -0.5px;
         }
         .header p { 
-            color: var(--v3-text-muted); 
-            margin-top: 2px; 
-            font-size: 13px; 
+            opacity: 0.9; 
+            margin-top: 6px; 
+            font-size: 14px;
+            color: white;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
         }
         .theme-switcher {
-            background: var(--v3-bg-hover);
-            padding: 6px 10px;
-            border-radius: var(--v3-radius);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
         }
         .theme-label {
-            font-size: 12px;
-            color: var(--v3-text-secondary);
+            font-size: 13px;
+            opacity: 0.9;
+            color: white;
         }
         .theme-dot {
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
             cursor: pointer;
-            border: 2px solid transparent;
-            transition: all var(--v3-transition);
+            border: 2px solid rgba(255,255,255,0.3);
+            transition: all 0.2s;
             position: relative;
         }
-        .theme-dot:hover { transform: scale(1.1); }
+        .theme-dot:hover { transform: scale(1.15); border-color: white; }
         .theme-dot.active {
-            border-color: var(--v3-primary);
-            box-shadow: 0 0 0 3px var(--v3-primary-light);
+            border-color: white;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+        }
+        .theme-dot.active::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
         }
 
         /* ===== 内容区 v3 ===== */

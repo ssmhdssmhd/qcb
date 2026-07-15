@@ -1,6 +1,6 @@
 <?php
 return [
-    'version' => 'v5.0.0',
-    'commit' => 'v5-unified-api-pt-engine',
+    'version' => 'v5.0.1',
+    'commit' => 'v5-fix-header-style',
     'updated_at' => '2026-07-15',
 ];
