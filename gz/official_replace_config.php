@@ -5,8 +5,8 @@
  */
 
 return [
-    'version' => '3.2.16',
-    'update_date' => '2026-07-13',
+    'version' => '3.2.17',
+    'update_date' => '2026-07-15',
     'enabled' => true,
     'default_site' => '量子',
     'max_search_sites' => 5,
@@ -32,7 +32,7 @@ return [
             'name' => '优酷',
             'domain' => 'youku.com',
             'enabled' => true,
-            'pattern' => '/youku\\.com\\/.*?id_([a-zA-Z0-9]+)/i',
+            'pattern' => '/youku\\.com\\/.*?id_([a-zA-Z0-9=]+)/i',
             'title_selector' => 'meta[property="og:title"], meta[name="twitter:title"], .title, h1',
             'priority' => 1
         ],
@@ -69,6 +69,6 @@ return [
             'priority' => 2
         ]
     ],
-    'search_sites' => [],
+    'search_sites' => ['量子', '暴风', '非凡', '天影', '猫眼', '最大', '索尼', 'OK资源'],
     'match_threshold' => 60
 ];
