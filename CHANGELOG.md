@@ -1,5 +1,37 @@
 # 更新日志
 
+## v4.0.2 (2026-07-15)
+
+### 优化
+
+1. **官替搜索结果只显示可用站点，失败站点不展示**
+   - 搜索时记录每个资源站的成功/失败状态
+   - 成功响应并有搜索结果的站点计入 `successful_sites`
+   - 搜索失败/超时/无结果的站点计入 `failed_sites`，不显示在可用列表中
+   - `site_matches` 保持只显示有匹配结果的站点（匹配度达标）
+   - 新增字段：`successful_sites`（成功搜索的站点列表）、`failed_sites`（失败的站点及原因）、`searched_sites`（总搜索站点数）
+
+2. **DbOfficialReplaceManager 搜索站点计数逻辑优化**
+   - 原来 `searched_sites` 只统计有结果的站点，现改为统计实际发起搜索的站点数
+   - `max_search_sites` 限制改为按成功站点数限制，避免过早退出
+   - 新增 try/catch 捕获单站点搜索异常，不影响整体流程
+
+3. **OfficialReplaceManager 并发搜索增强**
+   - `searchSitesConcurrent` 从返回 videos 数组改为返回完整结果数组
+   - 多线程模式下每个站点的失败原因都会被记录（HTTP错误/非JSON/无结果/请求失败）
+   - 串行兜底模式同样记录成功/失败状态
+
+### 影响文件
+
+- [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php)
+- [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php)
+- [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php)
+- [pt/pt_config.php](file:///workspace/pt/pt_config.php)
+- [gz/sites_config.php](file:///workspace/gz/sites_config.php)
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v4.0.1 (2026-07-15)
 
 ### 优化

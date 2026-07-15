@@ -318,7 +318,10 @@ class DbOfficialReplaceManager {
                     'video_id' => $videoId,
                     'search_keywords' => $searchKeywords,
                     'site_matches' => [],
-                    'matched_sites' => 0
+                    'matched_sites' => 0,
+                    'successful_sites' => $searchResult['successful_sites'] ?? [],
+                    'failed_sites' => $searchResult['failed_sites'] ?? [],
+                    'searched_sites' => $searchResult['searched_sites'] ?? 0,
                 ];
             }
 
@@ -381,7 +384,10 @@ class DbOfficialReplaceManager {
                     'used_keyword' => $usedKeyword,
                     'candidates' => array_slice($allMatches, 0, 5),
                     'site_matches' => $siteMatches,
-                    'matched_sites' => count($siteMatches)
+                    'matched_sites' => count($siteMatches),
+                    'successful_sites' => $searchResult['successful_sites'] ?? [],
+                    'failed_sites' => $searchResult['failed_sites'] ?? [],
+                    'searched_sites' => $searchResult['searched_sites'] ?? 0,
                 ];
             }
 
@@ -460,6 +466,9 @@ class DbOfficialReplaceManager {
                 'search_keywords' => $searchKeywords,
                 'match_method' => $matchMethod,
                 'ai_enabled' => true,
+                'successful_sites' => $searchResult['successful_sites'] ?? [],
+                'failed_sites' => $searchResult['failed_sites'] ?? [],
+                'searched_sites' => $searchResult['searched_sites'] ?? 0,
                 'request_time' => time()
             ];
         } catch (Throwable $e) {
@@ -2179,19 +2188,25 @@ class DbOfficialReplaceManager {
         $config = $this->getConfig();
         $sites = $config['search_sites'] ?? [];
         $allVideos = [];
+        $successfulSites = [];
+        $failedSites = [];
         $searchedSites = 0;
 
         if (empty($sites)) {
             $result = $siteMgr->searchAllSites($keyword, 3, 5);
             if ($result['success']) {
                 foreach (($result['results'] ?? []) as $siteResult) {
+                    $siteName = $siteResult['site'] ?? '未知';
                     if (!empty($siteResult['videos'])) {
                         foreach ($siteResult['videos'] as $v) {
-                            $v['site'] = $siteResult['site'];
+                            $v['site'] = $siteName;
                             $allVideos[] = $v;
                         }
-                        $searchedSites++;
+                        $successfulSites[] = $siteName;
+                    } else {
+                        $failedSites[] = ['site' => $siteName, 'error' => '无搜索结果'];
                     }
+                    $searchedSites++;
                 }
             }
         } else {
@@ -2200,19 +2215,27 @@ class DbOfficialReplaceManager {
             foreach ($allSites as $s) {
                 $siteMap[$s['name']] = $s;
             }
+            $maxLimit = $config['max_search_sites'] ?? 5;
             foreach ($sites as $siteName) {
                 if (!isset($siteMap[$siteName])) continue;
                 $apiUrl = $siteMap[$siteName]['api_url'] ?? '';
                 if (empty($apiUrl)) continue;
-                $result = $siteMgr->searchVideos($apiUrl, $keyword, 1, 10);
-                if ($result && $result['success'] && !empty($result['videos'])) {
-                    foreach ($result['videos'] as $v) {
-                        $v['site'] = $siteName;
-                        $allVideos[] = $v;
+                $searchedSites++;
+                try {
+                    $result = $siteMgr->searchVideos($apiUrl, $keyword, 1, 10);
+                    if ($result && $result['success'] && !empty($result['videos'])) {
+                        foreach ($result['videos'] as $v) {
+                            $v['site'] = $siteName;
+                            $allVideos[] = $v;
+                        }
+                        $successfulSites[] = $siteName;
+                    } else {
+                        $failedSites[] = ['site' => $siteName, 'error' => '无搜索结果'];
                     }
-                    $searchedSites++;
+                } catch (Throwable $e) {
+                    $failedSites[] = ['site' => $siteName, 'error' => $e->getMessage()];
                 }
-                if ($searchedSites >= ($config['max_search_sites'] ?? 5)) {
+                if (count($successfulSites) >= $maxLimit) {
                     break;
                 }
             }
@@ -2221,7 +2244,9 @@ class DbOfficialReplaceManager {
         return [
             'success' => !empty($allVideos),
             'videos' => $allVideos,
-            'searched_sites' => $searchedSites
+            'searched_sites' => $searchedSites,
+            'successful_sites' => $successfulSites,
+            'failed_sites' => $failedSites,
         ];
     }
 

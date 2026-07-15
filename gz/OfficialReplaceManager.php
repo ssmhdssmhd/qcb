@@ -199,7 +199,10 @@ class OfficialReplaceManager {
                     'video_id' => $videoId,
                     'search_keywords' => $searchKeywords,
                     'site_matches' => [],
-                    'matched_sites' => 0
+                    'matched_sites' => 0,
+                    'successful_sites' => $searchResult['successful_sites'] ?? [],
+                    'failed_sites' => $searchResult['failed_sites'] ?? [],
+                    'searched_sites' => $searchResult['searched_sites'] ?? 0,
                 ];
             }
 
@@ -262,7 +265,10 @@ class OfficialReplaceManager {
                     'used_keyword' => $usedKeyword,
                     'candidates' => array_slice($allMatches, 0, 5),
                     'site_matches' => $siteMatches,
-                    'matched_sites' => count($siteMatches)
+                    'matched_sites' => count($siteMatches),
+                    'successful_sites' => $searchResult['successful_sites'] ?? [],
+                    'failed_sites' => $searchResult['failed_sites'] ?? [],
+                    'searched_sites' => $searchResult['searched_sites'] ?? 0,
                 ];
             }
 
@@ -344,6 +350,9 @@ class OfficialReplaceManager {
                 'search_keywords' => $searchKeywords,
                 'match_method' => $matchMethod,
                 'ai_enabled' => true,
+                'successful_sites' => $searchResult['successful_sites'] ?? [],
+                'failed_sites' => $searchResult['failed_sites'] ?? [],
+                'searched_sites' => $searchResult['searched_sites'] ?? 0,
                 'request_time' => time()
             ];
         } catch (Throwable $e) {
@@ -2067,15 +2076,13 @@ class OfficialReplaceManager {
     private function searchInSites($keyword) {
         $siteMgr = new ResourceSiteManager();
         $sites = $this->config['search_sites'] ?? [];
-        $allVideos = [];
-        $searchedSites = 0;
+        $searchResult = null;
 
         if (empty($sites)) {
             $activeSites = $siteMgr->getAllSites(false);
             $maxSites = $this->config['max_search_sites'] ?? count($activeSites);
             $activeSites = array_slice($activeSites, 0, $maxSites);
-            $allVideos = $this->searchSitesConcurrent($activeSites, $keyword);
-            $searchedSites = count($activeSites);
+            $searchResult = $this->searchSitesConcurrent($activeSites, $keyword);
         } else {
             $allSites = $siteMgr->getAllSites(false);
             $siteMap = [];
@@ -2090,21 +2097,26 @@ class OfficialReplaceManager {
             }
             $maxSites = $this->config['max_search_sites'] ?? count($targetSites);
             $targetSites = array_slice($targetSites, 0, $maxSites);
-            $allVideos = $this->searchSitesConcurrent($targetSites, $keyword);
-            $searchedSites = count($targetSites);
+            $searchResult = $this->searchSitesConcurrent($targetSites, $keyword);
         }
 
         return [
-            'success' => !empty($allVideos),
-            'videos' => $allVideos,
-            'searched_sites' => $searchedSites
+            'success' => !empty($searchResult['videos']),
+            'videos' => $searchResult['videos'],
+            'searched_sites' => $searchResult['searched_sites'],
+            'successful_sites' => $searchResult['successful_sites'],
+            'failed_sites' => $searchResult['failed_sites'],
         ];
     }
 
     private function searchSitesConcurrent($sites, $keyword) {
-        if (empty($sites)) return [];
+        if (empty($sites)) {
+            return ['videos' => [], 'searched_sites' => 0, 'successful_sites' => [], 'failed_sites' => []];
+        }
 
         $allVideos = [];
+        $successfulSites = [];
+        $failedSites = [];
         $hasMultiThread = false;
         $siteMgr = new ResourceSiteManager();
 
@@ -2160,7 +2172,7 @@ class OfficialReplaceManager {
                         curl_close($ch);
 
                         if ($error || $httpCode < 200 || $httpCode >= 300) {
-                            return ['site' => $siteName, 'videos' => [], 'success' => false];
+                            return ['site' => $siteName, 'videos' => [], 'success' => false, 'error' => $error ?: ('HTTP ' . $httpCode)];
                         }
 
                         $data = json_decode($response, true);
@@ -2175,7 +2187,7 @@ class OfficialReplaceManager {
                             return ['site' => $siteName, 'videos' => $data['videos'], 'success' => true];
                         }
 
-                        return ['site' => $siteName, 'videos' => [], 'success' => false];
+                        return ['site' => $siteName, 'videos' => [], 'success' => false, 'error' => '无搜索结果'];
                     });
 
                     foreach ($results as $result) {
@@ -2183,7 +2195,18 @@ class OfficialReplaceManager {
                             $data = $result->getData();
                             if ($data['success'] && !empty($data['videos'])) {
                                 $allVideos = array_merge($allVideos, $data['videos']);
+                                $successfulSites[] = $data['site'];
+                            } else {
+                                $failedSites[] = [
+                                    'site' => $data['site'],
+                                    'error' => $data['error'] ?? '未知错误'
+                                ];
                             }
+                        } else {
+                            $failedSites[] = [
+                                'site' => $result->getTask()['site_name'] ?? '未知',
+                                'error' => $result->getError() ?: '请求失败'
+                            ];
                         }
                     }
                 }
@@ -2195,20 +2218,38 @@ class OfficialReplaceManager {
             foreach ($sites as $site) {
                 $apiUrl = $site['api_url'] ?? '';
                 if (empty($apiUrl)) continue;
+                $siteName = $site['name'];
                 try {
                     $result = $siteMgr->searchVideos($apiUrl, $keyword, 1, 10);
                     if ($result && $result['success'] && !empty($result['videos'])) {
                         foreach ($result['videos'] as $v) {
-                            $v['site'] = $site['name'];
+                            $v['site'] = $siteName;
                             $allVideos[] = $v;
                         }
+                        if (!in_array($siteName, $successfulSites)) {
+                            $successfulSites[] = $siteName;
+                        }
+                    } else {
+                        $failedSites[] = [
+                            'site' => $siteName,
+                            'error' => '无搜索结果'
+                        ];
                     }
                 } catch (Throwable $e) {
+                    $failedSites[] = [
+                        'site' => $siteName,
+                        'error' => $e->getMessage()
+                    ];
                 }
             }
         }
 
-        return $allVideos;
+        return [
+            'videos' => $allVideos,
+            'searched_sites' => count($sites),
+            'successful_sites' => $successfulSites,
+            'failed_sites' => $failedSites,
+        ];
     }
 
     private function aiSmartMatch($videoInfo, $videos) {
