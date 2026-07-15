@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/ResourceSiteManager.php';
 require_once __DIR__ . '/TitleNormalizer.php';
+require_once __DIR__ . '/../pt/PtManager.php';
 
 class OfficialReplaceManager {
     private $configFile;
@@ -211,6 +212,38 @@ class OfficialReplaceManager {
                 $bestMatch = $this->findBestMatch($videoInfo, $searchResult['videos']);
                 $allMatches = $this->findAllMatches($videoInfo, $searchResult['videos']);
                 $matchMethod = 'rule_based_fallback';
+            }
+
+            // pt 引擎增强匹配
+            if (!$bestMatch || ($bestMatch['score'] ?? 0) < 60) {
+                try {
+                    $ptManager = PtManager::getInstance();
+                    $ptResult = $ptManager->resolve($url, $videoInfo, $searchResult['videos']);
+                    if (!empty($ptResult['matches'])) {
+                        $ptBest = $ptResult['best_match'];
+                        if ($ptBest && (!$bestMatch || $ptBest['score'] > ($bestMatch['score'] ?? 0))) {
+                            $bestMatch = [
+                                'video' => $ptBest['video'],
+                                'score' => $ptBest['score'],
+                                'base_score' => $ptBest['score'],
+                                'season_match' => true,
+                                'site' => $ptBest['video']['site_name'] ?? $ptBest['video']['site'] ?? '',
+                            ];
+                            $allMatches = array_map(function($m) {
+                                return [
+                                    'video' => $m['video'],
+                                    'score' => $m['score'],
+                                    'base_score' => $m['score'],
+                                    'season_match' => true,
+                                    'site' => $m['video']['site_name'] ?? $m['video']['site'] ?? '',
+                                ];
+                            }, $ptResult['matches']);
+                            $matchMethod = 'pt_' . $ptResult['adapter'];
+                        }
+                    }
+                } catch (Throwable $e) {
+                    // pt 引擎异常时静默降级
+                }
             }
 
             $siteMatches = $this->groupMatchesBySite($allMatches);

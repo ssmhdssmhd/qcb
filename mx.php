@@ -3541,6 +3541,62 @@ try {
             }
             break;
 
+        case 'pt/status':
+            try {
+                $ptManager = PtManager::getInstance();
+                $adapters = $ptManager->getAdapters();
+                $adapterList = [];
+                foreach ($adapters as $id => $adapter) {
+                    $adapterList[] = [
+                        'id' => $adapter->getPlatformId(),
+                        'name' => $adapter->getPlatformName(),
+                    ];
+                }
+                sendJsonResponse([
+                    'success' => true,
+                    'version' => $ptManager->getConfig()['version'] ?? '4.0.0',
+                    'adapters' => $adapterList,
+                    'config' => $ptManager->getConfig(),
+                    'ai_weights' => $ptManager->getAIAnalyzer()->getWeights(),
+                ]);
+            } catch (Throwable $e) {
+                sendJsonResponse(['success' => false, 'message' => 'pt 状态获取失败: ' . $e->getMessage()]);
+            }
+            break;
+
+        case 'pt/test':
+            $url = $_GET['url'] ?? $_POST['url'] ?? '';
+            if (empty($url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            try {
+                $ptManager = PtManager::getInstance();
+                $result = $ptManager->resolve($url);
+                sendJsonResponse($result, 200);
+            } catch (Throwable $e) {
+                sendJsonResponse(['success' => false, 'message' => 'pt 测试失败: ' . $e->getMessage()]);
+            }
+            break;
+
+        case 'pt/adskip':
+            $m3u8Url = $_GET['url'] ?? $_POST['url'] ?? '';
+            $platformId = $_GET['platform'] ?? $_POST['platform'] ?? '';
+            if (empty($m3u8Url)) {
+                sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
+            }
+            try {
+                $content = @file_get_contents($m3u8Url);
+                if (empty($content)) {
+                    sendJsonResponse(['success' => false, 'message' => '无法获取 M3U8 内容']);
+                }
+                $ptManager = PtManager::getInstance();
+                $result = $ptManager->processAdSkip($content, $platformId);
+                sendJsonResponse($result, 200);
+            } catch (Throwable $e) {
+                sendJsonResponse(['success' => false, 'message' => '去广告处理失败: ' . $e->getMessage()]);
+            }
+            break;
+
         case 'player/config':
             $configFile = $rootDir . '/gz/player_config.php';
             $defaultConfig = [

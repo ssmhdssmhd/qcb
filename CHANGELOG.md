@@ -1,5 +1,77 @@
 # 更新日志
 
+## v4.0.0 (2026-07-15)
+
+### 大版本更新 - 平台官替深度优化
+
+#### 新增
+
+1. **新增 pt 模块化平台适配架构**
+   - 创建 `/workspace/pt/` 目录，平台官替规则全部由 pt 模块统一调度
+   - 定义 `PlatformAdapterInterface` 接口，规范各平台适配器契约
+   - 抽象基类 `AbstractPlatformAdapter` 提供 httpGet/httpGetMobile/extractTitleFromHtml/cleanTitle/calculateBaseScore 等通用工具
+   - 核心调度器 `PtManager` 单例模式，注册并管理所有平台适配器，统一调度 resolve/processAdSkip/detectAdapter/analyzeFailure/learnFromMatch
+   - 配置文件 `pt/pt_config.php`，包含版本号、搜索站点、匹配阈值、AI 开关等
+
+2. **6 个平台特定适配器，差异化算法**
+   - `TencentVideoAdapter`（腾讯视频）：匹配 v.qq.com，提取 vid/cover_id，调用 float_vinfo2 API
+   - `IqiyiAdapter`（爱奇艺）：匹配 iqiyi.com，调用 pcw-api baseinfo API
+   - `YoukuAdapter.php`（优酷）：正则 `/youku\.com\/.*?id_([a-zA-Z0-9=]+)/i` 支持 `=` 字符
+   - `MgtvAdapter`（芒果TV）：匹配 mgtv.com，调用 pcweb.api.mgtv.com
+   - `BilibiliAdapter`（哔哩哔哩）：支持 BV 和 av 两种 ID 格式
+   - `SohuAdapter`（搜狐视频）：匹配 tv.sohu.com（排除新闻频道），使用 videoinfo JSON API
+
+3. **AI 自动化分析与优化引擎 `PtAIAnalyzer`**
+   - 加权评分系统：title_exact(30) / title_similarity(25) / title_contains(15) / season_match(20) / year_match(10)
+   - `smartMatch` 0-100 评分，阈值 50，自动排除解说/预告/花絮等非正片内容
+   - `learnFromMatch` 根据用户反馈动态调整权重（正确 +0.5，错误 -0.3），学习数据持久化到 `pt/data/ai_learning.json`
+   - `analyzeFailure` 在匹配失败时输出诊断建议（标题长度差异/季数不匹配/排除项等）
+
+4. **M3U8 去广告引擎 `PtAdSkipEngine`**
+   - 解析 M3U8 播放列表，识别广告分片并替换为空白分片
+   - 识别规则：URI 模式（adjump/ad//advertisement 等）、关键词匹配、短时长检测（<2s）
+   - 空白分片使用 `data:video/mp2t;base64,...` 最小 TS 数据，避免黑屏闪烁
+   - 安全防护：广告占比 >40% 且无内容分片时保留原始 M3U8，避免误判清空正片
+   - 通过 `pt/adskip?m3u8_url=...` API 调用，提供处理后内容
+
+5. **新增 pt 管理 API 端点**
+   - `mx.php?api=pt/status` — 查看 pt 引擎状态、已注册适配器
+   - `mx.php?api=pt/test` — 测试 pt 引擎识别与匹配
+   - `mx.php?api=pt/adskip` — 调用去广告引擎处理 M3U8
+
+#### 优化
+
+1. **官替调用入口集成 pt 规则**
+   - `DbOfficialReplaceManager` 和 `OfficialReplaceManager` 在 AI 匹配 + 规则兜底后，当无匹配或分数 <60 时调用 `PtManager::resolve()` 进行平台特定算法重匹配
+   - pt 引擎异常时静默降级到原有匹配结果，保证稳定性
+   - 匹配方法标记 `pt_<platform>`，便于追溯
+
+2. **统一版本号到 4.0.0**
+   - `official_replace_config.php` / `sites_config.php` / `pt_config.php` 版本号同步
+
+#### 影响文件
+
+- 新增 [pt/PlatformAdapterInterface.php](file:///workspace/pt/PlatformAdapterInterface.php)
+- 新增 [pt/AbstractPlatformAdapter.php](file:///workspace/pt/AbstractPlatformAdapter.php)
+- 新增 [pt/PtManager.php](file:///workspace/pt/PtManager.php)
+- 新增 [pt/PtAIAnalyzer.php](file:///workspace/pt/PtAIAnalyzer.php)
+- 新增 [pt/PtAdSkipEngine.php](file:///workspace/pt/PtAdSkipEngine.php)
+- 新增 [pt/TencentVideoAdapter.php](file:///workspace/pt/TencentVideoAdapter.php)
+- 新增 [pt/IqiyiAdapter.php](file:///workspace/pt/IqiyiAdapter.php)
+- 新增 [pt/YoukuAdapter.php](file:///workspace/pt/YoukuAdapter.php)
+- 新增 [pt/MgtvAdapter.php](file:///workspace/pt/MgtvAdapter.php)
+- 新增 [pt/BilibiliAdapter.php](file:///workspace/pt/BilibiliAdapter.php)
+- 新增 [pt/SohuAdapter.php](file:///workspace/pt/SohuAdapter.php)
+- 新增 [pt/pt_config.php](file:///workspace/pt/pt_config.php)
+- 修改 [db/DbOfficialReplaceManager.php](file:///workspace/db/DbOfficialReplaceManager.php)
+- 修改 [gz/OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php)
+- 修改 [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php)
+- 修改 [gz/sites_config.php](file:///workspace/gz/sites_config.php)
+- 修改 [mx.php](file:///workspace/mx.php)
+- 修改 [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v3.2.19 (2026-07-15)
 
 ### 修复
