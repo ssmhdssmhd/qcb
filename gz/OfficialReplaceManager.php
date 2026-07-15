@@ -964,10 +964,14 @@ class OfficialReplaceManager {
                 'https://pbaccess.video.qq.com/trpc.vidplay.vidplay_2_0_fcgi.VidPlay2_0Fcgi/GetCmsVidInfoAll?data={"vid":"' . urlencode($videoId) . '","appVer":"3.5.57","platform":"40000"}',
                 'https://access.video.qq.com/cgi-bin/varietycheck?vid=' . urlencode($videoId),
                 'http://vv.video.qq.com/getinfo?vids=' . urlencode($videoId) . '&platform=101001&charge=0&otype=json',
+                'https://v.qq.com/x/page/' . urlencode($videoId) . '.html',
+                'https://v.qq.com/x/cover/' . urlencode($videoId) . '.html',
+                'https://v.qq.com/x/cover/' . urlencode($videoId) . '/' . urlencode($videoId) . '.html',
             ];
 
             if (!empty($coverId)) {
                 $apiUrls[] = 'https://v.qq.com/x/cover/' . urlencode($coverId) . '.html';
+                $apiUrls[] = 'https://v.qq.com/x/cover/' . urlencode($coverId) . '/' . urlencode($videoId) . '.html';
             }
             if (!empty($originalUrl)) {
                 $apiUrls[] = $originalUrl;
@@ -1235,6 +1239,8 @@ class OfficialReplaceManager {
                 'https://v.youku.com/service/getVideoInfo?vid=' . urlencode($videoId),
                 'https://openapi.youku.com/v2/videos/show.json?client_id=23e50e2e09490776&video_id=' . urlencode($videoId),
                 'https://v.youku.com/v_show/id_' . urlencode($videoId) . '.html',
+                'https://m.youku.com/v_show/id_' . urlencode($videoId) . '.html',
+                'https://v.youku.com/player/getPlayList/VideoIDS/' . urlencode($videoId),
             ];
 
             $titlePaths = [
@@ -1768,6 +1774,9 @@ class OfficialReplaceManager {
     }
 
     private function cleanTitle($title) {
+        $title = trim($title);
+        if (empty($title)) return null;
+
         $title = preg_replace('/[-_|【】\[\]（）()].*?$/u', '', $title);
         $title = preg_replace('/在线观看.*?$/u', '', $title);
         $title = preg_replace('/高清.*?$/u', '', $title);
@@ -1780,6 +1789,11 @@ class OfficialReplaceManager {
         $title = trim($title, " \t\n\r\0\x0B-_—|·");
         $title = trim($title);
 
+        $title = $this->extractPureTitle($title);
+
+        $title = preg_replace('/\s+/', ' ', $title);
+        $title = trim($title);
+
         $invalidTitles = ['腾讯视频', '爱奇艺', '优酷', '芒果TV', '哔哩哔哩', 'bilibili', '搜狐视频', 'PP视频'];
         foreach ($invalidTitles as $inv) {
             if (mb_strtolower($title) === mb_strtolower($inv)) {
@@ -1789,6 +1803,32 @@ class OfficialReplaceManager {
 
         if (mb_strlen($title) < 2) {
             return null;
+        }
+
+        return $title;
+    }
+
+    private function extractPureTitle($title) {
+        if (preg_match('/^《([^《》]+)》/', $title, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('/^"([^"]+)"/', $title, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('/^([^，,。！!？?]+)[，,。！!？?]/u', $title, $matches)) {
+            $candidate = trim($matches[1]);
+            if (mb_strlen($candidate) >= 2) {
+                return $candidate;
+            }
+        }
+
+        if (preg_match('/^([^———]+)[———]/u', $title, $matches)) {
+            $candidate = trim($matches[1]);
+            if (mb_strlen($candidate) >= 2) {
+                return $candidate;
+            }
         }
 
         return $title;
