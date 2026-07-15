@@ -3485,7 +3485,7 @@ try {
             } catch (Throwable $e) {
                 $result = ['success' => false, 'message' => '解析异常: ' . $e->getMessage()];
             }
-            sendJsonResponse($result, $result['success'] ? 200 : 404);
+            sendJsonResponse($result, 200);
             break;
 
         case 'official_replace/info':
@@ -3537,7 +3537,7 @@ try {
                     'timestamp' => time()
                 ]);
             } else {
-                sendJsonResponse($result, 404);
+                sendJsonResponse($result, 200);
             }
             break;
 

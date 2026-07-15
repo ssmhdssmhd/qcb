@@ -1,5 +1,26 @@
 # 更新日志
 
+## v3.2.18 (2026-07-15)
+
+### 修复
+
+1. **修复官替API返回404状态码导致nginx拦截问题**
+   - 问题：官替接口在解析失败时返回 HTTP 404 状态码，nginx 配置了 `error_page 404` 后会用默认404 HTML页面替换JSON响应
+   - 现象：前端显示"服务器返回非JSON响应"，响应内容为 nginx 404 页面
+   - 修复：将业务逻辑失败的响应状态码统一改为 200，通过 JSON 中的 `success` 字段表示业务成功/失败
+   - 影响文件：mx.php（official_replace/resolve、official_replace/info）、index.php（统一解析接口）
+
+2. **同步DbOfficialReplaceManager标题处理逻辑**
+   - 数据库版官替管理器的 cleanTitle 方法添加空值检查
+   - 新增 extractPureTitle 方法，与文件版保持一致
+   - 支持从书名号、引号、中文标点中提取纯标题
+
+### 优化
+
+- 更新版本号至 3.2.18
+
+---
+
 ## v3.2.17 (2026-07-15)
 
 ### 修复

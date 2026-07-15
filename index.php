@@ -169,7 +169,7 @@ if ($relativePath === '/parse' || $relativePath === '/api/parse' || $relativePat
                     'parsed_url' => '',
                     'type' => 'official_replace',
                     'message' => $result['message'] ?? '未找到匹配资源'
-                ], 404);
+                ], 200);
             }
         } else {
             $skipper = new M3U8AdSkipper();
@@ -383,4 +383,4 @@ sendIndexJson([
         ['path' => '/mxjx', 'method' => 'GET', 'description' => '去广告m3u8输出'],
         ['path' => '/health', 'method' => 'GET', 'description' => '健康检查']
     ]
-], 404);
+], 200);

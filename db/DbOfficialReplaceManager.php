@@ -1879,6 +1879,9 @@ class DbOfficialReplaceManager {
     }
 
     private function cleanTitle($title) {
+        $title = trim($title);
+        if (empty($title)) return null;
+
         $title = preg_replace('/[-_|【】\[\]（）()].*?$/u', '', $title);
         $title = preg_replace('/在线观看.*?$/u', '', $title);
         $title = preg_replace('/高清.*?$/u', '', $title);
@@ -1891,6 +1894,11 @@ class DbOfficialReplaceManager {
         $title = trim($title, " \t\n\r\0\x0B-_—|·");
         $title = trim($title);
 
+        $title = $this->extractPureTitle($title);
+
+        $title = preg_replace('/\s+/', ' ', $title);
+        $title = trim($title);
+
         $invalidTitles = ['腾讯视频', '爱奇艺', '优酷', '芒果TV', '哔哩哔哩', 'bilibili', '搜狐视频', 'PP视频'];
         foreach ($invalidTitles as $inv) {
             if (mb_strtolower($title) === mb_strtolower($inv)) {
@@ -1900,6 +1908,32 @@ class DbOfficialReplaceManager {
 
         if (mb_strlen($title) < 2) {
             return null;
+        }
+
+        return $title;
+    }
+
+    private function extractPureTitle($title) {
+        if (preg_match('/^《([^《》]+)》/', $title, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('/^"([^"]+)"/', $title, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('/^([^，,。！!？?]+)[，,。！!？?]/u', $title, $matches)) {
+            $candidate = trim($matches[1]);
+            if (mb_strlen($candidate) >= 2) {
+                return $candidate;
+            }
+        }
+
+        if (preg_match('/^([^———]+)[———]/u', $title, $matches)) {
+            $candidate = trim($matches[1]);
+            if (mb_strlen($candidate) >= 2) {
+                return $candidate;
+            }
         }
 
         return $title;
