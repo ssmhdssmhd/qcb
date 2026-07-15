@@ -1,5 +1,59 @@
 # 更新日志
 
+## v4.1.0 (2026-07-15)
+
+### 新增
+
+1. **创建 kz 扩展文件夹 - 缓存型 M3U8 解析器**
+   - 新增 [kz/CacheM3u8Parser.php](file:///workspace/kz/CacheM3u8Parser.php) 核心解析类
+   - 新增 [kz/cache.php](file:///workspace/kz/cache.php) 解析入口（可直接访问）
+   - 专门解析带 `vkey` 鉴权参数的缓存型 M3U8 链接
+   - 支持 `https://cache.xxx.xyz:4433/Cache/qq/xxx.m3u8?vkey=xxx` 格式
+
+2. **缓存型 M3U8 解析功能**
+   - 代理请求原始 M3U8（带浏览器 UA、防盗链头）
+   - 自动重写分片 URL：相对路径→绝对路径
+   - 支持多级 M3U8（master playlist / media playlist）
+   - 支持 TS 分片代理（防盗链场景，`?proxy=1` 模式）
+   - 支持 `#EXT-X-KEY` URI 重写
+   - vkey 参数分析（hex 编码识别）
+
+3. **集成到统一解析**
+   - [mx.php](file:///workspace/mx.php) 统一解析自动识别缓存型 M3U8 链接
+   - 识别规则：host 含 `cache` 或路径含 `/Cache/` 且有 `vkey=` 参数
+   - 自动路由到 `kz/cache.php` 进行解析
+
+### kz/cache.php 使用方式
+
+```
+# 解析并直接输出可播放 M3U8
+kz/cache.php?url=https://cache.xxx.xyz/Cache/qq/xxx.m3u8?vkey=xxx
+
+# 返回 JSON 信息（含分片数、类型等）
+kz/cache.php?url=xxx&mode=json
+
+# 代理模式（分片通过本PHP代理，防防盗链）
+kz/cache.php?url=xxx&proxy=1
+
+# TS 分片代理
+kz/cache.php?ts=https://cache.xxx.xyz/Cache/qq/xxx.ts
+
+# vkey 参数分析
+kz/cache.php?vkey=xxx&mode=analyze
+```
+
+### 影响文件
+
+- [kz/CacheM3u8Parser.php](file:///workspace/kz/CacheM3u8Parser.php) — 新增，核心解析类
+- [kz/cache.php](file:///workspace/kz/cache.php) — 新增，解析入口
+- [mx.php](file:///workspace/mx.php) — 集成到统一解析，添加 cache 类型识别
+- [gz/official_replace_config.php](file:///workspace/gz/official_replace_config.php) → v4.1.0
+- [pt/pt_config.php](file:///workspace/pt/pt_config.php) → v4.1.0
+- [gz/sites_config.php](file:///workspace/gz/sites_config.php) → v4.1.0
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md)
+
+---
+
 ## v4.0.4 (2026-07-15)
 
 ### 优化

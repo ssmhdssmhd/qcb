@@ -465,9 +465,12 @@ function parse_internal_unified($url, $selfUrl, $parseType = 'parse', $officialR
         }
     }
     $isM3u8Url = (stripos($path, '.m3u8') !== false);
+    $isCacheM3u8 = CacheM3u8Parser::isCacheM3u8($url);
 
     if ($parseType === 'parse' || $parseType === 'auto' || $parseType === '智能') {
-        if ($isM3u8Url) {
+        if ($isCacheM3u8) {
+            $parseType = 'cache';
+        } elseif ($isM3u8Url) {
             $parseType = 'mxjx';
         } elseif ($isOfficialUrl) {
             $parseType = 'xiami';
@@ -484,6 +487,14 @@ function parse_internal_unified($url, $selfUrl, $parseType = 'parse', $officialR
     $extra = [];
 
     switch ($parseType) {
+        case 'cache':
+        case '缓存解析':
+            $playUrl = $selfUrl . '/kz/cache.php?url=' . urlencode($url);
+            $msg = '缓存型M3U8解析';
+            $typeName = '缓存型M3U8解析';
+            $extra['is_cache_m3u8'] = true;
+            break;
+
         case 'mxjx':
         case 'adskip':
         case '去广告':
@@ -635,6 +646,7 @@ try {
         $rootDir . '/gz/OfficialSiteManager.php',
         $rootDir . '/gz/OfficialReplaceManager.php',
         $rootDir . '/pt/PtManager.php',
+        $rootDir . '/kz/CacheM3u8Parser.php',
         $rootDir . '/multi_thread/autoload.php',
     ];
 
@@ -5323,6 +5335,7 @@ try {
                     'pt/status' => 'pt引擎状态（平台适配器/AI/去广告）',
                     'pt/test' => 'pt引擎匹配测试（url参数指定视频链接）',
                     'pt/adskip' => 'pt去广告处理（url参数指定m3u8链接）',
+                    'kz/cache' => 'kz缓存型M3U8解析（直接访问kz/cache.php）',
                     'moxi' => '沫兮API接口',
                     'moxi/api' => '沫兮API接口(别名)',
                     'skip' => '去广告接口',

@@ -6,7 +6,7 @@
  */
 
 return [
-    'version' => '4.0.4',
+    'version' => '4.1.0',
     'update_date' => '2026-07-15',
     'sites' => [
         [
