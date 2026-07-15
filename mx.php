@@ -1654,8 +1654,19 @@ try {
             $stats = $result['stats'] ?? [];
             $adPercentage = $stats['adPercentage'] ?? 0;
             if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
-                $newM3U8Content = file_get_contents($url);
-                if ($newM3U8Content === false) {
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+                $newM3U8Content = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($newM3U8Content === false || $httpCode !== 200) {
                     $newM3U8Content = $result['output'];
                 }
             } else {
@@ -1915,9 +1926,22 @@ try {
                                 $newM3U8Content = implode("\n", $newLines);
 
                                 if ($useDb && !empty($deepAdUris)) {
-                                    $tsAnalyzer->saveMd5Signatures($domain, array_map(function($s) use ($deepAdRanges) {
-                                        return ['md5' => '', 'count' => 1, 'avg_duration' => $s['duration'] ?? 0];
-                                    }, $deepAdRanges));
+                                    $md5UriMap = [];
+                                    foreach ($tsAnalysis['md5_details'] ?? [] as $item) {
+                                        if (!empty($item['md5']) && !empty($item['uri'])) {
+                                            $md5UriMap[$item['uri']] = $item['md5'];
+                                        }
+                                    }
+                                    $sigData = [];
+                                    foreach (array_keys($deepAdUris) as $uri) {
+                                        $md5 = $md5UriMap[$uri] ?? '';
+                                        if ($md5) {
+                                            $sigData[] = ['md5' => $md5, 'count' => 1, 'avg_duration' => 0];
+                                        }
+                                    }
+                                    if (!empty($sigData)) {
+                                        $tsAnalyzer->saveMd5Signatures($domain, $sigData);
+                                    }
                                 }
                             }
                         }
@@ -3598,9 +3622,21 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
             try {
-                $content = @file_get_contents($m3u8Url);
-                if (empty($content)) {
-                    sendJsonResponse(['success' => false, 'message' => '无法获取 M3U8 内容']);
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $m3u8Url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+                $content = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($ch);
+                curl_close($ch);
+                if (empty($content) || $httpCode !== 200) {
+                    sendJsonResponse(['success' => false, 'message' => '无法获取 M3U8 内容' . ($curlError ? ': ' . $curlError : '')]);
                 }
                 $ptManager = PtManager::getInstance();
                 $result = $ptManager->processAdSkip($content, $platformId);
@@ -4278,6 +4314,7 @@ try {
                     'xiami' => '虾米解析（全网 VIP 视频）',
                     'moxi' => '沫兮解析（官方视频替换）',
                     'official' => '官方替换（智能匹配资源站）',
+                    'cache' => '缓存型 M3U8 解析（带 vkey 参数的缓存链接）',
                 ]
             ]);
             break;

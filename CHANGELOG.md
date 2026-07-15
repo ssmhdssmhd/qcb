@@ -1,5 +1,85 @@
 # 更新日志
 
+## v5.0.0 (2026-07-15)
+
+### 大版本更新 - 全面深度优化 & API 文档完善
+
+#### 新增
+
+1. **API 文档全面完善**
+   - 在 [api_doc.php](file:///workspace/api_doc.php) 文档最前面添加**完整接口索引**，包含全部 95+ 个接口、20 个功能模块
+   - 新增 **PT 引擎** 分类文档（pt/status、pt/test、pt/adskip）
+   - 新增 **AI 智能** 分类文档（ai/smart_process、ai/pro_detect、ai/skip、ai/insert_detect、ai/subtitle_detect、ai/md5_analyze、ai/md5_detect 等 7 个接口）
+   - 新增 **广告特征码** 分类文档（signatures/list、signatures/add、signatures/delete、signatures/stats、signatures/clean）
+   - 新增 **官方站点** 分类文档（official_sites/status、official_sites/list、official_sites/search_all、official_sites/toggle）
+   - 新增 **播放器** 分类文档（player/config/save）
+   - 新增 **备份管理** 4 个接口文档（update/backup/list、update/backup/create、update/backup/restore、update/backup/delete）
+   - 侧边栏导航同步更新，支持快速跳转到各分类
+
+2. **parse/list 接口新增 cache 类型**
+   - supported_types 数组中添加 `cache` 类型
+   - 说明：缓存型 M3U8 解析（带 vkey 参数的缓存链接）
+
+#### 修复
+
+1. **pt/adskip 接口 M3U8 获取方式优化**
+   - 将 `@file_get_contents` 改为 `curl`，增加超时控制
+   - 设置 `CURLOPT_TIMEOUT = 15`（总超时）、`CURLOPT_CONNECTTIMEOUT = 5`（连接超时）
+   - 增加 `CURLOPT_FOLLOWLOCATION` 支持重定向
+   - 增加 SSL 证书验证跳过（兼容自签名证书）
+   - 增加浏览器 User-Agent，避免被 CDN 拦截
+   - 增加 HTTP 状态码检查，200 以外视为失败
+   - 增加 curl 错误信息返回，便于排查问题
+
+2. **mxjx/deep 接口保存空 MD5 问题修复**
+   - 原代码 `saveMd5Signatures` 时传入 `'md5' => ''` 空值，导致特征码未实际保存
+   - 修复：从 `tsAnalysis['md5_details']` 中构建 URI → MD5 映射表
+   - 根据 `deepAdUris` 中的 URI 查找对应的 MD5 值后再保存
+   - 没有对应 MD5 的跳过，避免保存无效数据
+
+3. **mxjx/info 接口 file_get_contents 超时问题修复**
+   - 将 `file_get_contents($url)` 改为 curl 请求
+   - 设置 `CURLOPT_TIMEOUT = 10`、`CURLOPT_CONNECTTIMEOUT = 3`
+   - 增加 HTTP 状态码检查，失败时回退到原始结果
+   - 增加 SSL 跳过和 UA 设置，提高请求成功率
+
+#### 优化
+
+1. **版本号升级到 v5.0.0**
+   - [version.php](file:///workspace/version.php) 版本从 v4.0.0 升级到 v5.0.0
+   - commit 标识更新为 `v5-unified-api-pt-engine`
+
+2. **API 文档结构优化**
+   - 侧边栏增加"完整接口索引"（ALL 标签）作为第一项
+   - 新增分类：完整接口索引、PT引擎、AI智能、广告特征码、官方站点、播放器
+   - 接口搜索功能自动适配新增分类
+
+#### 测试验证
+
+- ✅ 所有 PHP 文件语法检查通过（无语法错误）
+- ✅ version 接口正常返回 v5.0.0
+- ✅ info 接口正常返回系统信息
+- ✅ parse/list 接口正常返回，含 cache 类型
+- ✅ rules/list 接口正常
+- ✅ sites/list 接口正常
+- ✅ player/config 接口正常
+- ✅ official_replace/config 接口正常
+- ✅ db/status 接口正常
+- ✅ auth/info 接口正常
+- ✅ api_doc.php 页面 200 OK，正常显示
+- ✅ player/ 页面 200 OK，支持 18 种播放器切换
+- ✅ mxadmin.php 后台页面 200 OK
+- ✅ kz/cache.php 缓存解析页面 200 OK
+
+#### 影响文件
+
+- [mx.php](file:///workspace/mx.php) — 修复 pt/adskip、parse/list、mxjx/deep、mxjx/info
+- [api_doc.php](file:///workspace/api_doc.php) — 全面完善 API 文档
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.0
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v4.1.0 (2026-07-15)
 
 ### 新增

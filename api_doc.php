@@ -402,7 +402,10 @@ $apiBase = $basePath . '/mx.php?action=';
                 </div>
                 <div class="sidebar-title">📑 接口分类</div>
                 <ul class="sidebar-list" id="sidebarList">
-                    <li class="active" onclick="scrollToCategory('analyze')">
+                    <li class="active" onclick="scrollToCategory('index')">
+                        <span class="method get">ALL</span>完整接口索引
+                    </li>
+                    <li onclick="scrollToCategory('analyze')">
                         <span class="method get">GET</span>视频分析
                     </li>
                     <li onclick="scrollToCategory('rules')">
@@ -410,6 +413,9 @@ $apiBase = $basePath . '/mx.php?action=';
                     </li>
                     <li onclick="scrollToCategory('sites')">
                         <span class="method get">GET</span>资源站管理
+                    </li>
+                    <li onclick="scrollToCategory('official_sites')">
+                        <span class="method get">GET</span>官方站点
                     </li>
                     <li onclick="scrollToCategory('learn')">
                         <span class="method post">POST</span>学习相关
@@ -420,8 +426,20 @@ $apiBase = $basePath . '/mx.php?action=';
                     <li onclick="scrollToCategory('official_replace')">
                         <span class="method get">GET</span>官方替换
                     </li>
+                    <li onclick="scrollToCategory('pt')">
+                        <span class="method get">GET</span>PT引擎
+                    </li>
+                    <li onclick="scrollToCategory('ai')">
+                        <span class="method get">GET</span>AI智能
+                    </li>
+                    <li onclick="scrollToCategory('signatures')">
+                        <span class="method get">GET</span>广告特征码
+                    </li>
                     <li onclick="scrollToCategory('parse')">
                         <span class="method get">GET</span>解析接口
+                    </li>
+                    <li onclick="scrollToCategory('player')">
+                        <span class="method get">GET</span>播放器
                     </li>
                     <li onclick="scrollToCategory('update')">
                         <span class="method get">GET</span>系统更新
@@ -440,6 +458,247 @@ $apiBase = $basePath . '/mx.php?action=';
         </aside>
 
         <main class="content">
+            <!-- 完整接口索引 -->
+            <div class="category" id="category-index">
+                <h2 class="category-title"><span class="icon">📑</span> 完整接口索引（所有访问方式）</h2>
+                <div class="api-card" data-name="完整接口索引">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">ALL</span>
+                        <span class="api-path">全部接口快速索引</span>
+                        <span class="api-desc">共 95+ 个接口，20 个功能模块</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">🎬 视频分析（1个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>analyze</code></td><td>分析视频广告结构</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">📋 规则管理（9个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>rules/list</code></td><td>获取所有域名规则列表</td><td>GET</td></tr>
+                                    <tr><td><code>rules/get</code></td><td>获取指定域名规则</td><td>GET</td></tr>
+                                    <tr><td><code>rules/save</code></td><td>保存域名规则</td><td>POST</td></tr>
+                                    <tr><td><code>rules/delete</code></td><td>删除域名规则</td><td>POST</td></tr>
+                                    <tr><td><code>rules/generate</code></td><td>根据视频自动生成规则</td><td>GET</td></tr>
+                                    <tr><td><code>rules/learn</code></td><td>学习并更新规则</td><td>GET</td></tr>
+                                    <tr><td><code>rules/export</code></td><td>导出规则</td><td>GET</td></tr>
+                                    <tr><td><code>rules/import</code></td><td>导入规则</td><td>POST</td></tr>
+                                    <tr><td><code>rules/clear</code></td><td>清空所有规则</td><td>POST</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">📺 资源站管理（18个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>sites/list</code></td><td>获取资源站列表</td><td>GET</td></tr>
+                                    <tr><td><code>sites/get</code></td><td>获取单个资源站</td><td>GET</td></tr>
+                                    <tr><td><code>sites/add</code></td><td>添加资源站</td><td>POST</td></tr>
+                                    <tr><td><code>sites/update</code></td><td>更新资源站</td><td>POST</td></tr>
+                                    <tr><td><code>sites/delete</code></td><td>删除资源站</td><td>POST</td></tr>
+                                    <tr><td><code>sites/health_check</code></td><td>批量健康检查</td><td>GET</td></tr>
+                                    <tr><td><code>sites/update_status</code></td><td>更新资源站状态</td><td>POST</td></tr>
+                                    <tr><td><code>sites/fetch_videos</code></td><td>获取视频列表</td><td>GET</td></tr>
+                                    <tr><td><code>sites/search</code></td><td>搜索指定资源站</td><td>GET</td></tr>
+                                    <tr><td><code>sites/search_all</code></td><td>搜索所有资源站</td><td>GET</td></tr>
+                                    <tr><td><code>sites/learn_video</code></td><td>学习视频规则</td><td>GET</td></tr>
+                                    <tr><td><code>sites/search_and_learn</code></td><td>搜索并学习一体化</td><td>GET</td></tr>
+                                    <tr><td><code>sites/learn_batch</code></td><td>批量学习视频</td><td>POST</td></tr>
+                                    <tr><td><code>sites/analyze_batch</code></td><td>批量分析视频</td><td>POST</td></tr>
+                                    <tr><td><code>sites/multi_thread/status</code></td><td>多线程状态</td><td>GET</td></tr>
+                                    <tr><td><code>sites/auto_learn/config</code></td><td>自动学习配置</td><td>GET</td></tr>
+                                    <tr><td><code>sites/auto_learn/config/save</code></td><td>保存自动学习配置</td><td>POST</td></tr>
+                                    <tr><td><code>sites/auto_learn/run</code></td><td>执行自动学习</td><td>POST</td></tr>
+                                    <tr><td><code>sites/auto_learn/status</code></td><td>自动学习状态</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🏛️ 官方站点管理（12个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>official_sites/status</code></td><td>官方站点状态</td><td>GET</td></tr>
+                                    <tr><td><code>official_sites/list</code></td><td>官方站点列表</td><td>GET</td></tr>
+                                    <tr><td><code>official_sites/get</code></td><td>获取单个官方站点</td><td>GET</td></tr>
+                                    <tr><td><code>official_sites/add</code></td><td>添加官方站点</td><td>POST</td></tr>
+                                    <tr><td><code>official_sites/update</code></td><td>更新官方站点</td><td>POST</td></tr>
+                                    <tr><td><code>official_sites/delete</code></td><td>删除官方站点</td><td>POST</td></tr>
+                                    <tr><td><code>official_sites/fetch_videos</code></td><td>获取官方站点视频</td><td>GET</td></tr>
+                                    <tr><td><code>official_sites/search</code></td><td>搜索指定官方站点</td><td>GET</td></tr>
+                                    <tr><td><code>official_sites/search_all</code></td><td>搜索所有官方站点</td><td>GET</td></tr>
+                                    <tr><td><code>official_sites/set_domain</code></td><td>切换官方站点域名</td><td>POST</td></tr>
+                                    <tr><td><code>official_sites/settings/save</code></td><td>保存全局设置</td><td>POST</td></tr>
+                                    <tr><td><code>official_sites/toggle</code></td><td>启用/禁用官方站点</td><td>POST</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🔄 官方替换（8个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>official_replace/config</code></td><td>官替配置</td><td>GET</td></tr>
+                                    <tr><td><code>official_replace/config/save</code></td><td>保存官替配置</td><td>POST</td></tr>
+                                    <tr><td><code>official_replace/platforms</code></td><td>官替平台列表</td><td>GET</td></tr>
+                                    <tr><td><code>official_replace/platform/add</code></td><td>添加官替平台</td><td>POST</td></tr>
+                                    <tr><td><code>official_replace/platform/update</code></td><td>更新官替平台</td><td>POST</td></tr>
+                                    <tr><td><code>official_replace/platform/delete</code></td><td>删除官替平台</td><td>POST</td></tr>
+                                    <tr><td><code>official_replace/resolve</code></td><td>官替解析完整结果</td><td>GET</td></tr>
+                                    <tr><td><code>official_replace/info</code></td><td>官替解析精简信息</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🚀 PT 引擎（3个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>pt/status</code></td><td>PT引擎状态</td><td>GET</td></tr>
+                                    <tr><td><code>pt/test</code></td><td>PT引擎匹配测试</td><td>GET</td></tr>
+                                    <tr><td><code>pt/adskip</code></td><td>PT去广告处理</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🤖 AI 智能模块（9个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>ai/smart_process</code></td><td>AI智能处理</td><td>GET</td></tr>
+                                    <tr><td><code>ai/pro_detect</code></td><td>AI专业检测</td><td>GET</td></tr>
+                                    <tr><td><code>ai/skip</code></td><td>AI去广告处理</td><td>GET</td></tr>
+                                    <tr><td><code>ai/insert_detect</code></td><td>AI插播检测</td><td>GET</td></tr>
+                                    <tr><td><code>ai/watermark</code></td><td>AI水印处理</td><td>GET</td></tr>
+                                    <tr><td><code>ai/subtitle_detect</code></td><td>AI滚动字幕分析</td><td>GET</td></tr>
+                                    <tr><td><code>ai/md5_analyze</code></td><td>AI-MD5特征码分析</td><td>GET</td></tr>
+                                    <tr><td><code>ai/md5_signatures</code></td><td>AI-MD5特征码列表</td><td>GET</td></tr>
+                                    <tr><td><code>ai/md5_detect</code></td><td>AI-MD5智能去广告</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🔗 解析接口（10个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>skip</code></td><td>去广告接口</td><td>GET</td></tr>
+                                    <tr><td><code>mxjx</code></td><td>去广告M3U8输出</td><td>GET</td></tr>
+                                    <tr><td><code>mxjx/info</code></td><td>去广告解析信息</td><td>GET</td></tr>
+                                    <tr><td><code>mxjx/deep</code></td><td>深度去广告分析</td><td>GET</td></tr>
+                                    <tr><td><code>xiami_jx</code></td><td>虾米解析</td><td>GET</td></tr>
+                                    <tr><td><code>xiami_jx/info</code></td><td>虾米解析详情</td><td>GET</td></tr>
+                                    <tr><td><code>moxi</code></td><td>沫兮解析</td><td>GET</td></tr>
+                                    <tr><td><code>parse/list</code></td><td>统一解析接口列表</td><td>GET</td></tr>
+                                    <tr><td><code>parse</code></td><td>统一解析视频</td><td>GET</td></tr>
+                                    <tr><td><code>parse/info</code></td><td>统一解析详情</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🔧 系统更新（10个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>update/version</code></td><td>获取当前版本</td><td>GET</td></tr>
+                                    <tr><td><code>update/check</code></td><td>检查更新</td><td>GET</td></tr>
+                                    <tr><td><code>update/integrity</code></td><td>完整性检查</td><td>GET</td></tr>
+                                    <tr><td><code>update/download</code></td><td>下载更新包</td><td>GET</td></tr>
+                                    <tr><td><code>update/clear_cache</code></td><td>清理更新缓存</td><td>POST</td></tr>
+                                    <tr><td><code>update/system_info</code></td><td>系统信息</td><td>GET</td></tr>
+                                    <tr><td><code>update/backup/list</code></td><td>备份文件列表</td><td>GET</td></tr>
+                                    <tr><td><code>update/backup/create</code></td><td>创建系统备份</td><td>POST</td></tr>
+                                    <tr><td><code>update/backup/restore</code></td><td>恢复备份</td><td>POST</td></tr>
+                                    <tr><td><code>update/backup/delete</code></td><td>删除备份</td><td>POST</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🔐 授权管理（6个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>auth/info</code></td><td>授权信息</td><td>GET</td></tr>
+                                    <tr><td><code>auth/validate</code></td><td>验证授权</td><td>GET</td></tr>
+                                    <tr><td><code>auth/config/get</code></td><td>授权配置</td><td>GET</td></tr>
+                                    <tr><td><code>auth/config/save</code></td><td>保存授权配置</td><td>POST</td></tr>
+                                    <tr><td><code>auth/set</code></td><td>设置授权码</td><td>POST</td></tr>
+                                    <tr><td><code>auth/generate</code></td><td>生成授权码</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🗄️ 数据库（6个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>db/status</code></td><td>数据库状态</td><td>GET</td></tr>
+                                    <tr><td><code>db/config/save</code></td><td>保存数据库配置</td><td>POST</td></tr>
+                                    <tr><td><code>db/test_connection</code></td><td>测试数据库连接</td><td>POST</td></tr>
+                                    <tr><td><code>db/migrate</code></td><td>数据库迁移</td><td>POST</td></tr>
+                                    <tr><td><code>db/init</code></td><td>初始化数据库</td><td>POST</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🏷️ 广告特征码（8个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>signatures/list</code></td><td>特征码列表</td><td>GET</td></tr>
+                                    <tr><td><code>signatures/add</code></td><td>添加特征码</td><td>POST</td></tr>
+                                    <tr><td><code>signatures/delete</code></td><td>删除特征码</td><td>POST</td></tr>
+                                    <tr><td><code>signatures/stats</code></td><td>特征码统计</td><td>GET</td></tr>
+                                    <tr><td><code>signatures/clean</code></td><td>清理低置信度特征码</td><td>POST</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🎮 播放器配置（2个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>player/config</code></td><td>播放器配置</td><td>GET</td></tr>
+                                    <tr><td><code>player/config/save</code></td><td>保存播放器配置</td><td>POST</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">🌐 代理管理（3个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>proxy/list</code></td><td>活跃代理列表</td><td>GET</td></tr>
+                                    <tr><td><code>proxy/check</code></td><td>检查代理可用性</td><td>GET</td></tr>
+                                    <tr><td><code>proxies/list</code></td><td>全部代理列表</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">📦 其他接口（4个）</div>
+                            <table class="param-table">
+                                <thead><tr><th>接口路径</th><th>说明</th><th>方法</th></tr></thead>
+                                <tbody>
+                                    <tr><td><code>info</code></td><td>系统信息</td><td>GET</td></tr>
+                                    <tr><td><code>version</code></td><td>版本信息</td><td>GET</td></tr>
+                                    <tr><td><code>api/v2</code></td><td>v2统一接口</td><td>GET/POST</td></tr>
+                                    <tr><td><code>kz/cache</code></td><td>缓存型M3U8解析</td><td>GET</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 视频分析 -->
             <div class="category" id="category-analyze">
                 <h2 class="category-title"><span class="icon">🎬</span> 视频分析</h2>
@@ -3300,6 +3559,98 @@ mx.php?action=official_replace/platforms</pre>
                         </div>
                     </div>
                 </div>
+
+                <div class="api-card" data-name="update/backup/list 备份文件列表">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">update/backup/list</span>
+                        <span class="api-desc">获取备份文件列表</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取所有系统备份文件列表，包括文件名、创建时间、文件大小等信息。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=update/backup/list</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="update/backup/create 创建系统备份">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">update/backup/create</span>
+                        <span class="api-desc">创建系统备份</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">创建完整的系统备份，包括程序文件、配置文件和数据文件。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=update/backup/create</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="update/backup/restore 恢复备份">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">update/backup/restore</span>
+                        <span class="api-desc">从备份恢复</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">从指定的备份文件恢复系统。请谨慎操作，恢复后当前数据将被覆盖。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>filename</td><td>string</td><td class="param-required">是</td><td>备份文件名</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="update/backup/delete 删除备份">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">update/backup/delete</span>
+                        <span class="api-desc">删除备份文件</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">删除指定的备份文件。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>filename</td><td>string</td><td class="param-required">是</td><td>备份文件名</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 授权管理 -->
@@ -3714,6 +4065,635 @@ mx.php?action=official_replace/platforms</pre>
   "success": true,
   "message": "数据库表初始化完成"
 }</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PT引擎 -->
+            <div class="category" id="category-pt">
+                <h2 class="category-title"><span class="icon">🚀</span> PT 引擎</h2>
+
+                <div class="api-card" data-name="pt/status PT引擎状态">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">pt/status</span>
+                        <span class="api-desc">PT引擎状态信息</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取 PT 引擎的完整状态信息，包括平台适配器列表、AI 分析器配置、广告跳过引擎状态及各模块统计数据。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=pt/status</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "platforms": [
+    {
+      "id": "iqiyi",
+      "name": "爱奇艺",
+      "status": "active",
+      "adapter_version": "1.0.0"
+    }
+  ],
+  "ai_analyzer": {
+    "enabled": true,
+    "weight": 0.7,
+    "model": "default"
+  },
+  "ad_skip_engine": {
+    "enabled": true,
+    "total_processed": 1200,
+    "success_rate": 92.5
+  },
+  "stats": {
+    "total_requests": 5000,
+    "avg_process_time": 0.35
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="pt/test PT引擎匹配测试">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">pt/test</span>
+                        <span class="api-desc">PT引擎匹配测试</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">使用 PT 引擎对指定视频链接进行匹配测试，返回匹配的平台、匹配度评分及分析结果。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>视频链接（播放页或M3U8地址）</td></tr>
+                                    <tr><td>platform</td><td>string</td><td class="param-optional">否</td><td>指定平台ID，不传则自动匹配</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=pt/test&url=https://v.youku.com/v_show/id_XXX.html</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "matched": true,
+  "platform": {
+    "id": "youku",
+    "name": "优酷",
+    "confidence": 95.5
+  },
+  "analysis": {
+    "video_title": "视频标题",
+    "episode": "第1集",
+    "duration": 2700
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="pt/adskip PT去广告处理">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">pt/adskip</span>
+                        <span class="api-desc">PT去广告处理</span>
+                        <span class="tag new">NEW</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">使用 PT 引擎对 M3U8 内容进行去广告处理，支持平台特定的广告识别算法和智能插播检测。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                    <tr><td>platform</td><td>string</td><td class="param-optional">否</td><td>平台ID，不传则自动检测</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=pt/adskip&url=https://example.com/video.m3u8&platform=iqiyi</pre>
+                            </div>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">响应示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>{
+  "success": true,
+  "platform": "iqiyi",
+  "stats": {
+    "total_segments": 200,
+    "ad_segments": 15,
+    "kept_segments": 185,
+    "ad_percentage": 7.5
+  },
+  "ad_ranges": [
+    { "start": 0, "end": 30, "duration": 30, "source": "pt" }
+  ],
+  "output_m3u8": "#EXTM3U\n..."
+}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI智能 -->
+            <div class="category" id="category-ai">
+                <h2 class="category-title"><span class="icon">🤖</span> AI 智能</h2>
+
+                <div class="api-card" data-name="ai/smart_process AI智能处理">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/smart_process</span>
+                        <span class="api-desc">AI智能处理</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI 智能处理接口，支持 analyze（分析）和 full（完整处理）两种模式，可自动保存学习到的规则。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                    <tr><td>mode</td><td>string</td><td class="param-optional">否</td><td>模式：analyze（仅分析）/ full（完整处理），默认 analyze</td></tr>
+                                    <tr><td>auto_save</td><td>int</td><td class="param-optional">否</td><td>是否自动保存规则，1=是，默认 0</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=ai/smart_process&url=https://example.com/video.m3u8&mode=full&auto_save=1</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="ai/pro_detect AI专业检测">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/pro_detect</span>
+                        <span class="api-desc">AI专业检测</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI 专业广告检测，可配置 Z-Score 阈值和置信度参数，提供更精准的广告识别。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                    <tr><td>zscore_threshold</td><td>float</td><td class="param-optional">否</td><td>Z-Score 阈值，默认 2.0</td></tr>
+                                    <tr><td>min_confidence</td><td>float</td><td class="param-optional">否</td><td>最小置信度，默认 0.6</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="ai/skip AI去广告处理">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/skip</span>
+                        <span class="api-desc">AI去广告处理</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI 驱动的去广告处理，带防护机制，支持自动学习和深度分析选项。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                    <tr><td>safeguard</td><td>int</td><td class="param-optional">否</td><td>防护机制，1=启用，默认 1</td></tr>
+                                    <tr><td>auto_learn</td><td>int</td><td class="param-optional">否</td><td>自动学习，1=启用，默认 0</td></tr>
+                                    <tr><td>deep</td><td>int</td><td class="param-optional">否</td><td>深度分析，1=启用，默认 0</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="ai/insert_detect AI插播检测">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/insert_detect</span>
+                        <span class="api-desc">AI插播广告检测</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI 插播广告检测，识别片头、片尾及片中插播的广告内容。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                    <tr><td>detect_opening</td><td>int</td><td class="param-optional">否</td><td>检测片头，1=是，默认 1</td></tr>
+                                    <tr><td>detect_ending</td><td>int</td><td class="param-optional">否</td><td>检测片尾，1=是，默认 1</td></tr>
+                                    <tr><td>detect_middle</td><td>int</td><td class="param-optional">否</td><td>检测片中插播，1=是，默认 1</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="ai/subtitle_detect AI字幕广告检测">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/subtitle_detect</span>
+                        <span class="api-desc">AI滚动字幕广告分析</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI 滚动字幕广告分析，识别视频中的滚动字幕广告并标记。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="ai/md5_analyze AI-MD5特征分析">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/md5_analyze</span>
+                        <span class="api-desc">AI-MD5特征码分析</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI-MD5 特征码分析，通过分析 TS 片段的 MD5 特征识别广告片段。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                    <tr><td>max_count</td><td>int</td><td class="param-optional">否</td><td>最大分析片段数，默认 30</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="ai/md5_detect AI-MD5智能去广告">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">ai/md5_detect</span>
+                        <span class="api-desc">AI-MD5智能去广告</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">AI-MD5 智能去广告，结合规则过滤和 MD5 特征双重检测，提供更精准的去广告效果。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>url</td><td>string</td><td class="param-required">是</td><td>M3U8 视频链接</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 广告特征码 -->
+            <div class="category" id="category-signatures">
+                <h2 class="category-title"><span class="icon">🏷️</span> 广告特征码</h2>
+
+                <div class="api-card" data-name="signatures/list 特征码列表">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">signatures/list</span>
+                        <span class="api-desc">获取广告特征码列表</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取指定域名的广告特征码列表，支持分页和类型筛选。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>domain</td><td>string</td><td class="param-required">是</td><td>域名</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-optional">否</td><td>特征码类型：md5 / duration / tag</td></tr>
+                                    <tr><td>page</td><td>int</td><td class="param-optional">否</td><td>页码，默认 1</td></tr>
+                                    <tr><td>page_size</td><td>int</td><td class="param-optional">否</td><td>每页数量，默认 20</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=signatures/list&domain=example.com&type=md5</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="signatures/add 添加特征码">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">signatures/add</span>
+                        <span class="api-desc">添加广告特征码</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">手动添加广告特征码到数据库。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>domain</td><td>string</td><td class="param-required">是</td><td>域名</td></tr>
+                                    <tr><td>type</td><td>string</td><td class="param-required">是</td><td>特征码类型：md5 / duration / tag</td></tr>
+                                    <tr><td>value</td><td>string</td><td class="param-required">是</td><td>特征码值</td></tr>
+                                    <tr><td>confidence</td><td>float</td><td class="param-optional">否</td><td>置信度 0-100，默认 80</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="signatures/delete 删除特征码">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">signatures/delete</span>
+                        <span class="api-desc">删除广告特征码</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">删除指定 ID 的广告特征码。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>id</td><td>int</td><td class="param-required">是</td><td>特征码 ID</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="signatures/stats 特征码统计">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">signatures/stats</span>
+                        <span class="api-desc">特征码统计信息</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取广告特征码的统计信息，包括各类型数量、域名分布、置信度分布等。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="signatures/clean 清理低置信度特征码">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">signatures/clean</span>
+                        <span class="api-desc">清理低置信度特征码</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">清理低于指定置信度的特征码，优化数据库性能。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>min_confidence</td><td>float</td><td class="param-optional">否</td><td>最小置信度阈值，默认 30</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 官方站点管理 -->
+            <div class="category" id="category-official_sites">
+                <h2 class="category-title"><span class="icon">🏛️</span> 官方站点</h2>
+
+                <div class="api-card" data-name="official_sites/status 官方站点状态">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">official_sites/status</span>
+                        <span class="api-desc">官方站点启用状态</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取官方站点功能的启用状态和全局设置。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official_sites/status</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="official_sites/list 官方站点列表">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">official_sites/list</span>
+                        <span class="api-desc">官方站点列表</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">获取所有官方站点列表，包括站点名称、域名、状态等信息。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="official_sites/search_all 搜索所有官方站点">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method get">GET</span>
+                        <span class="api-path">official_sites/search_all</span>
+                        <span class="api-desc">搜索所有官方站点视频</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">在所有官方站点中搜索视频，返回各站点的搜索结果。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>keyword</td><td>string</td><td class="param-required">是</td><td>搜索关键词</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>mx.php?action=official_sites/search_all&keyword=狂飙</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-card" data-name="official_sites/toggle 启用禁用官方站点">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">official_sites/toggle</span>
+                        <span class="api-desc">启用/禁用官方站点</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">启用或禁用官方站点功能。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>enabled</td><td>int</td><td class="param-required">是</td><td>1=启用，0=禁用</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 播放器配置 -->
+            <div class="category" id="category-player">
+                <h2 class="category-title"><span class="icon">🎮</span> 播放器</h2>
+
+                <div class="api-card" data-name="player/config/save 保存播放器配置">
+                    <div class="api-header" onclick="toggleApi(this)">
+                        <span class="api-method post">POST</span>
+                        <span class="api-path">player/config/save</span>
+                        <span class="api-desc">保存播放器配置</span>
+                        <span class="api-arrow">▶</span>
+                    </div>
+                    <div class="api-body">
+                        <div class="api-section">
+                            <div class="api-section-title">说明</div>
+                            <p style="color: var(--text-regular); font-size: 0.9em;">保存播放器配置到 gz/player_config.php 文件。支持配置默认播放器、自动播放、预加载、HLS 配置等。</p>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">请求参数 (JSON Body)</div>
+                            <table class="param-table">
+                                <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+                                <tbody>
+                                    <tr><td>player</td><td>string</td><td class="param-optional">否</td><td>默认播放器：dplayer / videojs / jwplayer 等</td></tr>
+                                    <tr><td>autoplay</td><td>bool</td><td class="param-optional">否</td><td>是否自动播放</td></tr>
+                                    <tr><td>preload</td><td>string</td><td class="param-optional">否</td><td>预加载模式：auto / metadata / none</td></tr>
+                                    <tr><td>hls_config</td><td>object</td><td class="param-optional">否</td><td>HLS 配置对象</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="api-section">
+                            <div class="api-section-title">调用示例</div>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>curl -X POST mx.php?action=player/config/save \
+  -H "Content-Type: application/json" \
+  -d '{
+    "player": "dplayer",
+    "autoplay": false,
+    "preload": "auto",
+    "hls_config": {
+      "enableWorker": true,
+      "maxBufferLength": 30
+    }
+  }'</pre>
                             </div>
                         </div>
                     </div>
