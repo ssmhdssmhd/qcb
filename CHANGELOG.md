@@ -1,5 +1,57 @@
 # 更新日志
 
+## v5.0.7 (2026-07-16)
+
+### 最终方案：国内 HTTP/SOCKS5 代理池轮询（解决 X-Forwarded-For 失效问题）
+
+1. **问题根因：X-Forwarded-For 伪造被腾讯新版 API 检测**
+   - v5.0.6 的 X-Forwarded-For 方案在靶机测试中仍返回 `em=80`，说明腾讯已升级检测机制：
+     - 不再信任简单的请求头伪造
+     - 可能检测真实 TCP 源 IP 或要求可信代理白名单
+     - 结合 TLS 指纹等多维度判断
+
+2. **新方案：真实国内代理池轮询**
+   - 直接通过国内 HTTP/SOCKS5 代理访问腾讯 API，出口 IP 为国内
+   - 代理来源：[proxy.scdn.io](https://proxy.scdn.io/?country=%E4%B8%AD%E5%9B%BD) 中国区免费代理
+   - 内置 31 个国内代理（HTTP + SOCKS5），按响应时间排序轮询
+
+3. **`curlGet()` 新增 `proxy` 选项**
+   - 支持 `http://IP:PORT` 和 `socks5://IP:PORT` 两种格式
+   - 自动检测协议类型，设置 `CURLOPT_PROXYTYPE`
+   - 与现有 `spoof_ip`、`headers` 选项兼容
+
+4. **代理池结构**
+   ```
+   第1批：响应时间 18-75ms（免费代理，可能失效）
+   第2批：响应时间 335-500ms
+   第3批：阿里云/腾讯云主机代理（相对稳定）
+   SOCKS5：202.141.161.53:10808（更稳定）
+   ```
+
+5. **建议**
+   - 免费代理稳定性差，建议使用**付费代理**或**自建国内 VPS 中转**
+   - 如需稳定解析，可在国内 VPS 部署简单代理转发脚本
+
+#### 解析流程（不变）
+
+```
+方案零：官方API + 国内代理池（出口IP为国内）
+   ↓ 失败
+方案一：第三方JSON解析接口
+   ↓ 失败
+方案二：第三方HTML解析接口
+   ↓ 失败
+方案三：Chrome Headless 嗅探
+```
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — curlGet 新增 proxy 选项；腾讯解析改用国内代理池轮询
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.7
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.6 (2026-07-16)
 
 ### 关键修复：海外服务器腾讯视频 em=80 彻底解决（X-Forwarded-For 伪造国内IP）

@@ -5,11 +5,13 @@
  * 功能：通过解析服务嗅探视频播放地址（.m3u8 / .mp4）
  * 支持：腾讯视频、爱奇艺、优酷、芒果TV 等主流平台
  * 
- * 自动适配国内外服务器（X-Forwarded-For 伪造国内 IP 绕过地域版权限制）：
- *   方案零：平台官方API直连（请求头注入国内 IP，绕过 em=80 海外限制）
+ * 自动适配国内外服务器（国内代理池轮询）：
+ *   方案零：平台官方API + 国内HTTP代理池（出口IP为国内，绕过 em=80 海外限制）
  *   方案一：第三方JSON解析接口
  *   方案二：第三方HTML解析接口
  *   方案三：Chrome Headless 嗅探
+ * 
+ * 代理来源：proxy.scdn.io 中国区免费代理（按响应时间排序轮询）
  * 
  * 用法：server.php?url=VIDEO_URL
  *       server.php?url=VIDEO_URL&debug=1  (调试模式)
@@ -133,14 +135,13 @@ function extractVideoByDirectApi(string $videoUrl, array &$debugLog = []): ?stri
 
 
 // ============================================================
-//  腾讯视频解析（X-Forwarded-For 伪造国内IP）
+//  腾讯视频解析（国内代理池轮询）
 // ============================================================
 
 /**
  * 腾讯视频 API 解析
- * 通过 X-Forwarded-For / Client-IP / X-Real-IP 请求头注入国内 IP，
- * 让腾讯 API 返回 em=0（绕过海外 em=80 版权限制）。
- * 多 IP 轮询：每个 API 请求换一个国内 IP，规避单 IP 被风控。
+ * 通过国内 HTTP 代理池轮询，让腾讯 API 返回 em=0（绕过海外 em=80 版权限制）。
+ * 代理来源：proxy.scdn.io 中国区免费代理
  *
  * @param string $videoUrl 腾讯视频页面URL
  * @param array $debugLog 调试日志
@@ -162,25 +163,51 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
         $debugLog[] = '腾讯: 未提取到视频ID';
         return null;
     }
-    $debugLog[] = "腾讯: 视频ID={$vid} [X-Forwarded-For模式]";
+    $debugLog[] = "腾讯: 视频ID={$vid} [国内代理池模式]";
 
     $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     $mobileUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
     $guid = str_pad((string)mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999), 32, '0', STR_PAD_LEFT);
 
-    // 国内主流 IP 池（用于 X-Forwarded-For 轮询，规避海外 em=80 限制）
-    // 来源：百度/电信/联通/移动 公共 DNS 与运营商骨干网 IP
-    $cnIpPool = [
-        '220.181.38.148',   // 北京 - 百度
-        '36.152.155.5',     // 北京 - 百度移动
-        '111.7.96.5',       // 北京 - 移动
-        '112.65.232.5',     // 上海 - 电信
-        '218.4.157.5',      // 江苏苏州 - 电信
-        '120.232.62.5',     // 广东东莞 - 移动
-        '14.17.32.5',       // 广东深圳 - 电信
-        '58.250.137.5',     // 广东深圳 - 腾讯云
-        '123.125.71.5',     // 北京 - 联通
-        '61.135.169.5',     // 北京 - 联通
+    // 国内 HTTP 代理池（来源：proxy.scdn.io 中国区）
+    // 免费代理稳定性差，建议使用付费代理或自建国内VPS中转
+    // 轮询顺序：响应时间快 → 慢
+    $cnProxyPool = [
+        // 第1批：响应时间 18-75ms（已失效较多）
+        'http://106.75.171.235:8080',
+        'http://47.113.199.182:8080',
+        'http://180.167.238.98:7302',
+        'http://115.239.234.43:7302',
+        'http://60.12.215.23:7302',
+        'http://220.178.229.83:7302',
+        'http://112.13.209.132:8080',
+        'http://58.215.12.59:7302',
+        'http://36.134.185.158:7265',
+        'http://61.160.223.141:7302',
+        // 第2批：响应时间 335-500ms
+        'http://121.40.203.107:80',
+        'http://121.196.237.44:80',
+        'http://58.214.243.92:8080',
+        'http://8.134.140.146:8081',
+        'http://121.43.234.89:80',
+        'http://103.254.68.83:15010',
+        'http://171.220.255.133:13128',
+        'http://60.205.5.47:80',
+        'http://59.110.159.141:8080',
+        'http://47.115.164.226:8080',
+        // 第3批：阿里云/腾讯云主机代理（相对稳定）
+        'http://39.106.229.95:8080',
+        'http://47.98.103.238:80',
+        'http://39.102.210.62:80',
+        'http://112.126.93.147:8080',
+        'http://121.40.98.50:80',
+        'http://123.56.253.145:10070',
+        'http://47.98.103.238:8082',
+        'http://47.98.100.134:80',
+        'http://101.37.16.52:80',
+        'http://47.94.97.121:80',
+        // SOCKS5 代理（更稳定）
+        'socks5://202.141.161.53:10808',
     ];
 
     // API 端点配置
@@ -191,30 +218,30 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
     ];
 
     $data = null;
-    $ipIdx = 0;
+    $proxyIdx = 0;
     foreach ($apiHosts as $apiInfo) {
         foreach ($defnList as $defn) {
             $apiUrl = "{$apiInfo['host']}/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn={$defn}&guid={$guid}&ehost=" . urlencode($apiInfo['ehost']);
 
-            // 轮询使用国内 IP 注入到请求头
-            $spoofIp = $cnIpPool[$ipIdx % count($cnIpPool)];
-            $ipIdx++;
+            // 轮询使用国内代理
+            $proxy = $cnProxyPool[$proxyIdx % count($cnProxyPool)];
+            $proxyIdx++;
 
             $resp = curlGet($apiUrl, [
                 'ua'        => $apiInfo['ua'],
                 'referer'   => $apiInfo['ehost'] . '/',
-                'timeout'   => 10,
-                'spoof_ip'  => $spoofIp,
+                'timeout'   => 15,
+                'proxy'     => $proxy,
             ]);
             if (!$resp) {
-                $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} 请求失败 [IP={$spoofIp}]";
+                $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} 请求失败 [代理={$proxy}]";
                 continue;
             }
             $resp = preg_replace('/^QZOutputJson=/', '', $resp);
             $resp = rtrim($resp, ';');
             $data = json_decode($resp, true);
             $em = $data['em'] ?? 'null';
-            $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} em={$em} [IP={$spoofIp}]";
+            $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} em={$em} [代理={$proxy}]";
             if ($data && ($data['em'] ?? 1) === 0 && isset($data['vl']['vi'][0])) {
                 $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} 成功获取视频信息";
                 break 2;
@@ -224,7 +251,7 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
     }
 
     if (!$data || !isset($data['vl']['vi'][0])) {
-        $debugLog[] = '腾讯: X-Forwarded-For 模式仍失败（IP池已轮询完毕）';
+        $debugLog[] = '腾讯: 国内代理池模式仍失败（代理池已轮询完毕）';
         return null;
     }
 
@@ -252,7 +279,7 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
             'ua'        => $ua,
             'referer'   => 'https://v.qq.com/',
             'timeout'   => 10,
-            'spoof_ip'  => $cnIpPool[0],   // getkey 也注入国内 IP
+            'proxy'     => $cnProxyPool[0],   // getkey 也使用国内代理
         ]);
         if ($resp2) {
             $resp2 = preg_replace('/^QZOutputJson=/', '', $resp2);
@@ -656,11 +683,12 @@ function isChromeAvailable(): bool
 /**
  * 统一的 cURL GET 请求封装
  *
- * 支持通过 spoof_ip 选项注入 X-Forwarded-For / Client-IP / X-Real-IP 三个请求头，
- * 让目标 API（如腾讯 vv.video.qq.com）按伪造的国内 IP 鉴权，绕过海外 em=80 限制。
+ * 支持：
+ *   - spoof_ip：注入 X-Forwarded-For 等请求头（已失效于腾讯API）
+ *   - proxy：真实代理服务器（SOCKS5/HTTP），出口IP为代理所在地
  *
  * @param string $url 请求地址
- * @param array $options 选项 [ua, referer, timeout, headers, encoding, spoof_ip]
+ * @param array $options 选项 [ua, referer, timeout, headers, encoding, spoof_ip, proxy]
  * @return string|null 响应内容或null
  */
 function curlGet(string $url, array $options = []): ?string
@@ -679,13 +707,21 @@ function curlGet(string $url, array $options = []): ?string
         CURLOPT_CONNECTTIMEOUT => 5,
     ]);
 
+    // 真实代理支持（出口IP为代理所在地）
+    if (!empty($options['proxy'])) {
+        curl_setopt($ch, CURLOPT_PROXY, $options['proxy']);
+        // 支持 socks5:// 或 http:// 前缀自动检测
+        if (stripos($options['proxy'], 'socks') === 0) {
+            curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+        }
+    }
+
     // 请求头组装：合并自定义 headers 与 spoof_ip 注入头
     $headers = $options['headers'] ?? [];
     if (!empty($options['spoof_ip']) && filter_var($options['spoof_ip'], FILTER_VALIDATE_IP)) {
         $headers[] = 'X-Forwarded-For: ' . $options['spoof_ip'];
         $headers[] = 'Client-IP: ' . $options['spoof_ip'];
         $headers[] = 'X-Real-IP: ' . $options['spoof_ip'];
-        // 部分后端会读取 Forwarded 头，补充一下提升命中率
         $headers[] = 'Forwarded: for=' . $options['spoof_ip'];
     }
     if (!empty($headers)) {
