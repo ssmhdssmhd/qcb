@@ -1,5 +1,28 @@
 # 更新日志
 
+## v5.0.3 (2026-07-15)
+
+### 修复
+
+1. **修复服务器 IP 版权限制（em=80）导致解析失败**
+   - 问题：腾讯 API 返回 `em=80`，提示"您所在区域暂无此内容版权"
+   - 新增多 API 端点轮询：PC端 `vv.video.qq.com` + H5移动端 `h5vv.video.qq.com`
+   - 使用移动端 UA 访问 H5 API，可能绕过部分地域限制
+   - 新增多清晰度自动回退：shd → fhd → hd → sd → msd
+
+2. **新增 JSON 直接返回的第三方解析接口**
+   - 优先尝试 `jx.xmflv.com?type=json`、`yparse.ik9.cc?type=json` 等 JSON 接口
+   - JSON 接口不依赖 JS 渲染，cURL 可直接获取视频地址
+   - 支持多种 JSON 字段名解析（url/video/src/play/m3u8/mp4/data）
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — 多API端点轮询 + JSON解析接口
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.3
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.2 (2026-07-15)
 
 ### 修复

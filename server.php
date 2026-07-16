@@ -136,80 +136,56 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
     $debugLog[] = "腾讯: 视频ID={$vid}";
 
     $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    $mobileUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
     $guid = str_pad((string)mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999), 32, '0', STR_PAD_LEFT);
 
-    // 第一步：调用 getinfo 获取视频元数据
-    $infoUrl = "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=shd&guid={$guid}";
+    // 尝试多个 API 端点（PC端、H5移动端）
+    $apiEndpoints = [
+        ['url' => "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=shd&guid={$guid}", 'ua' => $ua, 'name' => 'PC端'],
+        ['url' => "https://h5vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=shd&guid={$guid}", 'ua' => $mobileUa, 'name' => 'H5移动端'],
+        ['url' => "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=fhd&guid={$guid}", 'ua' => $ua, 'name' => 'PC端-fhd'],
+        ['url' => "https://h5vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=hd&guid={$guid}", 'ua' => $mobileUa, 'name' => 'H5-hd'],
+    ];
 
-    $ch = curl_init($infoUrl);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => 0,
-        CURLOPT_USERAGENT      => $ua,
-        CURLOPT_REFERER        => 'https://v.qq.com/',
-        CURLOPT_TIMEOUT        => 10,
-        CURLOPT_CONNECTTIMEOUT => 5,
-    ]);
-    $resp = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    @curl_close($ch);
+    $data = null;
+    foreach ($apiEndpoints as $ep) {
+        $ch = curl_init($ep['url']);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_USERAGENT      => $ep['ua'],
+            CURLOPT_REFERER        => 'https://v.qq.com/',
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        @curl_close($ch);
 
-    if (!$resp || $httpCode !== 200) {
-        $debugLog[] = "腾讯: getinfo失败 HTTP={$httpCode} err={$curlErr}";
-        return null;
-    }
-    $debugLog[] = "腾讯: getinfo成功 HTTP={$httpCode} 响应长度=" . strlen($resp);
-
-    // 解析 JSONP 响应
-    $resp = preg_replace('/^QZOutputJson=/', '', $resp);
-    $resp = rtrim($resp, ';');
-    $data = json_decode($resp, true);
-
-    if (!$data) {
-        $debugLog[] = '腾讯: JSON解析失败，原始响应前200字符: ' . substr($resp, 0, 200);
-        return null;
-    }
-
-    // 检查 API 返回的错误码
-    $em = $data['em'] ?? null;
-    $exem = $data['exem'] ?? null;
-    $debugLog[] = "腾讯: em={$em} exem={$exem}";
-
-    // 检查是否有视频信息
-    if (!isset($data['vl']['vi'][0])) {
-        $debugLog[] = '腾讯: vl.vi 不存在，顶层键: ' . implode(',', array_keys($data));
-        // 尝试不同清晰度
-        $defnList = ['shd', 'fhd', 'hd', 'sd', 'msd'];
-        foreach ($defnList as $defn) {
-            $retryUrl = "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn={$defn}&guid={$guid}";
-            $chR = curl_init($retryUrl);
-            curl_setopt_array($chR, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => 0,
-                CURLOPT_USERAGENT      => $ua,
-                CURLOPT_REFERER        => 'https://v.qq.com/',
-                CURLOPT_TIMEOUT        => 10,
-                CURLOPT_CONNECTTIMEOUT => 5,
-            ]);
-            $retryResp = curl_exec($chR);
-            @curl_close($chR);
-            $retryResp = preg_replace('/^QZOutputJson=/', '', $retryResp);
-            $retryResp = rtrim($retryResp, ';');
-            $retryData = json_decode($retryResp, true);
-            if ($retryData && isset($retryData['vl']['vi'][0])) {
-                $data = $retryData;
-                $debugLog[] = "腾讯: defn={$defn} 成功获取视频信息";
-                break;
-            }
-            $debugLog[] = "腾讯: defn={$defn} 无视频信息";
+        if (!$resp || $httpCode !== 200) {
+            $debugLog[] = "腾讯: {$ep['name']} getinfo失败 HTTP={$httpCode} err={$curlErr}";
+            continue;
         }
-        if (!isset($data['vl']['vi'][0])) {
-            $debugLog[] = '腾讯: 所有清晰度均失败，返回msg: ' . ($data['msg'] ?? 'null');
-            return null;
+
+        $resp = preg_replace('/^QZOutputJson=/', '', $resp);
+        $resp = rtrim($resp, ';');
+        $data = json_decode($resp, true);
+
+        $em = $data['em'] ?? null;
+        $debugLog[] = "腾讯: {$ep['name']} em={$em}";
+
+        if ($data && isset($data['vl']['vi'][0])) {
+            $debugLog[] = "腾讯: {$ep['name']} 成功获取视频信息";
+            break;
         }
+        $data = null;
+    }
+
+    if (!$data || !isset($data['vl']['vi'][0])) {
+        $debugLog[] = '腾讯: 所有API端点均失败（可能是服务器IP版权限制 em=80）';
+        return null;
     }
 
     $vi = $data['vl']['vi'][0];
@@ -469,20 +445,24 @@ function extractMgtvVideo(string $videoUrl): ?string
  */
 function extractVideoByCurl(string $videoUrl): ?string
 {
-    $parseApiUrl = 'https://jx.xmflv.com/?url=' . urlencode($videoUrl);
+    // 优先尝试 JSON 直接返回的解析接口（不依赖 JS 渲染）
+    $jsonApis = [
+        'https://jx.xmflv.com/?url=' . urlencode($videoUrl) . '&type=json',
+        'https://jx.xmflv.com/api?url=' . urlencode($videoUrl),
+        'https://yparse.ik9.cc/index.php?url=' . urlencode($videoUrl) . '&type=json',
+    ];
+    foreach ($jsonApis as $apiUrl) {
+        $jsonResult = fetchJsonApi($apiUrl);
+        if ($jsonResult) {
+            return $jsonResult;
+        }
+    }
 
-    // 第一次请求
+    // 尝试 HTML 页面解析接口
+    $parseApiUrl = 'https://jx.xmflv.com/?url=' . urlencode($videoUrl);
     $result = fetchParsePage($parseApiUrl);
     if ($result['videoLink']) {
         return $result['videoLink'];
-    }
-
-    // 如果第一次失败，使用返回的页面URL重试（模拟 reload）
-    if (!empty($result['effectiveUrl']) && $result['effectiveUrl'] !== $parseApiUrl) {
-        $retryResult = fetchParsePage($result['effectiveUrl']);
-        if ($retryResult['videoLink']) {
-            return $retryResult['videoLink'];
-        }
     }
 
     // 使用备用解析接口重试
@@ -498,6 +478,64 @@ function extractVideoByCurl(string $videoUrl): ?string
         $backupResult = fetchParsePage($backupUrl);
         if ($backupResult['videoLink']) {
             return $backupResult['videoLink'];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 请求返回 JSON 格式的解析接口
+ * 
+ * @param string $apiUrl API地址
+ * @return string|null 视频直链或null
+ */
+function fetchJsonApi(string $apiUrl): ?string
+{
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        CURLOPT_REFERER        => $apiUrl,
+        CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+    ]);
+
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    @curl_close($ch);
+
+    if (!$resp || $httpCode !== 200) {
+        return null;
+    }
+
+    $data = json_decode($resp, true);
+    if (!$data) {
+        return null;
+    }
+
+    // 尝试多种 JSON 字段名
+    $urlFields = ['url', 'video', 'src', 'play', 'm3u8', 'mp4', 'data'];
+    foreach ($urlFields as $field) {
+        $val = $data[$field] ?? null;
+        if (is_string($val) && preg_match('/\.(m3u8|mp4)(\?|$)/i', $val)) {
+            return $val;
+        }
+    }
+
+    // 嵌套 data 对象
+    $inner = $data['data'] ?? null;
+    if (is_array($inner)) {
+        foreach ($urlFields as $field) {
+            $val = $inner[$field] ?? null;
+            if (is_string($val) && preg_match('/\.(m3u8|mp4)(\?|$)/i', $val)) {
+                return $val;
+            }
         }
     }
 
