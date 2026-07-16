@@ -1,5 +1,44 @@
 # 更新日志
 
+## v5.0.9 (2026-07-16)
+
+### 终极方案：用户IP注入（解决CORS跨域问题）
+
+1. **问题根因：CORS跨域阻止浏览器直接请求腾讯API**
+   - v5.0.8 的客户端直连方案在浏览器中因CORS策略失败
+   - 浏览器不允许直接跨域请求 `vv.video.qq.com`
+
+2. **新方案：服务器代理转发 + 用户IP注入**
+   - 核心原理：用户在国内访问海外服务器，服务器能获取到用户的真实国内IP
+   - 服务器转发腾讯API请求时，将用户的国内IP注入到 `X-Forwarded-For/Client-IP/X-Real-IP` 请求头
+   - 腾讯按注入的国内IP鉴权，返回 `em=0`
+
+3. **工作流程**
+   ```
+   国内用户 → 海外服务器(api.php) → server.php → 提取用户国内IP → 注入X-Forwarded-For → 腾讯API(em=0) → 返回视频URL
+   ```
+
+4. **关键改动**
+   - `server.php`: 新增 `getUserRealIp()` 函数，从 `REMOTE_ADDR/X-Forwarded-For/X-Real-IP/Client-IP` 提取用户真实IP
+   - `server.php`: 新增 `curlGetWithUserIp()` 函数，转发请求时注入用户IP
+   - `server.php`: 新增 `extractTencentVideoWithProxy()` 函数，使用用户IP注入模式解析腾讯视频
+   - `server.php`: 新增 `proxyRequest()` 函数，提供API代理转发端点（`?action=proxy&url=xxx`）
+
+5. **优势**
+   - 用户无需任何操作，直接访问即可解析
+   - 无需前端JS处理，纯服务器端完成
+   - 支持所有平台（腾讯/爱奇艺/优酷/芒果TV）
+   - 自动适配国内外服务器
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — 用户IP注入方案、代理转发功能
+- [api.php](file:///workspace/api.php) — 简化为透传模式
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.9
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.8 (2026-07-16)
 
 ### 终极方案：客户端直连腾讯API（解决免费代理全部失效问题）

@@ -5,21 +5,30 @@
  * 功能：通过解析服务嗅探视频播放地址（.m3u8 / .mp4）
  * 支持：腾讯视频、爱奇艺、优酷、芒果TV 等主流平台
  * 
- * 自动适配国内外服务器（客户端直连方案）：
- *   方案零：两阶段解析 - 服务器生成API参数，客户端（国内）直接调用腾讯API
+ * 自动适配国内外服务器（用户IP注入方案）：
+ *   方案零：代理转发 + 用户IP注入 - 服务器转发腾讯API请求时，将用户的真实国内IP注入X-Forwarded-For
  *   方案一：第三方JSON解析接口
  *   方案二：第三方HTML解析接口
  *   方案三：Chrome Headless 嗅探
  * 
+ * 核心原理：用户在国内访问海外服务器，服务器能获取到用户的国内IP。
+ *   转发腾讯API请求时注入 X-Forwarded-For=用户国内IP，腾讯按国内IP鉴权返回em=0。
+ * 
  * 用法：server.php?url=VIDEO_URL
  *       server.php?url=VIDEO_URL&debug=1  (调试模式)
- *       server.php?url=VIDEO_URL&phase=2&api_data=BASE64_ENCODED_JSON  (阶段2：客户端回传API数据)
+ *       server.php?action=proxy&url=xxx    (API代理转发)
  */
 
-header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Referer, User-Agent');
+
+if (isset($_GET['action']) && $_GET['action'] == 'proxy') {
+    proxyRequest();
+    exit;
+}
+
+header('Content-Type: application/json; charset=utf-8');
 
 $debug = isset($_GET['debug']) && $_GET['debug'] == '1';
 $debugLog = [];
@@ -42,22 +51,12 @@ $host = parse_url($videoUrl, PHP_URL_HOST) ?? '';
 $videoLink = null;
 
 if (preg_match('/v\.qq\.com/i', $host)) {
-    if (isset($_GET['phase']) && $_GET['phase'] == '2') {
-        $videoLink = processTencentApiData($videoUrl, $_GET['api_data'] ?? '', $debugLog);
-    } else {
-        echo json_encode([
-            'code' => 206,
-            'message' => '需要客户端直连腾讯API',
-            'phase' => 1,
-            'task' => generateTencentApiRequests($videoUrl),
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    $videoLink = extractTencentVideoWithProxy($videoUrl, $debugLog);
 } else {
     $videoLink = extractVideoByDirectApi($videoUrl, $debugLog);
 }
 
-if ($debug && !isset($_GET['phase'])) {
+if ($debug) {
     $debugLog[] = '方案零(官方API): ' . ($videoLink ? '成功' : '失败');
 }
 
@@ -100,10 +99,84 @@ exit;
 
 
 // ============================================================
-//  腾讯视频两阶段解析方案
+//  代理转发功能（注入用户真实IP）
 // ============================================================
 
-function generateTencentApiRequests(string $videoUrl): array
+function proxyRequest()
+{
+    $targetUrl = $_GET['url'] ?? '';
+    if (!$targetUrl) {
+        http_response_code(400);
+        echo '{"code":400,"message":"URL parameter is required"}';
+        exit;
+    }
+
+    $userIp = getUserRealIp();
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+    $referer = $_SERVER['HTTP_REFERER'] ?? '';
+
+    $headers = [
+        'X-Forwarded-For: ' . $userIp,
+        'Client-IP: ' . $userIp,
+        'X-Real-IP: ' . $userIp,
+        'Forwarded: for=' . $userIp,
+        'Accept: */*',
+        'User-Agent: ' . $ua,
+    ];
+    if ($referer) {
+        $headers[] = 'Referer: ' . $referer;
+    }
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $targetUrl,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $ua,
+        CURLOPT_REFERER        => $referer ?: $targetUrl,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_HTTPHEADER     => $headers,
+    ]);
+
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code($httpCode);
+    echo $resp;
+}
+
+function getUserRealIp(): string
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        $ip = trim($ips[0]);
+    } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+        $ip = $_SERVER['HTTP_X_REAL_IP'];
+    } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    }
+
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        $ip = '220.181.38.148';
+    }
+
+    return $ip;
+}
+
+
+// ============================================================
+//  腾讯视频解析（代理转发 + 用户IP注入）
+// ============================================================
+
+function extractTencentVideoWithProxy(string $videoUrl, array &$debugLog = []): ?string
 {
     $vid = null;
     if (preg_match('/\/x\/cover\/\w+\/(\w+)\.html/i', $videoUrl, $m)) {
@@ -115,8 +188,13 @@ function generateTencentApiRequests(string $videoUrl): array
     }
 
     if (!$vid) {
-        return [];
+        $debugLog[] = '腾讯: 未提取到视频ID';
+        return null;
     }
+    $debugLog[] = "腾讯: 视频ID={$vid} [代理转发+用户IP注入模式]";
+
+    $userIp = getUserRealIp();
+    $debugLog[] = "腾讯: 用户真实IP={$userIp}";
 
     $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     $mobileUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
@@ -128,54 +206,46 @@ function generateTencentApiRequests(string $videoUrl): array
         ['host' => 'https://h5vv.video.qq.com', 'ehost' => 'https://m.v.qq.com', 'ua' => $mobileUa, 'name' => 'H5端'],
     ];
 
-    $requests = [];
+    $data = null;
     foreach ($apiHosts as $apiInfo) {
         foreach ($defnList as $defn) {
             $apiUrl = "{$apiInfo['host']}/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn={$defn}&guid={$guid}&ehost=" . urlencode($apiInfo['ehost']);
-            $requests[] = [
-                'url'     => $apiUrl,
-                'ua'      => $apiInfo['ua'],
-                'referer' => $apiInfo['ehost'] . '/',
-                'name'    => $apiInfo['name'] . '-' . $defn,
-            ];
+
+            $resp = curlGetWithUserIp($apiUrl, [
+                'ua'        => $apiInfo['ua'],
+                'referer'   => $apiInfo['ehost'] . '/',
+                'timeout'   => 10,
+                'user_ip'   => $userIp,
+            ]);
+
+            if (!$resp) {
+                $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} 请求失败";
+                continue;
+            }
+
+            $resp = preg_replace('/^QZOutputJson=/', '', $resp);
+            $resp = rtrim($resp, ';');
+            $data = json_decode($resp, true);
+            $em = $data['em'] ?? 'null';
+            $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} em={$em} [用户IP={$userIp}]";
+
+            if ($data && ($data['em'] ?? 1) === 0 && isset($data['vl']['vi'][0])) {
+                $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} 成功获取视频信息";
+                break 2;
+            }
+            $data = null;
         }
     }
 
-    return [
-        'vid'     => $vid,
-        'guid'    => $guid,
-        'ua'      => $ua,
-        'mobileUa' => $mobileUa,
-        'requests' => $requests,
-        'callback' => $_SERVER['REQUEST_URI'] . '&phase=2',
-    ];
-}
-
-function processTencentApiData(string $videoUrl, string $apiDataBase64, array &$debugLog = []): ?string
-{
-    $debugLog[] = '腾讯: 阶段2处理 - 客户端回传API数据';
-
-    $apiData = base64_decode($apiDataBase64);
-    if (!$apiData) {
-        $debugLog[] = '腾讯: API数据解码失败';
-        return null;
-    }
-
-    $apiData = urldecode($apiData);
-    $data = json_decode($apiData, true);
     if (!$data || !isset($data['vl']['vi'][0])) {
-        $debugLog[] = '腾讯: API数据格式错误或无视频信息';
+        $debugLog[] = '腾讯: 代理转发+用户IP注入模式失败';
         return null;
     }
-
-    $debugLog[] = '腾讯: 客户端直连成功，获取到视频信息';
 
     $vi = $data['vl']['vi'][0];
     $fn = $vi['fn'] ?? '';
     $servers = $vi['ul']['ui'] ?? [];
     $fvkey = $vi['fvkey'] ?? '';
-    $vid = $vi['vid'] ?? '';
-    $guid = $_GET['guid'] ?? '';
 
     if (!$fn || empty($servers)) {
         $debugLog[] = '腾讯: 未获取到文件名或服务器列表';
@@ -184,27 +254,19 @@ function processTencentApiData(string $videoUrl, string $apiDataBase64, array &$
     $debugLog[] = "腾讯: 文件名={$fn} 服务器数=" . count($servers) . " fvkey=" . (empty($fvkey) ? '空' : '已获取');
 
     $vkey = $fvkey;
-    if (!$vkey && $vid && $guid) {
+    if (!$vkey) {
         $debugLog[] = '腾讯: fvkey为空，尝试调用getkey';
         $format = '2';
         if (preg_match('/\.f(\d+)\.mp4$/i', $fn, $m)) {
             $format = $m[1];
         }
         $keyUrl = "https://vv.video.qq.com/getkey?format={$format}&otype=json&vid={$vid}&guid={$guid}&filename={$fn}&platform=101001";
-        
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $keyUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
-            CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            CURLOPT_REFERER        => 'https://v.qq.com/',
-            CURLOPT_TIMEOUT        => 10,
+        $resp2 = curlGetWithUserIp($keyUrl, [
+            'ua'        => $ua,
+            'referer'   => 'https://v.qq.com/',
+            'timeout'   => 10,
+            'user_ip'   => $userIp,
         ]);
-        $resp2 = curl_exec($ch);
-        curl_close($ch);
-
         if ($resp2) {
             $resp2 = preg_replace('/^QZOutputJson=/', '', $resp2);
             $resp2 = rtrim($resp2, ';');
@@ -233,6 +295,47 @@ function processTencentApiData(string $videoUrl, string $apiDataBase64, array &$
 
     $debugLog[] = '腾讯: 无可用CDN服务器';
     return null;
+}
+
+
+// ============================================================
+//  带用户IP注入的curl请求
+// ============================================================
+
+function curlGetWithUserIp(string $url, array $options = []): ?string
+{
+    $userIp = $options['user_ip'] ?? getUserRealIp();
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $options['ua'] ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        CURLOPT_REFERER        => $options['referer'] ?? $url,
+        CURLOPT_TIMEOUT        => $options['timeout'] ?? 15,
+        CURLOPT_CONNECTTIMEOUT => 5,
+    ]);
+
+    $headers = $options['headers'] ?? [];
+    $headers[] = 'X-Forwarded-For: ' . $userIp;
+    $headers[] = 'Client-IP: ' . $userIp;
+    $headers[] = 'X-Real-IP: ' . $userIp;
+    $headers[] = 'Forwarded: for=' . $userIp;
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    @curl_close($ch);
+
+    if (!$resp || $httpCode !== 200) {
+        return null;
+    }
+
+    return $resp;
 }
 
 
