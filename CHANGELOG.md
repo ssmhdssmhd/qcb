@@ -1,5 +1,34 @@
 # 更新日志
 
+## v5.0.10 (2026-07-16)
+
+### 终极方案：JSONP方式绕过CORS（谁调用用谁IP）
+
+1. **核心原理**：腾讯API支持JSONP回调（`QZOutputJson=xxx;`），通过 `<script>` 标签加载不受CORS限制
+2. **工作流程**：
+   - 阶段1：服务器生成腾讯API请求URL（含callback参数）
+   - 阶段2：客户端浏览器用 `<script>` 标签直接加载腾讯API（出口IP=客户端国内IP）
+   - 阶段3：客户端将API返回数据回传给服务器，服务器处理返回视频URL
+
+3. **优势**：
+   - 完全绕过CORS限制（`<script>` 标签不受同源策略约束）
+   - 出口IP是客户端的真实国内IP，腾讯必然返回em=0
+   - 用户直接访问即可，无需任何额外操作
+   - 服务器只负责生成参数和处理结果，不参与API请求
+
+4. **关键改动**：
+   - `api.php`：完全重写，腾讯视频使用JSONP方式处理
+   - `api.php`：新增 `handleTencentVideo()` 函数，生成JSONP请求页面
+   - `api.php`：新增 `processTencentApiData()` 函数，处理阶段2回传的数据
+
+#### 影响文件
+
+- [api.php](file:///workspace/api.php) — JSONP方式处理腾讯视频
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.10
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.9 (2026-07-16)
 
 ### 终极方案：用户IP注入（解决CORS跨域问题）
