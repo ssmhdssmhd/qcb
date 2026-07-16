@@ -1,125 +1,88 @@
 <?php
 /**
- * 超级嗅探 - PHP 版本服务端
+ * 超级嗅探 - 服务端核心
  *
  * 功能：
  *   1. 调用官解接口获取视频 m3u8/mp4 直链
  *   2. 下载 m3u8 内容，通过规则引擎 + AI 识别广告
- *   3. 生成去广告 m3u8 文件，返回结构化 JSON
+ *   3. 生成去广告 m3u8 文件
  *
- * 用法：server.php?url=VIDEO_URL
+ * 本文件提供 parseVideo() 核心函数，由 api.php 调用并控制输出格式
  */
-
-header('Content-Type: application/json; charset=utf-8');
 
 // 加载配置和广告过滤引擎
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 
-// ============ 参数校验 ============
-if (!isset($_GET['url']) || empty(trim($_GET['url']))) {
-    http_response_code(400);
-    echo json_encode(['code' => 400, 'message' => 'URL parameter is required'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+/**
+ * 核心解析函数
+ *
+ * @param string $videoUrl 视频页面 URL
+ * @return array 解析结果
+ */
+function parseVideo(string $videoUrl): array
+{
+    global $config;
 
-$videoUrl = trim($_GET['url']);
+    $startTime = microtime(true);
 
-if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
-    http_response_code(400);
-    echo json_encode(['code' => 400, 'message' => 'Invalid URL format'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// ============ 调试日志 ============
-$debugLog = [];
-if ($config['debug']) {
-    $debugLog['input_url'] = $videoUrl;
-    $debugLog['timeline'] = [];
-}
-
-// ============ 步骤1：调用官解接口获取视频直链 ============
-if ($config['debug']) {
-    $debugLog['timeline']['step1_start'] = date('H:i:s');
-}
-
-$videoLink = getVideoLinkFromOfficialApi($videoUrl, $config, $debugLog);
-
-if (!$videoLink) {
-    http_response_code(500);
-    $errorResponse = [
-        'code'    => 500,
-        'message' => '所有官解接口均未能解析出视频地址',
-    ];
-    if ($config['debug']) {
-        $errorResponse['debug'] = $debugLog;
+    // 参数校验
+    if (empty($videoUrl) || !filter_var($videoUrl, FILTER_VALIDATE_URL)) {
+        return buildResult(400, '解析失败', '链接格式不正确', null, $startTime);
     }
-    echo json_encode($errorResponse, JSON_UNESCAPED_UNICODE);
-    exit;
-}
 
-if ($config['debug']) {
-    $debugLog['timeline']['step1_end'] = date('H:i:s');
-    $debugLog['video_link'] = $videoLink;
-}
+    // 步骤1：调用官解接口获取视频直链
+    $videoLink = getVideoLinkFromOfficialApi($videoUrl, $config);
 
-// ============ 步骤2：判断格式，处理广告 ============
-if ($config['debug']) {
-    $debugLog['timeline']['step2_start'] = date('H:i:s');
-}
+    if (!$videoLink) {
+        return buildResult(500, '解析失败', '所有官解接口均未能解析出视频地址', null, $startTime);
+    }
 
-$isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
-$adInfo = null;
-$cleanUrl = null;
+    // 步骤2：判断格式，处理广告
+    $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
+    $playUrl = $videoLink; // 默认用原始直链
 
-if ($isM3u8) {
-    // m3u8 格式：下载内容 → 广告识别 → 生成去广告版本
-    $m3u8Content = fetchM3u8Content($videoLink, $config);
+    if ($isM3u8) {
+        $m3u8Content = fetchM3u8Content($videoLink, $config);
 
-    if ($m3u8Content) {
-        // 检查是否是多级 m3u8（主清单引用子清单）
-        $resolvedContent = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
-        if ($resolvedContent !== $m3u8Content) {
-            // 多级 m3u8，更新实际地址
-            $videoLink = $resolvedContent['url'] ?? $videoLink;
-            $m3u8Content = $resolvedContent['content'] ?? $m3u8Content;
+        if ($m3u8Content) {
+            // 处理多级 m3u8
+            $resolved = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
+            if ($resolved['url'] !== $videoLink) {
+                $videoLink = $resolved['url'];
+                $m3u8Content = $resolved['content'];
+            }
+
+            // 广告过滤
+            $filter = new AdFilter($config);
+            $result = $filter->process($m3u8Content, $videoLink);
+
+            // 保存去广告 m3u8 到缓存，生成播放地址
+            $cacheId = generateCacheId($videoUrl);
+            $playUrl = saveCleanM3u8($cacheId, $result['clean_content'], $videoLink, $config);
         }
-
-        // 广告过滤
-        $filter = new AdFilter($config);
-        $result = $filter->process($m3u8Content, $videoLink);
-        $adInfo = $result['ad_info'];
-        $cleanM3u8Content = $result['clean_content'];
-
-        // 保存去广告 m3u8 到缓存
-        $cacheId = generateCacheId($videoUrl);
-        $cleanUrl = saveCleanM3u8($cacheId, $cleanM3u8Content, $videoLink, $config);
     }
+
+    return buildResult(200, '解析成功', '解析成功', $playUrl, $startTime);
 }
 
-if ($config['debug']) {
-    $debugLog['timeline']['step2_end'] = date('H:i:s');
+/**
+ * 构建统一结果数组
+ */
+function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime): array
+{
+    global $config;
+    $elapsed = round(microtime(true) - $startTime, 3);
+
+    return [
+        'code' => $code,
+        'ZT'   => $zt,
+        'msg'  => $msg,
+        'url'  => $url ?? '',
+        'time' => $elapsed . 's',
+        'KFZ'  => $config['developer']['name'] . '|' . $config['developer']['author'],
+    ];
 }
-
-// ============ 步骤3：返回结构化 JSON ============
-$response = [
-    'code' => 200,
-    'msg'  => '解析成功',
-    'data' => [
-        'original_url' => $videoLink,
-        'clean_url'    => $cleanUrl,
-        'format'       => $isM3u8 ? 'm3u8' : 'mp4',
-        'has_ads'      => $adInfo ? $adInfo['has_ads'] : false,
-        'ad_info'      => $adInfo,
-    ],
-];
-
-if ($config['debug']) {
-    $response['debug'] = $debugLog;
-}
-
-echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-exit;
 
 
 // ==================== 核心函数 ====================
@@ -127,14 +90,10 @@ exit;
 /**
  * 调用官解接口获取视频直链
  */
-function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$debugLog): ?string
+function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
 {
     foreach ($config['official_apis'] as $api) {
         $targetUrl = $api['url'] . urlencode($videoUrl);
-
-        if ($config['debug']) {
-            $debugLog['timeline']['trying_api'] = $api['name'];
-        }
 
         $ch = curl_init();
         $headers = [];
@@ -162,27 +121,15 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$de
         $error = curl_error($ch);
         curl_close($ch);
 
-        if ($config['debug']) {
-            $debugLog['api_' . $api['name']] = [
-                'http_code'   => $httpCode,
-                'error'       => $error,
-                'effective'   => $effectiveUrl,
-                'resp_length' => strlen($response),
-            ];
-        }
-
         if ($error) {
             continue;
         }
 
-        // 根据接口类型解析
         switch ($api['type']) {
             case 'redirect':
-                // redirect 类型：最终跳转的 URL 就是视频直链
                 if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
                     return $effectiveUrl;
                 }
-                // 也可能在响应体中
                 $extracted = extractVideoUrl($response);
                 if ($extracted) {
                     return $extracted;
@@ -190,10 +137,8 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$de
                 break;
 
             case 'json':
-                // JSON 类型：解析 JSON 获取视频地址
                 $data = json_decode($response, true);
                 if ($data) {
-                    // 优先使用配置指定的 url_field，再尝试常见字段
                     $urlField = $api['url_field'] ?? null;
                     $url = null;
                     if ($urlField && isset($data[$urlField])) {
@@ -206,7 +151,6 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$de
                     if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
                         return $url;
                     }
-                    // 递归查找含 m3u8/mp4 的 URL
                     $foundUrl = findUrlInArray($data);
                     if ($foundUrl) {
                         return $foundUrl;
@@ -215,7 +159,6 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$de
                 break;
 
             case 'text':
-                // 纯文本类型：响应体就是直链
                 $trimmed = trim($response);
                 if (filter_var($trimmed, FILTER_VALIDATE_URL)) {
                     return $trimmed;
@@ -260,45 +203,28 @@ function fetchM3u8Content(string $m3u8Url, array $config): ?string
 
 /**
  * 处理多级 m3u8（主清单引用子清单）
- * 如果内容中不包含 #EXTINF 但包含子 m3u8 链接，则下载子清单
  */
 function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config): array
 {
-    // 如果已包含分段信息，说明是最终清单
     if (strpos($content, '#EXTINF') !== false) {
         return ['content' => $content, 'url' => $m3u8Url];
     }
 
-    // 查找子 m3u8 链接（通常在 #EXT-X-STREAM-INF 之后）
-    if (preg_match('/#EXT-X-STREAM-INF[^\n]*\n(.+)/', $content, $m)) {
-        $subUrl = trim($m[1]);
-        // 解析为绝对 URL
-        if (!preg_match('/^https?:\/\//i', $subUrl)) {
-            $baseUrl = dirname($m3u8Url);
-            $subUrl = $baseUrl . '/' . ltrim($subUrl, '/');
-        }
-
-        // 选择最高分辨率的子清单（简单策略：取最后一个 STREAM-INF）
+    if (preg_match_all('/#EXT-X-STREAM-INF[^#]*\n([^\n#]+)/', $content, $streams)) {
         $allStreams = [];
-        if (preg_match_all('/#EXT-X-STREAM-INF[^#]*\n([^\n#]+)/', $content, $streams)) {
-            foreach ($streams[1] as $streamUrl) {
-                $streamUrl = trim($streamUrl);
-                if (!preg_match('/^https?:\/\//i', $streamUrl)) {
-                    $baseUrl = dirname($m3u8Url);
-                    $streamUrl = $baseUrl . '/' . ltrim($streamUrl, '/');
-                }
-                $allStreams[] = $streamUrl;
+        foreach ($streams[1] as $streamUrl) {
+            $streamUrl = trim($streamUrl);
+            if (!preg_match('/^https?:\/\//i', $streamUrl)) {
+                $streamUrl = dirname($m3u8Url) . '/' . ltrim($streamUrl, '/');
             }
+            $allStreams[] = $streamUrl;
         }
-
-        // 取最后一个（通常是最高分辨率）
         if (!empty($allStreams)) {
             $subUrl = end($allStreams);
-        }
-
-        $subContent = fetchM3u8Content($subUrl, $config);
-        if ($subContent) {
-            return ['content' => $subContent, 'url' => $subUrl];
+            $subContent = fetchM3u8Content($subUrl, $config);
+            if ($subContent) {
+                return ['content' => $subContent, 'url' => $subUrl];
+            }
         }
     }
 
@@ -325,8 +251,6 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
     }
 
     $filePath = $cacheDir . '/' . $cacheId . '.m3u8';
-
-    // 保存 m3u8 内容和元数据
     $data = [
         'content'      => $content,
         'original_url' => $originalUrl,
@@ -334,7 +258,6 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
     ];
     file_put_contents($filePath, json_encode($data));
 
-    // 构建 clean_url（供前端播放器直接使用）
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
