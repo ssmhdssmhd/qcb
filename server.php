@@ -160,16 +160,56 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
         $debugLog[] = "腾讯: getinfo失败 HTTP={$httpCode} err={$curlErr}";
         return null;
     }
-    $debugLog[] = "腾讯: getinfo成功 HTTP={$httpCode}";
+    $debugLog[] = "腾讯: getinfo成功 HTTP={$httpCode} 响应长度=" . strlen($resp);
 
     // 解析 JSONP 响应
     $resp = preg_replace('/^QZOutputJson=/', '', $resp);
     $resp = rtrim($resp, ';');
     $data = json_decode($resp, true);
 
-    if (!$data || !isset($data['vl']['vi'][0])) {
-        $debugLog[] = '腾讯: getinfo返回数据异常';
+    if (!$data) {
+        $debugLog[] = '腾讯: JSON解析失败，原始响应前200字符: ' . substr($resp, 0, 200);
         return null;
+    }
+
+    // 检查 API 返回的错误码
+    $em = $data['em'] ?? null;
+    $exem = $data['exem'] ?? null;
+    $debugLog[] = "腾讯: em={$em} exem={$exem}";
+
+    // 检查是否有视频信息
+    if (!isset($data['vl']['vi'][0])) {
+        $debugLog[] = '腾讯: vl.vi 不存在，顶层键: ' . implode(',', array_keys($data));
+        // 尝试不同清晰度
+        $defnList = ['shd', 'fhd', 'hd', 'sd', 'msd'];
+        foreach ($defnList as $defn) {
+            $retryUrl = "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn={$defn}&guid={$guid}";
+            $chR = curl_init($retryUrl);
+            curl_setopt_array($chR, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+                CURLOPT_USERAGENT      => $ua,
+                CURLOPT_REFERER        => 'https://v.qq.com/',
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+            ]);
+            $retryResp = curl_exec($chR);
+            @curl_close($chR);
+            $retryResp = preg_replace('/^QZOutputJson=/', '', $retryResp);
+            $retryResp = rtrim($retryResp, ';');
+            $retryData = json_decode($retryResp, true);
+            if ($retryData && isset($retryData['vl']['vi'][0])) {
+                $data = $retryData;
+                $debugLog[] = "腾讯: defn={$defn} 成功获取视频信息";
+                break;
+            }
+            $debugLog[] = "腾讯: defn={$defn} 无视频信息";
+        }
+        if (!isset($data['vl']['vi'][0])) {
+            $debugLog[] = '腾讯: 所有清晰度均失败，返回msg: ' . ($data['msg'] ?? 'null');
+            return null;
+        }
     }
 
     $vi = $data['vl']['vi'][0];
