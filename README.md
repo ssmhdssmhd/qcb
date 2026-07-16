@@ -41,6 +41,16 @@
 - 🌐 **Web API 服务** - 支持通过 URL 参数直接调用，返回 JSON 或 M3U8
 - 🔓 **CORS 支持** - 支持跨域访问，可直接在前端调用
 - 📱 **响应式界面** - 美观的后台管理界面，支持移动端访问
+- 📺 **TVBox / 影视App专用解析接口** - `jiexi.php` 专为电视盒子和影视App打造
+  - 支持 TVBox、影视仓、喵影视、影迷大院等主流影视App
+  - 兼容多种参数：url/wd/v/video/t/u/play/src
+  - 支持 5 种返回格式：JSON / 影视CMS标准 / 302跳转 / XML / JSONP
+  - CORS 跨域支持，开箱即用
+- 🚀 **超级嗅探模块（xt/）** - 独立官解对接 + AI去广告轻量模块
+  - 官解接口对接，支持 redirect/json/text 三种类型
+  - 规则引擎 + AI 大模型双重广告识别
+  - 解析结果缓存，重复请求毫秒级响应
+  - 相对路径自动转绝对路径，直接播放
 
 ## 快速开始
 
@@ -53,8 +63,16 @@
 ```
 ├── mx.php                 # API 接口入口
 ├── mxadmin.php            # 后台管理页面
+├── jiexi.php              # TVBox/影视App专用解析接口
 ├── index.php              # 首页路由
 ├── router.php             # 路由配置
+├── xt/                    # 超级嗅探模块（官解对接 + AI去广告）
+│   ├── api.php            # 多端调用统一入口
+│   ├── server.php         # 服务端核心解析
+│   ├── AdFilter.php       # 广告识别引擎
+│   ├── clean.php          # 去广告 m3u8 播放代理
+│   ├── config.php         # 全局配置
+│   └── README.md          # 模块文档
 ├── gz/
 │   ├── DomainRuleManager.php   # 域名规则管理器
 │   ├── EnhancedAdRuleEngine.php # 增强版广告规则引擎
@@ -365,6 +383,23 @@ http://你的域名/mx.php?action=<action>&...
 MIT License
 
 ## 版本历史
+
+### v2.29.0 (2026-07-16)
+
+- ✨ 新增 `jiexi.php` — TVBox / 影视App专用解析接口
+  - 支持 TVBox、影视仓、喵影视、影迷大院等主流影视App
+  - 兼容 8 种参数名：url/wd/v/video/t/u/play/src
+  - 支持 5 种返回格式：JSON / 影视CMS标准(code=1) / 302跳转 / XML / JSONP
+  - CORS 跨域支持，开箱即用
+- ✨ 新增超级嗅探模块 `xt/`（v5.1.4）
+  - 官解接口对接，支持 redirect/json/text 三种类型
+  - 规则引擎 + AI 大模型双重广告识别
+  - 解析结果缓存，重复请求毫秒级响应
+  - m3u8 相对路径自动转绝对路径，直接播放
+  - 多级 m3u8 最高码率优选
+  - 缓存自动清理（过期 + 文件数上限双重保护）
+  - clean.php 支持 ETag / 304 协商缓存 + CORS 预检
+- 🐛 修复去广告 m3u8 无法播放问题（ts 相对路径转绝对路径）
 
 ### v2.28.2 (2026-07-07)
 
