@@ -29,8 +29,13 @@ if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
 
 $videoLink = null;
 
-// ============ 方案一：纯 cURL + 正则解析（推荐，无需 Chrome） ============
-$videoLink = extractVideoByCurl($videoUrl);
+// ============ 方案零：直接调用平台官方 API（推荐，最快最稳定） ============
+$videoLink = extractVideoByDirectApi($videoUrl);
+
+// ============ 方案一：纯 cURL + 正则解析（第三方解析接口） ============
+if (!$videoLink) {
+    $videoLink = extractVideoByCurl($videoUrl);
+}
 
 // ============ 方案二：如果方案一失败，尝试通过 Chrome Headless 嗅探 ============
 if (!$videoLink && isChromeAvailable()) {
@@ -46,6 +51,333 @@ if ($videoLink) {
 }
 
 exit;
+
+/**
+ * 方案零：直接调用平台官方 API 获取视频播放地址
+ * 支持腾讯视频、爱奇艺、优酷等主流平台
+ * 
+ * @param string $videoUrl 视频页面URL
+ * @return string|null 视频直链或null
+ */
+function extractVideoByDirectApi(string $videoUrl): ?string
+{
+    $host = parse_url($videoUrl, PHP_URL_HOST) ?? '';
+
+    // 腾讯视频
+    if (preg_match('/v\.qq\.com/i', $host)) {
+        return extractTencentVideo($videoUrl);
+    }
+
+    // 爱奇艺
+    if (preg_match('/iqiyi\.com/i', $host)) {
+        return extractIqiyiVideo($videoUrl);
+    }
+
+    // 优酷
+    if (preg_match('/youku\.com/i', $host)) {
+        return extractYoukuVideo($videoUrl);
+    }
+
+    // 芒果TV
+    if (preg_match('/mgtv\.com/i', $host)) {
+        return extractMgtvVideo($videoUrl);
+    }
+
+    return null;
+}
+
+/**
+ * 腾讯视频直接 API 解析
+ * 通过 getinfo + getkey 两步获取视频直链
+ * 
+ * @param string $videoUrl 腾讯视频页面URL
+ * @return string|null 视频直链或null
+ */
+function extractTencentVideo(string $videoUrl): ?string
+{
+    // 从 URL 中提取视频 ID
+    $vid = null;
+    if (preg_match('/\/x\/cover\/\w+\/(\w+)\.html/i', $videoUrl, $m)) {
+        $vid = $m[1];
+    } elseif (preg_match('/vid=(\w+)/i', $videoUrl, $m)) {
+        $vid = $m[1];
+    } elseif (preg_match('/\/x\/page\/(\w+)\.html/i', $videoUrl, $m)) {
+        $vid = $m[1];
+    }
+
+    if (!$vid) {
+        return null;
+    }
+
+    $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    $guid = str_pad((string)mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999), 32, '0', STR_PAD_LEFT);
+
+    // 第一步：调用 getinfo 获取视频元数据
+    $infoUrl = "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=shd&guid={$guid}";
+
+    $ch = curl_init($infoUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $ua,
+        CURLOPT_REFERER        => 'https://v.qq.com/',
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!$resp || $httpCode !== 200) {
+        return null;
+    }
+
+    // 解析 JSONP 响应
+    $resp = preg_replace('/^QZOutputJson=/', '', $resp);
+    $resp = rtrim($resp, ';');
+    $data = json_decode($resp, true);
+
+    if (!$data || !isset($data['vl']['vi'][0])) {
+        return null;
+    }
+
+    $vi = $data['vl']['vi'][0];
+    $fn = $vi['fn'] ?? '';
+    $servers = $vi['ul']['ui'] ?? [];
+
+    if (!$fn || empty($servers)) {
+        return null;
+    }
+
+    // 从文件名中提取格式号 (如 f10217.mp4 -> 10217)
+    $format = '2';
+    if (preg_match('/\.f(\d+)\.mp4$/i', $fn, $m)) {
+        $format = $m[1];
+    }
+
+    // 第二步：调用 getkey 获取 vkey
+    $keyUrl = "https://vv.video.qq.com/getkey?format={$format}&otype=json&vid={$vid}&guid={$guid}&filename={$fn}&platform=101001";
+
+    $ch2 = curl_init($keyUrl);
+    curl_setopt_array($ch2, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $ua,
+        CURLOPT_REFERER        => 'https://v.qq.com/',
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
+    ]);
+    $resp2 = curl_exec($ch2);
+    curl_close($ch2);
+
+    if (!$resp2) {
+        return null;
+    }
+
+    $resp2 = preg_replace('/^QZOutputJson=/', '', $resp2);
+    $resp2 = rtrim($resp2, ';');
+    $data2 = json_decode($resp2, true);
+
+    if (!$data2 || !isset($data2['key']) || ($data2['s'] ?? '') !== 'o') {
+        return null;
+    }
+
+    $vkey = $data2['key'];
+
+    // 第三步：遍历所有服务器，构建并测试 URL
+    foreach ($servers as $server) {
+        $serverUrl = $server['url'] ?? '';
+        if (!$serverUrl) {
+            continue;
+        }
+
+        $videoLink = $serverUrl . $fn . '?vkey=' . $vkey;
+
+        // 快速验证 URL 是否可访问
+        $ch3 = curl_init($videoLink);
+        curl_setopt_array($ch3, [
+            CURLOPT_NOBODY         => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_USERAGENT      => $ua,
+            CURLOPT_REFERER        => 'https://v.qq.com/',
+            CURLOPT_TIMEOUT        => 5,
+            CURLOPT_CONNECTTIMEOUT => 3,
+        ]);
+        curl_exec($ch3);
+        $verifyCode = curl_getinfo($ch3, CURLINFO_HTTP_CODE);
+        curl_close($ch3);
+
+        if ($verifyCode == 200 || $verifyCode == 206) {
+            return $videoLink;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 爱奇艺视频直接 API 解析
+ * 
+ * @param string $videoUrl 爱奇艺视频页面URL
+ * @return string|null 视频直链或null
+ */
+function extractIqiyiVideo(string $videoUrl): ?string
+{
+    // 提取视频 ID
+    $vid = null;
+    if (preg_match('/iqiyi\.com\/.*?(\w+)\.html/i', $videoUrl, $m)) {
+        $vid = $m[1];
+    }
+    if (!$vid) {
+        return null;
+    }
+
+    $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    // 爱奇艺 API 获取视频信息
+    $apiUrl = "https://pcw-api.iqiyi.com/video/video/baseinfo/" . urlencode($vid);
+
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $ua,
+        CURLOPT_REFERER        => 'https://www.iqiyi.com/',
+        CURLOPT_TIMEOUT        => 10,
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+
+    if (!$resp) {
+        return null;
+    }
+
+    $data = json_decode($resp, true);
+    $playUrl = $data['data']['playUrl'] ?? null;
+
+    if ($playUrl && filter_var($playUrl, FILTER_VALIDATE_URL)) {
+        return $playUrl;
+    }
+
+    return null;
+}
+
+/**
+ * 优酷视频直接 API 解析
+ * 
+ * @param string $videoUrl 优酷视频页面URL
+ * @return string|null 视频直链或null
+ */
+function extractYoukuVideo(string $videoUrl): ?string
+{
+    // 提取视频 ID
+    $vid = null;
+    if (preg_match('/id_([a-zA-Z0-9=]+)/i', $videoUrl, $m)) {
+        $vid = $m[1];
+    }
+    if (!$vid) {
+        return null;
+    }
+
+    $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    // 优酷 API
+    $apiUrl = "https://ups.youku.com/ups/get.json?vid={$vid}&ccode=0502&client_ip=0.0.0.0&utid=0&client_ts=" . time();
+
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $ua,
+        CURLOPT_REFERER        => 'https://v.youku.com/',
+        CURLOPT_TIMEOUT        => 10,
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+
+    if (!$resp) {
+        return null;
+    }
+
+    $data = json_decode($resp, true);
+    $ups = $data['data']['stream'] ?? [];
+
+    foreach ($ups as $stream) {
+        $m3u8Url = $stream['m3u8_url'] ?? '';
+        if ($m3u8Url && filter_var($m3u8Url, FILTER_VALIDATE_URL)) {
+            return $m3u8Url;
+        }
+        $mp4Url = $stream['mp4_url'] ?? '';
+        if ($mp4Url && filter_var($mp4Url, FILTER_VALIDATE_URL)) {
+            return $mp4Url;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 芒果TV视频直接 API 解析
+ * 
+ * @param string $videoUrl 芒果TV视频页面URL
+ * @return string|null 视频直链或null
+ */
+function extractMgtvVideo(string $videoUrl): ?string
+{
+    // 提取视频 ID
+    $vid = null;
+    if (preg_match('/\/b\/(\d+)\.html/i', $videoUrl, $m)) {
+        $vid = $m[1];
+    }
+    if (!$vid) {
+        return null;
+    }
+
+    $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    // 芒果TV API
+    $apiUrl = "https://pcweb.api.mgtv.com/player/video?video_id={$vid}";
+
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_USERAGENT      => $ua,
+        CURLOPT_REFERER        => 'https://www.mgtv.com/',
+        CURLOPT_TIMEOUT        => 10,
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+
+    if (!$resp) {
+        return null;
+    }
+
+    $data = json_decode($resp, true);
+    $playUrl = $data['data']['info']['play_url'] ?? null;
+
+    if ($playUrl && filter_var($playUrl, FILTER_VALIDATE_URL)) {
+        return $playUrl;
+    }
+
+    // 尝试从 stream 列表中获取
+    $streams = $data['data']['stream'] ?? [];
+    foreach ($streams as $stream) {
+        $url = $stream['url'] ?? '';
+        if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
+            return $url;
+        }
+    }
+
+    return null;
+}
 
 /**
  * 方案一：纯 cURL 抓取解析页面内容，通过正则提取视频地址
@@ -75,6 +407,9 @@ function extractVideoByCurl(string $videoUrl): ?string
     $backupApis = [
         'https://jx.xmflv.com/?url=',
         'https://jx.bozrc.com:4433/player/?url=',
+        'https://jx.m3u8.tv/jiexi/?url=',
+        'https://jx.parwix.com:4433/player/?url=',
+        'https://jx.jsonplayer.com/player/?url=',
     ];
     foreach ($backupApis as $api) {
         $backupUrl = $api . urlencode($videoUrl);

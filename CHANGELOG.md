@@ -1,5 +1,42 @@
 # 更新日志
 
+## v5.0.2 (2026-07-15)
+
+### 修复
+
+1. **修复腾讯视频解析失败问题**
+   - 问题：第三方解析接口（jx.xmflv.com）使用 JavaScript 动态加载视频地址，cURL 无法执行 JS 导致解析失败
+   - 新增**方案零：直接调用平台官方 API**，优先于第三方解析接口
+   - 腾讯视频：通过 `getinfo` + `getkey` 两步 API 直接获取 MP4 视频直链
+     - 自动提取视频 ID（支持 cover/page/iframe 多种 URL 格式）
+     - 使用随机 GUID 生成鉴权 token
+     - 遍历多个 CDN 服务器，自动验证 URL 可访问性
+   - 爱奇艺：调用 `pcw-api` 获取视频播放地址
+   - 优酷：调用 `ups.youku.com` 获取 M3U8/MP4 流地址
+   - 芒果TV：调用 `pcweb.api.mgtv.com` 获取播放地址
+
+2. **增加更多备用解析接口**
+   - 新增 jx.m3u8.tv、jx.parwix.com、jx.jsonplayer.com 三个备用接口
+   - 提升第三方解析回退成功率
+
+#### 解析流程（三层策略）
+
+```
+方案零：平台官方 API（腾讯/爱奇艺/优酷/芒果）→ 最快最稳定
+   ↓ 失败时
+方案一：cURL + 正则解析（5个第三方接口轮询）→ 兜底
+   ↓ 失败时
+方案二：Chrome Headless 嗅探 → 最后防线
+```
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — 新增平台直接 API 解析、增加备用解析接口
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.2
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.1 (2026-07-15)
 
 ### 修复
