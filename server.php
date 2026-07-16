@@ -153,16 +153,31 @@ function proxyRequest()
 
 function getUserRealIp(): string
 {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-    
-    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-        $ip = trim($ips[0]);
-    } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
-        $ip = $_SERVER['HTTP_X_REAL_IP'];
-    } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    $headers = [
+        'HTTP_X_FORWARDED_FOR',
+        'HTTP_X_REAL_IP',
+        'HTTP_CLIENT_IP',
+        'HTTP_CF_CONNECTING_IP',
+        'HTTP_X_CLIENT_IP',
+        'HTTP_X_FORWARDED',
+        'HTTP_FORWARDED_FOR',
+        'HTTP_FORWARDED',
+    ];
+
+    foreach ($headers as $header) {
+        if (!empty($_SERVER[$header])) {
+            $ip = $_SERVER[$header];
+            if (strpos($ip, ',') !== false) {
+                $ips = explode(',', $ip);
+                $ip = trim($ips[0]);
+            }
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                return $ip;
+            }
+        }
     }
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
 
     if (!filter_var($ip, FILTER_VALIDATE_IP)) {
         $ip = '220.181.38.148';
@@ -318,6 +333,7 @@ function curlGetWithUserIp(string $url, array $options = []): ?string
         CURLOPT_REFERER        => $options['referer'] ?? $url,
         CURLOPT_TIMEOUT        => $options['timeout'] ?? 15,
         CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_VERBOSE        => true,
     ]);
 
     $headers = $options['headers'] ?? [];
@@ -329,9 +345,13 @@ function curlGetWithUserIp(string $url, array $options = []): ?string
 
     $resp = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
     @curl_close($ch);
 
     if (!$resp || $httpCode !== 200) {
+        if (isset($GLOBALS['debugLog']) && is_array($GLOBALS['debugLog'])) {
+            $GLOBALS['debugLog'][] = "cURL错误: " . ($error ?: 'unknown') . " HTTP={$httpCode}";
+        }
         return null;
     }
 
