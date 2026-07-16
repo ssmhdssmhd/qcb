@@ -136,29 +136,28 @@ class YoukuAdapter extends AbstractPlatformAdapter
             return $result;
         }
 
+        // 注意：优酷视频 ID 可能含 = 字符（Base64 填充，如 XNTk1MjU3NzQ4NA==）
+        // 路径中的 = 不需要编码，只有查询参数值才需要 urlencode
+        $rawVid = $videoId;
+        $encodedVid = urlencode($videoId);
+
+        // API 列表（查询参数用 urlencode，路径用原始值）
         $apiUrls = [
-            'https://v.youku.com/service/getVideoInfo?vid=' . urlencode($videoId),
-            'https://openapi.youku.com/v2/videos/show.json?client_id=23e50e2e09490776&video_id=' . urlencode($videoId),
-            'https://v.youku.com/v_show/id_' . urlencode($videoId) . '.html',
-            'https://m.youku.com/v_show/id_' . urlencode($videoId) . '.html',
-        ];
-
-        $titlePaths = [
-            ['data', 'title'], ['data', 'name'], ['title'], ['name'],
-            ['data', 'video', 'title'], ['data', 0, 'title'],
-            ['data', 'videoInfo', 'title'], ['data', 'show', 'title'],
-        ];
-
-        $coverPaths = [
-            ['data', 'bigPhoto'], ['data', 'photo'], ['bigPhoto'], ['photo'],
-            ['data', 0, 'bigPhoto'], ['data', 'image'], ['image'],
-            ['data', 'videoInfo', 'cover'], ['data', 'show', 'cover'],
-            ['data', 'show', 'bigPhoto'],
+            // 优酷官方页面（路径用原始 ID，= 不编码）
+            'https://v.youku.com/v_show/id_' . $rawVid . '.html',
+            'https://m.youku.com/v_show/id_' . $rawVid . '.html',
+            // 优酷内部 API（查询参数用编码值）
+            'https://v.youku.com/q_ajax/_getVideoInfo?__rt=1&__ro=&vid=' . $encodedVid,
         ];
 
         foreach ($apiUrls as $apiUrl) {
             try {
-                $response = $this->httpGet($apiUrl);
+                // 优酷页面需要带 Referer 才能正常返回
+                $headers = [];
+                if (stripos($apiUrl, 'youku.com') !== false) {
+                    $headers[] = 'Referer: https://www.youku.com/';
+                }
+                $response = $this->httpGet($apiUrl, $headers);
                 if (!$response) {
                     continue;
                 }
@@ -166,14 +165,52 @@ class YoukuAdapter extends AbstractPlatformAdapter
                 // HTML 页面处理
                 $isHtml = stripos($apiUrl, '.html') !== false;
                 if ($isHtml) {
-                    $htmlTitle = $this->extractTitleFromHtml($response);
-                    if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3 && empty($result['title'])) {
-                        $result['title'] = $htmlTitle;
+                    // 优先从页面内嵌 JSON 数据提取
+                    $pageData = $this->extractPageData($response);
+                    if (!empty($pageData)) {
+                        if (empty($result['title'])) {
+                            $title = $this->findValueByKeys($pageData, ['title', 'name', 'showname', 'show_name', 'videoName']);
+                            if (is_string($title) && mb_strlen($title) >= 2) {
+                                $result['title'] = $title;
+                            }
+                        }
+                        if (empty($result['cover'])) {
+                            $cover = $this->findValueByKeys($pageData, ['bigPhoto', 'photo', 'image', 'cover', 'thumb', 'pic', 'poster']);
+                            if (is_string($cover) && preg_match('/^https?:\/\//i', $cover)) {
+                                $result['cover'] = $cover;
+                            }
+                        }
+                        $episodeInfo = $this->parseEpisodeInfo($pageData);
+                        if (!empty($episodeInfo['episode_num']) || !empty($episodeInfo['total_episodes'])) {
+                            $result['episode_info'] = $episodeInfo;
+                        }
                     }
-                    $htmlCover = $this->extractCoverFromHtml($response);
-                    if (!empty($htmlCover) && empty($result['cover'])) {
-                        $result['cover'] = $htmlCover;
+
+                    // 回退到 meta 标签提取
+                    if (empty($result['title'])) {
+                        $htmlTitle = $this->extractTitleFromHtml($response);
+                        if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 2) {
+                            $result['title'] = $htmlTitle;
+                        }
                     }
+                    if (empty($result['cover'])) {
+                        $htmlCover = $this->extractCoverFromHtml($response);
+                        if (!empty($htmlCover)) {
+                            $result['cover'] = $htmlCover;
+                        }
+                    }
+
+                    // 从 HTML 中提取集数信息
+                    if (empty($result['episode_info']['episode_num'])) {
+                        $htmlEpInfo = $this->extractEpisodeFromHtml($response);
+                        if (!empty($htmlEpInfo['episode_num'])) {
+                            $result['episode_info']['episode_num'] = $htmlEpInfo['episode_num'];
+                        }
+                        if (!empty($htmlEpInfo['total_episodes'])) {
+                            $result['episode_info']['total_episodes'] = $htmlEpInfo['total_episodes'];
+                        }
+                    }
+
                     if (!empty($result['title'])) {
                         break;
                     }
@@ -186,45 +223,23 @@ class YoukuAdapter extends AbstractPlatformAdapter
                     continue;
                 }
 
-                // 提取标题
+                // 递归搜索标题和封面
                 if (empty($result['title'])) {
-                    foreach ($titlePaths as $path) {
-                        $val = $data;
-                        foreach ($path as $key) {
-                            if (!is_array($val) || !isset($val[$key])) {
-                                $val = null;
-                                break;
-                            }
-                            $val = $val[$key];
-                        }
-                        if (is_string($val) && mb_strlen($val) >= 3) {
-                            $result['title'] = $val;
-                            break;
-                        }
+                    $title = $this->findValueByKeys($data, ['title', 'name', 'showname', 'show_name', 'videoName', 'titleCN', 'title_en']);
+                    if (is_string($title) && mb_strlen($title) >= 2) {
+                        $result['title'] = $title;
                     }
                 }
-
-                // 提取封面
                 if (empty($result['cover'])) {
-                    foreach ($coverPaths as $path) {
-                        $val = $data;
-                        foreach ($path as $key) {
-                            if (!is_array($val) || !isset($val[$key])) {
-                                $val = null;
-                                break;
-                            }
-                            $val = $val[$key];
-                        }
-                        if (is_string($val) && preg_match('/\.(jpg|jpeg|png|webp|gif)/i', $val)) {
-                            $result['cover'] = $val;
-                            break;
-                        }
+                    $cover = $this->findValueByKeys($data, ['bigPhoto', 'photo', 'image', 'cover', 'thumb', 'pic', 'poster']);
+                    if (is_string($cover) && preg_match('/^https?:\/\//i', $cover)) {
+                        $result['cover'] = $cover;
                     }
                 }
 
                 // 解析剧集信息
                 $episodeInfo = $this->parseEpisodeInfo($data);
-                if (!empty($episodeInfo)) {
+                if (!empty($episodeInfo['episode_num']) || !empty($episodeInfo['total_episodes'])) {
                     $result['episode_info'] = $episodeInfo;
                 }
 
@@ -238,11 +253,27 @@ class YoukuAdapter extends AbstractPlatformAdapter
 
         // 全部 API 失败时回退到原始 URL 的 HTML
         if (empty($result['title']) && !empty($url)) {
-            $html = $this->httpGet($url);
+            $html = $this->httpGet($url, ['Referer: https://www.youku.com/']);
             if ($html) {
-                $htmlTitle = $this->extractTitleFromHtml($html);
-                if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3) {
-                    $result['title'] = $htmlTitle;
+                // 尝试从页面内嵌数据提取
+                $pageData = $this->extractPageData($html);
+                if (!empty($pageData)) {
+                    $title = $this->findValueByKeys($pageData, ['title', 'name', 'showname', 'show_name', 'videoName']);
+                    if (is_string($title) && mb_strlen($title) >= 2) {
+                        $result['title'] = $title;
+                    }
+                    $cover = $this->findValueByKeys($pageData, ['bigPhoto', 'photo', 'image', 'cover', 'thumb', 'pic', 'poster']);
+                    if (is_string($cover) && preg_match('/^https?:\/\//i', $cover)) {
+                        $result['cover'] = $cover;
+                    }
+                }
+
+                // 回退到 meta 标签
+                if (empty($result['title'])) {
+                    $htmlTitle = $this->extractTitleFromHtml($html);
+                    if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 2) {
+                        $result['title'] = $htmlTitle;
+                    }
                 }
                 if (empty($result['cover'])) {
                     $htmlCover = $this->extractCoverFromHtml($html);
@@ -254,6 +285,140 @@ class YoukuAdapter extends AbstractPlatformAdapter
         }
 
         return $result;
+    }
+
+    /**
+     * 从优酷页面 HTML 中提取内嵌 JSON 数据
+     * 优酷页面通常在 script 标签中嵌入 window.__pageData__ 或 pageData
+     * @param string $html
+     * @return array|null
+     */
+    protected function extractPageData($html)
+    {
+        if (!is_string($html) || $html === '') {
+            return null;
+        }
+
+        // 匹配 window.__pageData__ = {...}
+        $patterns = [
+            '/window\.__pageData__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/',
+            '/window\["__pageData__"\]\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/',
+            '/var\s+pageData\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/',
+            '/window\.pageData\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/',
+            '/window\.__INITIAL_DATA__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/',
+            '/window\.__DATA__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $html, $m)) {
+                $json = trim($m[1]);
+                // 移除末尾多余的分号
+                $json = rtrim($json, ';');
+                $data = json_decode($json, true);
+                if (is_array($data)) {
+                    return $data;
+                }
+                // 尝试修复 JSON（优酷有时会有 JS 表达式混入）
+                // 移除可能的 JS 注释
+                $json = preg_replace('/\/\*[\s\S]*?\*\//', '', $json);
+                $json = preg_replace('/\/\/[^\n]*/', '', $json);
+                $data = json_decode($json, true);
+                if (is_array($data)) {
+                    return $data;
+                }
+            }
+        }
+
+        // 尝试从 script 标签中搜索包含 videoInfo 的 JSON 块
+        if (preg_match_all('/<script[^>]*>([\s\S]*?)<\/script>/i', $html, $scripts)) {
+            foreach ($scripts[1] as $script) {
+                // 查找含 videoInfo 或 videoName 的 JSON 对象
+                if (preg_match('/(\{[^{}]*"(?:videoInfo|videoName|showname|title)"[^{}]*\})/i', $script, $jm)) {
+                    $data = json_decode($jm[1], true);
+                    if (is_array($data)) {
+                        return $data;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 递归搜索关联数组中指定 key 的值（深度优先）
+     * @param array $data
+     * @param array $keys 候选 key 列表
+     * @return mixed|null
+     */
+    protected function findValueByKeys($data, $keys)
+    {
+        if (!is_array($data) || empty($data)) {
+            return null;
+        }
+
+        // 先在当前层级查找
+        foreach ($keys as $key) {
+            if (isset($data[$key]) && (is_string($data[$key]) || is_numeric($data[$key]))) {
+                if (is_string($data[$key]) && $data[$key] !== '') {
+                    return $data[$key];
+                }
+            }
+        }
+
+        // 递归在子数组中查找
+        foreach ($data as $val) {
+            if (is_array($val)) {
+                $found = $this->findValueByKeys($val, $keys);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 从 HTML 中提取集数信息
+     * @param string $html
+     * @return array
+     */
+    protected function extractEpisodeFromHtml($html)
+    {
+        $info = [
+            'episode_num' => null,
+            'total_episodes' => null,
+        ];
+
+        if (!is_string($html) || $html === '') {
+            return $info;
+        }
+
+        // 匹配 "第X集"
+        if (preg_match('/第\s*([0-9零一二三四五六七八九十百]+)\s*集/u', $html, $m)) {
+            $num = $this->chineseToNumber($m[1]);
+            if ($num !== null) {
+                $info['episode_num'] = $num;
+            }
+        }
+
+        // 匹配 "共X集" 或 "全X集"
+        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) {
+            $info['total_episodes'] = (int)$m[1];
+        }
+
+        // 匹配 "更新至第X集"
+        if (empty($info['episode_num']) && preg_match('/更新至\s*(?:第)?\s*(\d+)\s*集/u', $html, $m)) {
+            $info['episode_num'] = (int)$m[1];
+        }
+
+        // 匹配 EPXX
+        if (empty($info['episode_num']) && preg_match('/[Ee][Pp]\s*(\d{1,3})/', $html, $m)) {
+            $info['episode_num'] = (int)$m[1];
+        }
+
+        return $info;
     }
 
     /**
