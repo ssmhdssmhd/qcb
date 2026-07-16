@@ -133,6 +133,7 @@ class PtManager
                 'success' => false,
                 'message' => 'pt: 不支持的视频平台',
                 'adapter' => null,
+                'error_code' => 'UNSUPPORTED_PLATFORM',
             ];
         }
 
@@ -147,6 +148,12 @@ class PtManager
                 'success' => false,
                 'message' => 'pt: 无法获取视频信息',
                 'adapter' => $adapter->getPlatformId(),
+                'error_code' => 'VIDEO_INFO_FAILED',
+                'debug_info' => [
+                    'url' => $url,
+                    'video_id' => $videoInfo['video_id'] ?? '',
+                    'cover_id' => $videoInfo['cover_id'] ?? '',
+                ],
             ];
         }
 
@@ -155,6 +162,36 @@ class PtManager
         if (!empty($cleanedTitle)) {
             $videoInfo['title'] = $cleanedTitle;
             $videoInfo['base_title'] = $cleanedTitle;
+        }
+
+        // 解析视频标题，提取季数、集数等信息
+        if (method_exists($adapter, 'parseVideoTitle') && empty($videoInfo['base_title'])) {
+            $parsed = $adapter->parseVideoTitle($videoInfo['title']);
+            if (!empty($parsed['base_title'])) {
+                $videoInfo['base_title'] = $parsed['base_title'];
+            }
+            if (!empty($parsed['season_num']) && empty($videoInfo['season_num'])) {
+                $videoInfo['season_num'] = $parsed['season_num'];
+            }
+            if (!empty($parsed['episode_num']) && empty($videoInfo['episode_num'])) {
+                $videoInfo['episode_num'] = $parsed['episode_num'];
+            }
+            if (!empty($parsed['part']) && empty($videoInfo['part'])) {
+                $videoInfo['part'] = $parsed['part'];
+            }
+            if (!empty($parsed['version']) && empty($videoInfo['version'])) {
+                $videoInfo['version'] = $parsed['version'];
+            }
+        }
+
+        // 从 episode_info 中补充集数信息
+        if (!empty($videoInfo['episode_info'])) {
+            if (empty($videoInfo['episode_num']) && !empty($videoInfo['episode_info']['episode_num'])) {
+                $videoInfo['episode_num'] = $videoInfo['episode_info']['episode_num'];
+            }
+            if (empty($videoInfo['total_episodes']) && !empty($videoInfo['episode_info']['total_episodes'])) {
+                $videoInfo['total_episodes'] = $videoInfo['episode_info']['total_episodes'];
+            }
         }
 
         // 构建搜索关键词
@@ -187,9 +224,10 @@ class PtManager
 
             // 最佳努力匹配
             if (empty($matches) && !empty($searchResults)) {
+                $bestEffortThreshold = $this->config['best_effort_threshold'] ?? 40;
                 foreach ($searchResults as $candidate) {
                     $score = $adapter->calculateMatchScore($videoInfo, $candidate);
-                    if ($score >= 40) {
+                    if ($score >= $bestEffortThreshold) {
                         $matches[] = [
                             'video' => $candidate,
                             'score' => $score,
@@ -218,6 +256,7 @@ class PtManager
             'best_match' => !empty($matches) ? $matches[0] : null,
             'ad_rules' => $adRules,
             'message' => empty($matches) ? 'pt: 未找到匹配的资源' : 'pt: 匹配成功',
+            'error_code' => empty($matches) ? 'NO_MATCH_FOUND' : null,
         ];
     }
 

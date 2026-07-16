@@ -111,9 +111,26 @@ class TencentVideoAdapter extends AbstractPlatformAdapter
         } elseif (preg_match('#/play/([a-zA-Z0-9]+)#i', $url, $m)) {
             // /play/{vid}
             $videoId = $m[1];
-        } elseif (preg_match('#/([a-zA-Z0-9]{8,16})\.html?$#i', $url, $m)) {
-            // /{vid}.html
+        } elseif (preg_match('#/video/([a-zA-Z0-9]+)#i', $url, $m)) {
+            // /video/{vid}
             $videoId = $m[1];
+        } elseif (preg_match('#/v/([a-zA-Z0-9]+)#i', $url, $m)) {
+            // /v/{vid}
+            $videoId = $m[1];
+        } elseif (preg_match('#/([a-zA-Z0-9]{8,20})\.html?$#i', $url, $m)) {
+            // /{vid}.html - 放宽长度限制
+            $videoId = $m[1];
+        } elseif (preg_match('/[?&]cid=([a-zA-Z0-9]+)/i', $url, $m)) {
+            // ?cid=xxx (cover_id)
+            $coverId = $m[1];
+            if (!$videoId) {
+                $videoId = $m[1];
+            }
+        } elseif (preg_match('/[?&]lid=([a-zA-Z0-9]+)/i', $url, $m)) {
+            // ?lid=xxx (list/cover id)
+            if (!$coverId) {
+                $coverId = $m[1];
+            }
         }
 
         return [
@@ -673,6 +690,7 @@ class TencentVideoAdapter extends AbstractPlatformAdapter
             return $info;
         }
 
+        // 匹配 "第X集" 格式（支持数字和中文数字）
         if (preg_match('/第\s*([0-9零一二三四五六七八九十百]+)\s*集/u', $html, $m)) {
             $num = $this->chineseToNumber($m[1]);
             if ($num !== null) {
@@ -681,8 +699,35 @@ class TencentVideoAdapter extends AbstractPlatformAdapter
             }
         }
 
-        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) {
+        // 匹配 "EPXX" 或 "EXX" 格式
+        if (!$info['episode_num'] && preg_match('/[Ee][Pp]?\s*(\d{1,4})/', $html, $m)) {
+            $info['episode_num'] = (int) $m[1];
+            $info['episode_name'] = $m[0];
+        }
+
+        // 匹配 "第X期" 格式（综艺节目）
+        if (!$info['episode_num'] && preg_match('/第\s*([0-9零一二三四五六七八九十百]+)\s*期/u', $html, $m)) {
+            $num = $this->chineseToNumber($m[1]);
+            if ($num !== null) {
+                $info['episode_num'] = $num;
+                $info['episode_name'] = $m[0];
+            }
+        }
+
+        // 匹配 "共X集" 或 "全X集"
+        if (preg_match('/(?:共|全|总计)\s*(\d+)\s*集/u', $html, $m)) {
             $info['total_episodes'] = (int) $m[1];
+        }
+
+        // 从 title 标签或 og:title 中提取集数
+        if (!$info['episode_num']) {
+            if (preg_match('/<title[^>]*>([^<]+)<\/title>/i', $html, $tm)) {
+                $titleText = $tm[1];
+                if (preg_match('/第\s*(\d+)\s*集/u', $titleText, $em)) {
+                    $info['episode_num'] = (int) $em[1];
+                    $info['episode_name'] = $em[0];
+                }
+            }
         }
 
         return $info;

@@ -81,17 +81,29 @@ class YoukuAdapter extends AbstractPlatformAdapter
         }
 
         // 主匹配规则：youku.com/...id_XXX（必须支持 = 字符，优酷 ID 可能为 Base64 风格含 = 填充）
-        if (preg_match('/youku\.com\/.*?id_([a-zA-Z0-9=]+)/i', $url, $matches)) {
+        if (preg_match('/youku\.com\/.*?id_([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
             $videoId = $matches[1];
-        } elseif (preg_match('/[?&]vid=([a-zA-Z0-9=]+)/i', $url, $matches)) {
+        } elseif (preg_match('/[?&]vid=([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
             // ?vid=xxx 格式
             $videoId = $matches[1];
-        } elseif (preg_match('/[?&]video_id=([a-zA-Z0-9=]+)/i', $url, $matches)) {
+        } elseif (preg_match('/[?&]video_id=([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
             // ?video_id=xxx 格式
             $videoId = $matches[1];
-        } elseif (preg_match('/\/v_show\/id_([a-zA-Z0-9=]+)/i', $url, $matches)) {
+        } elseif (preg_match('/\/v_show\/id_([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
             // 兼容 v_show 路径（已被主规则覆盖，此处保留作为显式分支）
             $videoId = $matches[1];
+        } elseif (preg_match('/\/v_play\/id_([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
+            // v_play 路径
+            $videoId = $matches[1];
+        } elseif (preg_match('/\/play\/show\/id_([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
+            // play/show 路径
+            $videoId = $matches[1];
+        } elseif (preg_match('/[?&]showid=([a-zA-Z0-9=+\/_\\-]+)/i', $url, $matches)) {
+            // showid 参数（专辑/封面 ID）
+            $coverId = $matches[1];
+            if (!$videoId) {
+                $videoId = $matches[1];
+            }
         }
 
         return [
@@ -268,6 +280,9 @@ class YoukuAdapter extends AbstractPlatformAdapter
             isset($data['data']['show']) ? $data['data']['show'] : null,
             isset($data['data']['video']) ? $data['data']['video'] : null,
             isset($data['data']['episode_info']) ? $data['data']['episode_info'] : null,
+            isset($data['data']['episodes']) ? $data['data']['episodes'] : null,
+            isset($data['ep']) ? $data['ep'] : null,
+            isset($data['episode']) ? $data['episode'] : null,
         ];
         foreach ($candidates as $c) {
             if (is_array($c)) {
@@ -277,25 +292,44 @@ class YoukuAdapter extends AbstractPlatformAdapter
 
         foreach ($sources as $src) {
             if ($info['total_episodes'] === null) {
-                foreach (['total', 'episode_count', 'video_count', 'count', 'episode_total'] as $k) {
-                    if (isset($src[$k])) {
+                foreach (['total', 'episode_count', 'video_count', 'count', 'episode_total', 'total_episodes', 'totalCount', 'total_count', 'totalEpisodes', 'maxPage', 'max_page', 'episodeTotal'] as $k) {
+                    if (isset($src[$k]) && is_numeric($src[$k])) {
                         $info['total_episodes'] = (int)$src[$k];
                         break;
                     }
                 }
             }
             if ($info['episode_num'] === null) {
-                foreach (['order', 'episode', 'index', 'seq'] as $k) {
-                    if (isset($src[$k])) {
+                foreach (['order', 'episode', 'index', 'seq', 'ep', 'epOrder', 'episode_order', 'episodeIndex', 'episode_index', 'page', 'episodeNo', 'episode_no', 'epIndex', 'ep_index'] as $k) {
+                    if (isset($src[$k]) && is_numeric($src[$k])) {
                         $info['episode_num'] = (int)$src[$k];
                         break;
                     }
                 }
             }
             if ($info['episode_name'] === '') {
-                foreach (['episode_name', 'name', 'title', 'showname', 'show_name'] as $k) {
+                foreach (['episode_name', 'name', 'title', 'showname', 'show_name', 'short_title', 'subTitle', 'sub_title', 'epName', 'ep_name', 'titleText'] as $k) {
                     if (isset($src[$k]) && is_string($src[$k]) && $src[$k] !== '') {
                         $info['episode_name'] = (string)$src[$k];
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 从 name/title 中解析集数
+        if ($info['episode_num'] === null) {
+            foreach ($sources as $src) {
+                $text = '';
+                if (!empty($src['name'])) $text = $src['name'];
+                elseif (!empty($src['title'])) $text = $src['title'];
+                if ($text) {
+                    if (preg_match('/第\s*(\d+)\s*集/u', $text, $em)) {
+                        $info['episode_num'] = (int)$em[1];
+                        break;
+                    }
+                    if (preg_match('/[Ee][Pp]?\s*(\d{1,3})/', $text, $em)) {
+                        $info['episode_num'] = (int)$em[1];
                         break;
                     }
                 }

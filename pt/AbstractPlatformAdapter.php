@@ -139,17 +139,43 @@ abstract class AbstractPlatformAdapter implements PlatformAdapterInterface
             $title = $m[1];
         }
 
-        // 清理后缀描述
+        // 清理常见平台后缀（先清理具体平台名，避免误删）
+        $platformSuffixes = [
+            '/[-_\s\|]?腾讯视频.*$/iu',
+            '/[-_\s\|]?QQ视频.*$/iu',
+            '/[-_\s\|]?爱奇艺.*$/iu',
+            '/[-_\s\|]?iQIYI.*$/iu',
+            '/[-_\s\|]?优酷.*$/iu',
+            '/[-_\s\|]?YOUKU.*$/iu',
+            '/[-_\s\|]?芒果TV.*$/iu',
+            '/[-_\s\|]?MGTV.*$/iu',
+            '/[-_\s\|]?哔哩哔哩.*$/iu',
+            '/[-_\s\|]?bilibili.*$/iu',
+            '/[-_\s\|]?搜狐视频.*$/iu',
+            '/[-_\s\|]?sohu.*$/iu',
+            '/[-_\s\|]?PP视频.*$/iu',
+            '/[-_\s\|]?PPTV.*$/iu',
+        ];
+        foreach ($platformSuffixes as $pattern) {
+            $title = preg_replace($pattern, '', $title);
+        }
+
+        // 清理常见描述性后缀
         $title = preg_replace('/[-_|【】《》\[\]（）()].*?$/u', '', $title);
         $title = preg_replace('/在线观看.*?$/u', '', $title);
         $title = preg_replace('/高清.*?$/u', '', $title);
         $title = preg_replace('/完整版.*?$/u', '', $title);
-        $title = preg_replace('/_腾讯视频/i', '', $title);
-        $title = preg_replace('/- 腾讯视频/i', '', $title);
-        $title = preg_replace('/-爱奇艺/i', '', $title);
-        $title = preg_replace('/-优酷/i', '', $title);
         $title = preg_replace('/最新一期.*?$/u', '', $title);
         $title = preg_replace('/第.*?期.*?$/u', '', $title);
+        $title = preg_replace('/第.*?集.*?$/u', '', $title);
+        $title = preg_replace('/[Ee][Pp]?\d+.*?$/', '', $title);
+
+        // 清理会员/独播等标记
+        $title = preg_replace('/[-_\s]?VIP\s*专享/iu', '', $title);
+        $title = preg_replace('/[-_\s]?会员专享/iu', '', $title);
+        $title = preg_replace('/[-_\s]?独播/iu', '', $title);
+        $title = preg_replace('/[-_\s]?自制/iu', '', $title);
+        $title = preg_replace('/[-_\s]?出品/iu', '', $title);
 
         $title = preg_replace('/\s+/', ' ', $title);
         $title = trim($title, " \t\n\r\0\x0B-_—|·");
@@ -157,6 +183,184 @@ abstract class AbstractPlatformAdapter implements PlatformAdapterInterface
         if (mb_strlen($title) < 2) return null;
 
         return $title;
+    }
+
+    /**
+     * 从标题中提取影视基础信息
+     * @param string $title
+     * @return array ['base_title' => '', 'season_num' => null, 'episode_num' => null, 'part' => '', 'version' => '']
+     */
+    public function parseVideoTitle($title)
+    {
+        $result = [
+            'base_title' => '',
+            'season_num' => null,
+            'episode_num' => null,
+            'part' => '',
+            'version' => '',
+        ];
+
+        $title = trim($title);
+        if (empty($title)) {
+            return $result;
+        }
+
+        $cleaned = $title;
+
+        // 提取季数（多种格式）
+        $seasonNum = null;
+        $seasonPatterns = [
+            '/第\s*(\d+)\s*季/u',
+            '/第\s*([一二三四五六七八九十百]+)\s*季/u',
+            '/Season\s*(\d+)/i',
+            '/\bS(\d{1,2})\b/i',
+            '/Ⅱ/u',
+            '/Ⅲ/u',
+            '/Ⅳ/u',
+            '/Ⅴ/u',
+        ];
+
+        foreach ($seasonPatterns as $pattern) {
+            if (preg_match($pattern, $cleaned, $m)) {
+                if (isset($m[1])) {
+                    $num = $this->chineseToNumber($m[1]);
+                    if ($num !== null) {
+                        $seasonNum = $num;
+                    }
+                } elseif (strpos($m[0], 'Ⅱ') !== false) {
+                    $seasonNum = 2;
+                } elseif (strpos($m[0], 'Ⅲ') !== false) {
+                    $seasonNum = 3;
+                } elseif (strpos($m[0], 'Ⅳ') !== false) {
+                    $seasonNum = 4;
+                } elseif (strpos($m[0], 'Ⅴ') !== false) {
+                    $seasonNum = 5;
+                }
+                break;
+            }
+        }
+
+        // 提取集数（多种格式）
+        $episodeNum = null;
+        $episodePatterns = [
+            '/第\s*(\d+)\s*集/u',
+            '/第\s*([一二三四五六七八九十百]+)\s*集/u',
+            '/第\s*(\d+)\s*期/u',
+            '/第\s*([一二三四五六七八九十百]+)\s*期/u',
+            '/[Ee][Pp]\s*(\d+)/',
+            '/\bE\s*(\d+)/i',
+            '/\b(\d{1,3})\s*集\b/u',
+        ];
+
+        foreach ($episodePatterns as $pattern) {
+            if (preg_match($pattern, $cleaned, $m)) {
+                if (isset($m[1])) {
+                    $num = $this->chineseToNumber($m[1]);
+                    if ($num !== null) {
+                        $episodeNum = $num;
+                    }
+                }
+                break;
+            }
+        }
+
+        // 提取版本信息（如 4K、HD、蓝光、1080P 等）
+        $version = '';
+        if (preg_match('/(4K|8K|1080P|720P|蓝光|高清|超清|标清|HD|FHD|UHD|SHD)/i', $cleaned, $vm)) {
+            $version = $vm[1];
+        }
+
+        // 提取篇章/部分信息
+        $part = '';
+        if (preg_match('/(上篇|下篇|前篇|后篇|终章|最终章|特别篇|番外篇|SP|OVA|OAD)/iu', $cleaned, $pm)) {
+            $part = $pm[1];
+        }
+
+        // 清理标题得到基础标题
+        $baseTitle = $cleaned;
+
+        // 移除季数描述
+        $baseTitle = preg_replace('/\s*第\s*\d+\s*季\s*/u', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\s*第\s*[一二三四五六七八九十百]+\s*季\s*/u', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\s*Season\s*\d+\s*/i', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\bS\d{1,2}\b/i', ' ', $baseTitle);
+        $baseTitle = preg_replace('/[ⅡⅢⅣⅤ]/u', ' ', $baseTitle);
+
+        // 移除集数描述
+        $baseTitle = preg_replace('/\s*第\s*\d+\s*集\s*/u', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\s*第\s*[一二三四五六七八九十百]+\s*集\s*/u', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\s*第\s*\d+\s*期\s*/u', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\s*第\s*[一二三四五六七八九十百]+\s*期\s*/u', ' ', $baseTitle);
+        $baseTitle = preg_replace('/\s*[Ee][Pp]?\s*\d+\s*/', ' ', $baseTitle);
+
+        // 移除版本信息
+        $baseTitle = preg_replace('/\s*(4K|8K|1080P|720P|蓝光|高清|超清|标清|HD|FHD|UHD|SHD)\s*/i', ' ', $baseTitle);
+
+        // 移除篇章信息
+        $baseTitle = preg_replace('/\s*(上篇|下篇|前篇|后篇|终章|最终章|特别篇|番外篇|SP|OVA|OAD)\s*/iu', ' ', $baseTitle);
+
+        // 最终清理
+        $baseTitle = preg_replace('/[-_|【】《》\[\]（）()].*?$/u', '', $baseTitle);
+        $baseTitle = preg_replace('/\s+/', ' ', $baseTitle);
+        $baseTitle = trim($baseTitle, " \t\n\r\0\x0B-_—|·");
+
+        if (mb_strlen($baseTitle) < 2) {
+            $baseTitle = $cleaned;
+        }
+
+        $result['base_title'] = $baseTitle;
+        $result['season_num'] = $seasonNum;
+        $result['episode_num'] = $episodeNum;
+        $result['part'] = $part;
+        $result['version'] = $version;
+
+        return $result;
+    }
+
+    /**
+     * 中文/阿拉伯数字转整数
+     * @param string $str
+     * @return int|null
+     */
+    protected function chineseToNumber($str)
+    {
+        if ($str === '' || $str === null) {
+            return null;
+        }
+        $str = (string)$str;
+
+        if (ctype_digit($str)) {
+            return (int)$str;
+        }
+
+        $cnNumbers = [
+            '零' => 0, '一' => 1, '二' => 2, '两' => 2, '三' => 3,
+            '四' => 4, '五' => 5, '六' => 6, '七' => 7, '八' => 8,
+            '九' => 9, '十' => 10, '百' => 100, '千' => 1000,
+        ];
+
+        $chars = preg_split('//u', $str, -1, PREG_SPLIT_NO_EMPTY);
+        $result = 0;
+        $temp = 0;
+
+        foreach ($chars as $char) {
+            if (!isset($cnNumbers[$char])) {
+                continue;
+            }
+            $val = $cnNumbers[$char];
+            if ($val >= 10) {
+                if ($temp == 0) {
+                    $temp = 1;
+                }
+                $result += $temp * $val;
+                $temp = 0;
+            } else {
+                $temp = $val;
+            }
+        }
+        $result += $temp;
+
+        return $result > 0 ? $result : null;
     }
 
     /**

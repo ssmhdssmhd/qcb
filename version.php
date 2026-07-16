@@ -1,6 +1,6 @@
 <?php
 return [
-    'version' => 'v5.1.0',
-    'commit' => 'v5-remove-sniffer',
-    'updated_at' => '2026-07-16',
+    'version' => 'v5.1.1',
+    'commit' => 'v5.1.1-pt-fix',
+    'updated_at' => '2026-11-15',
 ];
