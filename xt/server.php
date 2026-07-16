@@ -6,11 +6,11 @@
  *   1. 调用官解接口获取视频 m3u8/mp4 直链
  *   2. 下载 m3u8 内容，通过规则引擎 + AI 识别广告
  *   3. 生成去广告 m3u8 文件
+ *   4. 缓存命中，加速重复解析
  *
  * 本文件提供 parseVideo() 核心函数，由 api.php 调用并控制输出格式
  */
 
-// 加载配置和广告过滤引擎
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 
@@ -26,10 +26,19 @@ function parseVideo(string $videoUrl): array
 
     $startTime = microtime(true);
 
-    // 参数校验
     if (empty($videoUrl) || !filter_var($videoUrl, FILTER_VALIDATE_URL)) {
         return buildResult(400, '解析失败', '链接格式不正确', null, $startTime);
     }
+
+    // 检查缓存命中
+    $cacheKey = md5($videoUrl);
+    $cached = getCache($cacheKey, $config);
+    if ($cached) {
+        return buildResult(200, '解析成功', $cached['url'], $cached['url'], $startTime, true);
+    }
+
+    // 概率触发过期缓存清理
+    maybeCleanExpiredCache($config);
 
     // 步骤1：调用官解接口获取视频直链
     $videoLink = getVideoLinkFromOfficialApi($videoUrl, $config);
@@ -40,27 +49,30 @@ function parseVideo(string $videoUrl): array
 
     // 步骤2：判断格式，处理广告
     $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
-    $playUrl = $videoLink; // 默认用原始直链
+    $playUrl = $videoLink;
 
     if ($isM3u8) {
         $m3u8Content = fetchM3u8Content($videoLink, $config);
 
         if ($m3u8Content) {
-            // 处理多级 m3u8
             $resolved = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
             if ($resolved['url'] !== $videoLink) {
                 $videoLink = $resolved['url'];
                 $m3u8Content = $resolved['content'];
             }
 
-            // 广告过滤
             $filter = new AdFilter($config);
             $result = $filter->process($m3u8Content, $videoLink);
 
-            // 保存去广告 m3u8 到缓存，生成播放地址
-            $cacheId = generateCacheId($videoUrl);
+            $cacheId = generateCacheId();
             $playUrl = saveCleanM3u8($cacheId, $result['clean_content'], $videoLink, $config);
+
+            // 写入解析缓存（用 videoUrl 做 key，下次直接返回）
+            setCache($cacheKey, ['url' => $playUrl], $config);
         }
+    } else {
+        // mp4 等直链也写入缓存
+        setCache($cacheKey, ['url' => $playUrl], $config);
     }
 
     return buildResult(200, '解析成功', $playUrl, $playUrl, $startTime);
@@ -69,7 +81,7 @@ function parseVideo(string $videoUrl): array
 /**
  * 构建统一结果数组
  */
-function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime): array
+function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime, bool $fromCache = false): array
 {
     global $config;
     $elapsed = round(microtime(true) - $startTime, 3);
@@ -83,7 +95,6 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
         'KFZ'  => $config['developer']['name'] . '|' . $config['developer']['author'],
     ];
 }
-
 
 // ==================== 核心函数 ====================
 
@@ -121,7 +132,7 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
         $error = curl_error($ch);
         curl_close($ch);
 
-        if ($error) {
+        if ($error || $httpCode !== 200) {
             continue;
         }
 
@@ -212,15 +223,26 @@ function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config):
 
     if (preg_match_all('/#EXT-X-STREAM-INF[^#]*\n([^\n#]+)/', $content, $streams)) {
         $allStreams = [];
-        foreach ($streams[1] as $streamUrl) {
-            $streamUrl = trim($streamUrl);
+        $bestUrl = null;
+        $maxBandwidth = 0;
+
+        foreach ($streams[0] as $index => $fullMatch) {
+            $streamUrl = trim($streams[1][$index]);
             if (!preg_match('/^https?:\/\//i', $streamUrl)) {
-                $streamUrl = dirname($m3u8Url) . '/' . ltrim($streamUrl, '/');
+                $streamUrl = resolveRelativeUrl($streamUrl, $m3u8Url);
             }
             $allStreams[] = $streamUrl;
+
+            if (preg_match('/BANDWIDTH=(\d+)/i', $fullMatch, $bw)) {
+                if ($bw[1] > $maxBandwidth) {
+                    $maxBandwidth = $bw[1];
+                    $bestUrl = $streamUrl;
+                }
+            }
         }
+
         if (!empty($allStreams)) {
-            $subUrl = end($allStreams);
+            $subUrl = $bestUrl ?? end($allStreams);
             $subContent = fetchM3u8Content($subUrl, $config);
             if ($subContent) {
                 return ['content' => $subContent, 'url' => $subUrl];
@@ -232,11 +254,38 @@ function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config):
 }
 
 /**
+ * 解析相对 URL 为绝对 URL
+ */
+function resolveRelativeUrl(string $relative, string $baseUrl): string
+{
+    if (preg_match('/^https?:\/\//i', $relative)) {
+        return $relative;
+    }
+
+    $baseParts = parse_url($baseUrl);
+    $baseDir = $baseParts['scheme'] . '://' . $baseParts['host']
+        . (isset($baseParts['port']) ? ':' . $baseParts['port'] : '')
+        . dirname($baseParts['path'] ?? '/') . '/';
+
+    if (strpos($relative, '//') === 0) {
+        return $baseParts['scheme'] . ':' . $relative;
+    }
+
+    if (strpos($relative, '/') === 0) {
+        return $baseParts['scheme'] . '://' . $baseParts['host']
+            . (isset($baseParts['port']) ? ':' . $baseParts['port'] : '')
+            . $relative;
+    }
+
+    return rtrim($baseDir, '/') . '/' . ltrim($relative, '/');
+}
+
+/**
  * 生成缓存 ID
  */
-function generateCacheId(string $videoUrl): string
+function generateCacheId(): string
 {
-    return substr(md5($videoUrl . time()), 0, 16);
+    return substr(md5(uniqid(mt_rand(), true)), 0, 16);
 }
 
 /**
@@ -248,6 +297,7 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
 
     if (!is_dir($cacheDir)) {
         @mkdir($cacheDir, 0755, true);
+        @file_put_contents($cacheDir . '/.gitkeep', '');
     }
 
     $filePath = $cacheDir . '/' . $cacheId . '.m3u8';
@@ -263,6 +313,95 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
     $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
 
     return $protocol . '://' . $host . rtrim($scriptDir, '/') . '/clean.php?id=' . $cacheId;
+}
+
+/**
+ * 获取解析结果缓存
+ */
+function getCache(string $key, array $config): ?array
+{
+    if (!$config['cache']['enabled']) {
+        return null;
+    }
+
+    $file = $config['cache']['dir'] . '/parse_' . $key . '.json';
+    if (!file_exists($file)) {
+        return null;
+    }
+
+    if (time() - filemtime($file) > $config['cache']['ttl']) {
+        @unlink($file);
+        return null;
+    }
+
+    $data = json_decode(file_get_contents($file), true);
+    return $data ?: null;
+}
+
+/**
+ * 设置解析结果缓存
+ */
+function setCache(string $key, array $data, array $config): void
+{
+    if (!$config['cache']['enabled']) {
+        return;
+    }
+
+    $cacheDir = $config['cache']['dir'];
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0755, true);
+    }
+
+    $file = $cacheDir . '/parse_' . $key . '.json';
+    file_put_contents($file, json_encode($data));
+}
+
+/**
+ * 概率触发过期缓存清理
+ */
+function maybeCleanExpiredCache(array $config): void
+{
+    if (!$config['cache']['enabled']) {
+        return;
+    }
+
+    $prob = $config['cache']['auto_clean_prob'] ?? 5;
+    if (mt_rand(1, 100) > $prob) {
+        return;
+    }
+
+    $cacheDir = $config['cache']['dir'];
+    if (!is_dir($cacheDir)) {
+        return;
+    }
+
+    $ttl = $config['cache']['ttl'];
+    $now = time();
+    $files = glob($cacheDir . '/*.m3u8');
+    $parseFiles = glob($cacheDir . '/parse_*.json');
+    $allFiles = array_merge($files ?: [], $parseFiles ?: []);
+
+    $expiredCount = 0;
+    foreach ($allFiles as $file) {
+        if ($now - filemtime($file) > $ttl) {
+            @unlink($file);
+            $expiredCount++;
+        }
+    }
+
+    // 如果文件数超过上限，删除最旧的
+    $maxFiles = $config['cache']['max_files'] ?? 500;
+    $remaining = glob($cacheDir . '/*.m3u8');
+    $remaining = $remaining ?: [];
+    if (count($remaining) > $maxFiles) {
+        usort($remaining, function ($a, $b) {
+            return filemtime($a) - filemtime($b);
+        });
+        $toDelete = array_splice($remaining, 0, count($remaining) - $maxFiles);
+        foreach ($toDelete as $file) {
+            @unlink($file);
+        }
+    }
 }
 
 /**
