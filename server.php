@@ -161,6 +161,7 @@ function processTencentApiData(string $videoUrl, string $apiDataBase64, array &$
         return null;
     }
 
+    $apiData = urldecode($apiData);
     $data = json_decode($apiData, true);
     if (!$data || !isset($data['vl']['vi'][0])) {
         $debugLog[] = '腾讯: API数据格式错误或无视频信息';

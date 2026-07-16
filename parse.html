@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>超级嗅探 - 视频解析</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        h1 { text-align: center; color: #333; margin-bottom: 25px; font-size: 24px; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #555; font-weight: 500; }
+        input[type="text"] { width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px; transition: border-color 0.3s; outline: none; }
+        input[type="text"]:focus { border-color: #667eea; }
+        button { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102,126,234,0.4); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .result { margin-top: 25px; padding: 20px; background: #f8f9fa; border-radius: 10px; display: none; }
+        .result.success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .result.error { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .result-title { font-weight: 600; margin-bottom: 10px; font-size: 16px; }
+        .result.success .result-title { color: #155724; }
+        .result.error .result-title { color: #721c24; }
+        .video-url { word-break: break-all; font-size: 14px; color: #333; line-height: 1.6; }
+        .copy-btn { margin-top: 10px; padding: 8px 16px; background: white; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .copy-btn:hover { background: #f0f0f0; }
+        .loading { text-align: center; padding: 20px; color: #888; font-size: 14px; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .phase-info { margin-top: 15px; padding: 12px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 6px; font-size: 13px; color: #856404; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🎬 超级嗅探 - 视频解析</h1>
+            <div class="input-group">
+                <label for="url">视频链接</label>
+                <input type="text" id="url" placeholder="请输入腾讯视频链接，如 https://v.qq.com/x/cover/xxx/xxx.html">
+            </div>
+            <button id="parseBtn">开始解析</button>
+            <div id="loading" class="loading" style="display:none;">
+                <div class="spinner"></div>
+                <div id="loadingText">正在解析...</div>
+            </div>
+            <div id="phaseInfo" class="phase-info"></div>
+            <div id="result" class="result">
+                <div class="result-title" id="resultTitle"></div>
+                <div class="video-url" id="videoUrl"></div>
+                <button class="copy-btn" id="copyBtn" onclick="copyUrl()">复制链接</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('url');
+        const parseBtn = document.getElementById('parseBtn');
+        const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+        const phaseInfo = document.getElementById('phaseInfo');
+        const result = document.getElementById('result');
+        const resultTitle = document.getElementById('resultTitle');
+        const videoUrl = document.getElementById('videoUrl');
+        const copyBtn = document.getElementById('copyBtn');
+
+        parseBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (!url) {
+                alert('请输入视频链接');
+                return;
+            }
+
+            parseBtn.disabled = true;
+            loading.style.display = 'block';
+            loadingText.textContent = '阶段1：获取API参数...';
+            phaseInfo.style.display = 'none';
+            result.style.display = 'none';
+
+            try {
+                const resp = await fetch(`api.php?url=${encodeURIComponent(url)}`);
+                const data = await resp.json();
+
+                if (data.code === 206) {
+                    loadingText.textContent = '阶段2：客户端直连腾讯API...';
+                    phaseInfo.textContent = `检测到腾讯视频(vid=${data.task.vid})，正在通过您的国内网络直连腾讯服务器获取视频信息...`;
+                    phaseInfo.style.display = 'block';
+
+                    const apiData = await callTencentApi(data.task.requests);
+                    if (apiData) {
+                        loadingText.textContent = '阶段3：处理视频数据...';
+                        const apiDataB64 = btoa(encodeURIComponent(JSON.stringify(apiData)));
+                        const callbackUrl = data.task.callback;
+                        const finalResp = await fetch(callbackUrl + `&api_data=${apiDataB64}&guid=${data.task.guid}`);
+                        const finalData = await finalResp.json();
+
+                        if (finalData.code === 200) {
+                            showResult(true, '解析成功！', finalData.url);
+                        } else {
+                            showResult(false, '解析失败', finalData.message || '未知错误');
+                        }
+                    } else {
+                        showResult(false, '解析失败', '无法获取腾讯API数据，请检查网络连接');
+                    }
+                } else if (data.code === 200) {
+                    showResult(true, '解析成功！', data.url);
+                } else {
+                    showResult(false, '解析失败', data.message || '未知错误');
+                }
+            } catch (error) {
+                showResult(false, '请求失败', error.message);
+            } finally {
+                loading.style.display = 'none';
+                parseBtn.disabled = false;
+            }
+        });
+
+        async function callTencentApi(requests) {
+            for (const req of requests) {
+                try {
+                    const resp = await fetch(req.url, {
+                        headers: {
+                            'User-Agent': req.ua,
+                            'Referer': req.referer,
+                            'Accept': '*/*',
+                        },
+                        timeout: 10000,
+                    });
+
+                    if (!resp.ok) continue;
+
+                    const text = await resp.text();
+                    const jsonStr = text.replace(/^QZOutputJson=/, '').replace(/;$/, '');
+                    const data = JSON.parse(jsonStr);
+
+                    if (data.em === 0 && data.vl && data.vl.vi && data.vl.vi.length > 0) {
+                        return data;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            return null;
+        }
+
+        function showResult(success, title, content) {
+            result.className = 'result ' + (success ? 'success' : 'error');
+            resultTitle.textContent = title;
+            videoUrl.textContent = content;
+            copyBtn.style.display = success ? 'block' : 'none';
+            result.style.display = 'block';
+            phaseInfo.style.display = 'none';
+        }
+
+        function copyUrl() {
+            const text = videoUrl.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '已复制！';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            }).catch(() => {
+                alert('复制失败，请手动复制');
+            });
+        }
+    </script>
+</body>
+</html>
