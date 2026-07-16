@@ -1,5 +1,50 @@
 # 更新日志
 
+## v5.0.6 (2026-07-16)
+
+### 关键修复：海外服务器腾讯视频 em=80 彻底解决（X-Forwarded-For 伪造国内IP）
+
+1. **核心方案：HTTP 请求头注入国内 IP，绕过腾讯地域版权限制**
+   - 问题根因：v5.0.5 的 CORS 代理方案在靶机对抗测试中全军覆没 —— 公共 CORS 代理（allorigins / corsproxy / proxy.cors.sh）的出口 IP 也都在海外，腾讯 API 对它们同样返回 `em=80`。
+   - 新方案：直接在请求腾讯 API 时注入 `X-Forwarded-For` / `Client-IP` / `X-Real-IP` / `Forwarded` 四个请求头，让腾讯 API 按伪造的国内 IP 进行地域鉴权，返回 `em=0`。
+   - 验证：本地 curl 测试，注入 `220.181.38.148` 后腾讯 API 返回 `em=0` 并正常下发 `fvkey`。
+
+2. **国内 IP 池轮询机制**
+   - 内置 10 个国内主流 IP（百度 / 电信 / 联通 / 移动 / 腾讯云骨干网）
+   - 每次调用腾讯 API 轮换一个 IP，规避单 IP 被风控的可能
+   - 涵盖北京、上海、广东、江苏等主要地域
+
+3. **`curlGet()` 工具函数新增 `spoof_ip` 选项**
+   - 通用化设计，所有调用方均可按需注入 IP 头
+   - 自动校验 IP 格式（`filter_var`），非法 IP 不注入
+   - 与现有 `headers` 选项合并，互不覆盖
+
+4. **代码瘦身**
+   - 移除已废弃的 `extractVideoByProxyApi()` 函数（方案零B）
+   - 移除 `extractTencentVideo()` 的 `$useProxy` 参数和代理分支逻辑
+   - 移除 CORS 代理列表（allorigins / corsproxy / proxy.cors.sh）
+   - 删除调试用的临时文件 `test_decode.php`
+
+#### 解析流程（4 层回退，简化结构）
+
+```
+方案零：官方API直连 + X-Forwarded-For 注入国内IP（绕过 em=80）
+   ↓ 失败
+方案一：第三方JSON解析接口（4个接口轮询）
+   ↓ 失败
+方案二：第三方HTML解析接口（5个接口轮询）
+   ↓ 失败
+方案三：Chrome Headless 嗅探（最后防线）
+```
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — curlGet 新增 spoof_ip 选项；腾讯解析改用 X-Forwarded-For；移除代理方案
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.6
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.5 (2026-07-15)
 
 ### 重大更新：国内外服务器自动适配
