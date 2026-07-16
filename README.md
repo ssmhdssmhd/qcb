@@ -517,4 +517,7 @@ MIT License
 
 本项目采用 [MIT License](LICENSE) 开源许可证。
 
+- [English Version](LICENSE)（法律有效版本）
+- [中文翻译版](LICENSE.zh-CN.md)（仅供参考）
+
 你可以自由地使用、复制、修改、合并、发布、分发、再许可和/或出售本软件的副本，但需在所有副本或重要部分中包含上述版权声明和本许可声明。
