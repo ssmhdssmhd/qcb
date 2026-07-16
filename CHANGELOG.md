@@ -1,5 +1,65 @@
 # 更新日志
 
+## v5.0.8 (2026-07-16)
+
+### 终极方案：客户端直连腾讯API（解决免费代理全部失效问题）
+
+1. **问题根因：免费代理全部失效**
+   - v5.0.7 的国内代理池轮询方案在靶机测试中所有代理请求失败（404/超时/连接拒绝）
+   - 免费代理生命周期极短，且大部分已被滥用或封禁
+
+2. **新方案：两阶段客户端直连**
+   - **阶段1**：服务器生成腾讯API请求参数（URL、UA、referer、guid等），返回 `code:206`
+   - **阶段2**：客户端（国内浏览器）直接调用腾讯API（出口IP为国内，必然返回 em=0），将结果回传给服务器
+   - **阶段3**：服务器处理API响应，提取视频URL并返回
+
+3. **工作流程**
+   ```
+   国内客户端 → api.php?url=xxx → server.php 返回阶段1任务
+   国内客户端 → 直接调用腾讯API（em=0）→ api.php?phase=2&api_data=xxx → 返回视频URL
+   ```
+
+4. **关键改动**
+   - `server.php`：新增 `generateTencentApiRequests()` 和 `processTencentApiData()` 函数
+   - `server.php`：检测到腾讯视频时，返回 `code:206` + 任务参数（而非直接解析）
+   - `server.php`：添加完整 CORS 响应头，允许客户端跨域调用腾讯API
+   - `api.php`：支持 `phase=2` 参数透传
+
+5. **前端集成**
+   ```javascript
+   // 前端需要处理 code:206 的响应
+   async function parseVideo(url) {
+       const resp = await fetch(`api.php?url=${encodeURIComponent(url)}`);
+       const data = await resp.json();
+       
+       if (data.code === 206) {
+           // 阶段2：客户端直接调用腾讯API
+           for (const req of data.task.requests) {
+               const apiResp = await fetch(req.url, {
+                   headers: { 'User-Agent': req.ua, 'Referer': req.referer }
+               });
+               const text = await apiResp.text();
+               const apiData = JSON.parse(text.replace(/^QZOutputJson=/, '').replace(/;$/, ''));
+               
+               if (apiData.em === 0) {
+                   const result = await fetch(`${data.task.callback}&api_data=${btoa(JSON.stringify(apiData))}&guid=${data.task.guid}`);
+                   return await result.json();
+               }
+           }
+       }
+       return data;
+   }
+   ```
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — 两阶段解析方案、CORS响应头
+- [api.php](file:///workspace/api.php) — phase=2 参数透传、CORS响应头
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.8
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.7 (2026-07-16)
 
 ### 最终方案：国内 HTTP/SOCKS5 代理池轮询（解决 X-Forwarded-For 失效问题）
