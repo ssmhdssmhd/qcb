@@ -63,7 +63,7 @@ function parseVideo(string $videoUrl): array
         }
     }
 
-    return buildResult(200, '解析成功', '解析成功', $playUrl, $startTime);
+    return buildResult(200, '解析成功', $playUrl, $playUrl, $startTime);
 }
 
 /**
