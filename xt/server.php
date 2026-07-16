@@ -64,8 +64,10 @@ function parseVideo(string $videoUrl): array
             $filter = new AdFilter($config);
             $result = $filter->process($m3u8Content, $videoLink);
 
+            $cleanContent = convertRelativeToAbsolute($result['clean_content'], $videoLink);
+
             $cacheId = generateCacheId();
-            $playUrl = saveCleanM3u8($cacheId, $result['clean_content'], $videoLink, $config);
+            $playUrl = saveCleanM3u8($cacheId, $cleanContent, $videoLink, $config);
 
             // 写入解析缓存（用 videoUrl 做 key，下次直接返回）
             setCache($cacheKey, ['url' => $playUrl], $config);
@@ -278,6 +280,33 @@ function resolveRelativeUrl(string $relative, string $baseUrl): string
     }
 
     return rtrim($baseDir, '/') . '/' . ltrim($relative, '/');
+}
+
+/**
+ * 将 m3u8 中所有相对路径的 ts/key 转为绝对路径
+ */
+function convertRelativeToAbsolute(string $m3u8Content, string $baseUrl): string
+{
+    $lines = explode("\n", $m3u8Content);
+    $output = [];
+
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+
+        if (empty($trimmed) || strpos($trimmed, '#') === 0) {
+            $output[] = $line;
+            continue;
+        }
+
+        if (preg_match('/^https?:\/\//i', $trimmed)) {
+            $output[] = $line;
+            continue;
+        }
+
+        $output[] = resolveRelativeUrl($trimmed, $baseUrl);
+    }
+
+    return implode("\n", $output);
 }
 
 /**
