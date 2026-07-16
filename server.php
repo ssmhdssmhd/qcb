@@ -11,6 +11,10 @@
 // 设置响应头
 header('Content-Type: application/json; charset=utf-8');
 
+// 调试模式：server.php?url=xxx&debug=1
+$debug = isset($_GET['debug']) && $_GET['debug'] == '1';
+$debugLog = [];
+
 // 检查是否提供了 URL 参数
 if (!isset($_GET['url']) || empty(trim($_GET['url']))) {
     http_response_code(400);
@@ -30,16 +34,25 @@ if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
 $videoLink = null;
 
 // ============ 方案零：直接调用平台官方 API（推荐，最快最稳定） ============
-$videoLink = extractVideoByDirectApi($videoUrl);
+$videoLink = extractVideoByDirectApi($videoUrl, $debugLog);
+if ($debug) {
+    $debugLog[] = '方案零(官方API): ' . ($videoLink ? '成功' : '失败');
+}
 
 // ============ 方案一：纯 cURL + 正则解析（第三方解析接口） ============
 if (!$videoLink) {
     $videoLink = extractVideoByCurl($videoUrl);
+    if ($debug) {
+        $debugLog[] = '方案一(第三方解析): ' . ($videoLink ? '成功' : '失败');
+    }
 }
 
 // ============ 方案二：如果方案一失败，尝试通过 Chrome Headless 嗅探 ============
 if (!$videoLink && isChromeAvailable()) {
     $videoLink = extractVideoByChromeHeadless($videoUrl);
+    if ($debug) {
+        $debugLog[] = '方案二(Chrome): ' . ($videoLink ? '成功' : '失败');
+    }
 }
 
 // 返回结果
@@ -47,7 +60,13 @@ if ($videoLink) {
     echo json_encode(['code' => 200, 'url' => $videoLink], JSON_UNESCAPED_UNICODE);
 } else {
     http_response_code(500);
-    echo json_encode(['code' => 500, 'message' => 'Failed to extract video URL'], JSON_UNESCAPED_UNICODE);
+    $response = ['code' => 500, 'message' => 'Failed to extract video URL'];
+    if ($debug) {
+        $response['debug'] = $debugLog;
+        $response['php_version'] = PHP_VERSION;
+        $response['curl_loaded'] = extension_loaded('curl');
+    }
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
 }
 
 exit;
@@ -59,30 +78,35 @@ exit;
  * @param string $videoUrl 视频页面URL
  * @return string|null 视频直链或null
  */
-function extractVideoByDirectApi(string $videoUrl): ?string
+function extractVideoByDirectApi(string $videoUrl, array &$debugLog = []): ?string
 {
     $host = parse_url($videoUrl, PHP_URL_HOST) ?? '';
 
     // 腾讯视频
     if (preg_match('/v\.qq\.com/i', $host)) {
-        return extractTencentVideo($videoUrl);
+        $debugLog[] = '检测到腾讯视频，调用官方API';
+        return extractTencentVideo($videoUrl, $debugLog);
     }
 
     // 爱奇艺
     if (preg_match('/iqiyi\.com/i', $host)) {
+        $debugLog[] = '检测到爱奇艺，调用官方API';
         return extractIqiyiVideo($videoUrl);
     }
 
     // 优酷
     if (preg_match('/youku\.com/i', $host)) {
+        $debugLog[] = '检测到优酷，调用官方API';
         return extractYoukuVideo($videoUrl);
     }
 
     // 芒果TV
     if (preg_match('/mgtv\.com/i', $host)) {
+        $debugLog[] = '检测到芒果TV，调用官方API';
         return extractMgtvVideo($videoUrl);
     }
 
+    $debugLog[] = '未匹配到已知平台，跳过官方API';
     return null;
 }
 
@@ -93,7 +117,7 @@ function extractVideoByDirectApi(string $videoUrl): ?string
  * @param string $videoUrl 腾讯视频页面URL
  * @return string|null 视频直链或null
  */
-function extractTencentVideo(string $videoUrl): ?string
+function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
 {
     // 从 URL 中提取视频 ID
     $vid = null;
@@ -106,8 +130,10 @@ function extractTencentVideo(string $videoUrl): ?string
     }
 
     if (!$vid) {
+        $debugLog[] = '腾讯: 未提取到视频ID';
         return null;
     }
+    $debugLog[] = "腾讯: 视频ID={$vid}";
 
     $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     $guid = str_pad((string)mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999), 32, '0', STR_PAD_LEFT);
@@ -127,11 +153,14 @@ function extractTencentVideo(string $videoUrl): ?string
     ]);
     $resp = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $curlErr = curl_error($ch);
+    @curl_close($ch);
 
     if (!$resp || $httpCode !== 200) {
+        $debugLog[] = "腾讯: getinfo失败 HTTP={$httpCode} err={$curlErr}";
         return null;
     }
+    $debugLog[] = "腾讯: getinfo成功 HTTP={$httpCode}";
 
     // 解析 JSONP 响应
     $resp = preg_replace('/^QZOutputJson=/', '', $resp);
@@ -139,6 +168,7 @@ function extractTencentVideo(string $videoUrl): ?string
     $data = json_decode($resp, true);
 
     if (!$data || !isset($data['vl']['vi'][0])) {
+        $debugLog[] = '腾讯: getinfo返回数据异常';
         return null;
     }
 
@@ -147,8 +177,10 @@ function extractTencentVideo(string $videoUrl): ?string
     $servers = $vi['ul']['ui'] ?? [];
 
     if (!$fn || empty($servers)) {
+        $debugLog[] = '腾讯: 未获取到文件名或服务器列表';
         return null;
     }
+    $debugLog[] = "腾讯: 文件名={$fn} 服务器数=" . count($servers);
 
     // 从文件名中提取格式号 (如 f10217.mp4 -> 10217)
     $format = '2';
@@ -170,9 +202,11 @@ function extractTencentVideo(string $videoUrl): ?string
         CURLOPT_CONNECTTIMEOUT => 5,
     ]);
     $resp2 = curl_exec($ch2);
-    curl_close($ch2);
+    $curlErr2 = curl_error($ch2);
+    @curl_close($ch2);
 
     if (!$resp2) {
+        $debugLog[] = "腾讯: getkey失败 err={$curlErr2}";
         return null;
     }
 
@@ -181,19 +215,23 @@ function extractTencentVideo(string $videoUrl): ?string
     $data2 = json_decode($resp2, true);
 
     if (!$data2 || !isset($data2['key']) || ($data2['s'] ?? '') !== 'o') {
+        $debugLog[] = '腾讯: getkey返回数据异常 s=' . ($data2['s'] ?? 'null');
         return null;
     }
+    $debugLog[] = '腾讯: getkey成功，获取到vkey';
 
     $vkey = $data2['key'];
 
     // 第三步：遍历所有服务器，构建并测试 URL
-    foreach ($servers as $server) {
+    $debugLog[] = '腾讯: 开始验证CDN服务器...';
+    foreach ($servers as $i => $server) {
         $serverUrl = $server['url'] ?? '';
         if (!$serverUrl) {
             continue;
         }
 
         $videoLink = $serverUrl . $fn . '?vkey=' . $vkey;
+        $host = parse_url($videoLink, PHP_URL_HOST);
 
         // 快速验证 URL 是否可访问
         $ch3 = curl_init($videoLink);
@@ -209,13 +247,17 @@ function extractTencentVideo(string $videoUrl): ?string
         ]);
         curl_exec($ch3);
         $verifyCode = curl_getinfo($ch3, CURLINFO_HTTP_CODE);
-        curl_close($ch3);
+        @curl_close($ch3);
+
+        $debugLog[] = "腾讯: CDN[{$i}] {$host} => HTTP {$verifyCode}";
 
         if ($verifyCode == 200 || $verifyCode == 206) {
+            $debugLog[] = '腾讯: 找到可用视频直链！';
             return $videoLink;
         }
     }
 
+    $debugLog[] = '腾讯: 所有CDN服务器均不可用';
     return null;
 }
 
@@ -251,7 +293,7 @@ function extractIqiyiVideo(string $videoUrl): ?string
         CURLOPT_TIMEOUT        => 10,
     ]);
     $resp = curl_exec($ch);
-    curl_close($ch);
+    @curl_close($ch);
 
     if (!$resp) {
         return null;
@@ -299,7 +341,7 @@ function extractYoukuVideo(string $videoUrl): ?string
         CURLOPT_TIMEOUT        => 10,
     ]);
     $resp = curl_exec($ch);
-    curl_close($ch);
+    @curl_close($ch);
 
     if (!$resp) {
         return null;
@@ -354,7 +396,7 @@ function extractMgtvVideo(string $videoUrl): ?string
         CURLOPT_TIMEOUT        => 10,
     ]);
     $resp = curl_exec($ch);
-    curl_close($ch);
+    @curl_close($ch);
 
     if (!$resp) {
         return null;
@@ -449,7 +491,7 @@ function fetchParsePage(string $targetUrl): array
     $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
-    curl_close($ch);
+    @curl_close($ch);
 
     if ($error || $httpCode !== 200 || !$html) {
         return ['videoLink' => null, 'effectiveUrl' => $effectiveUrl];
