@@ -1,15 +1,22 @@
 <?php
 /**
  * 超级嗅探 - PHP 版本服务端
- * 
- * 功能：通过解析服务嗅探视频播放地址（.m3u8 / .mp4）
- * 替代原 Node.js (Express + Puppeteer) 方案
- * 
+ *
+ * 功能：
+ *   1. 调用官解接口获取视频 m3u8/mp4 直链
+ *   2. 下载 m3u8 内容，通过规则引擎 + AI 识别广告
+ *   3. 生成去广告 m3u8 文件，返回结构化 JSON
+ *
  * 用法：server.php?url=VIDEO_URL
  */
 
 header('Content-Type: application/json; charset=utf-8');
 
+// 加载配置和广告过滤引擎
+$config = require __DIR__ . '/config.php';
+require_once __DIR__ . '/AdFilter.php';
+
+// ============ 参数校验 ============
 if (!isset($_GET['url']) || empty(trim($_GET['url']))) {
     http_response_code(400);
     echo json_encode(['code' => 400, 'message' => 'URL parameter is required'], JSON_UNESCAPED_UNICODE);
@@ -24,192 +31,341 @@ if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
     exit;
 }
 
-$videoLink = null;
-
-$videoLink = extractVideoByCurl($videoUrl);
-
-if (!$videoLink && isChromeAvailable()) {
-    $videoLink = extractVideoByChromeHeadless($videoUrl);
+// ============ 调试日志 ============
+$debugLog = [];
+if ($config['debug']) {
+    $debugLog['input_url'] = $videoUrl;
+    $debugLog['timeline'] = [];
 }
 
-if ($videoLink) {
-    echo json_encode(['code' => 200, 'url' => $videoLink], JSON_UNESCAPED_UNICODE);
-} else {
+// ============ 步骤1：调用官解接口获取视频直链 ============
+if ($config['debug']) {
+    $debugLog['timeline']['step1_start'] = date('H:i:s');
+}
+
+$videoLink = getVideoLinkFromOfficialApi($videoUrl, $config, $debugLog);
+
+if (!$videoLink) {
     http_response_code(500);
-    echo json_encode(['code' => 500, 'message' => 'Failed to extract video URL'], JSON_UNESCAPED_UNICODE);
+    $errorResponse = [
+        'code'    => 500,
+        'message' => '所有官解接口均未能解析出视频地址',
+    ];
+    if ($config['debug']) {
+        $errorResponse['debug'] = $debugLog;
+    }
+    echo json_encode($errorResponse, JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
+if ($config['debug']) {
+    $debugLog['timeline']['step1_end'] = date('H:i:s');
+    $debugLog['video_link'] = $videoLink;
+}
+
+// ============ 步骤2：判断格式，处理广告 ============
+if ($config['debug']) {
+    $debugLog['timeline']['step2_start'] = date('H:i:s');
+}
+
+$isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
+$adInfo = null;
+$cleanUrl = null;
+
+if ($isM3u8) {
+    // m3u8 格式：下载内容 → 广告识别 → 生成去广告版本
+    $m3u8Content = fetchM3u8Content($videoLink, $config);
+
+    if ($m3u8Content) {
+        // 检查是否是多级 m3u8（主清单引用子清单）
+        $resolvedContent = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
+        if ($resolvedContent !== $m3u8Content) {
+            // 多级 m3u8，更新实际地址
+            $videoLink = $resolvedContent['url'] ?? $videoLink;
+            $m3u8Content = $resolvedContent['content'] ?? $m3u8Content;
+        }
+
+        // 广告过滤
+        $filter = new AdFilter($config);
+        $result = $filter->process($m3u8Content, $videoLink);
+        $adInfo = $result['ad_info'];
+        $cleanM3u8Content = $result['clean_content'];
+
+        // 保存去广告 m3u8 到缓存
+        $cacheId = generateCacheId($videoUrl);
+        $cleanUrl = saveCleanM3u8($cacheId, $cleanM3u8Content, $videoLink, $config);
+    }
+}
+
+if ($config['debug']) {
+    $debugLog['timeline']['step2_end'] = date('H:i:s');
+}
+
+// ============ 步骤3：返回结构化 JSON ============
+$response = [
+    'code' => 200,
+    'msg'  => '解析成功',
+    'data' => [
+        'original_url' => $videoLink,
+        'clean_url'    => $cleanUrl,
+        'format'       => $isM3u8 ? 'm3u8' : 'mp4',
+        'has_ads'      => $adInfo ? $adInfo['has_ads'] : false,
+        'ad_info'      => $adInfo,
+    ],
+];
+
+if ($config['debug']) {
+    $response['debug'] = $debugLog;
+}
+
+echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 exit;
 
-function extractVideoByCurl(string $videoUrl): ?string
+
+// ==================== 核心函数 ====================
+
+/**
+ * 调用官解接口获取视频直链
+ */
+function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$debugLog): ?string
 {
-    $parseApiUrl = 'https://jx.xmflv.com/?url=' . urlencode($videoUrl);
+    foreach ($config['official_apis'] as $api) {
+        $targetUrl = $api['url'] . urlencode($videoUrl);
 
-    $result = fetchParsePage($parseApiUrl);
-    if ($result['videoLink']) {
-        return $result['videoLink'];
-    }
-
-    if (!empty($result['effectiveUrl']) && $result['effectiveUrl'] !== $parseApiUrl) {
-        $retryResult = fetchParsePage($result['effectiveUrl']);
-        if ($retryResult['videoLink']) {
-            return $retryResult['videoLink'];
+        if ($config['debug']) {
+            $debugLog['timeline']['trying_api'] = $api['name'];
         }
-    }
 
-    $backupApis = [
-        'https://jx.xmflv.com/?url=',
-        'https://jx.bozrc.com:4433/player/?url=',
-    ];
-    foreach ($backupApis as $api) {
-        $backupUrl = $api . urlencode($videoUrl);
-        $backupResult = fetchParsePage($backupUrl);
-        if ($backupResult['videoLink']) {
-            return $backupResult['videoLink'];
+        $ch = curl_init();
+        $headers = [];
+        foreach ($api['headers'] ?? [] as $key => $value) {
+            $headers[] = $key . ': ' . $value;
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $targetUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => $config['http']['timeout'],
+            CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
+            CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
+            CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
+            CURLOPT_USERAGENT      => $config['http']['user_agent'],
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_ENCODING       => '',
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($config['debug']) {
+            $debugLog['api_' . $api['name']] = [
+                'http_code'   => $httpCode,
+                'error'       => $error,
+                'effective'   => $effectiveUrl,
+                'resp_length' => strlen($response),
+            ];
+        }
+
+        if ($error) {
+            continue;
+        }
+
+        // 根据接口类型解析
+        switch ($api['type']) {
+            case 'redirect':
+                // redirect 类型：最终跳转的 URL 就是视频直链
+                if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
+                    return $effectiveUrl;
+                }
+                // 也可能在响应体中
+                $extracted = extractVideoUrl($response);
+                if ($extracted) {
+                    return $extracted;
+                }
+                break;
+
+            case 'json':
+                // JSON 类型：解析 JSON 获取 url 字段
+                $data = json_decode($response, true);
+                if ($data) {
+                    $url = $data['url'] ?? $data['data']['url'] ?? $data['video_url'] ?? null;
+                    if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
+                        return $url;
+                    }
+                    // 递归查找 url 字段
+                    $foundUrl = findUrlInArray($data);
+                    if ($foundUrl) {
+                        return $foundUrl;
+                    }
+                }
+                break;
+
+            case 'text':
+                // 纯文本类型：响应体就是直链
+                $trimmed = trim($response);
+                if (filter_var($trimmed, FILTER_VALIDATE_URL)) {
+                    return $trimmed;
+                }
+                break;
         }
     }
 
     return null;
 }
 
-function fetchParsePage(string $targetUrl): array
+/**
+ * 下载 m3u8 文件内容
+ */
+function fetchM3u8Content(string $m3u8Url, array $config): ?string
 {
     $ch = curl_init();
     curl_setopt_array($ch, [
-        CURLOPT_URL            => $targetUrl,
+        CURLOPT_URL            => $m3u8Url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS      => 5,
-        CURLOPT_TIMEOUT        => 15,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => 0,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        CURLOPT_REFERER        => $targetUrl,
+        CURLOPT_TIMEOUT        => $config['http']['timeout'],
+        CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
+        CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
+        CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
+        CURLOPT_USERAGENT      => $config['http']['user_agent'],
+        CURLOPT_REFERER        => $m3u8Url,
         CURLOPT_ENCODING       => '',
     ]);
 
-    $html = curl_exec($ch);
-    $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    $content = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
     curl_close($ch);
 
-    if ($error || $httpCode !== 200 || !$html) {
-        return ['videoLink' => null, 'effectiveUrl' => $effectiveUrl];
+    if ($httpCode !== 200 || !$content) {
+        return null;
     }
 
-    return [
-        'videoLink'    => extractVideoFromHtml($html),
-        'effectiveUrl' => $effectiveUrl,
-    ];
+    return $content;
 }
 
-function extractVideoFromHtml(string $html): ?string
+/**
+ * 处理多级 m3u8（主清单引用子清单）
+ * 如果内容中不包含 #EXTINF 但包含子 m3u8 链接，则下载子清单
+ */
+function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config): array
+{
+    // 如果已包含分段信息，说明是最终清单
+    if (strpos($content, '#EXTINF') !== false) {
+        return ['content' => $content, 'url' => $m3u8Url];
+    }
+
+    // 查找子 m3u8 链接（通常在 #EXT-X-STREAM-INF 之后）
+    if (preg_match('/#EXT-X-STREAM-INF[^\n]*\n(.+)/', $content, $m)) {
+        $subUrl = trim($m[1]);
+        // 解析为绝对 URL
+        if (!preg_match('/^https?:\/\//i', $subUrl)) {
+            $baseUrl = dirname($m3u8Url);
+            $subUrl = $baseUrl . '/' . ltrim($subUrl, '/');
+        }
+
+        // 选择最高分辨率的子清单（简单策略：取最后一个 STREAM-INF）
+        $allStreams = [];
+        if (preg_match_all('/#EXT-X-STREAM-INF[^#]*\n([^\n#]+)/', $content, $streams)) {
+            foreach ($streams[1] as $streamUrl) {
+                $streamUrl = trim($streamUrl);
+                if (!preg_match('/^https?:\/\//i', $streamUrl)) {
+                    $baseUrl = dirname($m3u8Url);
+                    $streamUrl = $baseUrl . '/' . ltrim($streamUrl, '/');
+                }
+                $allStreams[] = $streamUrl;
+            }
+        }
+
+        // 取最后一个（通常是最高分辨率）
+        if (!empty($allStreams)) {
+            $subUrl = end($allStreams);
+        }
+
+        $subContent = fetchM3u8Content($subUrl, $config);
+        if ($subContent) {
+            return ['content' => $subContent, 'url' => $subUrl];
+        }
+    }
+
+    return ['content' => $content, 'url' => $m3u8Url];
+}
+
+/**
+ * 生成缓存 ID
+ */
+function generateCacheId(string $videoUrl): string
+{
+    return substr(md5($videoUrl . time()), 0, 16);
+}
+
+/**
+ * 保存去广告 m3u8 到缓存文件
+ */
+function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, array $config): string
+{
+    $cacheDir = $config['cache']['dir'];
+
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0755, true);
+    }
+
+    $filePath = $cacheDir . '/' . $cacheId . '.m3u8';
+
+    // 保存 m3u8 内容和元数据
+    $data = [
+        'content'      => $content,
+        'original_url' => $originalUrl,
+        'created_at'   => time(),
+    ];
+    file_put_contents($filePath, json_encode($data));
+
+    // 构建 clean_url（供前端播放器直接使用）
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
+
+    return $protocol . '://' . $host . $scriptDir . '/clean.php?id=' . $cacheId;
+}
+
+/**
+ * 从响应内容中提取视频 URL
+ */
+function extractVideoUrl(string $content): ?string
 {
     $patterns = [
-        '/<video[^>]+src=[\'"](https?:\/\/[^\'"]+\.m3u8[^\'"]*)[\'"][^>]*>/i',
-        '/<video[^>]+src=[\'"](https?:\/\/[^\'"]+\.mp4[^\'"]*)[\'"][^>]*>/i',
-        '/<source[^>]+src=[\'"](https?:\/\/[^\'"]+\.m3u8[^\'"]*)[\'"][^>]*>/i',
-        '/<source[^>]+src=[\'"](https?:\/\/[^\'"]+\.mp4[^\'"]*)[\'"][^>]*>/i',
+        '/https?:\/\/[^\s\'"<>\\\)\\\\,;]+\.m3u8[^\s\'"<>\\\)\\\\,;]*/i',
+        '/https?:\/\/[^\s\'"<>\\\)\\\\,;]+\.mp4[^\s\'"<>\\\)\\\\,;]*/i',
     ];
     foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $html, $matches)) {
-            return html_entity_decode($matches[1]);
+        if (preg_match($pattern, $content, $m)) {
+            return $m[0];
         }
     }
-
-    $jsPatterns = [
-        '/(?:var|let|const|player|video|source|url|src|link)\s*[:=]\s*[\'"`](https?:\/\/[^\'"`\s]+\.m3u8[^\'"`\s]*)[\'"`]/i',
-        '/(?:var|let|const|player|video|source|url|src|link)\s*[:=]\s*[\'"`](https?:\/\/[^\'"`\s]+\.mp4[^\'"`\s]*)[\'"`]/i',
-    ];
-    foreach ($jsPatterns as $pattern) {
-        if (preg_match($pattern, $html, $matches)) {
-            return html_entity_decode($matches[1]);
-        }
-    }
-
-    if (preg_match_all('/https?:\/\/[^\s\'"<>\\\)\\\\]+?\.(?:m3u8|mp4)(?:[^\s\'"<>\\\)\\\\]*)?/i', $html, $allMatches)) {
-        foreach ($allMatches[0] as $match) {
-            if (preg_match('/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|ttf)/i', $match)) {
-                continue;
-            }
-            if (preg_match('/(video|media|play|stream|cdn|m3u8|mp4|vod)/i', $match)) {
-                return rtrim($match, '\\');
-            }
-        }
-        if (!empty($allMatches[0][0])) {
-            return rtrim($allMatches[0][0], '\\');
-        }
-    }
-
-    if (preg_match('/["\'](https?:\/\/[^"\']+\.m3u8[^"\']*)["\']/i', $html, $matches)) {
-        return html_entity_decode($matches[1]);
-    }
-    if (preg_match('/["\'](https?:\/\/[^"\']+\.mp4[^"\']*)["\']/i', $html, $matches)) {
-        return html_entity_decode($matches[1]);
-    }
-
     return null;
 }
 
-function extractVideoByChromeHeadless(string $videoUrl): ?string
+/**
+ * 递归在数组中查找 URL
+ */
+function findUrlInArray(array $arr): ?string
 {
-    $parseUrl = 'https://jx.xmflv.com/?url=' . urlencode($videoUrl);
-    $tempDir = sys_get_temp_dir();
-
-    $outputFile = $tempDir . '/video_sniff_' . uniqid() . '.log';
-    $harFile = $tempDir . '/video_sniff_' . uniqid() . '.har';
-
-    $chromeCmd = sprintf(
-        'chromium-browser --headless --no-sandbox --disable-gpu --disable-setuid-sandbox ' .
-        '--user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" ' .
-        '--enable-logging --v=1 --log-path=%s --dump-dom --har=%s "%s" 2>/dev/null',
-        escapeshellarg($outputFile),
-        escapeshellarg($harFile),
-        escapeshellarg($parseUrl)
-    );
-
-    exec($chromeCmd, $output, $returnCode);
-
-    $videoLink = null;
-
-    if (file_exists($harFile)) {
-        $harData = json_decode(file_get_contents($harFile), true);
-        if ($harData && isset($harData['log']['entries'])) {
-            foreach ($harData['log']['entries'] as $entry) {
-                $reqUrl = $entry['request']['url'] ?? '';
-                if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $reqUrl)) {
-                    $videoLink = $reqUrl;
-                    break;
-                }
+    foreach ($arr as $key => $value) {
+        if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)
+            && preg_match('/\.(m3u8|mp4)(\?|$)/i', $value)) {
+            return $value;
+        }
+        if (is_array($value)) {
+            $found = findUrlInArray($value);
+            if ($found) {
+                return $found;
             }
         }
-        @unlink($harFile);
     }
-
-    if (!$videoLink && file_exists($outputFile)) {
-        $domContent = file_get_contents($outputFile);
-        $videoLink = extractVideoFromHtml($domContent);
-        @unlink($outputFile);
-    }
-
-    return $videoLink;
-}
-
-function isChromeAvailable(): bool
-{
-    $chromePaths = [
-        'chromium-browser',
-        'chromium',
-        'google-chrome',
-        'google-chrome-stable',
-    ];
-    foreach ($chromePaths as $cmd) {
-        $check = shell_exec(sprintf('which %s 2>/dev/null', escapeshellcmd($cmd)));
-        if (!empty($check)) {
-            return true;
-        }
-    }
-    return false;
+    return null;
 }
