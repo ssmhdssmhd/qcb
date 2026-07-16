@@ -12,19 +12,19 @@ return [
     // 支持多个接口，按优先级依次尝试
     'official_apis' => [
         [
-            'name'    => '官解接口-1',
-            'url'     => 'https://your-official-api.com/parse?url=',
-            'type'    => 'redirect', // redirect: 直接跳转到m3u8 | json: 返回JSON含url字段 | text: 纯文本返回直链
-            'headers' => [
-                'Authorization' => 'Bearer YOUR_TOKEN_HERE',
-            ],
+            'name'       => '虾米官解',
+            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+            'type'       => 'json',
+            'url_field'  => 'play_url',  // JSON 中视频地址的字段名
+            'headers'    => [],
         ],
         // 可添加更多官解接口...
         // [
-        //     'name'    => '官解接口-2',
-        //     'url'     => 'https://api2.example.com/jiexi?url=',
-        //     'type'    => 'json',
-        //     'headers' => [],
+        //     'name'      => '官解接口-2',
+        //     'url'       => 'https://api2.example.com/jiexi?url=',
+        //     'type'      => 'json',
+        //     'url_field' => 'url',
+        //     'headers'   => [],
         // ],
     ],
 

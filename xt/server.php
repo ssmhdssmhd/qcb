@@ -190,14 +190,23 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config, array &$de
                 break;
 
             case 'json':
-                // JSON 类型：解析 JSON 获取 url 字段
+                // JSON 类型：解析 JSON 获取视频地址
                 $data = json_decode($response, true);
                 if ($data) {
-                    $url = $data['url'] ?? $data['data']['url'] ?? $data['video_url'] ?? null;
+                    // 优先使用配置指定的 url_field，再尝试常见字段
+                    $urlField = $api['url_field'] ?? null;
+                    $url = null;
+                    if ($urlField && isset($data[$urlField])) {
+                        $url = $data[$urlField];
+                    }
+                    if (!$url) {
+                        $url = $data['url'] ?? $data['play_url'] ?? $data['data']['url']
+                            ?? $data['data']['play_url'] ?? $data['video_url'] ?? null;
+                    }
                     if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
                         return $url;
                     }
-                    // 递归查找 url 字段
+                    // 递归查找含 m3u8/mp4 的 URL
                     $foundUrl = findUrlInArray($data);
                     if ($foundUrl) {
                         return $foundUrl;
@@ -330,7 +339,7 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
 
-    return $protocol . '://' . $host . $scriptDir . '/clean.php?id=' . $cacheId;
+    return $protocol . '://' . $host . rtrim($scriptDir, '/') . '/clean.php?id=' . $cacheId;
 }
 
 /**
