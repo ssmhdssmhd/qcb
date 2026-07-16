@@ -139,48 +139,49 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
     $mobileUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
     $guid = str_pad((string)mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999) . mt_rand(100000, 999999), 32, '0', STR_PAD_LEFT);
 
-    // 尝试多个 API 端点（PC端、H5移动端）
-    $apiEndpoints = [
-        ['url' => "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=shd&guid={$guid}", 'ua' => $ua, 'name' => 'PC端'],
-        ['url' => "https://h5vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=shd&guid={$guid}", 'ua' => $mobileUa, 'name' => 'H5移动端'],
-        ['url' => "https://vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=fhd&guid={$guid}", 'ua' => $ua, 'name' => 'PC端-fhd'],
-        ['url' => "https://h5vv.video.qq.com/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn=hd&guid={$guid}", 'ua' => $mobileUa, 'name' => 'H5-hd'],
+    // 关键：添加 ehost 参数可绕过地域版权限制（em=80）
+    // 尝试多个 API 端点 + ehost 参数
+    $defnList = ['shd', 'fhd', 'hd', 'sd'];
+    $apiHosts = [
+        ['host' => 'https://vv.video.qq.com',  'ehost' => 'https://v.qq.com',  'ua' => $ua,        'name' => 'PC端'],
+        ['host' => 'https://h5vv.video.qq.com', 'ehost' => 'https://m.v.qq.com', 'ua' => $mobileUa, 'name' => 'H5移动端'],
     ];
 
     $data = null;
-    foreach ($apiEndpoints as $ep) {
-        $ch = curl_init($ep['url']);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
-            CURLOPT_USERAGENT      => $ep['ua'],
-            CURLOPT_REFERER        => 'https://v.qq.com/',
-            CURLOPT_TIMEOUT        => 10,
-            CURLOPT_CONNECTTIMEOUT => 5,
-        ]);
-        $resp = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr = curl_error($ch);
-        @curl_close($ch);
+    foreach ($apiHosts as $apiInfo) {
+        foreach ($defnList as $defn) {
+            $apiUrl = "{$apiInfo['host']}/getinfo?vids={$vid}&platform=101001&charge=0&otype=json&defn={$defn}&guid={$guid}&ehost=" . urlencode($apiInfo['ehost']);
+            $ch = curl_init($apiUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+                CURLOPT_USERAGENT      => $apiInfo['ua'],
+                CURLOPT_REFERER        => $apiInfo['ehost'] . '/',
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            @curl_close($ch);
 
-        if (!$resp || $httpCode !== 200) {
-            $debugLog[] = "腾讯: {$ep['name']} getinfo失败 HTTP={$httpCode} err={$curlErr}";
-            continue;
+            if (!$resp || $httpCode !== 200) {
+                continue;
+            }
+
+            $resp = preg_replace('/^QZOutputJson=/', '', $resp);
+            $resp = rtrim($resp, ';');
+            $data = json_decode($resp, true);
+
+            $em = $data['em'] ?? 'null';
+            $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} em={$em}";
+
+            if ($data && ($data['em'] ?? 1) === 0 && isset($data['vl']['vi'][0])) {
+                $debugLog[] = "腾讯: {$apiInfo['name']}-{$defn} 成功获取视频信息";
+                break 2;
+            }
+            $data = null;
         }
-
-        $resp = preg_replace('/^QZOutputJson=/', '', $resp);
-        $resp = rtrim($resp, ';');
-        $data = json_decode($resp, true);
-
-        $em = $data['em'] ?? null;
-        $debugLog[] = "腾讯: {$ep['name']} em={$em}";
-
-        if ($data && isset($data['vl']['vi'][0])) {
-            $debugLog[] = "腾讯: {$ep['name']} 成功获取视频信息";
-            break;
-        }
-        $data = null;
     }
 
     if (!$data || !isset($data['vl']['vi'][0])) {
@@ -191,89 +192,66 @@ function extractTencentVideo(string $videoUrl, array &$debugLog = []): ?string
     $vi = $data['vl']['vi'][0];
     $fn = $vi['fn'] ?? '';
     $servers = $vi['ul']['ui'] ?? [];
+    $fvkey = $vi['fvkey'] ?? '';
 
     if (!$fn || empty($servers)) {
         $debugLog[] = '腾讯: 未获取到文件名或服务器列表';
         return null;
     }
-    $debugLog[] = "腾讯: 文件名={$fn} 服务器数=" . count($servers);
+    $debugLog[] = "腾讯: 文件名={$fn} 服务器数=" . count($servers) . " fvkey=" . (empty($fvkey) ? '空' : '已获取');
 
-    // 从文件名中提取格式号 (如 f10217.mp4 -> 10217)
-    $format = '2';
-    if (preg_match('/\.f(\d+)\.mp4$/i', $fn, $m)) {
-        $format = $m[1];
-    }
-
-    // 第二步：调用 getkey 获取 vkey
-    $keyUrl = "https://vv.video.qq.com/getkey?format={$format}&otype=json&vid={$vid}&guid={$guid}&filename={$fn}&platform=101001";
-
-    $ch2 = curl_init($keyUrl);
-    curl_setopt_array($ch2, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => 0,
-        CURLOPT_USERAGENT      => $ua,
-        CURLOPT_REFERER        => 'https://v.qq.com/',
-        CURLOPT_TIMEOUT        => 10,
-        CURLOPT_CONNECTTIMEOUT => 5,
-    ]);
-    $resp2 = curl_exec($ch2);
-    $curlErr2 = curl_error($ch2);
-    @curl_close($ch2);
-
-    if (!$resp2) {
-        $debugLog[] = "腾讯: getkey失败 err={$curlErr2}";
-        return null;
-    }
-
-    $resp2 = preg_replace('/^QZOutputJson=/', '', $resp2);
-    $resp2 = rtrim($resp2, ';');
-    $data2 = json_decode($resp2, true);
-
-    if (!$data2 || !isset($data2['key']) || ($data2['s'] ?? '') !== 'o') {
-        $debugLog[] = '腾讯: getkey返回数据异常 s=' . ($data2['s'] ?? 'null');
-        return null;
-    }
-    $debugLog[] = '腾讯: getkey成功，获取到vkey';
-
-    $vkey = $data2['key'];
-
-    // 第三步：遍历所有服务器，构建并测试 URL
-    $debugLog[] = '腾讯: 开始验证CDN服务器...';
-    foreach ($servers as $i => $server) {
-        $serverUrl = $server['url'] ?? '';
-        if (!$serverUrl) {
-            continue;
+    // 优先使用 getinfo 返回的 fvkey（无需再调 getkey）
+    $vkey = $fvkey;
+    if (!$vkey) {
+        $debugLog[] = '腾讯: fvkey为空，尝试调用getkey获取vkey';
+        // 从文件名中提取格式号 (如 f10217.mp4 -> 10217)
+        $format = '2';
+        if (preg_match('/\.f(\d+)\.mp4$/i', $fn, $m)) {
+            $format = $m[1];
         }
-
-        $videoLink = $serverUrl . $fn . '?vkey=' . $vkey;
-        $host = parse_url($videoLink, PHP_URL_HOST);
-
-        // 快速验证 URL 是否可访问
-        $ch3 = curl_init($videoLink);
-        curl_setopt_array($ch3, [
-            CURLOPT_NOBODY         => true,
+        $keyUrl = "https://vv.video.qq.com/getkey?format={$format}&otype=json&vid={$vid}&guid={$guid}&filename={$fn}&platform=101001";
+        $ch2 = curl_init($keyUrl);
+        curl_setopt_array($ch2, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 0,
             CURLOPT_USERAGENT      => $ua,
             CURLOPT_REFERER        => 'https://v.qq.com/',
-            CURLOPT_TIMEOUT        => 5,
-            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
         ]);
-        curl_exec($ch3);
-        $verifyCode = curl_getinfo($ch3, CURLINFO_HTTP_CODE);
-        @curl_close($ch3);
-
-        $debugLog[] = "腾讯: CDN[{$i}] {$host} => HTTP {$verifyCode}";
-
-        if ($verifyCode == 200 || $verifyCode == 206) {
-            $debugLog[] = '腾讯: 找到可用视频直链！';
-            return $videoLink;
+        $resp2 = curl_exec($ch2);
+        @curl_close($ch2);
+        if ($resp2) {
+            $resp2 = preg_replace('/^QZOutputJson=/', '', $resp2);
+            $resp2 = rtrim($resp2, ';');
+            $data2 = json_decode($resp2, true);
+            if ($data2 && isset($data2['key']) && ($data2['s'] ?? '') === 'o') {
+                $vkey = $data2['key'];
+                $debugLog[] = '腾讯: getkey成功，获取到vkey';
+            }
         }
     }
 
-    $debugLog[] = '腾讯: 所有CDN服务器均不可用';
+    if (!$vkey) {
+        $debugLog[] = '腾讯: 无法获取vkey';
+        return null;
+    }
+
+    // 遍历所有服务器，构建视频直链
+    $debugLog[] = '腾讯: 开始构建视频直链...';
+    foreach ($servers as $i => $server) {
+        $serverUrl = $server['url'] ?? '';
+        if (!$serverUrl) {
+            continue;
+        }
+        $videoLink = $serverUrl . $fn . '?vkey=' . $vkey;
+        $debugLog[] = "腾讯: CDN[{$i}] " . parse_url($videoLink, PHP_URL_HOST);
+        // 返回第一个服务器（不再逐个验证，节省时间）
+        return $videoLink;
+    }
+
+    $debugLog[] = '腾讯: 无可用CDN服务器';
     return null;
 }
 

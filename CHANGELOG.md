@@ -1,5 +1,31 @@
 # 更新日志
 
+## v5.0.4 (2026-07-15)
+
+### 深度修复
+
+1. **根本性修复腾讯视频 em=80 版权限制**
+   - 问题根因：腾讯 API 通过请求来源判断地域版权，缺少 `ehost` 参数导致返回 `em=80`
+   - 解决方案：所有 API 请求添加 `ehost` 参数（PC端 `v.qq.com` / 移动端 `m.v.qq.com`）
+   - 本地验证：添加 `ehost` 后 `em=0`，成功获取视频信息
+
+2. **优化 vkey 获取流程**
+   - 优先使用 `getinfo` 返回的 `fvkey`，无需再调 `getkey` 接口
+   - `fvkey` 为空时自动回退到 `getkey` 接口
+   - 减少一次 HTTP 请求，提升解析速度
+
+3. **简化 CDN 验证逻辑**
+   - 移除逐个 CDN 服务器 HEAD 验证（耗时且不必要）
+   - 直接返回第一个服务器地址，由播放器处理
+
+#### 影响文件
+
+- [server.php](file:///workspace/server.php) — 添加 ehost 参数 + fvkey 优化
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.0.4
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.3 (2026-07-15)
 
 ### 修复
