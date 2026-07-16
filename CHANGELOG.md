@@ -1,5 +1,27 @@
 # 更新日志
 
+## v5.1.0 (2026-07-16)
+
+### 重大变更：移除视频嗅探模块
+
+1. **移除文件**
+   - 删除 `api.php`（视频解析API入口）
+   - 删除 `server.php`（视频解析服务端）
+
+2. **保留功能**
+   - M3U8 广告分析与去广告系统（核心功能）
+   - 后台管理页面（mxadmin.php）
+   - 其他模块正常使用
+
+#### 影响文件
+
+- `api.php` — 已删除
+- `server.php` — 已删除
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.1.0
+- [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+
+---
+
 ## v5.0.10 (2026-07-16)
 
 ### 终极方案：JSONP方式绕过CORS（谁调用用谁IP）
