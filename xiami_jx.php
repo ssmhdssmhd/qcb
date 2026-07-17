@@ -15,10 +15,21 @@ if (empty($targetUrl)) {
     exit;
 }
 
+$proxyEnabled = false;
+$proxyMgr = null;
+if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
+    require_once __DIR__ . '/proxy/ProxyManager.php';
+    $proxyMgr = new ProxyManager();
+    $proxyEnabled = $proxyMgr->isEnabled();
+}
+
 // ========== 配置 ==========
 $apiEndpoints = [
     'https://cache.0567890.xyz:4433/Api',
     'https://cache.hls.one/Api',
+    'https://jx.xmflv.cc/api.php',
+    'https://jx.xmflv.com/api.php',
+    'https://api.xmflv.cc/parse',
 ];
 
 // ========== sign 签名（兼容 CryptoJS AES-256-CBC + ZeroPadding） ==========
@@ -52,8 +63,8 @@ function xiami_createSign($keyHex) {
     return base64_encode($encrypted);
 }
 
-// ========== HTTP POST（curl + 浏览器伪装头） ==========
-function xiami_httpPost($url, $postData) {
+// ========== HTTP POST（curl + 浏览器伪装头 + 代理支持） ==========
+function xiami_httpPost($url, $postData, $proxyMgr = null) {
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL            => $url,
@@ -73,6 +84,19 @@ function xiami_httpPost($url, $postData) {
             'X-Requested-With: XMLHttpRequest',
         ],
     ]);
+
+    if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
+        $proxy = $proxyMgr->getProxy();
+        if ($proxy !== null) {
+            $proxyType = strtoupper($proxy['type']);
+            $proxyAuth = '';
+            if (!empty($proxy['username'])) {
+                $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+            }
+            curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
+        }
+    }
+
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error    = curl_error($ch);
@@ -180,7 +204,7 @@ $decrypted = null;
 $lastError = '';
 
 foreach ($apiEndpoints as $api) {
-    $result = xiami_httpPost($api, $postData);
+    $result = xiami_httpPost($api, $postData, $proxyMgr);
     if (isset($result['error'])) {
         $lastError = $result['error'];
         continue;

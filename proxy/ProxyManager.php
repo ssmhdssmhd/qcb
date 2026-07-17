@@ -158,8 +158,13 @@ class ProxyManager {
             }
         }
 
-        $this->failedProxies = [];
-        return reset($activeProxies);
+        $failedCount = count($this->failedProxies);
+        if ($failedCount >= count($activeProxies)) {
+            $this->failedProxies = [];
+            return reset($activeProxies);
+        }
+
+        return null;
     }
 
     public function markProxyFailed($proxyId) {

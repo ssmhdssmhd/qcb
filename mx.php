@@ -80,9 +80,18 @@ function sendJsonResponse($data, $code = 200) {
 }
 
 function parse_internal_xiami($url) {
+    $proxyMgr = null;
+    if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
+        require_once __DIR__ . '/proxy/ProxyManager.php';
+        $proxyMgr = new ProxyManager();
+    }
+
     $apiEndpoints = [
         'https://cache.0567890.xyz:4433/Api',
         'https://cache.hls.one/Api',
+        'https://jx.xmflv.cc/api.php',
+        'https://jx.xmflv.com/api.php',
+        'https://api.xmflv.cc/parse',
     ];
 
     $tm = intval(round(microtime(true) * 1000));
@@ -138,6 +147,19 @@ function parse_internal_xiami($url) {
                     'X-Requested-With: XMLHttpRequest',
                 ],
             ]);
+
+            if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
+                $proxy = $proxyMgr->getProxy();
+                if ($proxy !== null) {
+                    $proxyType = strtoupper($proxy['type']);
+                    $proxyAuth = '';
+                    if (!empty($proxy['username'])) {
+                        $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                    }
+                    curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
+                }
+            }
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $curlError = curl_error($ch);
@@ -2046,9 +2068,18 @@ try {
                 ], 400);
             }
 
+            $proxyMgr = null;
+            if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
+                require_once __DIR__ . '/proxy/ProxyManager.php';
+                $proxyMgr = new ProxyManager();
+            }
+
             $apiEndpoints = [
                 'https://cache.0567890.xyz:4433/Api',
                 'https://cache.hls.one/Api',
+                'https://jx.xmflv.cc/api.php',
+                'https://jx.xmflv.com/api.php',
+                'https://api.xmflv.cc/parse',
             ];
 
             $tm = intval(round(microtime(true) * 1000));
@@ -2104,6 +2135,19 @@ try {
                             'X-Requested-With: XMLHttpRequest',
                         ],
                     ]);
+
+                    if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
+                        $proxy = $proxyMgr->getProxy();
+                        if ($proxy !== null) {
+                            $proxyType = strtoupper($proxy['type']);
+                            $proxyAuth = '';
+                            if (!empty($proxy['username'])) {
+                                $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                            }
+                            curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
+                        }
+                    }
+
                     $response = curl_exec($ch);
                     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                     $curlError = curl_error($ch);
