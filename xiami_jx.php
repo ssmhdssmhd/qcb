@@ -124,9 +124,7 @@ function xiami_httpPost($url, $postData, $proxyMgr = null) {
 
         // 检测是否被ban（HTTP 500 + 特征关键词）
         $isBanned = ($httpCode === 500 || (is_string($response) && (
-            strpos($response, 'ban') !== false ||
-            strpos($response, 'Ban') !== false ||
-            strpos($response, 'BAN') !== false
+            stripos($response, 'ban') !== false
         )));
 
         // 非ban错误且非代理连接问题，直接返回错误
