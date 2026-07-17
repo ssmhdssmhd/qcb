@@ -14,6 +14,51 @@
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 
+$xtProxyMgr = null;
+if (file_exists(__DIR__ . '/../proxy/ProxyManager.php')) {
+    require_once __DIR__ . '/../proxy/ProxyManager.php';
+    $xtProxyMgr = new ProxyManager(__DIR__ . '/../proxy/proxy_config.php');
+    $xtProxyMgr->ensureProxyAvailable();
+}
+
+function xt_rate_limit_wait($apiHost, $minIntervalMs = 800) {
+    $rateLimitDir = __DIR__ . '/tmp';
+    if (!is_dir($rateLimitDir)) {
+        @mkdir($rateLimitDir, 0755, true);
+    }
+    $lockFile = $rateLimitDir . '/ratelimit_' . md5($apiHost) . '.dat';
+
+    $fp = @fopen($lockFile, 'c+');
+    if (!$fp) {
+        return;
+    }
+
+    if (flock($fp, LOCK_EX)) {
+        $now = microtime(true);
+        $lastTime = 0;
+        $existing = @fread($fp, 1024);
+        if ($existing !== false && is_numeric(trim($existing))) {
+            $lastTime = (float)trim($existing);
+        }
+
+        $elapsedMs = ($now - $lastTime) * 1000;
+        if ($elapsedMs < $minIntervalMs) {
+            $waitUs = (int)(($minIntervalMs - $elapsedMs) * 1000);
+            if ($waitUs > 0) {
+                usleep($waitUs);
+            }
+        }
+
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, (string)microtime(true));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    }
+
+    fclose($fp);
+}
+
 /**
  * 核心解析函数
  *
@@ -105,78 +150,131 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
  */
 function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
 {
+    global $xtProxyMgr;
+
     foreach ($config['official_apis'] as $api) {
         $targetUrl = $api['url'] . urlencode($videoUrl);
+        $apiHost = parse_url($targetUrl, PHP_URL_HOST);
+        $maxRetries = 3;
+        $resultUrl = null;
 
-        $ch = curl_init();
-        $headers = [];
-        foreach ($api['headers'] ?? [] as $key => $value) {
-            $headers[] = $key . ': ' . $value;
+        for ($retry = 0; $retry < $maxRetries; $retry++) {
+            if ($retry > 0) {
+                usleep(rand(300000, 800000));
+            }
+            xt_rate_limit_wait($apiHost, 800);
+
+            $ch = curl_init();
+            $headers = [];
+            foreach ($api['headers'] ?? [] as $key => $value) {
+                $headers[] = $key . ': ' . $value;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $targetUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS      => 5,
+                CURLOPT_TIMEOUT        => $config['http']['timeout'],
+                CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
+                CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
+                CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
+                CURLOPT_USERAGENT      => $config['http']['user_agent'],
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_ENCODING       => '',
+            ]);
+
+            $usedProxyId = null;
+            if ($xtProxyMgr !== null && $xtProxyMgr->isEnabled()) {
+                $proxy = $xtProxyMgr->getProxy();
+                if ($proxy !== null) {
+                    $usedProxyId = $proxy['id'] ?? null;
+                    $proxyType = strtoupper($proxy['type']);
+                    $proxyAuth = '';
+                    if (!empty($proxy['username'])) {
+                        $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                    }
+                    curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
+                }
+            }
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            $isBanned = ($httpCode === 500 || (is_string($response) && (
+                stripos($response, 'ban') !== false
+            )));
+
+            if ($response !== false && $httpCode === 200 && !$isBanned) {
+                if ($xtProxyMgr !== null && $usedProxyId !== null) {
+                    $xtProxyMgr->markProxySuccess($usedProxyId);
+                }
+            } else {
+                if ($xtProxyMgr !== null && $usedProxyId !== null) {
+                    $xtProxyMgr->markProxyFailed($usedProxyId);
+                }
+                if ($isBanned && $xtProxyMgr !== null) {
+                    $xtProxyMgr->ensureProxyAvailable();
+                }
+                if ($retry < $maxRetries - 1) {
+                    continue;
+                }
+                break;
+            }
+
+            switch ($api['type']) {
+                case 'redirect':
+                    if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
+                        $resultUrl = $effectiveUrl;
+                    } else {
+                        $extracted = extractVideoUrl($response);
+                        if ($extracted) {
+                            $resultUrl = $extracted;
+                        }
+                    }
+                    break;
+
+                case 'json':
+                    $data = json_decode($response, true);
+                    if ($data) {
+                        $urlField = $api['url_field'] ?? null;
+                        $url = null;
+                        if ($urlField && isset($data[$urlField])) {
+                            $url = $data[$urlField];
+                        }
+                        if (!$url) {
+                            $url = $data['url'] ?? $data['play_url'] ?? $data['data']['url']
+                                ?? $data['data']['play_url'] ?? $data['video_url'] ?? null;
+                        }
+                        if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
+                            $resultUrl = $url;
+                        } else {
+                            $foundUrl = findUrlInArray($data);
+                            if ($foundUrl) {
+                                $resultUrl = $foundUrl;
+                            }
+                        }
+                    }
+                    break;
+
+                case 'text':
+                    $trimmed = trim($response);
+                    if (filter_var($trimmed, FILTER_VALIDATE_URL)) {
+                        $resultUrl = $trimmed;
+                    }
+                    break;
+            }
+
+            if ($resultUrl !== null) {
+                break 2;
+            }
         }
 
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $targetUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS      => 5,
-            CURLOPT_TIMEOUT        => $config['http']['timeout'],
-            CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
-            CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
-            CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
-            CURLOPT_USERAGENT      => $config['http']['user_agent'],
-            CURLOPT_HTTPHEADER     => $headers,
-            CURLOPT_ENCODING       => '',
-        ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        if ($error || $httpCode !== 200) {
-            continue;
-        }
-
-        switch ($api['type']) {
-            case 'redirect':
-                if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
-                    return $effectiveUrl;
-                }
-                $extracted = extractVideoUrl($response);
-                if ($extracted) {
-                    return $extracted;
-                }
-                break;
-
-            case 'json':
-                $data = json_decode($response, true);
-                if ($data) {
-                    $urlField = $api['url_field'] ?? null;
-                    $url = null;
-                    if ($urlField && isset($data[$urlField])) {
-                        $url = $data[$urlField];
-                    }
-                    if (!$url) {
-                        $url = $data['url'] ?? $data['play_url'] ?? $data['data']['url']
-                            ?? $data['data']['play_url'] ?? $data['video_url'] ?? null;
-                    }
-                    if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
-                        return $url;
-                    }
-                    $foundUrl = findUrlInArray($data);
-                    if ($foundUrl) {
-                        return $foundUrl;
-                    }
-                }
-                break;
-
-            case 'text':
-                $trimmed = trim($response);
-                if (filter_var($trimmed, FILTER_VALIDATE_URL)) {
-                    return $trimmed;
-                }
-                break;
+        if ($resultUrl !== null) {
+            return $resultUrl;
         }
     }
 

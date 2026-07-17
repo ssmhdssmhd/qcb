@@ -79,6 +79,44 @@ function sendJsonResponse($data, $code = 200) {
     exit;
 }
 
+function xiami_rate_limit_wait($apiHost, $minIntervalMs = 800) {
+    $rateLimitDir = __DIR__ . '/tmp';
+    if (!is_dir($rateLimitDir)) {
+        @mkdir($rateLimitDir, 0755, true);
+    }
+    $lockFile = $rateLimitDir . '/ratelimit_' . md5($apiHost) . '.dat';
+
+    $fp = @fopen($lockFile, 'c+');
+    if (!$fp) {
+        return;
+    }
+
+    if (flock($fp, LOCK_EX)) {
+        $now = microtime(true);
+        $lastTime = 0;
+        $existing = @fread($fp, 1024);
+        if ($existing !== false && is_numeric(trim($existing))) {
+            $lastTime = (float)trim($existing);
+        }
+
+        $elapsedMs = ($now - $lastTime) * 1000;
+        if ($elapsedMs < $minIntervalMs) {
+            $waitUs = (int)(($minIntervalMs - $elapsedMs) * 1000);
+            if ($waitUs > 0) {
+                usleep($waitUs);
+            }
+        }
+
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, (string)microtime(true));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    }
+
+    fclose($fp);
+}
+
 function parse_internal_xiami($url) {
     $proxyMgr = null;
     if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
@@ -132,8 +170,14 @@ function parse_internal_xiami($url) {
         foreach ($apiEndpoints as $api) {
             $maxRetries = 3;
             $retryResult = null;
+            $apiHost = parse_url($api, PHP_URL_HOST);
 
             for ($retry = 0; $retry < $maxRetries; $retry++) {
+                if ($retry > 0) {
+                    usleep(rand(300000, 800000));
+                }
+                xiami_rate_limit_wait($apiHost, 800);
+
                 $ch = curl_init();
                 curl_setopt_array($ch, [
                     CURLOPT_URL            => $api,

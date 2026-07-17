@@ -2,11 +2,12 @@
 
 ## v5.5.6 (2026-07-17)
 
-### 小版本更新 - 修复嗅探被ban问题 + AI自动代理切换
+### 小版本更新 - 修复嗅探被ban问题 + AI自动代理切换 + 速率限制
 
 1. **问题根因**
-   - 虾米解析API（cache.0567890.xyz:4433）检测到服务器IP频繁请求，返回"你已经被ban"（HTTP 500错误）
+   - 虾米解析API检测到服务器IP频繁请求，返回"你已经被ban"（HTTP 500错误）
    - 原代码代理支持已存在但未启用，代理配置文件 `enabled=false`
+   - 缺少请求频率控制，并发调用时过快触发API风控
 
 2. **修复方案 - AI自动代理切换**
    - **代理来源**：proxy.scdn.io（优先获取中国代理）
@@ -18,12 +19,26 @@
    - **重试机制**：每个API端点最多重试3次，自动切换代理
    - **文件锁**：防止并发刷新代理池
 
-3. **新增备用API端点**
+3. **新增速率限制（防止过快调用被ban）**
+   - **域名级限流**：每个API域名最小请求间隔 800ms，避免短时间内大量请求
+   - **重试延迟**：重试时随机等待 300-800ms，模拟真实用户行为
+   - **文件锁机制**：基于文件锁的跨请求速率控制，确保并发安全
+   - 限流文件存储在 `tmp/` 目录，自动创建
+
+4. **xt 超级嗅探模块全面增强**
+   - 集成代理自动切换：官解接口调用支持代理池轮询
+   - 集成速率限制：防止官解接口调用过快被ban
+   - 集成ban检测：检测到ban响应时自动刷新代理池
+   - 每个接口最多重试3次，失败自动切换代理
+
+5. **新增备用API端点**
    - `jx.xmflv.cc/api.php`、`jx.xmflv.com/api.php`、`api.xmflv.cc/parse`
 
-4. **影响文件**
-   - [xiami_jx.php](file:///workspace/xiami_jx.php) — 集成自动代理刷新、重试机制、ban检测
-   - [mx.php](file:///workspace/mx.php) — 两处虾米解析代码集成自动代理刷新和重试
+6. **影响文件**
+   - [xiami_jx.php](file:///workspace/xiami_jx.php) — 集成自动代理刷新、重试机制、ban检测、速率限制
+   - [mx.php](file:///workspace/mx.php) — 虾米解析集成代理、重试、速率限制
+   - [xt/server.php](file:///workspace/xt/server.php) — 官解接口集成代理自动切换、重试、速率限制、ban检测
+   - [xt/config.php](file:///workspace/xt/config.php) — 版本号升级到 v5.5.6
    - [proxy/proxy_config.php](file:///workspace/proxy/proxy_config.php) — 启用代理、清空占位代理改为自动获取
    - [proxy/ProxyManager.php](file:///workspace/proxy/ProxyManager.php) — 新增 autoRefreshProxies/ensureProxyAvailable 方法
    - [proxy/ProxyFetcher.php](file:///workspace/proxy/ProxyFetcher.php) — 优先从 proxy.scdn.io 获取中国代理

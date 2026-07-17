@@ -65,11 +65,55 @@ function xiami_createSign($keyHex) {
     return base64_encode($encrypted);
 }
 
+// ========== 速率限制：防止过快调用被ban ==========
+function xiami_rate_limit_wait($apiHost, $minIntervalMs = 800) {
+    $rateLimitDir = __DIR__ . '/tmp';
+    if (!is_dir($rateLimitDir)) {
+        @mkdir($rateLimitDir, 0755, true);
+    }
+    $lockFile = $rateLimitDir . '/ratelimit_' . md5($apiHost) . '.dat';
+
+    $fp = @fopen($lockFile, 'c+');
+    if (!$fp) {
+        return;
+    }
+
+    if (flock($fp, LOCK_EX)) {
+        $now = microtime(true);
+        $lastTime = 0;
+        $existing = @fread($fp, 1024);
+        if ($existing !== false && is_numeric(trim($existing))) {
+            $lastTime = (float)trim($existing);
+        }
+
+        $elapsedMs = ($now - $lastTime) * 1000;
+        if ($elapsedMs < $minIntervalMs) {
+            $waitUs = (int)(($minIntervalMs - $elapsedMs) * 1000);
+            if ($waitUs > 0) {
+                usleep($waitUs);
+            }
+        }
+
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, (string)microtime(true));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    }
+
+    fclose($fp);
+}
+
 // ========== HTTP POST（curl + 浏览器伪装头 + 代理支持 + 自动切换） ==========
 function xiami_httpPost($url, $postData, $proxyMgr = null) {
     $maxRetries = 3;
+    $apiHost = parse_url($url, PHP_URL_HOST);
 
     for ($retry = 0; $retry < $maxRetries; $retry++) {
+        if ($retry > 0) {
+            usleep(rand(300000, 800000));
+        }
+        xiami_rate_limit_wait($apiHost, 800);
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
