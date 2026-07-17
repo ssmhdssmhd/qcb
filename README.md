@@ -384,6 +384,14 @@ MIT License
 
 ## 版本历史
 
+### v5.5.5 (2026-07-17)
+
+- 🔖 版本号升级到 v5.5.5
+- ✨ 浏览器适配功能：`xt/clean.php` 支持 Edge、Chrome、Firefox、Safari 等主流浏览器直接访问
+- ✨ 新增 `jiexi.php` — TVBox / 影视App专用解析接口
+- ✨ 超级嗅探模块 `xt/`：官解接口对接、规则引擎 + AI 大模型双重广告识别
+- 🐛 修复去广告 m3u8 无法播放问题（ts 相对路径转绝对路径）
+
 ### v2.29.1 (2026-07-17)
 
 - ✨ 新增浏览器适配功能：`xt/clean.php` 支持 Edge、Chrome、Firefox、Safari 等主流浏览器直接访问
