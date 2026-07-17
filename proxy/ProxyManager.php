@@ -11,6 +11,8 @@ class ProxyManager {
     private $proxies = [];
     private $failedProxies = [];
     private $lastCheckFile;
+    private $autoRefreshLockFile;
+    private $lastAutoRefresh = 0;
 
     public function __construct($configFile = null) {
         if ($configFile === null) {
@@ -18,6 +20,7 @@ class ProxyManager {
         }
         $this->configFile = $configFile;
         $this->lastCheckFile = __DIR__ . '/proxy_check_state.php';
+        $this->autoRefreshLockFile = __DIR__ . '/proxy_refresh.lock';
         $this->loadConfig();
     }
 
@@ -39,7 +42,136 @@ class ProxyManager {
     }
 
     public function isEnabled() {
-        return !empty($this->config['enabled']) && !empty($this->proxies);
+        if (empty($this->config['enabled'])) {
+            return false;
+        }
+        if (empty($this->proxies)) {
+            // 代理池为空时尝试自动获取
+            $this->autoRefreshProxies();
+            return !empty($this->proxies);
+        }
+        return true;
+    }
+
+    /**
+     * 自动从 proxy.scdn.io 获取代理（优先中国）
+     * 智能切换：当可用代理不足或全部失败时自动触发
+     */
+    public function autoRefreshProxies($force = false) {
+        // 防止频繁刷新（至少间隔60秒）
+        $now = time();
+        if (!$force && $now - $this->lastAutoRefresh < 60) {
+            return ['success' => false, 'message' => '刷新间隔过短，请稍后再试'];
+        }
+        $this->lastAutoRefresh = $now;
+
+        // 文件锁防止并发刷新
+        $lockHandle = @fopen($this->autoRefreshLockFile, 'w');
+        if (!$lockHandle) {
+            return ['success' => false, 'message' => '无法创建锁文件'];
+        }
+        if (!flock($lockHandle, LOCK_EX | LOCK_NB)) {
+            fclose($lockHandle);
+            return ['success' => false, 'message' => '其他进程正在刷新代理'];
+        }
+
+        try {
+            require_once __DIR__ . '/ProxyFetcher.php';
+            $fetcher = new ProxyFetcher([
+                'timeout' => $this->config['timeout'] ?? 10,
+                'max_per_source' => 30,
+                'verify_timeout' => 5,
+                'max_verify_count' => 30
+            ]);
+
+            $result = $fetcher->fetchAll(true);
+            $added = 0;
+            $chinaProxies = [];
+            $otherProxies = [];
+
+            foreach ($result['proxies'] as $proxy) {
+                $proxyId = md5($proxy['type'] . '://' . $proxy['host'] . ':' . $proxy['port'] . '_' . uniqid());
+                $proxyData = [
+                    'id' => $proxyId,
+                    'name' => strtoupper($proxy['type']) . ' ' . $proxy['host'] . ':' . $proxy['port'],
+                    'type' => $proxy['type'],
+                    'host' => $proxy['host'],
+                    'port' => $proxy['port'],
+                    'username' => $proxy['username'] ?? '',
+                    'password' => $proxy['password'] ?? '',
+                    'status' => 'active',
+                    'success_count' => 0,
+                    'fail_count' => 0,
+                    'last_check' => null,
+                    'last_success' => null,
+                    'response_time' => $proxy['response_time'] ?? 0,
+                    'country' => $proxy['country'] ?? ''
+                ];
+
+                // 中国代理优先级更高
+                if (!empty($proxy['country']) && $proxy['country'] === '中国') {
+                    $proxyData['priority'] = 50;
+                    $chinaProxies[] = $proxyData;
+                } else {
+                    $proxyData['priority'] = 100;
+                    $otherProxies[] = $proxyData;
+                }
+            }
+
+            // 合并：中国代理在前，其他代理在后
+            $newProxies = array_merge($chinaProxies, $otherProxies);
+
+            if (!empty($newProxies)) {
+                // 清除旧代理，使用新获取的代理
+                $this->proxies = $newProxies;
+                $this->config['proxies'] = $this->proxies;
+                $this->config['enabled'] = true;
+                $this->failedProxies = [];
+                $this->saveConfig();
+                $added = count($newProxies);
+            }
+
+            flock($lockHandle, LOCK_UN);
+            fclose($lockHandle);
+            @unlink($this->autoRefreshLockFile);
+
+            return [
+                'success' => true,
+                'added' => $added,
+                'china_count' => count($chinaProxies),
+                'other_count' => count($otherProxies),
+                'message' => "成功获取 {$added} 个代理（中国: " . count($chinaProxies) . "，其他: " . count($otherProxies) . "）"
+            ];
+        } catch (Throwable $e) {
+            flock($lockHandle, LOCK_UN);
+            fclose($lockHandle);
+            @unlink($this->autoRefreshLockFile);
+            return ['success' => false, 'message' => '自动刷新失败: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * 确保代理可用：如果代理池为空或全部失败，自动刷新
+     */
+    public function ensureProxyAvailable() {
+        // 如果代理池为空，自动获取
+        if (empty($this->proxies)) {
+            $this->autoRefreshProxies(true);
+            return !empty($this->proxies);
+        }
+
+        // 如果所有代理都已失败，自动刷新
+        $activeProxies = $this->getActiveProxies();
+        $availableProxies = array_filter($activeProxies, function($p) {
+            return !isset($this->failedProxies[$p['id'] ?? '']);
+        });
+
+        if (empty($availableProxies)) {
+            $this->autoRefreshProxies(true);
+            return !empty($this->proxies);
+        }
+
+        return true;
     }
 
     public function setEnabled($enabled) {

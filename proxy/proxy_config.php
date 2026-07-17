@@ -1,31 +1,16 @@
 <?php
 /**
  * 代理池配置
- * 自动更新于: 2026-07-01 16:45:41
+ * 代理来源: proxy.scdn.io（优先中国）
+ * 自动更新于: 2026-07-17
  */
 
 return [
-    'version' => '1.1',
+    'version' => '2.0',
     'enabled' => true,
     'auto_switch' => true,
+    'auto_refresh' => true,
     'check_interval' => 300,
     'timeout' => 10,
-    'proxies' => [
-        [
-            'id' => 'default_http_1',
-            'name' => 'Default HTTP Proxy',
-            'type' => 'http',
-            'host' => '127.0.0.1',
-            'port' => 8080,
-            'username' => '',
-            'password' => '',
-            'status' => 'active',
-            'priority' => 100,
-            'success_count' => 0,
-            'fail_count' => 0,
-            'last_check' => null,
-            'last_success' => null,
-            'response_time' => 0
-        ]
-    ]
+    'proxies' => []
 ];

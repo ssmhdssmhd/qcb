@@ -2,23 +2,31 @@
 
 ## v5.5.6 (2026-07-17)
 
-### 小版本更新 - 修复嗅探被ban问题
+### 小版本更新 - 修复嗅探被ban问题 + AI自动代理切换
 
 1. **问题根因**
    - 虾米解析API（cache.0567890.xyz:4433）检测到服务器IP频繁请求，返回"你已经被ban"（HTTP 500错误）
    - 原代码代理支持已存在但未启用，代理配置文件 `enabled=false`
 
-2. **修复方案**
-   - 新增3个备用API端点：`jx.xmflv.cc/api.php`、`jx.xmflv.com/api.php`、`api.xmflv.cc/parse`
-   - 启用代理支持：`proxy_config.php` 中 `enabled` 改为 `true`
-   - 优化代理池管理器：改进代理选择和失败重试逻辑
-   - 当所有代理失败时自动重置失败列表，确保不卡死
+2. **修复方案 - AI自动代理切换**
+   - **代理来源**：proxy.scdn.io（优先获取中国代理）
+   - **自动获取**：代理池为空时自动从 proxy.scdn.io API 获取代理（HTTP/HTTPS/SOCKS5）
+   - **优先中国**：中国代理优先级 50，其他国家代理优先级 100
+   - **智能切换**：请求失败时自动标记代理失败并切换到下一个可用代理
+   - **自动刷新**：所有代理失败时自动重新获取新代理池
+   - **ban检测**：检测到 HTTP 500 或响应中包含 "ban" 关键词时触发代理刷新
+   - **重试机制**：每个API端点最多重试3次，自动切换代理
+   - **文件锁**：防止并发刷新代理池
 
-3. **影响文件**
-   - [xiami_jx.php](file:///workspace/xiami_jx.php) — 新增备用API端点
-   - [mx.php](file:///workspace/mx.php) — 两处虾米解析API端点更新
-   - [proxy/proxy_config.php](file:///workspace/proxy/proxy_config.php) — 启用代理支持
-   - [proxy/ProxyManager.php](file:///workspace/proxy/ProxyManager.php) — 优化代理选择逻辑
+3. **新增备用API端点**
+   - `jx.xmflv.cc/api.php`、`jx.xmflv.com/api.php`、`api.xmflv.cc/parse`
+
+4. **影响文件**
+   - [xiami_jx.php](file:///workspace/xiami_jx.php) — 集成自动代理刷新、重试机制、ban检测
+   - [mx.php](file:///workspace/mx.php) — 两处虾米解析代码集成自动代理刷新和重试
+   - [proxy/proxy_config.php](file:///workspace/proxy/proxy_config.php) — 启用代理、清空占位代理改为自动获取
+   - [proxy/ProxyManager.php](file:///workspace/proxy/ProxyManager.php) — 新增 autoRefreshProxies/ensureProxyAvailable 方法
+   - [proxy/ProxyFetcher.php](file:///workspace/proxy/ProxyFetcher.php) — 优先从 proxy.scdn.io 获取中国代理
    - [version.php](file:///workspace/version.php) — 版本号升级到 v5.5.6
 
 ---

@@ -27,79 +27,67 @@ class ProxyFetcher {
     private function initSources() {
         $this->sources = [
             [
-                'name' => 'proxy.scdn.io',
+                'name' => 'proxy.scdn.io-中国-HTTP',
+                'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=http&count=30&country=%E4%B8%AD%E5%9B%BD',
+                'type' => 'json_scdn',
+                'enabled' => true,
+                'priority' => 1,
+                'country' => '中国'
+            ],
+            [
+                'name' => 'proxy.scdn.io-中国-HTTPS',
+                'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=https&count=30&country=%E4%B8%AD%E5%9B%BD',
+                'type' => 'json_scdn',
+                'enabled' => true,
+                'priority' => 2,
+                'country' => '中国'
+            ],
+            [
+                'name' => 'proxy.scdn.io-中国-SOCKS5',
+                'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=socks5&count=20&country=%E4%B8%AD%E5%9B%BD',
+                'type' => 'json_scdn_socks',
+                'enabled' => true,
+                'priority' => 3,
+                'country' => '中国'
+            ],
+            [
+                'name' => 'proxy.scdn.io-全球-HTTP',
                 'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=http&count=20',
                 'type' => 'json_scdn',
                 'enabled' => true,
-                'priority' => 1
+                'priority' => 10
             ],
             [
-                'name' => 'proxy.scdn.io-https',
+                'name' => 'proxy.scdn.io-全球-HTTPS',
                 'url' => 'https://proxy.scdn.io/api/get_proxy.php?protocol=https&count=20',
                 'type' => 'json_scdn',
                 'enabled' => true,
-                'priority' => 2
+                'priority' => 11
             ],
             [
                 'name' => 'ProxyScrape',
                 'url' => 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all',
                 'type' => 'plain',
-                'enabled' => true
+                'enabled' => false
             ],
             [
                 'name' => 'ProxyList-download',
                 'url' => 'https://www.proxy-list.download/api/v1/get?type=http',
                 'type' => 'plain',
-                'enabled' => true
+                'enabled' => false
             ],
             [
                 'name' => 'OpenProxyList',
                 'url' => 'https://openproxylist.xyz/http.txt',
                 'type' => 'plain',
-                'enabled' => true
-            ],
-            [
-                'name' => 'ProxySpace',
-                'url' => 'https://proxyspace.pro/http.txt',
-                'type' => 'plain',
-                'enabled' => true
-            ],
-            [
-                'name' => 'RawGithub-sunny9577',
-                'url' => 'https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt',
-                'type' => 'plain',
-                'enabled' => true
+                'enabled' => false
             ],
             [
                 'name' => 'RawGithub-TheSpeedX',
                 'url' => 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
                 'type' => 'plain',
-                'enabled' => true
+                'enabled' => false
             ],
-            [
-                'name' => 'RawGithub-ShiftyTR',
-                'url' => 'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt',
-                'type' => 'plain',
-                'enabled' => true
-            ],
-            [
-                'name' => 'RawGithub-hookzof',
-                'url' => 'https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt',
-                'type' => 'plain_socks',
-                'enabled' => true
-            ],
-            [
-                'name' => 'ProxyScan-API',
-                'url' => 'https://www.proxyscan.io/api/proxy?format=json&type=http&limit=20',
-                'type' => 'json_proxyscan',
-                'enabled' => true
-            ],
-            [
-                'name' => 'PubProxy',
-                'url' => 'http://pubproxy.com/api/proxy?limit=20&format=json&type=http',
-                'type' => 'json_pubproxy',
-                'enabled' => true
-            ]
         ];
     }
 
@@ -196,6 +184,9 @@ class ProxyFetcher {
                 break;
             case 'json_scdn':
                 $proxies = $this->parseScdnJson($response, $source);
+                break;
+            case 'json_scdn_socks':
+                $proxies = $this->parseScdnJson($response, $source, 'socks5');
                 break;
             default:
                 $proxies = $this->parsePlainList($response, 'http');
@@ -309,7 +300,7 @@ class ProxyFetcher {
         return $proxies;
     }
 
-    private function parseScdnJson($content, $source = []) {
+    private function parseScdnJson($content, $source = [], $forceType = null) {
         $proxies = [];
         $data = json_decode($content, true);
 
@@ -318,9 +309,13 @@ class ProxyFetcher {
 
         $url = $source['url'] ?? '';
         $defaultType = 'http';
-        if (stripos($url, 'protocol=https') !== false) {
+        if ($forceType !== null) {
+            $defaultType = $forceType;
+        } elseif (stripos($url, 'protocol=https') !== false) {
             $defaultType = 'http';
         }
+
+        $country = $source['country'] ?? '';
 
         foreach ($data['data']['proxies'] as $proxyStr) {
             if (preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$/', trim($proxyStr), $m)) {
@@ -329,7 +324,8 @@ class ProxyFetcher {
                     'host' => $m[1],
                     'port' => intval($m[2]),
                     'username' => '',
-                    'password' => ''
+                    'password' => '',
+                    'country' => $country
                 ];
             }
         }

@@ -20,6 +20,8 @@ $proxyMgr = null;
 if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
     require_once __DIR__ . '/proxy/ProxyManager.php';
     $proxyMgr = new ProxyManager();
+    // 确保代理可用：如果代理池为空则自动从 proxy.scdn.io 获取（优先中国）
+    $proxyMgr->ensureProxyAvailable();
     $proxyEnabled = $proxyMgr->isEnabled();
 }
 
@@ -63,49 +65,82 @@ function xiami_createSign($keyHex) {
     return base64_encode($encrypted);
 }
 
-// ========== HTTP POST（curl + 浏览器伪装头 + 代理支持） ==========
+// ========== HTTP POST（curl + 浏览器伪装头 + 代理支持 + 自动切换） ==========
 function xiami_httpPost($url, $postData, $proxyMgr = null) {
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($postData),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 25,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
-            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Accept: application/json, text/javascript, */*; q=0.01',
-            'Origin: https://jx.xmflv.cc',
-            'Referer: https://jx.xmflv.cc/',
-            'X-Requested-With: XMLHttpRequest',
-        ],
-    ]);
+    $maxRetries = 3;
 
-    if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
-        $proxy = $proxyMgr->getProxy();
-        if ($proxy !== null) {
-            $proxyType = strtoupper($proxy['type']);
-            $proxyAuth = '';
-            if (!empty($proxy['username'])) {
-                $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+    for ($retry = 0; $retry < $maxRetries; $retry++) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query($postData),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 25,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept: application/json, text/javascript, */*; q=0.01',
+                'Origin: https://jx.xmflv.cc',
+                'Referer: https://jx.xmflv.cc/',
+                'X-Requested-With: XMLHttpRequest',
+            ],
+        ]);
+
+        $usedProxyId = null;
+        if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
+            $proxy = $proxyMgr->getProxy();
+            if ($proxy !== null) {
+                $usedProxyId = $proxy['id'] ?? null;
+                $proxyType = strtoupper($proxy['type']);
+                $proxyAuth = '';
+                if (!empty($proxy['username'])) {
+                    $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                }
+                curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
             }
-            curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
+        }
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error    = curl_error($ch);
+        curl_close($ch);
+
+        // 请求成功
+        if ($response !== false && $httpCode === 200) {
+            if ($proxyMgr !== null && $usedProxyId !== null) {
+                $proxyMgr->markProxySuccess($usedProxyId);
+            }
+            return ['body' => $response];
+        }
+
+        // 请求失败：标记代理失败
+        if ($proxyMgr !== null && $usedProxyId !== null) {
+            $proxyMgr->markProxyFailed($usedProxyId);
+        }
+
+        // 检测是否被ban（HTTP 500 + 特征关键词）
+        $isBanned = ($httpCode === 500 || (is_string($response) && (
+            strpos($response, 'ban') !== false ||
+            strpos($response, 'Ban') !== false ||
+            strpos($response, 'BAN') !== false
+        )));
+
+        // 非ban错误且非代理连接问题，直接返回错误
+        if (!$isBanned && $proxyMgr === null) {
+            return ['error' => $error ?: "HTTP $httpCode"];
+        }
+
+        // ban错误或代理失败：自动刷新代理并重试
+        if ($isBanned && $proxyMgr !== null) {
+            $proxyMgr->ensureProxyAvailable();
         }
     }
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error    = curl_error($ch);
-    curl_close($ch);
-
-    if ($response === false || $httpCode !== 200) {
-        return ['error' => $error ?: "HTTP $httpCode"];
-    }
-    return ['body' => $response];
+    return ['error' => $error ?: "HTTP $httpCode（重试{$maxRetries}次后仍失败）"];
 }
 
 // ========== 响应解密（AES-CBC + ZeroPadding，兼容 CryptoJS） ==========

@@ -84,6 +84,8 @@ function parse_internal_xiami($url) {
     if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
         require_once __DIR__ . '/proxy/ProxyManager.php';
         $proxyMgr = new ProxyManager();
+        // 确保代理可用：如果代理池为空则自动从 proxy.scdn.io 获取（优先中国）
+        $proxyMgr->ensureProxyAvailable();
     }
 
     $apiEndpoints = [
@@ -128,44 +130,83 @@ function parse_internal_xiami($url) {
         ];
 
         foreach ($apiEndpoints as $api) {
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL            => $api,
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => http_build_query($postData),
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 25,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false,
-                CURLOPT_HTTPHEADER     => [
-                    'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                    'Accept: application/json, text/javascript, */*; q=0.01',
-                    'Origin: https://jx.xmflv.cc',
-                    'Referer: https://jx.xmflv.cc/',
-                    'X-Requested-With: XMLHttpRequest',
-                ],
-            ]);
+            $maxRetries = 3;
+            $retryResult = null;
 
-            if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
-                $proxy = $proxyMgr->getProxy();
-                if ($proxy !== null) {
-                    $proxyType = strtoupper($proxy['type']);
-                    $proxyAuth = '';
-                    if (!empty($proxy['username'])) {
-                        $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+            for ($retry = 0; $retry < $maxRetries; $retry++) {
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL            => $api,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => http_build_query($postData),
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 25,
+                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false,
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                        'Accept: application/json, text/javascript, */*; q=0.01',
+                        'Origin: https://jx.xmflv.cc',
+                        'Referer: https://jx.xmflv.cc/',
+                        'X-Requested-With: XMLHttpRequest',
+                    ],
+                ]);
+
+                $usedProxyId = null;
+                if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
+                    $proxy = $proxyMgr->getProxy();
+                    if ($proxy !== null) {
+                        $usedProxyId = $proxy['id'] ?? null;
+                        $proxyType = strtoupper($proxy['type']);
+                        $proxyAuth = '';
+                        if (!empty($proxy['username'])) {
+                            $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                        }
+                        curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
                     }
-                    curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
                 }
+
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($ch);
+                curl_close($ch);
+
+                // 请求成功
+                if ($response !== false && $httpCode === 200) {
+                    if ($proxyMgr !== null && $usedProxyId !== null) {
+                        $proxyMgr->markProxySuccess($usedProxyId);
+                    }
+                    $retryResult = $response;
+                    break;
+                }
+
+                // 请求失败：标记代理失败
+                if ($proxyMgr !== null && $usedProxyId !== null) {
+                    $proxyMgr->markProxyFailed($usedProxyId);
+                }
+
+                // 检测是否被ban
+                $isBanned = ($httpCode === 500 || (is_string($response) && (
+                    stripos($response, 'ban') !== false
+                )));
+
+                // ban错误：自动刷新代理并重试
+                if ($isBanned && $proxyMgr !== null) {
+                    $proxyMgr->ensureProxyAvailable();
+                }
+
+                $lastError = $curlError ?: "HTTP $httpCode";
             }
 
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlError = curl_error($ch);
-            curl_close($ch);
+            if ($retryResult === false || $retryResult === null) {
+                continue;
+            }
 
-            if ($response === false || $httpCode !== 200) {
+            $response = $retryResult;
+
+            if ($response === false) {
                 $lastError = $curlError ?: "HTTP $httpCode";
                 continue;
             }
@@ -2072,6 +2113,8 @@ try {
             if (file_exists(__DIR__ . '/proxy/ProxyManager.php')) {
                 require_once __DIR__ . '/proxy/ProxyManager.php';
                 $proxyMgr = new ProxyManager();
+                // 确保代理可用：如果代理池为空则自动从 proxy.scdn.io 获取（优先中国）
+                $proxyMgr->ensureProxyAvailable();
             }
 
             $apiEndpoints = [
@@ -2116,47 +2159,81 @@ try {
                 ];
 
                 foreach ($apiEndpoints as $api) {
-                    $ch = curl_init();
-                    curl_setopt_array($ch, [
-                        CURLOPT_URL            => $api,
-                        CURLOPT_POST           => true,
-                        CURLOPT_POSTFIELDS     => http_build_query($postData),
-                        CURLOPT_RETURNTRANSFER => true,
-                        CURLOPT_TIMEOUT        => 25,
-                        CURLOPT_CONNECTTIMEOUT => 10,
-                        CURLOPT_SSL_VERIFYPEER => false,
-                        CURLOPT_SSL_VERIFYHOST => false,
-                        CURLOPT_HTTPHEADER     => [
-                            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
-                            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                            'Accept: application/json, text/javascript, */*; q=0.01',
-                            'Origin: https://jx.xmflv.cc',
-                            'Referer: https://jx.xmflv.cc/',
-                            'X-Requested-With: XMLHttpRequest',
-                        ],
-                    ]);
+                    $maxRetries = 3;
+                    $retryResult = null;
 
-                    if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
-                        $proxy = $proxyMgr->getProxy();
-                        if ($proxy !== null) {
-                            $proxyType = strtoupper($proxy['type']);
-                            $proxyAuth = '';
-                            if (!empty($proxy['username'])) {
-                                $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                    for ($retry = 0; $retry < $maxRetries; $retry++) {
+                        $ch = curl_init();
+                        curl_setopt_array($ch, [
+                            CURLOPT_URL            => $api,
+                            CURLOPT_POST           => true,
+                            CURLOPT_POSTFIELDS     => http_build_query($postData),
+                            CURLOPT_RETURNTRANSFER => true,
+                            CURLOPT_TIMEOUT        => 25,
+                            CURLOPT_CONNECTTIMEOUT => 10,
+                            CURLOPT_SSL_VERIFYPEER => false,
+                            CURLOPT_SSL_VERIFYHOST => false,
+                            CURLOPT_HTTPHEADER     => [
+                                'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                                'Accept: application/json, text/javascript, */*; q=0.01',
+                                'Origin: https://jx.xmflv.cc',
+                                'Referer: https://jx.xmflv.cc/',
+                                'X-Requested-With: XMLHttpRequest',
+                            ],
+                        ]);
+
+                        $usedProxyId = null;
+                        if ($proxyMgr !== null && $proxyMgr->isEnabled()) {
+                            $proxy = $proxyMgr->getProxy();
+                            if ($proxy !== null) {
+                                $usedProxyId = $proxy['id'] ?? null;
+                                $proxyType = strtoupper($proxy['type']);
+                                $proxyAuth = '';
+                                if (!empty($proxy['username'])) {
+                                    $proxyAuth = urlencode($proxy['username']) . ':' . urlencode($proxy['password']) . '@';
+                                }
+                                curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
                             }
-                            curl_setopt($ch, CURLOPT_PROXY, "$proxyType://$proxyAuth{$proxy['host']}:{$proxy['port']}");
                         }
+
+                        $response = curl_exec($ch);
+                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        $curlError = curl_error($ch);
+                        curl_close($ch);
+
+                        // 请求成功
+                        if ($response !== false && $httpCode === 200) {
+                            if ($proxyMgr !== null && $usedProxyId !== null) {
+                                $proxyMgr->markProxySuccess($usedProxyId);
+                            }
+                            $retryResult = $response;
+                            break;
+                        }
+
+                        // 请求失败：标记代理失败
+                        if ($proxyMgr !== null && $usedProxyId !== null) {
+                            $proxyMgr->markProxyFailed($usedProxyId);
+                        }
+
+                        // 检测是否被ban
+                        $isBanned = ($httpCode === 500 || (is_string($response) && (
+                            stripos($response, 'ban') !== false
+                        )));
+
+                        // ban错误：自动刷新代理并重试
+                        if ($isBanned && $proxyMgr !== null) {
+                            $proxyMgr->ensureProxyAvailable();
+                        }
+
+                        $lastError = $curlError ?: "HTTP $httpCode";
                     }
 
-                    $response = curl_exec($ch);
-                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    $curlError = curl_error($ch);
-                    curl_close($ch);
-
-                    if ($response === false || $httpCode !== 200) {
-                        $lastError = $curlError ?: "HTTP $httpCode";
+                    if ($retryResult === false || $retryResult === null) {
                         continue;
                     }
+
+                    $response = $retryResult;
 
                     $body = str_replace('tg:@xmflv', '', $response);
                     $json = json_decode($body, true);
