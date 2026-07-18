@@ -17,6 +17,7 @@
 
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
+require_once __DIR__ . '/PerformanceOptimizer.php';
 
 // 合并后台「嗅探设置」覆盖配置（sniffer_config.php 由后台写入）
 $snifferConfigFile = __DIR__ . '/sniffer_config.php';
@@ -239,10 +240,15 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
  * 根据后台「嗅探设置」选择走官解解析还是官替接口
  *
  * 路由规则：
- *   1. mode=official 且 official_api.enabled=true → 调用官解接口
+ *   1. mode=official 且 official_apis 有启用 → 并发请求多个官解接口（竞速模式）
  *   2. mode=replace  且 replace_api.enabled=true  → 调用官替接口
- *   3. 当前通道失败时，自动 fallback 到另一通道（若对方已启用）
- *   4. 两个通道都未启用时，回退到旧的 official_apis 数组
+ *   3. 当前通道失败时，自动 fallback 到另一通道
+ *   4. 两个通道都失败 → 回退到旧的 official_apis 数组
+ *
+ * 性能优化：
+ *   - AI 学习自动排序：根据成功率、平均耗时自动调整接口优先级
+ *   - 多接口并发竞速：多个接口同时请求，最快成功的立即返回
+ *   - 失败自动切换：一个接口被禁/失败，自动用下一个
  *
  * @param string $videoUrl 视频页面 URL
  * @param array  $config   全局配置
@@ -255,40 +261,122 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
 {
     $sniffer  = $config['sniffer'] ?? [];
     $mode     = $sniffer['mode'] ?? 'official';
-    $official = $sniffer['official_api'] ?? [];
-    $replace  = $sniffer['replace_api']  ?? [];
+    $perfCfg  = $config['performance'] ?? [];
+
+    // 初始化性能优化器
+    static $optimizer = null;
+    if ($optimizer === null) {
+        $optimizer = new PerformanceOptimizer($config);
+    }
+
+    // 收集官解接口列表（支持多个）
+    // 优先从 sniffer.official_apis 读取，其次从 sniffer.official_api 单接口转换
+    $officialApis = [];
+    if (!empty($sniffer['official_apis']) && is_array($sniffer['official_apis'])) {
+        foreach ($sniffer['official_apis'] as $api) {
+            if (!empty($api['enabled']) && !empty($api['url'])) {
+                $officialApis[] = $api;
+            }
+        }
+    }
+    // 兼容单接口配置
+    if (empty($officialApis) && !empty($sniffer['official_api'])) {
+        $officialApi = $sniffer['official_api'];
+        if (!empty($officialApi['enabled']) && !empty($officialApi['url'])) {
+            $officialApis[] = $officialApi;
+        }
+    }
+    // 兜底：旧的 official_apis 数组
+    if (empty($officialApis) && !empty($config['official_apis'])) {
+        $officialApis = $config['official_apis'];
+    }
+
+    // 官替接口（单接口）
+    $replaceApi = $sniffer['replace_api'] ?? [];
+    $replaceEnabled = !empty($replaceApi['enabled']) && !empty($replaceApi['url']);
+
+    // AI 学习：按性能评分自动排序
+    if (!empty($perfCfg['ai_sort_enabled']) && count($officialApis) > 1) {
+        $officialApis = $optimizer->sortApisByScore($officialApis);
+    }
+
+    $maxConcurrent = $perfCfg['max_concurrent'] ?? 3;
+    $timeout = $perfCfg['timeout'] ?? 15.0;
+    $raceMode = !empty($perfCfg['race_mode']) && count($officialApis) > 1;
 
     // 1) 按当前模式优先尝试
     if ($mode === 'replace') {
-        if (!empty($replace['enabled'])) {
-            $link = callSingleApi($videoUrl, $replace, $config);
+        if ($replaceEnabled) {
+            $link = callSingleApi($videoUrl, $replaceApi, $config);
             if ($link) return ['url' => $link, 'source' => 'replace'];
         }
         // 当前通道失败 → fallback 到官解
-        if (!empty($official['enabled'])) {
-            $link = callSingleApi($videoUrl, $official, $config);
-            if ($link) return ['url' => $link, 'source' => 'official'];
+        if (!empty($officialApis)) {
+            if ($raceMode) {
+                $result = $optimizer->concurrentRaceRequest($officialApis, $videoUrl, $maxConcurrent, $timeout);
+                if ($result['url']) return ['url' => $result['url'], 'source' => 'official'];
+            } else {
+                $link = callApisSequential($videoUrl, $officialApis, $config, $optimizer, $timeout);
+                if ($link) return ['url' => $link, 'source' => 'official'];
+            }
         }
     } else {
         // mode=official（默认）
-        if (!empty($official['enabled'])) {
-            $link = callSingleApi($videoUrl, $official, $config);
-            if ($link) return ['url' => $link, 'source' => 'official'];
+        if (!empty($officialApis)) {
+            if ($raceMode) {
+                // 竞速模式：多接口并发，最快成功立即返回
+                $result = $optimizer->concurrentRaceRequest($officialApis, $videoUrl, $maxConcurrent, $timeout);
+                if ($result['url']) return ['url' => $result['url'], 'source' => 'official'];
+            } else {
+                $link = callApisSequential($videoUrl, $officialApis, $config, $optimizer, $timeout);
+                if ($link) return ['url' => $link, 'source' => 'official'];
+            }
         }
         // 当前通道失败 → fallback 到官替
-        if (!empty($replace['enabled'])) {
-            $link = callSingleApi($videoUrl, $replace, $config);
+        if ($replaceEnabled) {
+            $link = callSingleApi($videoUrl, $replaceApi, $config);
             if ($link) return ['url' => $link, 'source' => 'replace'];
         }
     }
 
-    // 2) 两个通道都未启用或都失败 → 回退到旧的 official_apis 数组（视为 official 通道）
+    // 2) 两个通道都未启用或都失败 → 回退到旧的 official_apis 数组
     if (!empty($config['official_apis'])) {
         $link = getVideoLinkFromOfficialApi($videoUrl, $config);
         if ($link) return ['url' => $link, 'source' => 'official'];
     }
 
     return ['url' => null, 'source' => null];
+}
+
+/**
+ * 串行调用多个接口（失败自动切换到下一个）
+ *
+ * @param string                $videoUrl  视频页面 URL
+ * @param array                 $apiList   接口列表
+ * @param array                 $config    全局配置
+ * @param PerformanceOptimizer  $optimizer 性能优化器（用于记录结果）
+ * @param float                 $timeout   总超时时间
+ * @return string|null
+ */
+function callApisSequential(string $videoUrl, array $apiList, array $config, PerformanceOptimizer $optimizer, float $timeout = 15.0): ?string
+{
+    $startTime = microtime(true);
+    foreach ($apiList as $api) {
+        $callStart = microtime(true);
+        $link = callSingleApi($videoUrl, $api, $config);
+        $callDuration = microtime(true) - $callStart;
+        $apiName = $api['name'] ?? md5($api['url'] ?? 'unknown');
+        if ($link) {
+            $optimizer->recordApiResult($apiName, $callDuration, true);
+            return $link;
+        } else {
+            $optimizer->recordApiResult($apiName, $callDuration, false);
+        }
+        if ((microtime(true) - $startTime) > $timeout) {
+            break;
+        }
+    }
+    return null;
 }
 
 /**

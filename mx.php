@@ -3472,16 +3472,23 @@ try {
         // 作用：控制 xt/ 超级嗅探模块走官解解析还是官替接口
         case 'sniffer/config':
             $snifferConfigFile = $rootDir . '/xt/sniffer_config.php';
+            $perfStatsFile = $rootDir . '/xt/cache/api_performance_stats.json';
+
+            $defaultOfficialApi = [
+                'enabled'    => true,
+                'name'       => '虾米官解',
+                'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+                'type'       => 'json',
+                'url_field'  => 'play_url',
+                'headers'    => [],
+            ];
+
             $defaultConfig = [
                 'mode'         => 'official',
-                'official_api' => [
-                    'enabled'    => true,
-                    'name'       => '虾米官解',
-                    'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
-                    'type'       => 'json',
-                    'url_field'  => 'play_url',
-                    'headers'    => [],
+                'official_apis' => [
+                    $defaultOfficialApi,
                 ],
+                'official_api' => $defaultOfficialApi,
                 'replace_api' => [
                     'enabled'    => false,
                     'name'       => '本地官替',
@@ -3492,12 +3499,19 @@ try {
                 ],
                 'update_date' => date('Y-m-d H:i:s'),
             ];
+
             $config = $defaultConfig;
             if (file_exists($snifferConfigFile)) {
                 $fileConfig = require $snifferConfigFile;
                 if (is_array($fileConfig)) {
                     $config = array_merge($defaultConfig, $fileConfig);
-                    // 确保 official_api / replace_api 子数组也合并默认值
+                    if (!isset($config['official_apis']) || !is_array($config['official_apis']) || empty($config['official_apis'])) {
+                        if (!empty($config['official_api']) && is_array($config['official_api'])) {
+                            $config['official_apis'] = [$config['official_api']];
+                        } else {
+                            $config['official_apis'] = $defaultConfig['official_apis'];
+                        }
+                    }
                     foreach (['official_api', 'replace_api'] as $apiKey) {
                         if (!isset($config[$apiKey]) || !is_array($config[$apiKey])) {
                             $config[$apiKey] = $defaultConfig[$apiKey];
@@ -3507,18 +3521,29 @@ try {
                     }
                 }
             }
-            sendJsonResponse(['success' => true, 'config' => $config]);
+
+            $perfStats = null;
+            if (file_exists($perfStatsFile)) {
+                $perfStats = @json_decode(@file_get_contents($perfStatsFile), true);
+            }
+
+            sendJsonResponse([
+                'success' => true,
+                'config'  => $config,
+                'perf_stats' => $perfStats,
+            ]);
             break;
 
         case 'sniffer/config/save':
             $input = getInputJson();
             $snifferConfigFile = $rootDir . '/xt/sniffer_config.php';
 
-            // 仅允许白名单字段，防止脏数据写入
             $mode = ($input['mode'] ?? 'official') === 'replace' ? 'replace' : 'official';
 
-            $buildApiConfig = function ($key) use ($input) {
-                $src = $input[$key] ?? [];
+            $buildApiConfig = function ($src) {
+                if (!is_array($src)) {
+                    $src = [];
+                }
                 return [
                     'enabled'    => !empty($src['enabled']),
                     'name'       => trim((string)($src['name'] ?? '')),
@@ -3530,21 +3555,47 @@ try {
                 ];
             };
 
+            $officialApis = [];
+            if (!empty($input['official_apis']) && is_array($input['official_apis'])) {
+                foreach ($input['official_apis'] as $api) {
+                    $built = $buildApiConfig($api);
+                    if (!empty($built['url'])) {
+                        $officialApis[] = $built;
+                    }
+                }
+            }
+
+            $officialApiSingle = $buildApiConfig($input['official_api'] ?? []);
+            if (empty($officialApis) && !empty($officialApiSingle['url'])) {
+                $officialApis[] = $officialApiSingle;
+            }
+            if (empty($officialApiSingle['url']) && !empty($officialApis[0])) {
+                $officialApiSingle = $officialApis[0];
+            }
+
+            $replaceApi = $buildApiConfig($input['replace_api'] ?? []);
+
             $newConfig = [
-                'mode'         => $mode,
-                'official_api' => $buildApiConfig('official_api'),
-                'replace_api'  => $buildApiConfig('replace_api'),
-                'update_date'  => date('Y-m-d H:i:s'),
+                'mode'          => $mode,
+                'official_apis' => $officialApis,
+                'official_api'  => $officialApiSingle,
+                'replace_api'   => $replaceApi,
+                'update_date'   => date('Y-m-d H:i:s'),
             ];
 
             $configContent = '<?php' . "\n"
                 . '/**' . "\n"
                 . ' * 超级嗅探 - 嗅探设置配置文件（由后台自动维护）' . "\n"
                 . ' * 更新时间: ' . $newConfig['update_date'] . "\n"
+                . ' *' . "\n"
+                . ' * 配置项说明：' . "\n"
+                . ' *   - mode:          当前解析通道（official=官解 / replace=官替）' . "\n"
+                . ' *   - official_apis: 官解接口列表（支持多个，AI 学习自动排序）' . "\n"
+                . ' *   - official_api:  单官解接口（兼容旧版本）' . "\n"
+                . ' *   - replace_api:   官替接口配置' . "\n"
                 . ' */' . "\n"
                 . 'return ' . var_export($newConfig, true) . ";\n";
 
-            // 目录不存在则创建
             $snifferDir = dirname($snifferConfigFile);
             if (!is_dir($snifferDir)) {
                 @mkdir($snifferDir, 0755, true);
@@ -3556,6 +3607,50 @@ try {
                 'success' => $result !== false,
                 'message' => $result !== false ? '嗅探设置保存成功' : '嗅探设置保存失败（请检查 xt/ 目录可写权限）',
                 'config'  => $newConfig,
+            ], $result !== false ? 200 : 400);
+            break;
+
+        // ============ 性能统计：获取接口性能统计（AI 学习数据） ============
+        case 'sniffer/perf_stats':
+            $perfStatsFile = $rootDir . '/xt/cache/api_performance_stats.json';
+            $stats = null;
+            if (file_exists($perfStatsFile)) {
+                $stats = @json_decode(@file_get_contents($perfStatsFile), true);
+            }
+            if (!$stats) {
+                $stats = [
+                    'apis' => [],
+                    'updated_at' => time(),
+                    'total_calls' => 0,
+                ];
+            }
+            sendJsonResponse([
+                'success' => true,
+                'stats'   => $stats,
+            ]);
+            break;
+
+        // ============ 性能统计：重置接口性能统计 ============
+        case 'sniffer/perf_stats/reset':
+            $perfStatsFile = $rootDir . '/xt/cache/api_performance_stats.json';
+            $cacheDir = dirname($perfStatsFile);
+            if (!is_dir($cacheDir)) {
+                @mkdir($cacheDir, 0755, true);
+            }
+            $newStats = [
+                'apis' => [],
+                'updated_at' => time(),
+                'total_calls' => 0,
+            ];
+            $result = @file_put_contents(
+                $perfStatsFile,
+                json_encode($newStats, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                LOCK_EX
+            );
+            sendJsonResponse([
+                'success' => $result !== false,
+                'message' => $result !== false ? '性能统计已重置' : '重置失败（请检查 cache 目录可写权限）',
+                'stats'   => $newStats,
             ], $result !== false ? 200 : 400);
             break;
 
@@ -5463,6 +5558,8 @@ try {
                     'official_replace/info' => '官替解析-精简信息',
                     'sniffer/config' => '嗅探设置-获取配置',
                     'sniffer/config/save' => '嗅探设置-保存配置',
+                    'sniffer/perf_stats' => '嗅探设置-性能统计',
+                    'sniffer/perf_stats/reset' => '嗅探设置-重置性能统计',
                     'pt/status' => 'pt引擎状态（平台适配器/AI/去广告）',
                     'pt/test' => 'pt引擎匹配测试（url参数指定视频链接）',
                     'pt/adskip' => 'pt去广告处理（url参数指定m3u8链接）',

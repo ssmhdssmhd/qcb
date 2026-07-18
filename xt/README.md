@@ -7,6 +7,9 @@
 - **多端调用**：App / 网页 / 电视 / 影视JSON接口 / 服务端，一套接口全适配
 - **三种输出模式**：精简 JSON / 影视标准 JSON / 302 跳转直连
 - **官解接口对接**：支持 redirect / json / text 三种接口类型
+- **多接口并发竞速**：curl_multi 并发请求多个官解接口，最快成功的立即返回
+- **AI 学习自动排序**：记录每个接口的成功率、平均耗时，自动调整调用优先级
+- **失败自动切换**：一个接口被禁/失败，自动切换到下一个接口继续尝试
 - **智能广告识别**：规则引擎 + AI 大模型辅助双重识别
 - **去广告 m3u8 生成**：自动过滤广告分段，生成纯净播放地址
 - **多级 m3u8 / 加密 m3u8 兼容**
@@ -16,13 +19,15 @@
 
 ```
 xt/
-├── api.php        # 统一入口（多端调用 + 多格式输出）
-├── server.php     # 服务端核心（官解对接 + m3u8获取 + 广告过滤）
-├── AdFilter.php   # 广告识别+过滤引擎
-├── clean.php      # 去广告 m3u8 播放代理
-├── config.php     # 全局配置
-├── cache/         # m3u8 缓存目录（自动创建）
-└── README.md      # 说明文档
+├── api.php                 # 统一入口（多端调用 + 多格式输出）
+├── server.php              # 服务端核心（官解对接 + m3u8获取 + 广告过滤）
+├── PerformanceOptimizer.php # 性能优化器（多接口并发 + AI 学习自动排序）
+├── AdFilter.php            # 广告识别+过滤引擎
+├── clean.php               # 去广告 m3u8 播放代理
+├── config.php              # 全局配置
+├── sniffer_config.php      # 嗅探设置配置（后台可视化维护）
+├── cache/                  # m3u8 缓存目录（自动创建）
+└── README.md               # 说明文档
 ```
 
 ## 调用方式
@@ -118,23 +123,37 @@ api.php?url=视频链接&type=raw
 
 | 通道 | 标识 | 说明 |
 |------|------|------|
-| 官解解析 | `official` | 调用官方解析 API 获取 m3u8/mp4 直链 |
+| 官解解析 | `official` | 调用官方解析 API 获取 m3u8/mp4 直链（支持多接口并发） |
 | 官替接口 | `replace`  | 调用官替 API 获取资源站匹配后的 m3u8 |
 
+- 官解支持**多个接口**配置，AI 学习自动排序 + 并发竞速
 - 两个接口各配独立开关 + 接口地址/类型/字段名
 - 通过「当前通道」单选决定实际走哪一条
 - 当前通道失败时自动 fallback 到另一条已启用的通道
 - 配置文件：`xt/sniffer_config.php`（由后台自动维护）
 - API 端点：
-  - `GET  /mx.php?action=sniffer/config`
-  - `POST /mx.php?action=sniffer/config/save`
+  - `GET  /mx.php?action=sniffer/config` — 获取配置 + 性能统计
+  - `POST /mx.php?action=sniffer/config/save` — 保存配置
+  - `GET  /mx.php?action=sniffer/perf_stats` — 获取性能统计
+  - `POST /mx.php?action=sniffer/perf_stats/reset` — 重置性能统计
 
 `xt/sniffer_config.php` 结构示例：
 
 ```php
 return [
     'mode' => 'official',  // official=官解 / replace=官替
-    'official_api' => [
+    'official_apis' => [   // 官解接口列表（支持多个）
+        [
+            'enabled'    => true,
+            'name'       => '虾米官解',
+            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+            'type'       => 'json',
+            'url_field'  => 'play_url',
+            'headers'    => [],
+        ],
+        // 可添加更多官解接口...
+    ],
+    'official_api' => [    // 单接口兼容（保留旧结构）
         'enabled'    => true,
         'name'       => '虾米官解',
         'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
@@ -153,6 +172,30 @@ return [
     'update_date' => '2026-07-18 12:00:00',
 ];
 ```
+
+### 性能优化配置
+
+在 `config.php` 的 `performance` 配置项中可调整：
+
+```php
+'performance' => [
+    'race_mode'       => true,   // 竞速模式：多接口并发请求，最快成功的立即返回
+    'max_concurrent'  => 3,      // 最大并发请求数（建议 2-5）
+    'timeout'         => 15.0,   // 总超时时间（秒）
+    'ai_sort_enabled' => true,   // AI 学习自动排序（按成功率+耗时动态调整优先级）
+    'ai_score_weights' => [
+        'success_rate' => 0.5,   // 成功率权重（50%）
+        'avg_duration' => 0.4,   // 平均耗时权重（40%）
+        'consec_fail'  => 0.1,   // 连续失败惩罚权重（10%）
+    ],
+],
+```
+
+**AI 学习评分算法**：
+- 成功率评分（50%）：成功率越高，评分越高
+- 平均耗时评分（40%）：响应越快，评分越高（低于 1s 满分）
+- 连续失败惩罚（10%）：连续失败 3 次以上开始扣分
+- 评分范围 0-100，越高越优先调用
 
 ## 各端调用示例
 
@@ -214,6 +257,23 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 ```
 
 ## 版本更新日志
+
+### v5.3.0 (2026-07-18)
+
+- 🔥 **多接口并发竞速**：使用 curl_multi 并发请求多个官解接口，最快成功的立即返回，大幅提升响应速度
+- 🧠 **AI 学习自动排序**：记录每个接口的成功率、平均耗时、连续失败次数，通过评分算法动态调整调用优先级
+- 🔄 **失败自动切换**：一个接口被禁/失败，自动切换到下一个接口继续尝试，提高解析成功率
+- 📊 **性能统计持久化**：接口性能数据存储在 JSON 文件中，支持查看和重置
+- ⚙️ **性能优化配置**：新增 `performance` 配置项，可调整并发数、超时、AI 评分权重等
+- 📝 **多官解接口配置**：后台支持配置多个官解接口，`official_apis` 数组格式
+- 📈 **新增 API 端点**：`sniffer/perf_stats`（获取性能统计）、`sniffer/perf_stats/reset`（重置性能统计）
+- 🔧 **向后兼容**：保留 `official_api` 单接口配置，旧版本升级无缝兼容
+
+### v5.2.0 (2026-07-18)
+
+- 官替通道输出优化：改为直连播放链接，去除播放器页面包装
+- 修复官替接口播放地址无法播放的问题
+- 增强 m3u8 链接提取逻辑，支持多种返回格式
 
 ### v5.1.6 (2026-07-18)
 

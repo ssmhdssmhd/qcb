@@ -8,7 +8,7 @@
 return [
 
     // ============ 版本信息 ============
-    'version' => '5.2.0',
+    'version' => '5.3.0',
 
     // ============ 嗅探设置（后台「嗅探设置」页面维护） ============
     // sniffer_config.php 由后台写入，此处作为兜底默认值
@@ -16,7 +16,20 @@ return [
     'sniffer' => [
         // 当前解析通道：official=官解解析 / replace=官替接口
         'mode' => 'official',
-        // 官解接口（开关 + 接口参数）
+        // 官解接口（支持多个，按优先级排列；后台可动态增删）
+        // 注意：single_api 模式下也可只配置一条
+        'official_apis' => [
+            [
+                'enabled'    => true,
+                'name'       => '虾米官解',
+                'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+                'type'       => 'json',
+                'url_field'  => 'play_url',
+                'headers'    => [],
+            ],
+            // 可在后台添加更多官解接口...
+        ],
+        // 单接口兼容字段（保留，后台旧配置可能只有这一条）
         'official_api' => [
             'enabled'    => true,
             'name'       => '虾米官解',
@@ -33,6 +46,26 @@ return [
             'type'       => 'json',
             'url_field'  => 'm3u8_url',
             'headers'    => [],
+        ],
+    ],
+
+    // ============ 性能优化配置（多接口并发 + AI 学习） ============
+    'performance' => [
+        // 是否启用竞速模式（多个接口并发请求，最快成功的立即返回）
+        // 建议开启：可显著降低首屏等待时间
+        'race_mode'         => true,
+        // 最大并发请求数（建议 2-5，过多会增加服务器负担）
+        'max_concurrent'    => 3,
+        // 总超时时间（秒）
+        'timeout'           => 15.0,
+        // 是否启用 AI 学习自动排序
+        // 开启后：根据每个接口的成功率、平均耗时自动调整调用优先级
+        'ai_sort_enabled'   => true,
+        // AI 评分权重配置
+        'ai_score_weights' => [
+            'success_rate'     => 0.5, // 成功率权重
+            'avg_duration'     => 0.4, // 平均耗时权重
+            'consec_fail'      => 0.1, // 连续失败惩罚权重
         ],
     ],
 

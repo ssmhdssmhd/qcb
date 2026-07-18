@@ -16,7 +16,19 @@ return [
     // replace  = 走官替接口（调用官替 API 获取资源站匹配后的 m3u8）
     'mode' => 'official',
 
-    // ============ 官解接口 ============
+    // ============ 官解接口（支持多个，AI 学习自动排序） ============
+    'official_apis' => [
+        [
+            'enabled'    => true,
+            'name'       => '虾米官解',
+            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+            'type'       => 'json',
+            'url_field'  => 'play_url',
+            'headers'    => [],
+        ],
+    ],
+
+    // ============ 官解接口（单接口兼容，保留旧结构） ============
     'official_api' => [
         // 总开关：false 时即便 mode=official 也不会调用此接口
         'enabled'    => true,
