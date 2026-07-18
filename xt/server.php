@@ -160,44 +160,63 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
 
     $finalUrl = $videoLink;
 
-    // 步骤1：下载内容获取真正的 m3u8 直链
     $m3u8Content = fetchM3u8Content($videoLink, $config);
 
     if (!$m3u8Content) {
-        // 下载失败，直接缓存原链接并返回
+        $isM3u8Link = preg_match('/\.m3u8(\?|$)/i', $videoLink);
+        $isMp4Link = preg_match('/\.(mp4|mkv|flv|avi)(\?|$)/i', $videoLink);
+        if ($isM3u8Link || $isMp4Link) {
+            setCache($cacheKey, ['url' => $finalUrl], $config);
+            return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
+        }
         setCache($cacheKey, ['url' => $finalUrl], $config);
         return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
     }
 
-    // 步骤2：解析 master playlist 获取真实 TS 播放列表
+    $isM3u8Content = strpos($m3u8Content, '#EXTM3U') !== false;
+
+    if (!$isM3u8Content) {
+        $extracted = extractVideoUrl($m3u8Content);
+        if ($extracted && filter_var($extracted, FILTER_VALIDATE_URL)) {
+            $subContent = fetchM3u8Content($extracted, $config);
+            if ($subContent && strpos($subContent, '#EXTM3U') !== false) {
+                $videoLink = $extracted;
+                $m3u8Content = $subContent;
+                $isM3u8Content = true;
+            } else {
+                setCache($cacheKey, ['url' => $extracted], $config);
+                return buildResult(200, '解析成功', $extracted, $extracted, $startTime);
+            }
+        } else {
+            setCache($cacheKey, ['url' => $finalUrl], $config);
+            return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
+        }
+    }
+
     $resolved = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
     $realM3u8Url = $resolved['url'];
     $realM3u8Content = $resolved['content'];
 
-    // 如果解析后仍是代理地址，尝试从内容中提取真正的直链
     if (strpos($realM3u8Url, 'clean.php') !== false || strpos($realM3u8Url, 'mxjx') !== false) {
-        $extracted = extractVideoUrl($m3u8Content);
-        if ($extracted && filter_var($extracted, FILTER_VALIDATE_URL)) {
-            $realM3u8Url = $extracted;
-            // 重新下载真正的 m3u8 内容
-            $realM3u8Content = fetchM3u8Content($realM3u8Url, $config) ?: $realM3u8Content;
+        if ($realM3u8Content && strpos($realM3u8Content, '#EXTM3U') !== false) {
+        } else {
+            $extracted = extractVideoUrl($m3u8Content);
+            if ($extracted && filter_var($extracted, FILTER_VALIDATE_URL)) {
+                $realM3u8Url = $extracted;
+                $realM3u8Content = fetchM3u8Content($realM3u8Url, $config) ?: $realM3u8Content;
+            }
         }
     }
 
-    // 步骤3：判断是否为 m3u8 格式
     $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $realM3u8Url) || strpos($realM3u8Content, '#EXTM3U') !== false;
 
     if (!$isM3u8) {
-        // mp4 等直链，直接返回
         setCache($cacheKey, ['url' => $realM3u8Url], $config);
         return buildResult(200, '解析成功', $realM3u8Url, $realM3u8Url, $startTime);
     }
 
-    // 步骤4：AI 自动去广告 + 去插播 + 去水印
-    // 启用 AI 增强模式（强制启用 AI 处理水印和插播）
     $enhancedConfig = $config;
     if (empty($enhancedConfig['ai']['enabled'])) {
-        // 官替通道临时启用 AI 增强识别（如果配置了 API key）
         if (!empty($enhancedConfig['ai']['api_key']) && $enhancedConfig['ai']['api_key'] !== 'YOUR_AI_API_KEY') {
             $enhancedConfig['ai']['enabled'] = true;
         }
@@ -206,9 +225,16 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
     $filter = new AdFilter($enhancedConfig);
     $result = $filter->process($realM3u8Content, $realM3u8Url);
 
+    if (empty($result['clean_content']) || $result['clean_content'] === $realM3u8Content) {
+        $hasValidTs = preg_match('/\.ts(\?|$)/i', $realM3u8Content) > 0;
+        if (!$hasValidTs) {
+            setCache($cacheKey, ['url' => $realM3u8Url], $config);
+            return buildResult(200, '解析成功', $realM3u8Url, $realM3u8Url, $startTime);
+        }
+    }
+
     $cleanContent = convertRelativeToAbsolute($result['clean_content'], $realM3u8Url);
 
-    // 步骤5：生成去广告/去插播/去水印的清洁 m3u8，输出最终播放链接
     $cacheId = generateCacheId();
     $finalUrl = saveCleanM3u8($cacheId, $cleanContent, $realM3u8Url, $enhancedConfig);
 
@@ -263,14 +289,11 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
     $mode     = $sniffer['mode'] ?? 'official';
     $perfCfg  = $config['performance'] ?? [];
 
-    // 初始化性能优化器
     static $optimizer = null;
     if ($optimizer === null) {
         $optimizer = new PerformanceOptimizer($config);
     }
 
-    // 收集官解接口列表（支持多个）
-    // 优先从 sniffer.official_apis 读取，其次从 sniffer.official_api 单接口转换
     $officialApis = [];
     if (!empty($sniffer['official_apis']) && is_array($sniffer['official_apis'])) {
         foreach ($sniffer['official_apis'] as $api) {
@@ -279,23 +302,31 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
             }
         }
     }
-    // 兼容单接口配置
     if (empty($officialApis) && !empty($sniffer['official_api'])) {
         $officialApi = $sniffer['official_api'];
         if (!empty($officialApi['enabled']) && !empty($officialApi['url'])) {
             $officialApis[] = $officialApi;
         }
     }
-    // 兜底：旧的 official_apis 数组
     if (empty($officialApis) && !empty($config['official_apis'])) {
         $officialApis = $config['official_apis'];
     }
 
-    // 官替接口（单接口）
     $replaceApi = $sniffer['replace_api'] ?? [];
-    $replaceEnabled = !empty($replaceApi['enabled']) && !empty($replaceApi['url']);
+    $replaceEnabled = !empty($replaceApi['enabled']);
 
-    // AI 学习：按性能评分自动排序
+    if ($replaceEnabled && empty($replaceApi['url'])) {
+        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+        $scriptDir = $scriptDir === '/' ? '' : $scriptDir;
+        $baseUrl = $scheme . '://' . $host . $scriptDir;
+        $replaceApi['url'] = $baseUrl . '/mx.php?action=official_replace/info&url=';
+        $replaceApi['type'] = 'json';
+        $replaceApi['url_field'] = 'ad_skip_url';
+        $replaceApi['name'] = $replaceApi['name'] ?: '本地官替';
+    }
+
     if (!empty($perfCfg['ai_sort_enabled']) && count($officialApis) > 1) {
         $officialApis = $optimizer->sortApisByScore($officialApis);
     }
@@ -304,13 +335,11 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
     $timeout = $perfCfg['timeout'] ?? 15.0;
     $raceMode = !empty($perfCfg['race_mode']) && count($officialApis) > 1;
 
-    // 1) 按当前模式优先尝试
     if ($mode === 'replace') {
-        if ($replaceEnabled) {
+        if ($replaceEnabled && !empty($replaceApi['url'])) {
             $link = callSingleApi($videoUrl, $replaceApi, $config);
             if ($link) return ['url' => $link, 'source' => 'replace'];
         }
-        // 当前通道失败 → fallback 到官解
         if (!empty($officialApis)) {
             if ($raceMode) {
                 $result = $optimizer->concurrentRaceRequest($officialApis, $videoUrl, $maxConcurrent, $timeout);
@@ -321,10 +350,8 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
             }
         }
     } else {
-        // mode=official（默认）
         if (!empty($officialApis)) {
             if ($raceMode) {
-                // 竞速模式：多接口并发，最快成功立即返回
                 $result = $optimizer->concurrentRaceRequest($officialApis, $videoUrl, $maxConcurrent, $timeout);
                 if ($result['url']) return ['url' => $result['url'], 'source' => 'official'];
             } else {
@@ -332,14 +359,12 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
                 if ($link) return ['url' => $link, 'source' => 'official'];
             }
         }
-        // 当前通道失败 → fallback 到官替
-        if ($replaceEnabled) {
+        if ($replaceEnabled && !empty($replaceApi['url'])) {
             $link = callSingleApi($videoUrl, $replaceApi, $config);
             if ($link) return ['url' => $link, 'source' => 'replace'];
         }
     }
 
-    // 2) 两个通道都未启用或都失败 → 回退到旧的 official_apis 数组
     if (!empty($config['official_apis'])) {
         $link = getVideoLinkFromOfficialApi($videoUrl, $config);
         if ($link) return ['url' => $link, 'source' => 'official'];
