@@ -67,6 +67,15 @@ if (!empty($action) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = $proxyMgr->fetchProxiesFromWeb($verify, $maxPerSource);
             break;
 
+        case 'sync_fast':
+            $maxPerSource = intval($_POST['max_per_source'] ?? 20);
+            $result = $proxyMgr->syncProxiesFast($maxPerSource);
+            break;
+
+        case 'clear_fetch_cache':
+            $result = $proxyMgr->clearFetchCache();
+            break;
+
         case 'clear_inactive':
             $result = $proxyMgr->clearInactiveProxies();
             break;
@@ -377,6 +386,7 @@ $proxies = $proxyMgr->getAllProxies();
                 <div class="switch <?php echo $stats['auto_switch'] ? 'active' : ''; ?>" id="switch-auto" onclick="toggleAutoSwitch()"></div>
             </div>
             <div class="btn-group">
+                <button class="btn btn-success" onclick="syncFast()">⚡ 快速同步代理池</button>
                 <button class="btn btn-success" onclick="fetchFromWeb()">🌐 一键获取代理</button>
                 <button class="btn btn-success" onclick="checkAllProxies()">🔍 检测全部</button>
                 <button class="btn btn-primary" onclick="showAddModal()">➕ 添加代理</button>
@@ -687,6 +697,44 @@ $proxies = $proxyMgr->getAllProxies();
                 setTimeout(() => location.reload(), 1000);
             } else {
                 showToast(result.message || '导入失败', 'error');
+            }
+        }
+
+        async function syncFast() {
+            showToast('正在从 proxy.scdn.io 等代理源并发同步...', 'success');
+            
+            const btn = event?.target;
+            const originalText = btn ? btn.textContent : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '同步中...';
+            }
+            
+            try {
+                const result = await apiCall('sync_fast', { 
+                    max_per_source: 20 
+                });
+                if (result.success) {
+                    let msg = result.message || `成功同步 ${result.added} 个代理`;
+                    if (result.sources) {
+                        const successSources = result.sources.filter(s => s.success).length;
+                        msg += `（${successSources}/${result.sources.length} 个源成功）`;
+                    }
+                    if (result.from_cache) {
+                        msg += ' [缓存]';
+                    }
+                    showToast(msg, 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast(result.message || '同步失败', 'error');
+                }
+            } catch (e) {
+                showToast('同步失败: ' + e.message, 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
             }
         }
 

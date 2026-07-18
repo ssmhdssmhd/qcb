@@ -433,12 +433,16 @@ class ProxyManager {
         require_once __DIR__ . '/ProxyFetcher.php';
 
         $fetcher = new ProxyFetcher([
-            'timeout' => $this->config['timeout'] ?? 10,
-            'max_per_source' => $maxPerSource
+            'timeout' => $this->config['timeout'] ?? 6,
+            'connect_timeout' => 3,
+            'verify_timeout' => 4,
+            'max_per_source' => $maxPerSource,
+            'cache_ttl' => 120,
         ]);
 
         $result = $fetcher->fetchAll($verify);
         $added = 0;
+        $fromCache = !empty($result['from_cache']);
 
         foreach ($result['proxies'] as $proxy) {
             $addResult = $this->addProxy([
@@ -448,19 +452,86 @@ class ProxyManager {
                 'username' => $proxy['username'] ?? '',
                 'password' => $proxy['password'] ?? '',
                 'response_time' => $proxy['response_time'] ?? 0,
-                'status' => $verify ? 'active' : 'active'
+                'status' => 'active'
             ]);
             if ($addResult['success']) {
                 $added++;
             }
         }
 
+        $cacheNote = $fromCache ? '（来自缓存）' : '';
         return [
             'success' => true,
             'added' => $added,
             'total_fetched' => $result['total'],
             'sources' => $result['sources'],
-            'message' => "成功获取并添加 {$added} 个可用代理"
+            'from_cache' => $fromCache,
+            'message' => "成功获取并添加 {$added} 个可用代理{$cacheNote}"
+        ];
+    }
+
+    /**
+     * 快速同步代理池（不验证，直接导入）
+     *
+     * 从 proxy.scdn.io 等代理源并发获取代理，直接导入本地代理池
+     * 不进行可用性验证，速度最快
+     *
+     * @param int $maxPerSource 每个源最多获取的代理数
+     * @return array
+     */
+    public function syncProxiesFast($maxPerSource = 20) {
+        require_once __DIR__ . '/ProxyFetcher.php';
+
+        $fetcher = new ProxyFetcher([
+            'timeout' => 6,
+            'connect_timeout' => 3,
+            'max_per_source' => $maxPerSource,
+            'cache_ttl' => 120,
+        ]);
+
+        $result = $fetcher->fetchAll(false); // 不验证
+        $added = 0;
+        $fromCache = !empty($result['from_cache']);
+
+        foreach ($result['proxies'] as $proxy) {
+            $addResult = $this->addProxy([
+                'type' => $proxy['type'],
+                'host' => $proxy['host'],
+                'port' => $proxy['port'],
+                'username' => $proxy['username'] ?? '',
+                'password' => $proxy['password'] ?? '',
+                'response_time' => 0,
+                'status' => 'active'
+            ]);
+            if ($addResult['success']) {
+                $added++;
+            }
+        }
+
+        $cacheNote = $fromCache ? '（来自缓存）' : '';
+        return [
+            'success' => true,
+            'added' => $added,
+            'total_fetched' => $result['total'],
+            'sources' => $result['sources'],
+            'from_cache' => $fromCache,
+            'message' => "快速同步完成，共导入 {$added} 个代理{$cacheNote}"
+        ];
+    }
+
+    /**
+     * 清除代理获取缓存
+     *
+     * @return array
+     */
+    public function clearFetchCache() {
+        require_once __DIR__ . '/ProxyFetcher.php';
+        $fetcher = new ProxyFetcher();
+        $result = $fetcher->clearCache();
+        return [
+            'success' => true,
+            'cleared' => $result,
+            'message' => $result ? '缓存已清除' : '无缓存可清除'
         ];
     }
 
