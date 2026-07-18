@@ -405,6 +405,29 @@ MIT License
 
 ## 版本历史
 
+### v5.6.0 (2026-07-18)
+
+- 🔖 版本号升级到 v5.6.0（xt 模块 5.2.0）
+- 🧠 核心逻辑补充：明确官解走虾米接口，官替走 AI 去广告/去插播/去水印
+- ✨ 重构 `parseVideo()` 为两个独立函数：
+  - `parseVideoByOfficialChannel()` - 官解通道：虾米接口 + xt 去广告
+  - `parseVideoByReplaceChannel()` - 官替通道：资源站匹配 + AI 去广告/去插播/去水印
+- ✨ AdFilter 新增插播检测（>60s 超长片段）和水印检测（URL 含 watermark/logo/burn/overlay）
+- ✨ AI 提示词增强：从只识别广告扩展为识别广告/插播/水印三类异常
+- ✨ `xt/config.php` 新增 `insertion_check_enabled` / `watermark_check_enabled` / `watermark_keywords` 配置项
+
+### v5.5.9 (2026-07-18)
+
+- 🔖 版本号升级到 v5.5.9
+- 🐛 官替通道返回直连播放地址（不生成 clean.php 代理）
+- 🐛 修复 `getVideoLinkFromApiEntry()` 字段优先级：`ad_skip_url` → `m3u8_url`
+
+### v5.5.8 (2026-07-18)
+
+- 🔖 版本号升级到 v5.5.8
+- 🐛 修复走官替接口时播放地址不可播放的问题
+- 🐛 `getVideoLinkBySnifferMode()` 返回值改为结构化数组，标识实际命中通道
+
 ### v5.5.7 (2026-07-18)
 
 - 🔖 版本号升级到 v5.5.7

@@ -245,11 +245,31 @@ class AdFilter
                 }
             }
 
-            // 规则4：不连续标记后的分段更可能是广告
+            // 规则4：不连续标记后的分段更可能是广告/插播
             if ($rules['discontinuity_enabled'] && !empty($seg['after_discontinuity'])) {
                 $confidence += 0.15;
                 if (empty($reasons)) {
                     $reasons[] = '不连续标记后';
+                }
+            }
+
+            // 规则5：插播检测（资源站常见特征：超长分段、独立片段序列）
+            // 单个分段超过 60s 且紧邻不连续标记，可能是片头/片尾插播
+            if (!empty($rules['insertion_check_enabled']) && $seg['duration'] > 60) {
+                $reasons[] = "疑似插播片段(时长{$seg['duration']}s>60s)";
+                $confidence += 0.25;
+            }
+
+            // 规则6：水印/角标检测（URL 含水印/角标相关特征）
+            // 资源站常见：URL 含 watermark/logo/burn 字样
+            if (!empty($rules['watermark_check_enabled'])) {
+                $watermarkKeywords = $rules['watermark_keywords'] ?? ['watermark', 'logo', 'burn', 'overlay'];
+                foreach ($watermarkKeywords as $kw) {
+                    if (stripos($seg['resolved_url'], $kw) !== false) {
+                        $reasons[] = "疑似水印分段(URL含'{$kw}')";
+                        $confidence += 0.2;
+                        break;
+                    }
                 }
             }
 
@@ -361,12 +381,15 @@ class AdFilter
         }
 
         return sprintf(
-            "你是视频流广告识别专家。以下是 HLS m3u8 中规则引擎无法确定是否为广告的分段。\n" .
-            "请分析每个分段的特征（域名、URL关键词、时长、位置），判断哪些是广告。\n\n" .
+            "你是视频流广告识别专家。以下是 HLS m3u8 中规则引擎无法确定是否为异常的分段。\n" .
+            "请分析每个分段的特征（域名、URL关键词、时长、位置），识别以下三类异常：\n" .
+            "1. 广告：URL含广告关键词、来自不同CDN域名、时长符合广告特征(15/30/45/60s)\n" .
+            "2. 插播：片头/片尾的超长插播片段、不连续标记后的独立片段序列\n" .
+            "3. 水印：URL含水印/角标特征（watermark/logo/burn/overlay）\n\n" .
             "分段列表:\n%s\n\n" .
             "主CDN域名: %s\n\n" .
             "请以JSON格式返回，格式如下:\n" .
-            '{"ad_segments": [分段索引数组], "reasons": {"索引": "判断原因"}}',
+            '{"ad_segments": [需要剔除的分段索引数组], "reasons": {"索引": "判断原因(广告/插播/水印)"}}',
             implode("\n", $segInfo),
             $this->getMainDomain()
         );

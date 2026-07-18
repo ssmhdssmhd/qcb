@@ -8,7 +8,7 @@
 return [
 
     // ============ 版本信息 ============
-    'version' => '5.1.8',
+    'version' => '5.2.0',
 
     // ============ 嗅探设置（后台「嗅探设置」页面维护） ============
     // sniffer_config.php 由后台写入，此处作为兜底默认值
@@ -92,6 +92,12 @@ return [
         'ad_durations'          => [15, 30, 45, 60],
         // 时长匹配容差（秒）
         'duration_tolerance'    => 1.0,
+        // 是否启用插播检测（片头/片尾超长片段）
+        'insertion_check_enabled'=> true,
+        // 是否启用水印/角标检测
+        'watermark_check_enabled'=> true,
+        // 水印/角标 URL 关键词（不区分大小写）
+        'watermark_keywords'    => ['watermark', 'logo', 'burn', 'overlay'],
     ],
 
     // ============ 缓存配置 ============

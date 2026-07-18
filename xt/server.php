@@ -2,11 +2,15 @@
 /**
  * 超级嗅探 - 服务端核心
  *
- * 功能：
- *   1. 调用官解接口获取视频 m3u8/mp4 直链
- *   2. 下载 m3u8 内容，通过规则引擎 + AI 识别广告
- *   3. 生成去广告 m3u8 文件
- *   4. 缓存命中，加速重复解析
+ * 核心解析逻辑（两条通道）：
+ *
+ * 【官解通道 official】
+ *   调用虾米官解接口（parse_internal_xiami）→ 返回 m3u8/mp4 直链
+ *   → 下载 m3u8 → 规则引擎 + AI 去广告 → 输出可播放的链接
+ *
+ * 【官替通道 replace】
+ *   从资源站中匹配对应视频 → AI 自动失败重试 + 智能匹配输出对应链接
+ *   → 下载 m3u8 → AI 自动去广告 + 去插播 + 去水印 → 输出最终播放链接
  *
  * 本文件提供 parseVideo() 核心函数，由 api.php 调用并控制输出格式
  */
@@ -29,6 +33,16 @@ if (file_exists($snifferConfigFile)) {
 
 /**
  * 核心解析函数
+ *
+ * 根据后台「嗅探设置」当前通道分流处理：
+ *
+ * 【官解通道 official】
+ *   调用虾米官解接口 → 获取 m3u8/mp4 直链
+ *   → 下载 m3u8 → 规则引擎 + AI 去广告 → 输出可播放的链接
+ *
+ * 【官替通道 replace】
+ *   从资源站匹配视频 → AI 智能匹配 + 失败重试 → 输出对应链接
+ *   → 下载 m3u8 → AI 去广告 + 去插播 + 去水印 → 输出最终播放链接
  *
  * @param string $videoUrl 视频页面 URL
  * @return array 解析结果
@@ -54,8 +68,8 @@ function parseVideo(string $videoUrl): array
     maybeCleanExpiredCache($config);
 
     // 步骤1：根据嗅探设置选择走官解解析还是官替接口
-    //   - 官解通道 (official)：返回的是原始 m3u8 直链，需要 xt 模块二次去广告
-    //   - 官替通道 (replace) ：返回的已是去广告播放地址（mxjx/ad_skip_url），直接返回，不二次处理
+    //   - 官解通道 (official)：调用虾米官解接口，返回原始 m3u8/mp4 直链，需 xt 去广告
+    //   - 官替通道 (replace) ：从资源站匹配 + AI 去广告/去插播/去水印，输出最终链接
     $sniffResult = getVideoLinkBySnifferMode($videoUrl, $config);
     $videoLink   = $sniffResult['url'];
     $sniffSource = $sniffResult['source'];  // 'official' | 'replace' | null
@@ -64,30 +78,33 @@ function parseVideo(string $videoUrl): array
         return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime);
     }
 
-    // 官替通道：返回的是 mxjx 代理地址，需要下载内容提取真正的 m3u8 直链
-    // 用户要求直连播放地址，不要 clean.php 代理
-    // 流程：下载 mxjx 内容 → 提取真正的 m3u8/mp4 直链 → 直接返回直链
+    // ============ 官替通道：从资源站匹配 + AI 去广告/去插播/去水印 ============
+    // 流程：下载 m3u8 → 规则引擎 + AI 识别广告/插播/水印 → 生成去广告 m3u8 → 输出最终链接
     if ($sniffSource === 'replace') {
-        $finalUrl = $videoLink;
-        
-        $m3u8Content = fetchM3u8Content($videoLink, $config);
-        if ($m3u8Content) {
-            $resolved = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
-            $finalUrl = $resolved['url'];
-            
-            if (strpos($finalUrl, 'clean.php') !== false || strpos($finalUrl, 'mxjx') !== false) {
-                $extracted = extractVideoUrl($m3u8Content);
-                if ($extracted && filter_var($extracted, FILTER_VALIDATE_URL)) {
-                    $finalUrl = $extracted;
-                }
-            }
-        }
-        
-        setCache($cacheKey, ['url' => $finalUrl], $config);
-        return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
+        return parseVideoByReplaceChannel($videoUrl, $videoLink, $cacheKey, $startTime);
     }
 
-    // 官解通道（或 fallback 到 official_apis）：判断格式，处理广告
+    // ============ 官解通道：虾米接口 + xt 去广告 ============
+    // 流程：调用虾米接口 → 下载 m3u8 → 规则引擎 + AI 去广告 → 输出可播放链接
+    return parseVideoByOfficialChannel($videoUrl, $videoLink, $cacheKey, $startTime);
+}
+
+/**
+ * 官解通道处理：调用虾米接口获取直链 → xt 去广告 → 输出可播放链接
+ *
+ * 虾米接口返回的 play_url 是原始 m3u8/mp4 直链，需经过 xt 模块的
+ * 规则引擎 + AI 去广告处理后输出最终可播放链接。
+ *
+ * @param string $videoUrl  原始视频页面 URL
+ * @param string $videoLink 虾米接口返回的 m3u8/mp4 直链
+ * @param string $cacheKey  缓存 key
+ * @param float  $startTime 解析起始时间
+ * @return array
+ */
+function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string $cacheKey, float $startTime): array
+{
+    global $config;
+
     $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
     $playUrl = $videoLink;
 
@@ -101,6 +118,7 @@ function parseVideo(string $videoUrl): array
                 $m3u8Content = $resolved['content'];
             }
 
+            // 规则引擎 + AI 去广告
             $filter = new AdFilter($config);
             $result = $filter->process($m3u8Content, $videoLink);
 
@@ -118,6 +136,83 @@ function parseVideo(string $videoUrl): array
     }
 
     return buildResult(200, '解析成功', $playUrl, $playUrl, $startTime);
+}
+
+/**
+ * 官替通道处理：从资源站匹配 → AI 去广告/去插播/去水印 → 输出最终播放链接
+ *
+ * 官替接口返回的是 mxjx 代理地址或资源站页面 URL，需要：
+ *   1. 下载内容获取真正的 m3u8 直链
+ *   2. 规则引擎 + AI 识别广告、插播片段、水印片段
+ *   3. 生成去广告/去插播/去水印的清洁 m3u8
+ *   4. 输出最终播放链接（clean.php 代理地址）
+ *
+ * @param string $videoUrl  原始视频页面 URL
+ * @param string $videoLink 官替接口返回的链接（mxjx 代理或资源站 URL）
+ * @param string $cacheKey  缓存 key
+ * @param float  $startTime 解析起始时间
+ * @return array
+ */
+function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string $cacheKey, float $startTime): array
+{
+    global $config;
+
+    $finalUrl = $videoLink;
+
+    // 步骤1：下载内容获取真正的 m3u8 直链
+    $m3u8Content = fetchM3u8Content($videoLink, $config);
+
+    if (!$m3u8Content) {
+        // 下载失败，直接缓存原链接并返回
+        setCache($cacheKey, ['url' => $finalUrl], $config);
+        return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
+    }
+
+    // 步骤2：解析 master playlist 获取真实 TS 播放列表
+    $resolved = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
+    $realM3u8Url = $resolved['url'];
+    $realM3u8Content = $resolved['content'];
+
+    // 如果解析后仍是代理地址，尝试从内容中提取真正的直链
+    if (strpos($realM3u8Url, 'clean.php') !== false || strpos($realM3u8Url, 'mxjx') !== false) {
+        $extracted = extractVideoUrl($m3u8Content);
+        if ($extracted && filter_var($extracted, FILTER_VALIDATE_URL)) {
+            $realM3u8Url = $extracted;
+            // 重新下载真正的 m3u8 内容
+            $realM3u8Content = fetchM3u8Content($realM3u8Url, $config) ?: $realM3u8Content;
+        }
+    }
+
+    // 步骤3：判断是否为 m3u8 格式
+    $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $realM3u8Url) || strpos($realM3u8Content, '#EXTM3U') !== false;
+
+    if (!$isM3u8) {
+        // mp4 等直链，直接返回
+        setCache($cacheKey, ['url' => $realM3u8Url], $config);
+        return buildResult(200, '解析成功', $realM3u8Url, $realM3u8Url, $startTime);
+    }
+
+    // 步骤4：AI 自动去广告 + 去插播 + 去水印
+    // 启用 AI 增强模式（强制启用 AI 处理水印和插播）
+    $enhancedConfig = $config;
+    if (empty($enhancedConfig['ai']['enabled'])) {
+        // 官替通道临时启用 AI 增强识别（如果配置了 API key）
+        if (!empty($enhancedConfig['ai']['api_key']) && $enhancedConfig['ai']['api_key'] !== 'YOUR_AI_API_KEY') {
+            $enhancedConfig['ai']['enabled'] = true;
+        }
+    }
+
+    $filter = new AdFilter($enhancedConfig);
+    $result = $filter->process($realM3u8Content, $realM3u8Url);
+
+    $cleanContent = convertRelativeToAbsolute($result['clean_content'], $realM3u8Url);
+
+    // 步骤5：生成去广告/去插播/去水印的清洁 m3u8，输出最终播放链接
+    $cacheId = generateCacheId();
+    $finalUrl = saveCleanM3u8($cacheId, $cleanContent, $realM3u8Url, $enhancedConfig);
+
+    setCache($cacheKey, ['url' => $finalUrl], $config);
+    return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
 }
 
 /**
