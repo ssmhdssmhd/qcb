@@ -1,5 +1,23 @@
 # 更新日志
 
+## v5.5.6 (2026-07-18)
+
+### Bug 修复 - 平台适配器方法可见性错误
+
+1. **修复 `mx.php?action=api/v2&type=official` 报错问题**
+   - 报错信息：`Access level to TencentVideoAdapter::chineseToNumber() must be protected (as in class AbstractPlatformAdapter) or weaker`
+   - 原因：子类 `chineseToNumber()` 声明为 `private`，父类 `AbstractPlatformAdapter::chineseToNumber()` 是 `protected`，PHP 不允许子类把方法可见性改得更严格
+   - 修复：将以下 4 个适配器的 `chineseToNumber()` 方法从 `private` 改为 `protected`，与父类保持一致
+
+2. **影响文件**
+   - [pt/TencentVideoAdapter.php](file:///workspace/pt/TencentVideoAdapter.php#L916) — `chineseToNumber()` private → protected
+   - [pt/MgtvAdapter.php](file:///workspace/pt/MgtvAdapter.php#L420) — `chineseToNumber()` private → protected
+   - [pt/BilibiliAdapter.php](file:///workspace/pt/BilibiliAdapter.php#L389) — `chineseToNumber()` private → protected
+   - [pt/SohuAdapter.php](file:///workspace/pt/SohuAdapter.php#L397) — `chineseToNumber()` private → protected
+   - [version.php](file:///workspace/version.php) — 版本号升级到 v5.5.6
+
+---
+
 ## v5.5.5 (2026-07-17)
 
 ### 版本升级

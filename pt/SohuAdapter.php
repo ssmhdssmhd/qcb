@@ -394,7 +394,7 @@ class SohuAdapter extends AbstractPlatformAdapter
      * @param string $str
      * @return int|null
      */
-    private function chineseToNumber($str)
+    protected function chineseToNumber($str)
     {
         if ($str === '' || $str === null) {
             return null;
