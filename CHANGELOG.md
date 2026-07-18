@@ -1,5 +1,56 @@
 # 更新日志
 
+## v5.5.8 (2026-07-18)
+
+### 小版本优化 - 修复走官替接口时播放地址不可播放的问题
+
+#### 问题现象
+
+后台「嗅探设置」切到**官替接口**通道时，解析返回的播放地址为
+`http://114.134.184.91:9002/xt/clean.php?id=b8e1cab38badd285`，播放器无法播放。
+
+#### 根因
+
+官替接口（`mx.php?action=official_replace/info&url=`）返回的 `m3u8_url` / `ad_skip_url`
+**本身已经是去广告的播放地址**（由本项目 `mxjx` 代理生成）。
+但 `parseVideo()` 没有区分通道来源，把它当成原始 m3u8 又走了一次 xt 的去广告流程：
+
+```
+官替返回 m3u8_url (已去广告)
+   → fetchM3u8Content 下载
+   → AdFilter 再次过滤
+   → saveCleanM3u8 生成 clean.php?id=xxx 代理
+   → 返回嵌套代理地址（不可播放）
+```
+
+代理地址嵌套 + 路径解析错乱，导致最终播放地址无法被播放器加载。
+
+#### 修复
+
+1. **`xt/server.php` - `getVideoLinkBySnifferMode()` 返回值改为结构化数组**
+   - 原：`?string`（仅返回视频直链）
+   - 新：`array{ url: string|null, source: 'official'|'replace'|null }`
+   - 通过 `source` 字段告知调用方实际命中的是哪条通道（包含 fallback 后的真实通道）
+
+2. **`xt/server.php` - `parseVideo()` 按通道分流处理**
+   - `source === 'replace'`：官替返回的已是去广告地址，**直接透传**，写入缓存后返回
+   - `source === 'official'`：官解返回的是原始 m3u8，继续走原有的 xt 去广告流程
+     （fetchM3u8Content → AdFilter → saveCleanM3u8 → clean.php 代理）
+   - fallback 场景自动正确：官替失败 fallback 到官解时走官解流程，反之亦然
+
+3. **版本号同步**
+   - `version.php`：v5.5.7 → v5.5.8
+   - `xt/config.php`：5.1.6 → 5.1.7
+
+#### 影响范围
+
+- ✅ 走官解通道：行为不变，仍走 xt 去广告 + clean.php 代理
+- ✅ 走官替通道：修复后直接返回官替的去广告 m3u8_url，可正常播放
+- ✅ Fallback：自动适配，无需额外配置
+- ✅ 旧 `official_apis` 数组：归为 official 通道，行为不变
+
+---
+
 ## v5.5.7 (2026-07-18)
 
 ### 小版本更新 - 后台新增「嗅探设置」

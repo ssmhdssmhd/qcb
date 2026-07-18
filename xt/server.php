@@ -54,13 +54,24 @@ function parseVideo(string $videoUrl): array
     maybeCleanExpiredCache($config);
 
     // 步骤1：根据嗅探设置选择走官解解析还是官替接口
-    $videoLink = getVideoLinkBySnifferMode($videoUrl, $config);
+    //   - 官解通道 (official)：返回的是原始 m3u8 直链，需要 xt 模块二次去广告
+    //   - 官替通道 (replace) ：返回的已是去广告播放地址（mxjx/ad_skip_url），直接返回，不二次处理
+    $sniffResult = getVideoLinkBySnifferMode($videoUrl, $config);
+    $videoLink   = $sniffResult['url'];
+    $sniffSource = $sniffResult['source'];  // 'official' | 'replace' | null
 
     if (!$videoLink) {
         return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime);
     }
 
-    // 步骤2：判断格式，处理广告
+    // 官替通道：返回的已是去广告地址，直接透传，不再二次过滤
+    // 否则会再次下载 → AdFilter → 生成 clean.php?id=xxx 代理，导致播放地址嵌套不可播放
+    if ($sniffSource === 'replace') {
+        setCache($cacheKey, ['url' => $videoLink], $config);
+        return buildResult(200, '解析成功', $videoLink, $videoLink, $startTime);
+    }
+
+    // 官解通道（或 fallback 到 official_apis）：判断格式，处理广告
     $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
     $playUrl = $videoLink;
 
@@ -124,9 +135,12 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
  *
  * @param string $videoUrl 视频页面 URL
  * @param array  $config   全局配置
- * @return string|null     视频直链 (m3u8/mp4)，失败返回 null
+ * @return array {
+ *     url:    string|null  视频直链 (m3u8/mp4)，失败返回 null
+ *     source: string|null  实际命中通道 'official' | 'replace' | null
+ * }
  */
-function getVideoLinkBySnifferMode(string $videoUrl, array $config): ?string
+function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
 {
     $sniffer  = $config['sniffer'] ?? [];
     $mode     = $sniffer['mode'] ?? 'official';
@@ -137,32 +151,33 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): ?string
     if ($mode === 'replace') {
         if (!empty($replace['enabled'])) {
             $link = callSingleApi($videoUrl, $replace, $config);
-            if ($link) return $link;
+            if ($link) return ['url' => $link, 'source' => 'replace'];
         }
         // 当前通道失败 → fallback 到官解
         if (!empty($official['enabled'])) {
             $link = callSingleApi($videoUrl, $official, $config);
-            if ($link) return $link;
+            if ($link) return ['url' => $link, 'source' => 'official'];
         }
     } else {
         // mode=official（默认）
         if (!empty($official['enabled'])) {
             $link = callSingleApi($videoUrl, $official, $config);
-            if ($link) return $link;
+            if ($link) return ['url' => $link, 'source' => 'official'];
         }
         // 当前通道失败 → fallback 到官替
         if (!empty($replace['enabled'])) {
             $link = callSingleApi($videoUrl, $replace, $config);
-            if ($link) return $link;
+            if ($link) return ['url' => $link, 'source' => 'replace'];
         }
     }
 
-    // 2) 两个通道都未启用或都失败 → 回退到旧的 official_apis 数组
+    // 2) 两个通道都未启用或都失败 → 回退到旧的 official_apis 数组（视为 official 通道）
     if (!empty($config['official_apis'])) {
-        return getVideoLinkFromOfficialApi($videoUrl, $config);
+        $link = getVideoLinkFromOfficialApi($videoUrl, $config);
+        if ($link) return ['url' => $link, 'source' => 'official'];
     }
 
-    return null;
+    return ['url' => null, 'source' => null];
 }
 
 /**
