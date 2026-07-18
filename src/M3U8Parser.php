@@ -7,6 +7,7 @@ class M3U8Parser {
     private $proxyManager = null;
     private $useProxy = true;
     private $forceProxy = null;
+    private $useProxyOnFirstTry = true;
 
     public function setMaxSegments($max) {
         $this->maxSegments = intval($max);
@@ -18,6 +19,14 @@ class M3U8Parser {
 
     public function setUseProxy($useProxy) {
         $this->useProxy = (bool)$useProxy;
+    }
+
+    public function setProxyManager($proxyManager) {
+        $this->proxyManager = $proxyManager;
+    }
+
+    public function setUseProxyOnFirstTry($use) {
+        $this->useProxyOnFirstTry = (bool)$use;
     }
 
     public function setForceProxy($proxyUrl) {
@@ -118,7 +127,7 @@ class M3U8Parser {
                     }
                     $currentProxy = ['id' => 'force_proxy', 'url' => $proxyUrl];
                 }
-            } elseif ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
+            } elseif ($proxyMgr && $proxyMgr->isEnabled() && ($this->useProxyOnFirstTry || $attempt > 0)) {
                 $currentProxy = $proxyMgr->applyProxyToCurl($ch);
             }
 

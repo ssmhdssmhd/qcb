@@ -706,6 +706,18 @@ try {
             $proxyManager = new ProxyManager($rootDir . '/proxy/proxy_config.php');
         }
     }
+    
+    if (isset($proxyManager)) {
+        if (method_exists($siteManager, 'setProxyManager')) {
+            $siteManager->setProxyManager($proxyManager);
+            $siteManager->setUseProxyOnFirstTry(true);
+        }
+        if (method_exists($officialReplaceMgr, 'setProxyManager')) {
+            $officialReplaceMgr->setProxyManager($proxyManager);
+            $officialReplaceMgr->setUseProxyOnFirstTry(true);
+        }
+    }
+    
     $updateManager = new UpdateManager();
     $authValidator = new AuthValidator();
 } catch (Throwable $e) {

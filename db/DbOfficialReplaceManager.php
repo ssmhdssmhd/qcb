@@ -17,10 +17,20 @@ require_once __DIR__ . '/../pt/PtManager.php';
 class DbOfficialReplaceManager {
     private $db;
     private $lastHttpError = '';
+    private $proxyManager = null;
+    private $useProxyOnFirstTry = true;
 
     public function __construct() {
         $this->db = Database::getInstance();
         $this->ensureTables();
+    }
+
+    public function setProxyManager($proxyManager) {
+        $this->proxyManager = $proxyManager;
+    }
+
+    public function setUseProxyOnFirstTry($use) {
+        $this->useProxyOnFirstTry = (bool)$use;
     }
 
     private function ensureTables() {
@@ -2672,12 +2682,14 @@ class DbOfficialReplaceManager {
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
         ];
 
-        $proxyMgr = null;
-        $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
-        if (file_exists($proxyFile)) {
-            @require_once $proxyFile;
-            if (class_exists('ProxyManager')) {
-                $proxyMgr = @new ProxyManager();
+        $proxyMgr = $this->proxyManager;
+        if ($proxyMgr === null) {
+            $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
+            if (file_exists($proxyFile)) {
+                @require_once $proxyFile;
+                if (class_exists('ProxyManager')) {
+                    $proxyMgr = @new ProxyManager();
+                }
             }
         }
 
@@ -2711,7 +2723,7 @@ class DbOfficialReplaceManager {
             }
 
             $currentProxy = null;
-            if ($proxyMgr && @$proxyMgr->isEnabled() && $attempt > 0) {
+            if ($proxyMgr && @$proxyMgr->isEnabled() && ($this->useProxyOnFirstTry || $attempt > 0)) {
                 $currentProxy = @$proxyMgr->applyProxyToCurl($ch);
             }
 

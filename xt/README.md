@@ -258,6 +258,14 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 
 ## 版本更新日志
 
+### v5.7.1 (2026-07-18)
+
+- 🐛 **修复所有用到代理的地方代理无法使用的问题**
+  - 为 M3U8Parser、OfficialReplaceManager、ResourceSiteManager 及数据库版对应类添加 `setProxyManager()` 方法，支持依赖注入
+  - 默认首次请求就使用代理（之前只在重试时才用代理，用户感觉代理没生效）
+  - mx.php 中统一注入代理管理器，确保数据库版和文件版配置一致
+  - 统一 DbProxyManager 的 getProxy 排序逻辑，与 ProxyManager 保持一致（按响应时间从快到慢优先）
+
 ### v5.7.0 (2026-07-18)
 
 - 🐛 **修复顶部统一接口不显示接口URL的问题**

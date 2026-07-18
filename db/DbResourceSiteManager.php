@@ -10,10 +10,20 @@ require_once __DIR__ . '/Database.php';
 class DbResourceSiteManager {
     private $db;
     private $lastHttpError = '';
+    private $proxyManager = null;
+    private $useProxyOnFirstTry = true;
 
     public function __construct() {
         $this->db = Database::getInstance();
         $this->ensureTables();
+    }
+
+    public function setProxyManager($proxyManager) {
+        $this->proxyManager = $proxyManager;
+    }
+
+    public function setUseProxyOnFirstTry($use) {
+        $this->useProxyOnFirstTry = (bool)$use;
     }
 
     private function ensureTables() {
@@ -1105,11 +1115,13 @@ class DbResourceSiteManager {
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
         ];
 
-        $proxyMgr = null;
-        $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
-        if (file_exists($proxyFile)) {
-            require_once $proxyFile;
-            $proxyMgr = new ProxyManager();
+        $proxyMgr = $this->proxyManager;
+        if ($proxyMgr === null) {
+            $proxyFile = __DIR__ . '/../proxy/ProxyManager.php';
+            if (file_exists($proxyFile)) {
+                require_once $proxyFile;
+                $proxyMgr = new ProxyManager();
+            }
         }
 
         $sslVersions = [null, CURL_SSLVERSION_TLSv1_2, CURL_SSLVERSION_TLSv1_1, CURL_SSLVERSION_SSLv2 | CURL_SSLVERSION_SSLv3];
@@ -1137,7 +1149,7 @@ class DbResourceSiteManager {
                 curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
                 $currentProxy = null;
-                if ($proxyMgr && $proxyMgr->isEnabled() && $attempt > 0) {
+                if ($proxyMgr && $proxyMgr->isEnabled() && ($this->useProxyOnFirstTry || $attempt > 0)) {
                     $currentProxy = $proxyMgr->applyProxyToCurl($ch);
                 }
 

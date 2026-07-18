@@ -314,13 +314,21 @@ class DbProxyManager {
             return null;
         }
 
+        // 按响应时间从快到慢排序（速度越快越优先）
         usort($activeProxies, function($a, $b) {
-            $pa = $a['priority'] ?? 100;
-            $pb = $b['priority'] ?? 100;
-            if ($pa != $pb) return $pa - $pb;
+            $ta = $a['response_time'] ?? 0;
+            $tb = $b['response_time'] ?? 0;
+            // 有响应时间的排在前面
+            if ($ta > 0 && $tb <= 0) return -1;
+            if ($ta <= 0 && $tb > 0) return 1;
+            // 都有响应时间，按快到慢排序
+            if ($ta > 0 && $tb > 0) return $ta - $tb;
+            // 都没有响应时间，按失败次数少的优先
             $fa = $a['fail_count'] ?? 0;
             $fb = $b['fail_count'] ?? 0;
-            return $fa - $fb;
+            if ($fa != $fb) return $fa - $fb;
+            // 最后按优先级
+            return ($a['priority'] ?? 100) - ($b['priority'] ?? 100);
         });
 
         foreach ($activeProxies as $proxy) {

@@ -1,5 +1,48 @@
 # 更新日志
 
+## v5.7.1 (2026-07-18)
+
+### 修复所有用到代理的地方代理无法使用的问题
+
+#### 问题根因
+
+1. **代理管理器不一致**：DbOfficialReplaceManager 和 DbResourceSiteManager（数据库版）内部使用的是文件版 ProxyManager，而不是 DbProxyManager，导致数据库模式下代理配置不一致
+2. **首次请求不使用代理**：所有使用代理的地方（M3U8Parser、OfficialReplaceManager、ResourceSiteManager等）都只在重试时（$attempt > 0）才使用代理，首次请求不经过代理，用户感觉代理没生效
+3. **缺少依赖注入**：各个类内部自己实例化代理管理器，无法从外部统一注入和配置
+4. **DbProxyManager排序逻辑不一致**：数据库版代理管理器的getProxy排序逻辑和文件版不一致，没有按响应时间优先排序
+
+#### 修复内容
+
+**1. 代理管理器依赖注入**
+- 为 M3U8Parser 添加 `setProxyManager()` 和 `setUseProxyOnFirstTry()` 方法
+- 为 OfficialReplaceManager 添加 `setProxyManager()` 和 `setUseProxyOnFirstTry()` 方法
+- 为 ResourceSiteManager 添加 `setProxyManager()` 和 `setUseProxyOnFirstTry()` 方法
+- 为 DbOfficialReplaceManager 添加 `setProxyManager()` 和 `setUseProxyOnFirstTry()` 方法
+- 为 DbResourceSiteManager 添加 `setProxyManager()` 和 `setUseProxyOnFirstTry()` 方法
+- 所有类优先使用注入的代理管理器，没有注入时才自己实例化（向后兼容）
+
+**2. 首次请求使用代理**
+- 所有类的 `$useProxyOnFirstTry` 默认值改为 `true`
+- 只要代理池启用，首次请求就使用代理
+- mx.php 中显式设置 `setUseProxyOnFirstTry(true)` 确保生效
+
+**3. mx.php 统一注入代理管理器**
+- 初始化 siteManager 和 officialReplaceMgr 后，自动注入 proxyManager
+- 使用 method_exists 检查，确保向后兼容
+- 数据库模式下注入 DbProxyManager，文件模式下注入 ProxyManager
+
+**4. 统一 DbProxyManager 排序逻辑**
+- getProxy() 方法排序逻辑与 ProxyManager 保持一致
+- 按响应时间从快到慢排序（速度越快越优先）
+- 有响应时间的优先，其次按失败次数少的优先，最后按优先级
+
+#### 影响范围
+
+- M3U8视频解析：代理立即生效
+- 官替资源获取：代理立即生效
+- 资源站接口调用：代理立即生效
+- 数据库版和文件版均适用
+
 ## v5.7.0 (2026-07-18)
 
 ### 修复顶部统一接口不显示接口URL
