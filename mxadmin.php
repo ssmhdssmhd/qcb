@@ -9155,45 +9155,49 @@ header('Expires: 0');
             }
         }
 
-        function loadAnnouncement(baseUrl) {
+        function getLocalAnnouncements() {
+            return [
+                { date: '2026-07-18', text: 'v5.7.1 版本发布：全面修复代理功能，所有模块代理立即可用' },
+                { date: '2026-07-18', text: 'v5.7.0 版本发布：修复顶部统一接口URL显示问题' },
+                { date: '2026-07-18', text: 'v5.6.9 版本发布：修复顶部统一接口不显示接口信息' },
+                { date: '2026-07-18', text: 'v5.6.8 版本发布：修复接口URL不显示，移除管理后台卡片' },
+                { date: '2026-07-18', text: 'v5.6.7 版本发布：修复顶部统一接口区域右侧内容缺失' },
+            ];
+        }
+
+        function renderAnnouncements(announcements) {
             const contentEl = document.getElementById('announcementContent');
             const loadingEl = document.getElementById('announcementLoading');
             if (!contentEl) return;
 
-            const announcementUrl = 'http://114.134.184.91:9001/公告.txt?_t=' + Date.now();
-            
-            fetch(announcementUrl)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('HTTP ' + response.status);
+            if (loadingEl) {
+                loadingEl.style.display = 'none';
+            }
+
+            if (!announcements || announcements.length === 0) {
+                contentEl.innerHTML = '<div class="announcement-empty">📭 暂无公告</div>';
+                return;
+            }
+
+            let html = '';
+            announcements.forEach((item, index) => {
+                const isNew = index === 0;
+                let dateText = '';
+                let contentText = '';
+
+                if (typeof item === 'string') {
+                    contentText = item.trim();
+                    const dateMatch = item.match(/^\[(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})\]\s*(.+)/);
+                    if (dateMatch) {
+                        dateText = dateMatch[1];
+                        contentText = dateMatch[2].trim();
                     }
-                    return response.text();
-                })
-                .then(text => {
-                    if (loadingEl) {
-                        loadingEl.style.display = 'none';
-                    }
-                    
-                    const lines = text.trim().split('\n').filter(line => line.trim());
-                    
-                    if (lines.length === 0) {
-                        contentEl.innerHTML = '<div class="announcement-empty">📭 暂无公告</div>';
-                        return;
-                    }
-                    
-                    let html = '';
-                    lines.forEach((line, index) => {
-                        const isNew = index === 0;
-                        let dateText = '';
-                        let contentText = line.trim();
-                        
-                        const dateMatch = line.match(/^\[(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})\]\s*(.+)/);
-                        if (dateMatch) {
-                            dateText = dateMatch[1];
-                            contentText = dateMatch[2].trim();
-                        }
-                        
-                        html += `
+                } else {
+                    dateText = item.date || '';
+                    contentText = item.text || '';
+                }
+
+                html += `
                             <div class="announcement-item ${isNew ? 'new' : ''}">
                                 <div class="announcement-dot"></div>
                                 <div class="announcement-text">
@@ -9202,16 +9206,36 @@ header('Expires: 0');
                                 </div>
                             </div>
                         `;
-                    });
-                    
-                    contentEl.innerHTML = html;
+            });
+
+            contentEl.innerHTML = html;
+        }
+
+        function loadAnnouncement(baseUrl) {
+            const contentEl = document.getElementById('announcementContent');
+            const loadingEl = document.getElementById('announcementLoading');
+            if (!contentEl) return;
+
+            const remoteUrl = 'http://114.134.184.91:9001/公告.txt?_t=' + Date.now();
+            
+            fetch(remoteUrl, { cache: 'no-store' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.text();
+                })
+                .then(text => {
+                    const lines = text.trim().split('\n').filter(line => line.trim());
+                    if (lines.length > 0) {
+                        renderAnnouncements(lines);
+                    } else {
+                        renderAnnouncements(getLocalAnnouncements());
+                    }
                 })
                 .catch(err => {
-                    console.warn('加载公告失败:', err);
-                    if (loadingEl) {
-                        loadingEl.style.display = 'none';
-                    }
-                    contentEl.innerHTML = '<div class="announcement-error">⚠️ 公告加载失败</div>';
+                    console.warn('加载远程公告失败，使用本地更新:', err);
+                    renderAnnouncements(getLocalAnnouncements());
                 });
         }
 
