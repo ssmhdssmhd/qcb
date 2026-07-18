@@ -476,65 +476,74 @@ header('Expires: 0');
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 16px;
             margin-bottom: 20px;
         }
         .stat-card {
-            background: var(--bg-card);
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: var(--shadow-base);
+            background: var(--v3-bg-card);
+            border-radius: var(--v3-radius-lg);
+            padding: 20px;
+            box-shadow: var(--v3-shadow-sm);
             transition: all 0.3s ease;
-            border: 1px solid var(--border-lighter);
+            border: 1px solid var(--v3-border-light);
             position: relative;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
         .stat-card::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
-            right: 0;
-            height: 3px;
+            bottom: 0;
+            width: 4px;
             background: var(--primary-gradient);
         }
         .stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--v3-shadow-md);
+            border-color: var(--v3-primary);
+        }
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: var(--v3-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+            background: var(--v3-primary-light);
+        }
+        .stat-content {
+            flex: 1;
+            min-width: 0;
         }
         .stat-value {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
-            background: var(--primary-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--v3-text-primary);
             line-height: 1.2;
+            margin-bottom: 4px;
         }
-        .stat-value.warning { 
-            color: var(--warning); 
-            -webkit-text-fill-color: var(--warning); 
-            background: none; 
-        }
-        .stat-value.danger { 
-            color: var(--danger); 
-            -webkit-text-fill-color: var(--danger); 
-            background: none; 
-        }
-        .stat-value.success { 
-            color: var(--success); 
-            -webkit-text-fill-color: var(--success); 
-            background: none; 
-        }
+        .stat-value.warning { color: var(--v3-warning); }
+        .stat-value.danger { color: var(--v3-danger); }
+        .stat-value.success { color: var(--v3-success); }
         .stat-label {
-            color: var(--text-secondary);
-            font-size: 14px;
-            margin-top: 8px;
+            color: var(--v3-text-muted);
+            font-size: 13px;
             font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
+        .stat-trend {
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .stat-trend.up { color: var(--v3-success); }
+        .stat-trend.down { color: var(--v3-danger); }
         .loading {
             text-align: center;
             padding: 40px;
@@ -1953,7 +1962,7 @@ header('Expires: 0');
         }
         .quick-actions {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 12px;
         }
         .quick-action-card {
@@ -2117,6 +2126,12 @@ header('Expires: 0');
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .quick-actions {
+                grid-template-columns: repeat(3, 1fr);
+            }
             .container { padding: 20px; }
             .header { padding: 14px 20px; }
         }
@@ -2157,26 +2172,24 @@ header('Expires: 0');
                 padding-bottom: 10px;
             }
             .stats-grid { 
-                grid-template-columns: repeat(2, 1fr); 
+                grid-template-columns: 1fr; 
                 gap: 12px; 
             }
             .stat-card { 
                 padding: 16px;
                 border-radius: var(--v3-radius-md);
+                gap: 12px;
+            }
+            .stat-icon {
+                width: 44px;
+                height: 44px;
+                font-size: 20px;
             }
             .stat-value { font-size: 22px; }
             .stat-label { font-size: 12px; }
-            .stat-icon {
-                width: 36px;
-                height: 36px;
-                font-size: 16px;
-                margin-bottom: 8px;
-            }
-            .input-group { flex-direction: column; }
-            .input-group .btn { width: 100%; }
             
             .quick-actions {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, 1fr);
             }
             
             .mobile-bottom-nav {
@@ -2224,10 +2237,13 @@ header('Expires: 0');
 
         @media (max-width: 480px) {
             .stats-grid { 
-                grid-template-columns: 1fr 1fr; 
+                grid-template-columns: 1fr; 
                 gap: 10px;
             }
             .stat-value { font-size: 18px; }
+            .quick-actions {
+                grid-template-columns: 1fr;
+            }
             .card { 
                 padding: 14px; 
             }
@@ -2362,39 +2378,51 @@ header('Expires: 0');
             <div class="stats-grid">
                 <div class="stat-card success">
                     <div class="stat-icon">🎯</div>
-                    <div class="stat-value" id="dashTotalAnalyze">0</div>
-                    <div class="stat-label">总分析次数</div>
-                    <div class="stat-trend up">↑ 今日 +0</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="dashTotalAnalyze">0</div>
+                        <div class="stat-label">总分析次数</div>
+                        <div class="stat-trend up">↑ 今日 +0</div>
+                    </div>
                 </div>
                 <div class="stat-card danger">
                     <div class="stat-icon">🚫</div>
-                    <div class="stat-value" id="dashAdRemoved">0</div>
-                    <div class="stat-label">已去除广告片段</div>
-                    <div class="stat-trend up">↑ 累计</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="dashAdRemoved">0</div>
+                        <div class="stat-label">已去除广告片段</div>
+                        <div class="stat-trend up">↑ 累计</div>
+                    </div>
                 </div>
                 <div class="stat-card purple">
                     <div class="stat-icon">🌐</div>
-                    <div class="stat-value" id="dashDomains">0</div>
-                    <div class="stat-label">已分析域名</div>
-                    <div class="stat-trend up">↑ 新增规则</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="dashDomains">0</div>
+                        <div class="stat-label">已分析域名</div>
+                        <div class="stat-trend up">↑ 新增规则</div>
+                    </div>
                 </div>
                 <div class="stat-card info">
                     <div class="stat-icon">⏱️</div>
-                    <div class="stat-value" id="dashAvgTime">0s</div>
-                    <div class="stat-label">平均分析耗时</div>
-                    <div class="stat-trend down">↓ 极速模式</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="dashAvgTime">0s</div>
+                        <div class="stat-label">平均分析耗时</div>
+                        <div class="stat-trend down">↓ 极速模式</div>
+                    </div>
                 </div>
                 <div class="stat-card warning">
                     <div class="stat-icon">📝</div>
-                    <div class="stat-value" id="dashRules">0</div>
-                    <div class="stat-label">广告规则数</div>
-                    <div class="stat-trend up">↑ 持续增长</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="dashRules">0</div>
+                        <div class="stat-label">广告规则数</div>
+                        <div class="stat-trend up">↑ 持续增长</div>
+                    </div>
                 </div>
                 <div class="stat-card pink">
                     <div class="stat-icon">🤖</div>
-                    <div class="stat-value" id="dashMd5">0</div>
-                    <div class="stat-label">AI去广告</div>
-                    <div class="stat-trend up">↑ 智能处理</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="dashMd5">0</div>
+                        <div class="stat-label">AI去广告</div>
+                        <div class="stat-trend up">↑ 智能处理</div>
+                    </div>
                 </div>
             </div>
 
