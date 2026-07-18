@@ -1,5 +1,49 @@
 # 更新日志
 
+## v5.5.9 (2026-07-18)
+
+### 小版本优化 - 官替通道返回直连播放地址
+
+#### 问题现象
+
+后台「嗅探设置」切到官替接口通道时，播放地址仍为 `http://114.134.184.91:9002/xt/clean.php?id=xxx` 代理地址，播放器无法播放。
+
+#### 根因分析
+
+官替接口（`official_replace/info`）返回的两个字段含义完全不同：
+
+| 字段 | 含义 | 是否可直接播放 |
+|------|------|---------------|
+| `m3u8_url` | 资源站视频页面 URL（如 `https://xxx.com/video/abc.html`） | ❌ 播放器无法直接播放 |
+| `ad_skip_url` | `mx.php?action=mxjx&deep=1&url=xxx` 代理地址 | ❌ 播放器无法加载 PHP 代理 |
+
+之前代码优先取 `m3u8_url`，播放器无法播放；即使取 `ad_skip_url`，播放器也无法加载 PHP 代理地址。
+
+#### 修复方案
+
+1. **`getVideoLinkFromApiEntry()` 官替字段优先级调整**
+   - 原：`m3u8_url` → `ad_skip_url`（取到的是页面 URL，不可播放）
+   - 新：`ad_skip_url` → `m3u8_url`（优先取 mxjx 代理，后续内部解析）
+
+2. **`parseVideo()` 官替通道处理逻辑重写**
+   - 下载 mxjx 代理返回的 m3u8 内容
+   - 通过 `resolveMultiLevelM3u8()` 解析 master playlist 获取真实 TS 播放列表
+   - 通过 `extractVideoUrl()` 从内容中提取真正的 m3u8/mp4 直链
+   - **直接返回直链**，不生成 `clean.php` 代理
+
+3. **版本号同步**
+   - `version.php`：v5.5.8 → v5.5.9
+   - `xt/config.php`：5.1.7 → 5.1.8
+
+#### 影响范围
+
+- ✅ 官替通道：返回真正的 m3u8/mp4 直链，播放器可直接播放
+- ✅ 官解通道：行为不变，仍走 xt 去广告流程
+- ✅ Fallback：自动适配
+- ✅ 旧 `official_apis` 数组：行为不变
+
+---
+
 ## v5.5.8 (2026-07-18)
 
 ### 小版本优化 - 修复走官替接口时播放地址不可播放的问题

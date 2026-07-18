@@ -64,11 +64,27 @@ function parseVideo(string $videoUrl): array
         return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime);
     }
 
-    // 官替通道：返回的已是去广告地址，直接透传，不再二次过滤
-    // 否则会再次下载 → AdFilter → 生成 clean.php?id=xxx 代理，导致播放地址嵌套不可播放
+    // 官替通道：返回的是 mxjx 代理地址，需要下载内容提取真正的 m3u8 直链
+    // 用户要求直连播放地址，不要 clean.php 代理
+    // 流程：下载 mxjx 内容 → 提取真正的 m3u8/mp4 直链 → 直接返回直链
     if ($sniffSource === 'replace') {
-        setCache($cacheKey, ['url' => $videoLink], $config);
-        return buildResult(200, '解析成功', $videoLink, $videoLink, $startTime);
+        $finalUrl = $videoLink;
+        
+        $m3u8Content = fetchM3u8Content($videoLink, $config);
+        if ($m3u8Content) {
+            $resolved = resolveMultiLevelM3u8($m3u8Content, $videoLink, $config);
+            $finalUrl = $resolved['url'];
+            
+            if (strpos($finalUrl, 'clean.php') !== false || strpos($finalUrl, 'mxjx') !== false) {
+                $extracted = extractVideoUrl($m3u8Content);
+                if ($extracted && filter_var($extracted, FILTER_VALIDATE_URL)) {
+                    $finalUrl = $extracted;
+                }
+            }
+        }
+        
+        setCache($cacheKey, ['url' => $finalUrl], $config);
+        return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
     }
 
     // 官解通道（或 fallback 到 official_apis）：判断格式，处理广告
@@ -303,8 +319,10 @@ function getVideoLinkFromApiEntry(string $videoUrl, array $api, array $config): 
                     $url = $data[$urlField];
                 }
                 // 2) 兼容官替接口返回结构 {success, m3u8_url, ad_skip_url}
+                //    注意：m3u8_url 是资源站页面URL（非直链），ad_skip_url 是 mxjx 代理地址
+                //    必须优先取 ad_skip_url，因为 m3u8_url 播放器无法直接播放
                 if (!$url && !empty($data['success'])) {
-                    $url = $data['m3u8_url'] ?? $data['ad_skip_url'] ?? null;
+                    $url = $data['ad_skip_url'] ?? $data['m3u8_url'] ?? null;
                 }
                 // 3) 通用字段兜底
                 if (!$url) {
