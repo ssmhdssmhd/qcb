@@ -1,5 +1,42 @@
 # 更新日志
 
+## v5.6.4 (2026-07-18)
+
+### 修复代理池不能正常使用的问题
+
+#### 问题根因
+
+1. **addProxy 无去重**：每次获取代理都重复添加，代理池膨胀导致性能下降
+2. **addProxy 每次写文件**：批量添加100个代理写100次文件，性能极差
+3. **代理池未自动启用**：获取到代理后 `enabled` 仍为 `false`，代理池不工作
+4. **测试URL不稳定**：httpbin.org 在国内无法访问，导致验证全部失败
+5. **验证成功判断过严**：只接受 HTTP 200，百度返回 30x 跳转会被误判为失败
+6. **checkAllProxies 串行**：逐个测试代理，100个代理需要 100×8s = 800s
+7. **proxy.scdn.io 解析过严**：强制要求 `code=200`，API 返回格式变化导致解析失败
+8. **部分代理源失效**：ProxySpace、ProxyScan-API、sunny9577 等源已失效
+
+#### 修复内容
+
+##### ProxyManager 修复
+- `addProxy()` 增加 host:port 去重检查
+- 新增 `addProxiesBatch()` 批量添加方法（只写一次文件）
+- `fetchProxiesFromWeb()` / `syncProxiesFast()` 改用批量添加
+- 获取到代理后自动 `enabled = true`
+- `checkAllProxies()` 改为 curl_multi 并发验证（10个一批）
+- `testProxy()` 测试URL改为百度，HTTP 2xx/3xx 都算成功
+
+##### ProxyFetcher 修复
+- 测试URL：`https://httpbin.org/get` → `http://www.baidu.com/`
+- 验证成功条件：`httpCode == 200` → `httpCode >= 200 && httpCode < 400`
+- `parseScdnJson()` 兼容5种返回格式，不再强制要求 `code=200`
+- 新增 `parseGeonodeJson()` 解析 Geonode API
+- 更新代理源：移除失效源，新增 Geonode、monosans、clarketm、TheSpeedX-socks5
+
+#### 版本号同步
+
+- `version.php`：v5.6.3 → v5.6.4
+- `xt/config.php`：5.6.3 → 5.6.4
+
 ## v5.6.3 (2026-07-18)
 
 ### 小版本更新 - 代理池并发优化 + 解析播放修复 + 多接口竞速

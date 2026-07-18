@@ -52,9 +52,15 @@ class ProxyFetcher {
                 'priority' => 2
             ],
             [
-                'name' => 'ProxyScrape',
+                'name' => 'ProxyScrape-http',
                 'url' => 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all',
                 'type' => 'plain',
+                'enabled' => true
+            ],
+            [
+                'name' => 'ProxyScrape-socks5',
+                'url' => 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=10000&country=all',
+                'type' => 'plain_socks',
                 'enabled' => true
             ],
             [
@@ -70,26 +76,26 @@ class ProxyFetcher {
                 'enabled' => true
             ],
             [
-                'name' => 'ProxySpace',
-                'url' => 'https://proxyspace.pro/http.txt',
-                'type' => 'plain',
-                'enabled' => true
-            ],
-            [
-                'name' => 'RawGithub-sunny9577',
-                'url' => 'https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt',
-                'type' => 'plain',
-                'enabled' => true
-            ],
-            [
-                'name' => 'RawGithub-TheSpeedX',
+                'name' => 'RawGithub-TheSpeedX-http',
                 'url' => 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
                 'type' => 'plain',
                 'enabled' => true
             ],
             [
-                'name' => 'RawGithub-ShiftyTR',
-                'url' => 'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt',
+                'name' => 'RawGithub-TheSpeedX-socks5',
+                'url' => 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt',
+                'type' => 'plain_socks',
+                'enabled' => true
+            ],
+            [
+                'name' => 'RawGithub-clarketm',
+                'url' => 'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
+                'type' => 'plain',
+                'enabled' => true
+            ],
+            [
+                'name' => 'RawGithub-monosans',
+                'url' => 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt',
                 'type' => 'plain',
                 'enabled' => true
             ],
@@ -100,15 +106,15 @@ class ProxyFetcher {
                 'enabled' => true
             ],
             [
-                'name' => 'ProxyScan-API',
-                'url' => 'https://www.proxyscan.io/api/proxy?format=json&type=http&limit=20',
-                'type' => 'json_proxyscan',
-                'enabled' => true
-            ],
-            [
                 'name' => 'PubProxy',
                 'url' => 'http://pubproxy.com/api/proxy?limit=20&format=json&type=http',
                 'type' => 'json_pubproxy',
+                'enabled' => true
+            ],
+            [
+                'name' => 'Geonode',
+                'url' => 'https://proxylist.geonode.com/api/proxy-list?limit=20&page=1&sort_by=lastChecked&sort_type=desc&protocols=http',
+                'type' => 'json_geonode',
                 'enabled' => true
             ]
         ];
@@ -299,6 +305,8 @@ class ProxyFetcher {
                 return $this->parseProxyscanJson($response);
             case 'json_pubproxy':
                 return $this->parsePubproxyJson($response);
+            case 'json_geonode':
+                return $this->parseGeonodeJson($response);
             case 'json_scdn':
                 return $this->parseScdnJson($response, $source);
             default:
@@ -446,21 +454,110 @@ class ProxyFetcher {
         $proxies = [];
         $data = json_decode($content, true);
 
-        if (!isset($data['code']) || $data['code'] != 200) return $proxies;
-        if (!isset($data['data']['proxies']) || !is_array($data['data']['proxies'])) return $proxies;
+        if (!is_array($data)) return $proxies;
+
+        // 兼容多种返回格式
+        // 格式1: {"code": 200, "data": {"proxies": ["1.2.3.4:8080", ...]}}
+        // 格式2: {"code": 200, "data": ["1.2.3.4:8080", ...]}
+        // 格式3: {"proxies": ["1.2.3.4:8080", ...]}
+        // 格式4: ["1.2.3.4:8080", ...]
+        // 格式5: {"data": [{"ip": "1.2.3.4", "port": 8080}, ...]}
+
+        $proxyList = null;
+
+        if (isset($data['data']['proxies']) && is_array($data['data']['proxies'])) {
+            $proxyList = $data['data']['proxies'];
+        } elseif (isset($data['data']) && is_array($data['data']) && isset($data['data'][0])) {
+            // data 可能是字符串数组或对象数组
+            if (is_string($data['data'][0])) {
+                $proxyList = $data['data'];
+            } elseif (is_array($data['data'][0])) {
+                // 对象数组格式
+                foreach ($data['data'] as $item) {
+                    $host = $item['ip'] ?? $item['host'] ?? '';
+                    $port = $item['port'] ?? 0;
+                    if ($host && $port && filter_var($host, FILTER_VALIDATE_IP)) {
+                        $proxies[] = [
+                            'type' => 'http',
+                            'host' => $host,
+                            'port' => intval($port),
+                            'username' => '',
+                            'password' => ''
+                        ];
+                    }
+                }
+                return $proxies;
+            }
+        } elseif (isset($data['proxies']) && is_array($data['proxies'])) {
+            $proxyList = $data['proxies'];
+        } elseif (isset($data[0]) && is_string($data[0])) {
+            $proxyList = $data;
+        }
+
+        if (!$proxyList || !is_array($proxyList)) return $proxies;
 
         $url = $source['url'] ?? '';
         $defaultType = 'http';
-        if (stripos($url, 'protocol=https') !== false) {
-            $defaultType = 'http';
-        }
 
-        foreach ($data['data']['proxies'] as $proxyStr) {
-            if (preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$/', trim($proxyStr), $m)) {
+        foreach ($proxyList as $proxyStr) {
+            $proxyStr = trim((string)$proxyStr);
+            if (empty($proxyStr)) continue;
+
+            // 匹配 ip:port 格式
+            if (preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$/', $proxyStr, $m)) {
                 $proxies[] = [
                     'type' => $defaultType,
                     'host' => $m[1],
                     'port' => intval($m[2]),
+                    'username' => '',
+                    'password' => ''
+                ];
+            }
+            // 匹配 protocol://ip:port 格式
+            elseif (preg_match('/^(https?|socks5):\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$/i', $proxyStr, $m)) {
+                $proxies[] = [
+                    'type' => strtolower($m[1]),
+                    'host' => $m[2],
+                    'port' => intval($m[3]),
+                    'username' => '',
+                    'password' => ''
+                ];
+            }
+        }
+
+        return $proxies;
+    }
+
+    /**
+     * 解析 Geonode JSON 格式
+     * 返回格式: {"data": [{"ip": "1.2.3.4", "port": "8080", "protocols": ["http"]}, ...]}
+     */
+    private function parseGeonodeJson($content) {
+        $proxies = [];
+        $data = json_decode($content, true);
+
+        if (!is_array($data)) return $proxies;
+
+        $items = $data['data'] ?? $data;
+
+        if (!is_array($items)) return $proxies;
+
+        foreach ($items as $item) {
+            $host = $item['ip'] ?? '';
+            $port = $item['port'] ?? 0;
+            $type = 'http';
+
+            if (isset($item['protocols']) && is_array($item['protocols'])) {
+                $proto = $item['protocols'][0] ?? 'http';
+                $type = strtolower($proto);
+                if ($type === 'https') $type = 'http';
+            }
+
+            if ($host && $port && filter_var($host, FILTER_VALIDATE_IP)) {
+                $proxies[] = [
+                    'type' => $type,
+                    'host' => $host,
+                    'port' => intval($port),
                     'username' => '',
                     'password' => ''
                 ];
@@ -495,7 +592,7 @@ class ProxyFetcher {
      * @param int    $timeout  单个代理超时时间
      * @return array 验证通过的代理列表
      */
-    public function verifyProxiesConcurrent($proxies, $testUrl = 'https://httpbin.org/get', $timeout = null) {
+    public function verifyProxiesConcurrent($proxies, $testUrl = 'http://www.baidu.com/', $timeout = null) {
         if ($timeout === null) {
             $timeout = $this->verifyTimeout;
         }
@@ -545,7 +642,7 @@ class ProxyFetcher {
                 curl_close($ch);
                 $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
-                if ($httpCode == 200 && $response !== false) {
+                if ($httpCode >= 200 && $httpCode < 400 && $response !== false) {
                     $proxy['response_time'] = $responseTime;
                     $proxy['status'] = 'active';
                     $verified[] = $proxy;
@@ -597,7 +694,7 @@ class ProxyFetcher {
                     curl_close($ch);
                     $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
-                    if ($httpCode == 200 && $response !== false) {
+                    if ($httpCode >= 200 && $httpCode < 400 && $response !== false) {
                         $proxy['response_time'] = $responseTime;
                         $proxy['status'] = 'active';
                         $verified[] = $proxy;
@@ -652,7 +749,7 @@ class ProxyFetcher {
     /**
      * 串行验证代理（保留向后兼容，内部调用并发版本）
      */
-    public function verifyProxies($proxies, $testUrl = 'https://httpbin.org/get', $timeout = null) {
+    public function verifyProxies($proxies, $testUrl = 'http://www.baidu.com/', $timeout = null) {
         return $this->verifyProxiesConcurrent($proxies, $testUrl, $timeout);
     }
 

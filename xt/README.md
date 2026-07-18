@@ -258,6 +258,19 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 
 ## 版本更新日志
 
+### v5.6.4 (2026-07-18)
+
+- 🐛 **修复代理池不能正常使用的问题**（核心修复）
+  - 修复 addProxy 无去重导致代理池膨胀：新增 host:port 去重检查
+  - 修复批量添加性能问题：新增 `addProxiesBatch()` 方法，只写一次文件
+  - 修复获取代理后代理池未自动启用：获取到代理后自动 `enabled = true`
+  - 修复测试URL不稳定：httpbin.org → 百度（国内稳定可靠）
+  - 修复验证成功判断：HTTP 2xx/3xx 都算成功（百度会返回 30x 跳转）
+- 🚀 **checkAllProxies 改为并发验证**：10个一批 curl_multi 并发，速度提升10倍
+- 🔧 **更新代理源**：移除失效源，新增 Geonode、monosans、clarketm、TheSpeedX-socks5
+- 🔧 **修复 proxy.scdn.io 解析**：兼容5种返回格式，不再强制要求 code=200
+- 🔧 **新增 Geonode JSON 解析器**：支持 geonode 代理列表 API
+
 ### v5.6.3 (2026-07-18)
 
 - 🚀 **代理池并发获取**：ProxyFetcher 使用 curl_multi 并发请求所有代理源（proxy.scdn.io 等12个源），大幅降低获取延迟

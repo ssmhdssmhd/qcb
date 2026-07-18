@@ -64,7 +64,7 @@ class ProxyManager {
         });
     }
 
-    public function addProxy($proxyData) {
+    public function addProxy($proxyData, $skipSave = false) {
         $proxy = array_merge([
             'id' => '',
             'name' => '',
@@ -86,8 +86,16 @@ class ProxyManager {
             return ['success' => false, 'message' => '主机和端口不能为空'];
         }
 
+        // 去重检查：同一 host:port 不重复添加
+        $dedupKey = strtolower($proxy['host']) . ':' . $proxy['port'];
+        foreach ($this->proxies as $existing) {
+            if (strtolower($existing['host']) . ':' . $existing['port'] === $dedupKey) {
+                return ['success' => false, 'message' => '代理已存在', 'id' => $existing['id']];
+            }
+        }
+
         if (empty($proxy['id'])) {
-            $proxy['id'] = md5($proxy['type'] . '://' . $proxy['host'] . ':' . $proxy['port'] . '_' . time());
+            $proxy['id'] = md5($proxy['type'] . '://' . $proxy['host'] . ':' . $proxy['port']);
         }
 
         if (empty($proxy['name'])) {
@@ -96,9 +104,40 @@ class ProxyManager {
 
         $this->proxies[] = $proxy;
         $this->config['proxies'] = $this->proxies;
-        $this->saveConfig();
+
+        if (!$skipSave) {
+            $this->saveConfig();
+        }
 
         return ['success' => true, 'message' => '添加成功', 'id' => $proxy['id']];
+    }
+
+    /**
+     * 批量添加代理（只写一次文件，性能优化）
+     *
+     * @param array $proxiesData 代理数据数组
+     * @return array ['added' => int, 'duplicated' => int]
+     */
+    public function addProxiesBatch(array $proxiesData) {
+        $added = 0;
+        $duplicated = 0;
+
+        foreach ($proxiesData as $proxyData) {
+            $result = $this->addProxy($proxyData, true); // skipSave = true
+            if ($result['success']) {
+                $added++;
+            } else {
+                $duplicated++;
+            }
+        }
+
+        // 只写一次文件
+        if ($added > 0) {
+            $this->config['proxies'] = $this->proxies;
+            $this->saveConfig();
+        }
+
+        return ['added' => $added, 'duplicated' => $duplicated];
     }
 
     public function updateProxy($id, $proxyData) {
@@ -235,8 +274,23 @@ class ProxyManager {
             return ['success' => false, 'message' => '代理不存在'];
         }
 
-        $testUrl = 'https://httpbin.org/get';
-        $timeout = $this->config['timeout'] ?? 10;
+        $result = $this->testProxyDirect($proxy);
+        
+        if ($result['success']) {
+            $this->markProxySuccess($proxyId, $result['response_time']);
+        } else {
+            $this->markProxyFailed($proxyId);
+        }
+        
+        return $result;
+    }
+
+    /**
+     * 直接测试代理（不修改状态）
+     */
+    private function testProxyDirect($proxy) {
+        $testUrl = 'http://www.baidu.com/'; // 使用百度作为测试URL，稳定可靠
+        $timeout = $this->config['timeout'] ?? 8;
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $testUrl);
@@ -245,7 +299,9 @@ class ProxyManager {
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
 
         $this->applyProxyToCurl($ch, $proxy);
 
@@ -256,37 +312,109 @@ class ProxyManager {
         curl_close($ch);
         $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
-        if ($httpCode == 200 && $response !== false) {
-            $this->markProxySuccess($proxyId, $responseTime);
-            return [
-                'success' => true,
-                'message' => '测试成功',
-                'response_time' => $responseTime,
-                'http_code' => $httpCode
-            ];
-        } else {
-            $this->markProxyFailed($proxyId);
-            return [
-                'success' => false,
-                'message' => $error ? $error : ('HTTP ' . $httpCode),
-                'response_time' => $responseTime,
-                'http_code' => $httpCode
-            ];
-        }
+        // 百度返回 200 或 30x 都算成功
+        $success = ($httpCode >= 200 && $httpCode < 400 && $response !== false);
+        
+        return [
+            'success' => $success,
+            'message' => $success ? '测试成功' : ($error ?: ('HTTP ' . $httpCode)),
+            'response_time' => $responseTime,
+            'http_code' => $httpCode
+        ];
     }
 
+    /**
+     * 并发检测所有代理（使用 curl_multi）
+     */
     public function checkAllProxies() {
-        $results = [];
-        foreach ($this->proxies as $proxy) {
-            $result = $this->testProxy($proxy['id']);
-            $results[] = [
-                'id' => $proxy['id'],
-                'name' => $proxy['name'],
-                'success' => $result['success'],
-                'message' => $result['message'],
-                'response_time' => $result['response_time']
-            ];
+        if (empty($this->proxies)) {
+            return [];
         }
+
+        $results = [];
+        $batchSize = 10;
+        $total = count($this->proxies);
+        $testUrl = 'http://www.baidu.com/';
+        $timeout = $this->config['timeout'] ?? 8;
+
+        for ($offset = 0; $offset < $total; $offset += $batchSize) {
+            $batch = array_slice($this->proxies, $offset, $batchSize, true);
+            if (empty($batch)) break;
+
+            $mh = curl_multi_init();
+            $handles = [];
+            $proxyMap = [];
+
+            foreach ($batch as $idx => $proxy) {
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL            => $testUrl,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => $timeout,
+                    CURLOPT_CONNECTTIMEOUT => 5,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false,
+                    CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_NOSIGNAL       => 1,
+                    CURLOPT_ENCODING       => 'gzip',
+                ]);
+
+                $type = strtolower($proxy['type'] ?? 'http');
+                if ($type === 'socks5') {
+                    curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+                } else {
+                    curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+                }
+                curl_setopt($ch, CURLOPT_PROXY, $proxy['host'] . ':' . $proxy['port']);
+
+                if (!empty($proxy['username']) && !empty($proxy['password'])) {
+                    curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy['username'] . ':' . $proxy['password']);
+                }
+
+                curl_multi_add_handle($mh, $ch);
+                $handles[$idx] = $ch;
+                $proxyMap[$idx] = $proxy;
+            }
+
+            $active = null;
+            do {
+                $mrc = curl_multi_exec($mh, $active);
+                if ($mrc != CURLM_OK) break;
+                if ($active > 0) {
+                    curl_multi_select($mh, 0.3);
+                }
+            } while ($active > 0);
+
+            foreach ($handles as $idx => $ch) {
+                $proxy = $proxyMap[$idx];
+                $startTime = microtime(true);
+                $response = curl_multi_getcontent($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error = curl_error($ch);
+                curl_multi_remove_handle($mh, $ch);
+                curl_close($ch);
+                $responseTime = round((microtime(true) - $startTime) * 1000, 2);
+
+                $success = ($httpCode >= 200 && $httpCode < 400 && $response !== false);
+
+                if ($success) {
+                    $this->markProxySuccess($proxy['id'], $responseTime);
+                } else {
+                    $this->markProxyFailed($proxy['id']);
+                }
+
+                $results[] = [
+                    'id' => $proxy['id'],
+                    'name' => $proxy['name'],
+                    'success' => $success,
+                    'message' => $success ? '测试成功' : ($error ?: ('HTTP ' . $httpCode)),
+                    'response_time' => $responseTime
+                ];
+            }
+            curl_multi_close($mh);
+        }
+
         $this->saveCheckState();
         return $results;
     }
@@ -441,11 +569,12 @@ class ProxyManager {
         ]);
 
         $result = $fetcher->fetchAll($verify);
-        $added = 0;
         $fromCache = !empty($result['from_cache']);
 
+        // 批量添加（只写一次文件）
+        $batchData = [];
         foreach ($result['proxies'] as $proxy) {
-            $addResult = $this->addProxy([
+            $batchData[] = [
                 'type' => $proxy['type'],
                 'host' => $proxy['host'],
                 'port' => $proxy['port'],
@@ -453,31 +582,32 @@ class ProxyManager {
                 'password' => $proxy['password'] ?? '',
                 'response_time' => $proxy['response_time'] ?? 0,
                 'status' => 'active'
-            ]);
-            if ($addResult['success']) {
-                $added++;
-            }
+            ];
+        }
+        $batchResult = $this->addProxiesBatch($batchData);
+        $added = $batchResult['added'];
+
+        // 获取到代理后自动启用代理池
+        if ($added > 0 && empty($this->config['enabled'])) {
+            $this->config['enabled'] = true;
+            $this->saveConfig();
         }
 
         $cacheNote = $fromCache ? '（来自缓存）' : '';
         return [
             'success' => true,
             'added' => $added,
+            'duplicated' => $batchResult['duplicated'],
             'total_fetched' => $result['total'],
             'sources' => $result['sources'],
             'from_cache' => $fromCache,
+            'auto_enabled' => $added > 0,
             'message' => "成功获取并添加 {$added} 个可用代理{$cacheNote}"
         ];
     }
 
     /**
      * 快速同步代理池（不验证，直接导入）
-     *
-     * 从 proxy.scdn.io 等代理源并发获取代理，直接导入本地代理池
-     * 不进行可用性验证，速度最快
-     *
-     * @param int $maxPerSource 每个源最多获取的代理数
-     * @return array
      */
     public function syncProxiesFast($maxPerSource = 20) {
         require_once __DIR__ . '/ProxyFetcher.php';
@@ -489,12 +619,13 @@ class ProxyManager {
             'cache_ttl' => 120,
         ]);
 
-        $result = $fetcher->fetchAll(false); // 不验证
-        $added = 0;
+        $result = $fetcher->fetchAll(false);
         $fromCache = !empty($result['from_cache']);
 
+        // 批量添加（只写一次文件）
+        $batchData = [];
         foreach ($result['proxies'] as $proxy) {
-            $addResult = $this->addProxy([
+            $batchData[] = [
                 'type' => $proxy['type'],
                 'host' => $proxy['host'],
                 'port' => $proxy['port'],
@@ -502,19 +633,26 @@ class ProxyManager {
                 'password' => $proxy['password'] ?? '',
                 'response_time' => 0,
                 'status' => 'active'
-            ]);
-            if ($addResult['success']) {
-                $added++;
-            }
+            ];
+        }
+        $batchResult = $this->addProxiesBatch($batchData);
+        $added = $batchResult['added'];
+
+        // 获取到代理后自动启用代理池
+        if ($added > 0 && empty($this->config['enabled'])) {
+            $this->config['enabled'] = true;
+            $this->saveConfig();
         }
 
         $cacheNote = $fromCache ? '（来自缓存）' : '';
         return [
             'success' => true,
             'added' => $added,
+            'duplicated' => $batchResult['duplicated'],
             'total_fetched' => $result['total'],
             'sources' => $result['sources'],
             'from_cache' => $fromCache,
+            'auto_enabled' => $added > 0,
             'message' => "快速同步完成，共导入 {$added} 个代理{$cacheNote}"
         ];
     }
