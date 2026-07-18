@@ -9160,7 +9160,7 @@ header('Expires: 0');
             const loadingEl = document.getElementById('announcementLoading');
             if (!contentEl) return;
 
-            const announcementUrl = baseUrl + '/gg.txt?_t=' + Date.now();
+            const announcementUrl = 'http://114.134.184.91:9001/公告.txt?_t=' + Date.now();
             
             fetch(announcementUrl)
                 .then(response => {
