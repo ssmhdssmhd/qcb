@@ -3066,6 +3066,168 @@ header('Expires: 0');
             </div>
         </div>
 
+        <div class="page" id="page-sniffer">
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>🔍 嗅探设置</span>
+                    <span id="snifferUpdateDate" style="font-size:12px;color:#909399;font-weight:normal">加载中...</span>
+                </div>
+                <div style="font-size:13px;line-height:1.8;color:#606266;margin-bottom:16px">
+                    超级嗅探模块（<code>xt/</code>）支持两种解析通道，可在此处放置接口并选择走哪一条：
+                    <ul style="margin-left:20px;margin-top:8px">
+                        <li><strong>官解解析</strong>：调用官方解析 API 获取 m3u8/mp4 直链</li>
+                        <li><strong>官替接口</strong>：调用官替 API 获取资源站匹配后的 m3u8</li>
+                    </ul>
+                    两个接口各有一个独立开关，再通过「当前通道」选择实际走哪一条；当前通道失败时自动 fallback 到另一条已启用的通道。
+                </div>
+
+                <!-- 当前通道选择 -->
+                <div style="background:#f5f7fa;padding:16px;border-radius:8px;margin-bottom:16px">
+                    <div style="font-weight:600;margin-bottom:12px;color:#303133">当前解析通道</div>
+                    <div style="display:flex;gap:24px;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+                            <input type="radio" name="snifferMode" value="official" id="snifferModeOfficial">
+                            <span>官解解析（official）</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+                            <input type="radio" name="snifferMode" value="replace" id="snifferModeReplace">
+                            <span>官替接口（replace）</span>
+                        </label>
+                    </div>
+                    <div style="font-size:12px;color:#909399;margin-top:8px">
+                        提示：所选通道的开关必须为「启用」状态才会真正生效
+                    </div>
+                </div>
+
+                <!-- 官解接口配置 -->
+                <div style="border:1px solid #e4e7ed;border-radius:8px;padding:16px;margin-bottom:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <div style="font-weight:600;color:#303133">
+                            <span style="color:#409eff">① </span>官解接口
+                            <span id="snifferOfficialBadge" style="margin-left:8px;font-size:12px;padding:2px 8px;border-radius:10px;background:#f0f0f0;color:#909399">未启用</span>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;margin:0">
+                            <input type="checkbox" id="snifferOfficialEnabled">
+                            <span>启用此接口</span>
+                        </label>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>接口名称</label>
+                            <input type="text" id="snifferOfficialName" placeholder="如：虾米官解">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>接口类型</label>
+                            <select id="snifferOfficialType">
+                                <option value="json">json（返回 JSON）</option>
+                                <option value="redirect">redirect（302 跳转）</option>
+                                <option value="text">text（纯文本 URL）</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>URL 字段名（json 类型时）</label>
+                            <input type="text" id="snifferOfficialUrlField" placeholder="如：play_url">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:12px;margin-bottom:0">
+                        <label>接口地址（会自动拼接 urlencode(视频链接)）</label>
+                        <input type="text" id="snifferOfficialUrl" placeholder="如：http://example.com/mx.php?action=api/v2&type=parse&url=">
+                    </div>
+                </div>
+
+                <!-- 官替接口配置 -->
+                <div style="border:1px solid #e4e7ed;border-radius:8px;padding:16px;margin-bottom:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <div style="font-weight:600;color:#303133">
+                            <span style="color:#67c23a">② </span>官替接口
+                            <span id="snifferReplaceBadge" style="margin-left:8px;font-size:12px;padding:2px 8px;border-radius:10px;background:#f0f0f0;color:#909399">未启用</span>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;margin:0">
+                            <input type="checkbox" id="snifferReplaceEnabled">
+                            <span>启用此接口</span>
+                        </label>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>接口名称</label>
+                            <input type="text" id="snifferReplaceName" placeholder="如：本地官替">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>接口类型</label>
+                            <select id="snifferReplaceType">
+                                <option value="json">json（返回 JSON）</option>
+                                <option value="redirect">redirect（302 跳转）</option>
+                                <option value="text">text（纯文本 URL）</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>URL 字段名（json 类型时）</label>
+                            <input type="text" id="snifferReplaceUrlField" placeholder="如：m3u8_url">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:12px;margin-bottom:0">
+                        <label>接口地址（会自动拼接 urlencode(视频链接)）</label>
+                        <input type="text" id="snifferReplaceUrl" placeholder="留空则使用本项目官替接口 mx.php?action=official_replace/info&url=">
+                    </div>
+                    <div style="font-size:12px;color:#909399;margin-top:8px">
+                        提示：默认调用本项目官替接口（<code>mx.php?action=official_replace/info&url=</code>），返回结构 <code>{success, m3u8_url, ad_skip_url}</code>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="saveSnifferConfig()">💾 保存嗅探设置</button>
+                    <button class="btn btn-secondary" onclick="loadSnifferConfig()">🔄 重新加载</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">嗅探测试</div>
+                <div style="font-size:12px;color:#909399;margin-bottom:12px">
+                    输入视频链接，将按当前嗅探设置解析（仅测试，不修改配置）
+                </div>
+                <div class="input-group">
+                    <input type="text" id="snifferTestUrl" placeholder="输入视频链接，如：https://v.qq.com/x/cover/xxx.html">
+                    <button class="btn btn-primary" onclick="testSniffer()">测试解析</button>
+                </div>
+                <div id="snifferTestResult" style="display:none;margin-top:12px"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">API 接口说明</div>
+                <div style="font-size:13px;line-height:1.8;color:#606266">
+                    <p><strong>获取嗅探配置：</strong></p>
+                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
+                        <code>GET /mx.php?action=sniffer/config</code>
+                    </div>
+                    <p><strong>保存嗅探配置：</strong></p>
+                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
+                        <code>POST /mx.php?action=sniffer/config/save</code>
+                    </div>
+                    <p><strong>POST Body 示例：</strong></p>
+                    <pre style="background:#f5f7fa;padding:12px;border-radius:6px;overflow:auto;font-size:12px">{
+  "mode": "official",
+  "official_api": {
+    "enabled": true,
+    "name": "虾米官解",
+    "url": "http://example.com/mx.php?action=api/v2&type=parse&url=",
+    "type": "json",
+    "url_field": "play_url",
+    "headers": {}
+  },
+  "replace_api": {
+    "enabled": false,
+    "name": "本地官替",
+    "url": "",
+    "type": "json",
+    "url_field": "m3u8_url",
+    "headers": {}
+  }
+}</pre>
+                    <p><strong>配置文件位置：</strong><code>xt/sniffer_config.php</code>（由后台自动维护）</p>
+                </div>
+            </div>
+        </div>
+
         <div class="page" id="page-moxi_api">
             <div class="card">
                 <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -4073,6 +4235,7 @@ header('Expires: 0');
                 group: '接口工具',
                 items: [
                     { page: 'moxi_api', icon: '⚡', text: '沫兮API' },
+                    { page: 'sniffer', icon: '🔍', text: '嗅探设置' },
                     { icon: '📚', text: 'API文档', action: "window.open('api_doc.php', '_blank')" },
                     { icon: '🔌', text: '代理池管理', action: "location.href='proxy/proxy_admin.php'" },
                 ]
@@ -4144,6 +4307,7 @@ header('Expires: 0');
             if (page === 'auth') refreshAuthInfo();
             if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
             if (page === 'database') checkDbStatus();
+            if (page === 'sniffer') loadSnifferConfig();
         }
 
         document.addEventListener('click', (e) => {
@@ -9215,6 +9379,170 @@ header('Expires: 0');
                 showToast('删除失败: ' + e.message, 'error');
             }
         }
+
+        // ============ 嗅探设置（xt/sniffer_config.php） ============
+        let currentSnifferConfig = null;
+
+        function updateSnifferBadges() {
+            const oEnabled = document.getElementById('snifferOfficialEnabled').checked;
+            const rEnabled = document.getElementById('snifferReplaceEnabled').checked;
+            const oBadge = document.getElementById('snifferOfficialBadge');
+            const rBadge = document.getElementById('snifferReplaceBadge');
+            const mode = document.querySelector('input[name="snifferMode"]:checked')?.value || 'official';
+
+            oBadge.textContent = oEnabled ? (mode === 'official' ? '当前通道' : '已启用') : '未启用';
+            oBadge.style.background = oEnabled ? (mode === 'official' ? '#e6f7ff' : '#f0f9eb') : '#f0f0f0';
+            oBadge.style.color = oEnabled ? (mode === 'official' ? '#409eff' : '#67c23a') : '#909399';
+
+            rBadge.textContent = rEnabled ? (mode === 'replace' ? '当前通道' : '已启用') : '未启用';
+            rBadge.style.background = rEnabled ? (mode === 'replace' ? '#e6f7ff' : '#f0f9eb') : '#f0f0f0';
+            rBadge.style.color = rEnabled ? (mode === 'replace' ? '#409eff' : '#67c23a') : '#909399';
+        }
+
+        async function loadSnifferConfig() {
+            try {
+                const res = await fetch(API_BASE + '?action=sniffer/config&_t=' + Date.now());
+                const data = await res.json();
+                if (data.success && data.config) {
+                    currentSnifferConfig = data.config;
+                    const cfg = data.config;
+
+                    // 当前通道
+                    const mode = cfg.mode || 'official';
+                    document.getElementById('snifferModeOfficial').checked = (mode === 'official');
+                    document.getElementById('snifferModeReplace').checked = (mode === 'replace');
+
+                    // 官解接口
+                    const o = cfg.official_api || {};
+                    document.getElementById('snifferOfficialEnabled').checked = !!o.enabled;
+                    document.getElementById('snifferOfficialName').value = o.name || '';
+                    document.getElementById('snifferOfficialUrl').value = o.url || '';
+                    document.getElementById('snifferOfficialType').value = o.type || 'json';
+                    document.getElementById('snifferOfficialUrlField').value = o.url_field || '';
+
+                    // 官替接口
+                    const r = cfg.replace_api || {};
+                    document.getElementById('snifferReplaceEnabled').checked = !!r.enabled;
+                    document.getElementById('snifferReplaceName').value = r.name || '';
+                    document.getElementById('snifferReplaceUrl').value = r.url || '';
+                    document.getElementById('snifferReplaceType').value = r.type || 'json';
+                    document.getElementById('snifferReplaceUrlField').value = r.url_field || '';
+
+                    // 更新时间
+                    const dateEl = document.getElementById('snifferUpdateDate');
+                    if (dateEl) {
+                        dateEl.textContent = cfg.update_date ? ('更新于 ' + cfg.update_date) : '尚未保存';
+                    }
+
+                    updateSnifferBadges();
+                } else {
+                    showToast('加载嗅探配置失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('加载嗅探配置失败: ' + e.message, 'error');
+            }
+        }
+
+        async function saveSnifferConfig() {
+            const newConfig = {
+                mode: document.querySelector('input[name="snifferMode"]:checked')?.value || 'official',
+                official_api: {
+                    enabled:   document.getElementById('snifferOfficialEnabled').checked,
+                    name:      document.getElementById('snifferOfficialName').value.trim(),
+                    url:       document.getElementById('snifferOfficialUrl').value.trim(),
+                    type:      document.getElementById('snifferOfficialType').value,
+                    url_field: document.getElementById('snifferOfficialUrlField').value.trim(),
+                    headers:   {}
+                },
+                replace_api: {
+                    enabled:   document.getElementById('snifferReplaceEnabled').checked,
+                    name:      document.getElementById('snifferReplaceName').value.trim(),
+                    url:       document.getElementById('snifferReplaceUrl').value.trim(),
+                    type:      document.getElementById('snifferReplaceType').value,
+                    url_field: document.getElementById('snifferReplaceUrlField').value.trim(),
+                    headers:   {}
+                }
+            };
+
+            // 简单校验：所选通道必须已启用
+            const activeKey = newConfig.mode === 'replace' ? 'replace_api' : 'official_api';
+            if (!newConfig[activeKey].enabled) {
+                showToast('警告：当前选择的通道未启用，保存后将自动 fallback 到另一通道', 'info');
+            }
+
+            try {
+                const res = await fetch(API_BASE + '?action=sniffer/config/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('嗅探设置保存成功', 'success');
+                    currentSnifferConfig = data.config || newConfig;
+                    loadSnifferConfig();
+                } else {
+                    showToast('保存失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function testSniffer() {
+            const url = document.getElementById('snifferTestUrl').value.trim();
+            if (!url) {
+                showToast('请输入视频链接', 'error');
+                return;
+            }
+
+            const resultEl = document.getElementById('snifferTestResult');
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<div style="text-align:center;padding:20px;color:#909399">正在按当前嗅探设置解析...</div>';
+
+            // 拼接 xt/api.php 入口（与本页面同域）
+            const base = window.location.protocol + '//' + window.location.host
+                + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'))
+                + '/xt/api.php?url=';
+            const testUrl = base + encodeURIComponent(url);
+
+            try {
+                const res = await fetch(testUrl + '&_t=' + Date.now());
+                const text = await res.text();
+                let data;
+                try { data = JSON.parse(text); } catch (e) {
+                    resultEl.innerHTML = '<div style="color:#f56c6c;padding:12px">返回非 JSON：<pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;margin-top:8px">' + escapeHtml(text.substring(0, 500)) + '</pre></div>';
+                    return;
+                }
+
+                if (data.code === 200) {
+                    resultEl.innerHTML = '<div style="padding:12px;border:1px solid #67c23a;border-radius:6px;background:#f0f9eb">'
+                        + '<div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 解析成功（耗时 ' + escapeHtml(data.time || '-') + '）</div>'
+                        + '<div style="font-size:13px;color:#606266;margin-bottom:8px">' + escapeHtml(data.msg || '') + '</div>'
+                        + '<div style="background:#fff;padding:8px;border-radius:4px;font-size:12px;word-break:break-all">'
+                        + '<strong>播放地址：</strong><a href="' + escapeHtml(data.url || '') + '" target="_blank" style="color:#409eff">' + escapeHtml(data.url || '') + '</a>'
+                        + '</div></div>';
+                } else {
+                    resultEl.innerHTML = '<div style="padding:12px;border:1px solid #f56c6c;border-radius:6px;background:#fef0f0">'
+                        + '<div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 解析失败</div>'
+                        + '<div style="font-size:13px;color:#606266">' + escapeHtml(data.msg || '未知错误') + '</div>'
+                        + '</div>';
+                }
+            } catch (e) {
+                resultEl.innerHTML = '<div style="color:#f56c6c;padding:12px">请求失败：' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        // 监听输入变化，实时更新徽章
+        document.addEventListener('change', function (e) {
+            if (e.target && (
+                e.target.id === 'snifferOfficialEnabled'
+                || e.target.id === 'snifferReplaceEnabled'
+                || e.target.name === 'snifferMode'
+            )) {
+                updateSnifferBadges();
+            }
+        });
 
         async function testOfficialReplace() {
             const url = document.getElementById('officialTestUrl').value.trim();

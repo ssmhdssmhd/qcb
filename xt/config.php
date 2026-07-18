@@ -8,11 +8,38 @@
 return [
 
     // ============ 版本信息 ============
-    'version' => '5.1.5',
+    'version' => '5.1.6',
 
-    // ============ 官解接口配置 ============
+    // ============ 嗅探设置（后台「嗅探设置」页面维护） ============
+    // sniffer_config.php 由后台写入，此处作为兜底默认值
+    // 合并优先级：sniffer_config.php > 此处默认值
+    'sniffer' => [
+        // 当前解析通道：official=官解解析 / replace=官替接口
+        'mode' => 'official',
+        // 官解接口（开关 + 接口参数）
+        'official_api' => [
+            'enabled'    => true,
+            'name'       => '虾米官解',
+            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+            'type'       => 'json',
+            'url_field'  => 'play_url',
+            'headers'    => [],
+        ],
+        // 官替接口（开关 + 接口参数）
+        'replace_api' => [
+            'enabled'    => false,
+            'name'       => '本地官替',
+            'url'        => '',
+            'type'       => 'json',
+            'url_field'  => 'm3u8_url',
+            'headers'    => [],
+        ],
+    ],
+
+    // ============ 官解接口配置（兼容旧逻辑，作为 fallback） ============
     // 官方解析 API，传入视频 URL 返回 m3u8/mp4 直链
     // 支持多个接口，按优先级依次尝试
+    // 注意：新版本优先读取 sniffer.official_api，此数组仅在嗅探设置未启用官解时作为兜底
     'official_apis' => [
         [
             'name'       => '虾米官解',

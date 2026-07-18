@@ -14,6 +14,19 @@
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 
+// 合并后台「嗅探设置」覆盖配置（sniffer_config.php 由后台写入）
+$snifferConfigFile = __DIR__ . '/sniffer_config.php';
+if (file_exists($snifferConfigFile)) {
+    $snifferOverrides = require $snifferConfigFile;
+    if (is_array($snifferOverrides) && !empty($snifferOverrides)) {
+        if (isset($config['sniffer']) && is_array($config['sniffer'])) {
+            $config['sniffer'] = array_merge($config['sniffer'], $snifferOverrides);
+        } else {
+            $config['sniffer'] = $snifferOverrides;
+        }
+    }
+}
+
 /**
  * 核心解析函数
  *
@@ -40,11 +53,11 @@ function parseVideo(string $videoUrl): array
     // 概率触发过期缓存清理
     maybeCleanExpiredCache($config);
 
-    // 步骤1：调用官解接口获取视频直链
-    $videoLink = getVideoLinkFromOfficialApi($videoUrl, $config);
+    // 步骤1：根据嗅探设置选择走官解解析还是官替接口
+    $videoLink = getVideoLinkBySnifferMode($videoUrl, $config);
 
     if (!$videoLink) {
-        return buildResult(500, '解析失败', '所有官解接口均未能解析出视频地址', null, $startTime);
+        return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime);
     }
 
     // 步骤2：判断格式，处理广告
@@ -101,83 +114,204 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
 // ==================== 核心函数 ====================
 
 /**
- * 调用官解接口获取视频直链
+ * 根据后台「嗅探设置」选择走官解解析还是官替接口
+ *
+ * 路由规则：
+ *   1. mode=official 且 official_api.enabled=true → 调用官解接口
+ *   2. mode=replace  且 replace_api.enabled=true  → 调用官替接口
+ *   3. 当前通道失败时，自动 fallback 到另一通道（若对方已启用）
+ *   4. 两个通道都未启用时，回退到旧的 official_apis 数组
+ *
+ * @param string $videoUrl 视频页面 URL
+ * @param array  $config   全局配置
+ * @return string|null     视频直链 (m3u8/mp4)，失败返回 null
+ */
+function getVideoLinkBySnifferMode(string $videoUrl, array $config): ?string
+{
+    $sniffer  = $config['sniffer'] ?? [];
+    $mode     = $sniffer['mode'] ?? 'official';
+    $official = $sniffer['official_api'] ?? [];
+    $replace  = $sniffer['replace_api']  ?? [];
+
+    // 1) 按当前模式优先尝试
+    if ($mode === 'replace') {
+        if (!empty($replace['enabled'])) {
+            $link = callSingleApi($videoUrl, $replace, $config);
+            if ($link) return $link;
+        }
+        // 当前通道失败 → fallback 到官解
+        if (!empty($official['enabled'])) {
+            $link = callSingleApi($videoUrl, $official, $config);
+            if ($link) return $link;
+        }
+    } else {
+        // mode=official（默认）
+        if (!empty($official['enabled'])) {
+            $link = callSingleApi($videoUrl, $official, $config);
+            if ($link) return $link;
+        }
+        // 当前通道失败 → fallback 到官替
+        if (!empty($replace['enabled'])) {
+            $link = callSingleApi($videoUrl, $replace, $config);
+            if ($link) return $link;
+        }
+    }
+
+    // 2) 两个通道都未启用或都失败 → 回退到旧的 official_apis 数组
+    if (!empty($config['official_apis'])) {
+        return getVideoLinkFromOfficialApi($videoUrl, $config);
+    }
+
+    return null;
+}
+
+/**
+ * 调用单个接口（官解或官替）获取视频直链
+ *
+ * 接口配置结构：
+ *   [
+ *     'enabled'   => bool,
+ *     'name'      => string,
+ *     'url'       => string,  // 接口地址，会拼接 urlencode($videoUrl)
+ *     'type'      => string,  // redirect / json / text
+ *     'url_field' => string,  // json 类型时视频地址字段名
+ *     'headers'   => array,
+ *   ]
+ *
+ * @param string $videoUrl  视频页面 URL
+ * @param array  $apiConfig 单个接口配置
+ * @param array  $config    全局配置（用于读取 http 超时等参数）
+ * @return string|null
+ */
+function callSingleApi(string $videoUrl, array $apiConfig, array $config): ?string
+{
+    // url 为空直接返回（保留 enabled 但未配置的情况）
+    if (empty($apiConfig['url'])) {
+        return null;
+    }
+
+    $api = [
+        'name'      => $apiConfig['name'] ?? '未命名接口',
+        'url'       => $apiConfig['url'],
+        'type'      => $apiConfig['type'] ?? 'json',
+        'url_field' => $apiConfig['url_field'] ?? '',
+        'headers'   => $apiConfig['headers'] ?? [],
+    ];
+
+    return getVideoLinkFromApiEntry($videoUrl, $api, $config);
+}
+
+/**
+ * 调用官解接口获取视频直链（旧逻辑，保留作为 fallback）
+ *
+ * 遍历 official_apis 数组，依次尝试，任一成功即返回
  */
 function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
 {
     foreach ($config['official_apis'] as $api) {
-        $targetUrl = $api['url'] . urlencode($videoUrl);
-
-        $ch = curl_init();
-        $headers = [];
-        foreach ($api['headers'] ?? [] as $key => $value) {
-            $headers[] = $key . ': ' . $value;
+        $link = getVideoLinkFromApiEntry($videoUrl, $api, $config);
+        if ($link) {
+            return $link;
         }
+    }
+    return null;
+}
 
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $targetUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS      => 5,
-            CURLOPT_TIMEOUT        => $config['http']['timeout'],
-            CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
-            CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
-            CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
-            CURLOPT_USERAGENT      => $config['http']['user_agent'],
-            CURLOPT_HTTPHEADER     => $headers,
-            CURLOPT_ENCODING       => '',
-        ]);
+/**
+ * 调用单个 API 接口获取视频直链（核心请求 + 解析逻辑）
+ *
+ * 支持 redirect / json / text 三种接口类型，被以下两个函数复用：
+ *   - getVideoLinkFromOfficialApi（遍历 official_apis 数组）
+ *   - callSingleApi（嗅探设置中的官解/官替单接口）
+ *
+ * @param string $videoUrl 视频页面 URL
+ * @param array  $api      单个接口配置（name/url/type/url_field/headers）
+ * @param array  $config   全局配置（读取 http 超时等参数）
+ * @return string|null
+ */
+function getVideoLinkFromApiEntry(string $videoUrl, array $api, array $config): ?string
+{
+    if (empty($api['url'])) {
+        return null;
+    }
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-        $error = curl_error($ch);
-        curl_close($ch);
+    $targetUrl = $api['url'] . urlencode($videoUrl);
 
-        if ($error || $httpCode !== 200) {
-            continue;
-        }
+    $ch = curl_init();
+    $headers = [];
+    foreach ($api['headers'] ?? [] as $key => $value) {
+        $headers[] = $key . ': ' . $value;
+    }
 
-        switch ($api['type']) {
-            case 'redirect':
-                if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
-                    return $effectiveUrl;
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $targetUrl,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_TIMEOUT        => $config['http']['timeout'],
+        CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
+        CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
+        CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
+        CURLOPT_USERAGENT      => $config['http']['user_agent'],
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_ENCODING       => '',
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($error || $httpCode !== 200) {
+        return null;
+    }
+
+    switch ($api['type'] ?? 'json') {
+        case 'redirect':
+            if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
+                return $effectiveUrl;
+            }
+            $extracted = extractVideoUrl($response);
+            if ($extracted) {
+                return $extracted;
+            }
+            break;
+
+        case 'json':
+            $data = json_decode($response, true);
+            if ($data) {
+                $urlField = $api['url_field'] ?? null;
+                $url = null;
+                // 1) 优先取配置的字段名
+                if ($urlField && isset($data[$urlField])) {
+                    $url = $data[$urlField];
                 }
-                $extracted = extractVideoUrl($response);
-                if ($extracted) {
-                    return $extracted;
+                // 2) 兼容官替接口返回结构 {success, m3u8_url, ad_skip_url}
+                if (!$url && !empty($data['success'])) {
+                    $url = $data['m3u8_url'] ?? $data['ad_skip_url'] ?? null;
                 }
-                break;
+                // 3) 通用字段兜底
+                if (!$url) {
+                    $url = $data['url'] ?? $data['play_url'] ?? $data['data']['url']
+                        ?? $data['data']['play_url'] ?? $data['video_url'] ?? null;
+                }
+                if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
+                    return $url;
+                }
+                $foundUrl = findUrlInArray($data);
+                if ($foundUrl) {
+                    return $foundUrl;
+                }
+            }
+            break;
 
-            case 'json':
-                $data = json_decode($response, true);
-                if ($data) {
-                    $urlField = $api['url_field'] ?? null;
-                    $url = null;
-                    if ($urlField && isset($data[$urlField])) {
-                        $url = $data[$urlField];
-                    }
-                    if (!$url) {
-                        $url = $data['url'] ?? $data['play_url'] ?? $data['data']['url']
-                            ?? $data['data']['play_url'] ?? $data['video_url'] ?? null;
-                    }
-                    if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
-                        return $url;
-                    }
-                    $foundUrl = findUrlInArray($data);
-                    if ($foundUrl) {
-                        return $foundUrl;
-                    }
-                }
-                break;
-
-            case 'text':
-                $trimmed = trim($response);
-                if (filter_var($trimmed, FILTER_VALIDATE_URL)) {
-                    return $trimmed;
-                }
-                break;
-        }
+        case 'text':
+            $trimmed = trim($response);
+            if (filter_var($trimmed, FILTER_VALIDATE_URL)) {
+                return $trimmed;
+            }
+            break;
     }
 
     return null;

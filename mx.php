@@ -3467,6 +3467,98 @@ try {
             ], $result ? 200 : 400);
             break;
 
+        // ============ 嗅探设置（后台「嗅探设置」页面） ============
+        // 配置文件：xt/sniffer_config.php
+        // 作用：控制 xt/ 超级嗅探模块走官解解析还是官替接口
+        case 'sniffer/config':
+            $snifferConfigFile = $rootDir . '/xt/sniffer_config.php';
+            $defaultConfig = [
+                'mode'         => 'official',
+                'official_api' => [
+                    'enabled'    => true,
+                    'name'       => '虾米官解',
+                    'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+                    'type'       => 'json',
+                    'url_field'  => 'play_url',
+                    'headers'    => [],
+                ],
+                'replace_api' => [
+                    'enabled'    => false,
+                    'name'       => '本地官替',
+                    'url'        => '',
+                    'type'       => 'json',
+                    'url_field'  => 'm3u8_url',
+                    'headers'    => [],
+                ],
+                'update_date' => date('Y-m-d H:i:s'),
+            ];
+            $config = $defaultConfig;
+            if (file_exists($snifferConfigFile)) {
+                $fileConfig = require $snifferConfigFile;
+                if (is_array($fileConfig)) {
+                    $config = array_merge($defaultConfig, $fileConfig);
+                    // 确保 official_api / replace_api 子数组也合并默认值
+                    foreach (['official_api', 'replace_api'] as $apiKey) {
+                        if (!isset($config[$apiKey]) || !is_array($config[$apiKey])) {
+                            $config[$apiKey] = $defaultConfig[$apiKey];
+                        } else {
+                            $config[$apiKey] = array_merge($defaultConfig[$apiKey], $config[$apiKey]);
+                        }
+                    }
+                }
+            }
+            sendJsonResponse(['success' => true, 'config' => $config]);
+            break;
+
+        case 'sniffer/config/save':
+            $input = getInputJson();
+            $snifferConfigFile = $rootDir . '/xt/sniffer_config.php';
+
+            // 仅允许白名单字段，防止脏数据写入
+            $mode = ($input['mode'] ?? 'official') === 'replace' ? 'replace' : 'official';
+
+            $buildApiConfig = function ($key) use ($input) {
+                $src = $input[$key] ?? [];
+                return [
+                    'enabled'    => !empty($src['enabled']),
+                    'name'       => trim((string)($src['name'] ?? '')),
+                    'url'        => trim((string)($src['url'] ?? '')),
+                    'type'       => in_array($src['type'] ?? '', ['redirect', 'json', 'text'], true)
+                                    ? $src['type'] : 'json',
+                    'url_field'  => trim((string)($src['url_field'] ?? '')),
+                    'headers'    => is_array($src['headers'] ?? null) ? $src['headers'] : [],
+                ];
+            };
+
+            $newConfig = [
+                'mode'         => $mode,
+                'official_api' => $buildApiConfig('official_api'),
+                'replace_api'  => $buildApiConfig('replace_api'),
+                'update_date'  => date('Y-m-d H:i:s'),
+            ];
+
+            $configContent = '<?php' . "\n"
+                . '/**' . "\n"
+                . ' * 超级嗅探 - 嗅探设置配置文件（由后台自动维护）' . "\n"
+                . ' * 更新时间: ' . $newConfig['update_date'] . "\n"
+                . ' */' . "\n"
+                . 'return ' . var_export($newConfig, true) . ";\n";
+
+            // 目录不存在则创建
+            $snifferDir = dirname($snifferConfigFile);
+            if (!is_dir($snifferDir)) {
+                @mkdir($snifferDir, 0755, true);
+            }
+
+            $result = @file_put_contents($snifferConfigFile, $configContent);
+
+            sendJsonResponse([
+                'success' => $result !== false,
+                'message' => $result !== false ? '嗅探设置保存成功' : '嗅探设置保存失败（请检查 xt/ 目录可写权限）',
+                'config'  => $newConfig,
+            ], $result !== false ? 200 : 400);
+            break;
+
         case 'official_replace/platforms':
             $platforms = $officialReplaceMgr->getPlatforms();
             sendJsonResponse([
@@ -5369,6 +5461,8 @@ try {
                     'official_replace/platform/delete' => '删除官替平台',
                     'official_replace/resolve' => '官替解析-完整结果',
                     'official_replace/info' => '官替解析-精简信息',
+                    'sniffer/config' => '嗅探设置-获取配置',
+                    'sniffer/config/save' => '嗅探设置-保存配置',
                     'pt/status' => 'pt引擎状态（平台适配器/AI/去广告）',
                     'pt/test' => 'pt引擎匹配测试（url参数指定视频链接）',
                     'pt/adskip' => 'pt去广告处理（url参数指定m3u8链接）',

@@ -110,6 +110,50 @@ api.php?url=视频链接&type=raw
 ],
 ```
 
+### 嗅探设置（后台可视化配置）
+
+后台 → 接口工具 → 嗅探设置（🔍 图标），可视化管控解析通道，无需手动改文件。
+
+支持两条通道，可任意切换：
+
+| 通道 | 标识 | 说明 |
+|------|------|------|
+| 官解解析 | `official` | 调用官方解析 API 获取 m3u8/mp4 直链 |
+| 官替接口 | `replace`  | 调用官替 API 获取资源站匹配后的 m3u8 |
+
+- 两个接口各配独立开关 + 接口地址/类型/字段名
+- 通过「当前通道」单选决定实际走哪一条
+- 当前通道失败时自动 fallback 到另一条已启用的通道
+- 配置文件：`xt/sniffer_config.php`（由后台自动维护）
+- API 端点：
+  - `GET  /mx.php?action=sniffer/config`
+  - `POST /mx.php?action=sniffer/config/save`
+
+`xt/sniffer_config.php` 结构示例：
+
+```php
+return [
+    'mode' => 'official',  // official=官解 / replace=官替
+    'official_api' => [
+        'enabled'    => true,
+        'name'       => '虾米官解',
+        'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
+        'type'       => 'json',
+        'url_field'  => 'play_url',
+        'headers'    => [],
+    ],
+    'replace_api' => [
+        'enabled'    => false,
+        'name'       => '本地官替',
+        'url'        => '',  // 留空则使用本项目官替接口
+        'type'       => 'json',
+        'url_field'  => 'm3u8_url',
+        'headers'    => [],
+    ],
+    'update_date' => '2026-07-18 12:00:00',
+];
+```
+
 ## 各端调用示例
 
 ### 网页前端
@@ -170,6 +214,16 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 ```
 
 ## 版本更新日志
+
+### v5.1.6 (2026-07-18)
+
+- 新增后台「嗅探设置」页面：可视化管控嗅探模块走官解解析还是官替接口
+- 支持放置官解/官替两个接口，各配独立开关 + 接口地址/类型/字段名
+- 通过「当前通道」单选决定实际走哪条通道，失败自动 fallback 到另一通道
+- 新增配置文件 `sniffer_config.php`（由后台自动维护）
+- 新增 API 端点 `sniffer/config` 和 `sniffer/config/save`（mx.php）
+- `server.php` 抽取 `getVideoLinkFromApiEntry()` 通用接口调用函数，向后兼容旧 `official_apis`
+- JSON 解析增强：兼容官替接口返回结构 `{success, m3u8_url, ad_skip_url}`
 
 ### v5.1.5 (2026-07-17)
 

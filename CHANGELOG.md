@@ -1,5 +1,59 @@
 # 更新日志
 
+## v5.5.7 (2026-07-18)
+
+### 小版本更新 - 后台新增「嗅探设置」
+
+1. **新增「嗅探设置」后台页面**
+   - 位置：后台 → 接口工具 → 嗅探设置（🔍 图标）
+   - 用于控制超级嗅探模块（`xt/`）走哪条解析通道
+   - 支持两种解析通道，可任意切换：
+     - **官解解析（official）**：调用官方解析 API 获取 m3u8/mp4 直链
+     - **官替接口（replace）**：调用官替 API 获取资源站匹配后的 m3u8
+   - 两个接口各配一个独立开关，再通过「当前通道」单选决定实际走哪一条
+   - 当前通道失败时自动 fallback 到另一条已启用的通道
+   - 内置测试入口，可直接在页面里输入视频链接验证当前嗅探设置效果
+
+2. **后台页面交互细节**
+   - 官解/官替各一个配置卡片：开关 + 接口名称 + 接口地址 + 接口类型（redirect/json/text）+ URL 字段名
+   - 实时状态徽章：显示每个接口是「未启用 / 已启用 / 当前通道」
+   - 切换开关或当前通道时徽章颜色实时变化
+   - 官替接口地址留空时自动使用本项目官替接口 `mx.php?action=official_replace/info&url=`
+   - 保存成功后自动重新加载并显示更新时间
+
+3. **新增配置文件 `xt/sniffer_config.php`**
+   - 由后台「嗅探设置」页面自动读写
+   - 结构：`{ mode, official_api{enabled,name,url,type,url_field,headers}, replace_api{...}, update_date }`
+   - 兼容旧版本：文件不存在时使用 `xt/config.php` 中的默认值
+
+4. **`xt/server.php` 路由逻辑重构**
+   - 新增 `getVideoLinkBySnifferMode()`：根据嗅探设置选择走官解还是官替
+   - 抽取 `getVideoLinkFromApiEntry()` 为通用单接口调用函数（被旧逻辑和新嗅探路由复用）
+   - `callSingleApi()` 包装单个接口配置后调用通用函数
+   - JSON 类型解析增强：兼容官替接口返回结构 `{success, m3u8_url, ad_skip_url}`
+   - 两个通道都未启用时自动 fallback 到旧的 `official_apis` 数组，保证向后兼容
+
+5. **新增 API 端点**
+   - `GET  /mx.php?action=sniffer/config`       — 获取嗅探设置（合并默认值）
+   - `POST /mx.php?action=sniffer/config/save`  — 保存嗅探设置（白名单字段 + 写入 `xt/sniffer_config.php`）
+
+6. **`xt/config.php` 同步更新**
+   - 新增 `sniffer` 配置段（作为 `sniffer_config.php` 不存在时的兜底默认值）
+   - 模块版本号 5.1.5 → 5.1.6
+
+#### 影响文件
+
+- 新增 [xt/sniffer_config.php](file:///workspace/xt/sniffer_config.php) — 嗅探设置配置文件（后台自动维护）
+- 修改 [xt/config.php](file:///workspace/xt/config.php) — 新增 sniffer 默认配置段，版本号 5.1.6
+- 修改 [xt/server.php](file:///workspace/xt/server.php) — 新增嗅探路由 + 抽取通用接口调用函数
+- 修改 [mx.php](file:///workspace/mx.php) — 新增 sniffer/config 和 sniffer/config/save 两个 API 端点
+- 修改 [mxadmin.php](file:///workspace/mxadmin.php) — 新增「嗅探设置」后台页面 + 侧边栏菜单 + JS 逻辑
+- 修改 [version.php](file:///workspace/version.php) — 版本号升级到 v5.5.7
+- 修改 [CHANGELOG.md](file:///workspace/CHANGELOG.md) — 更新日志
+- 修改 [README.md](file:///workspace/README.md) — 功能特性新增「嗅探设置」说明
+
+---
+
 ## v5.5.6 (2026-07-18)
 
 ### Bug 修复 - 平台适配器方法可见性错误
