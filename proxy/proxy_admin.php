@@ -19,7 +19,22 @@ if (!empty($action) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
             
         case 'get_proxies':
-            $result = ['success' => true, 'data' => $proxyMgr->getAllProxies()];
+            $allProxies = $proxyMgr->getAllProxies();
+            // 过滤掉失败的代理，只返回启用的
+            $allProxies = array_filter($allProxies, function($p) {
+                return ($p['status'] ?? 'active') === 'active';
+            });
+            // 按响应时间从快到慢排序
+            usort($allProxies, function($a, $b) {
+                $ta = $a['response_time'] ?? 0;
+                $tb = $b['response_time'] ?? 0;
+                if ($ta > 0 && $tb <= 0) return -1;
+                if ($ta <= 0 && $tb > 0) return 1;
+                if ($ta > 0 && $tb > 0) return $ta - $tb;
+                return ($a['priority'] ?? 100) - ($b['priority'] ?? 100);
+            });
+            $allProxies = array_values($allProxies);
+            $result = ['success' => true, 'data' => $allProxies];
             break;
             
         case 'add_proxy':
@@ -91,6 +106,24 @@ if (!empty($action) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $stats = $proxyMgr->getStats();
 $proxies = $proxyMgr->getAllProxies();
+
+// 过滤掉失败的代理，只显示启用的
+$proxies = array_filter($proxies, function($p) {
+    return ($p['status'] ?? 'active') === 'active';
+});
+
+// 按响应时间从快到慢排序（有响应时间的在前，无响应时间的在后）
+usort($proxies, function($a, $b) {
+    $ta = $a['response_time'] ?? 0;
+    $tb = $b['response_time'] ?? 0;
+    // 有响应时间的排在前面
+    if ($ta > 0 && $tb <= 0) return -1;
+    if ($ta <= 0 && $tb > 0) return 1;
+    // 都有响应时间，按快到慢排序
+    if ($ta > 0 && $tb > 0) return $ta - $tb;
+    // 都没有响应时间，按优先级排序
+    return ($a['priority'] ?? 100) - ($b['priority'] ?? 100);
+});
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
