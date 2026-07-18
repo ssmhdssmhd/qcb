@@ -2132,6 +2132,9 @@ header('Expires: 0');
             .quick-actions {
                 grid-template-columns: repeat(3, 1fr);
             }
+            .api-preview-section > div:first-child {
+                grid-template-columns: 1fr !important;
+            }
             .container { padding: 20px; }
             .header { padding: 14px 20px; }
         }
@@ -2318,7 +2321,7 @@ header('Expires: 0');
             </div>
 
     <div id="accessPreview" class="api-preview-section" style="background:var(--primary-gradient);color:white;padding:24px 32px;font-size:13px;position:relative">
-        <div style="display:flex;flex-direction:column;gap:20px;position:relative;z-index:1">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;position:relative;z-index:1">
             <div style="display:flex;flex-direction:column;gap:14px">
                 <div class="api-card-title">
                     <div class="api-card-icon">🚀</div>
@@ -2338,7 +2341,7 @@ header('Expires: 0');
                         <option value="subtitle" style="color:#333">subtitle - 字幕分析</option>
                         <option value="md5" style="color:#333">md5 - MD5特征码</option>
                     </select>
-                    <div class="access-item" style="flex:1">
+                    <div class="access-item" style="flex:1;min-width:0">
                         <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制"></code>
                         <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">📋 复制</button>
                     </div>
@@ -2348,15 +2351,30 @@ header('Expires: 0');
                     <span>修改下拉类型后，URL 会自动更新。也可直接在 URL 中通过 <code style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:4px;font-size:10px">?type=xxx</code> 指定类型</span>
                 </div>
             </div>
-            <div class="announcement-card">
-                <div class="announcement-header">
-                    <div class="announcement-icon">📢</div>
-                    <div class="announcement-title">最新公告</div>
-                    <div class="announcement-loading" id="announcementLoading">加载中...</div>
+            <div class="admin-preview-card">
+                <div class="admin-preview-header">
+                    <div class="admin-preview-icon">🎛️</div>
+                    <div>
+                        <div class="admin-preview-title">管理后台</div>
+                        <div class="admin-preview-subtitle">点击进入后台管理</div>
+                    </div>
                 </div>
-                <div class="announcement-content" id="announcementContent">
-                    <div style="opacity:0.7">正在获取最新公告...</div>
+                <div style="font-size:12px;opacity:0.8;line-height:1.6;margin-bottom:12px">
+                    支持广告分析、规则管理、AI去广告、批量处理等丰富功能
                 </div>
+                <button style="width:100%;padding:10px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:10px;color:white;font-size:13px;cursor:pointer;font-weight:500;backdrop-filter:blur(10px);transition:all 0.3s" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+                    进入后台 →
+                </button>
+            </div>
+        </div>
+        <div class="announcement-card" style="margin-top:20px;position:relative;z-index:1">
+            <div class="announcement-header">
+                <div class="announcement-icon">📢</div>
+                <div class="announcement-title">最新公告</div>
+                <div class="announcement-loading" id="announcementLoading">加载中...</div>
+            </div>
+            <div class="announcement-content" id="announcementContent">
+                <div style="opacity:0.7">正在获取最新公告...</div>
             </div>
         </div>
         <div class="api-preview-bottom"></div>
