@@ -814,12 +814,16 @@ header('Expires: 0');
         .access-item code {
             cursor: pointer;
             user-select: all;
-            word-break: break-all;
             font-size: 12px;
             font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            color: white !important;
             flex: 1;
             min-width: 0;
             line-height: 1.5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
         }
         .access-item code:hover {
             opacity: 0.9;
@@ -902,6 +906,7 @@ header('Expires: 0');
         }
         
         .api-type-select {
+            width: auto !important;
             background: rgba(255,255,255,0.18) !important;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
@@ -2337,8 +2342,8 @@ header('Expires: 0');
                     <option value="subtitle" style="color:#333">subtitle - 字幕分析</option>
                     <option value="md5" style="color:#333">md5 - MD5特征码</option>
                 </select>
-                <div class="access-item" style="flex:1;min-width:0;overflow:hidden">
-                    <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></code>
+                <div class="access-item" style="flex:1">
+                    <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制"></code>
                     <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">📋 复制</button>
                 </div>
             </div>
@@ -9212,7 +9217,12 @@ header('Expires: 0');
 
         function updateV2ApiUrl() {
             const path = window.location.pathname;
-            const base = window.location.origin + path.substring(0, path.lastIndexOf('/') + 1).replace(/\/$/, '');
+            const lastSlash = path.lastIndexOf('/');
+            let baseDir = '';
+            if (lastSlash > 0) {
+                baseDir = path.substring(0, lastSlash);
+            }
+            const base = window.location.origin + baseDir;
             const typeSelect = document.getElementById('v2TypeSelect');
             const type = typeSelect ? typeSelect.value : 'parse';
             const urlEl = document.getElementById('preview-v2-api');

@@ -258,6 +258,20 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 
 ## 版本更新日志
 
+### v5.7.0 (2026-07-18)
+
+- 🐛 **修复顶部统一接口不显示接口URL的问题**
+  - 问题根因：全局 CSS 规则 `select { width: 100% }` 导致下拉框占满整行，URL区域被挤压至不可见
+  - 修复方案：为 `.api-type-select` 添加 `width: auto !important` 覆盖全局样式
+  - 下拉框保持 `min-width: 180px` 最小宽度，URL区域正常占据剩余空间
+
+### v5.6.9 (2026-07-18)
+
+- 🐛 **修复顶部统一接口不显示接口信息的问题**
+  - 增加 `color: white !important` 确保 URL 文字颜色为白色
+  - 修复 ellipsis 省略显示：`display:block + white-space:nowrap + overflow:hidden + text-overflow:ellipsis`
+  - 优化 base 路径计算逻辑，兼容根目录和子目录部署
+
 ### v5.6.8 (2026-07-18)
 
 - 🐛 **修复顶部接口 URL 不显示的问题**：优化 base 路径计算，兼容任意入口文件名

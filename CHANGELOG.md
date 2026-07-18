@@ -1,5 +1,35 @@
 # 更新日志
 
+## v5.7.0 (2026-07-18)
+
+### 修复顶部统一接口不显示接口URL
+
+#### 问题根因
+
+全局CSS规则设置了 `select { width: 100% }`，导致顶部接口区域的下拉选择框（`.api-type-select`）占满了整个行的宽度，把右侧的URL显示区域（`.access-item`）挤得只剩复制按钮的宽度（30px），因此接口URL文字完全看不到。
+
+#### 修复内容
+
+- 为 `.api-type-select` 添加 `width: auto !important`，覆盖全局的 `width: 100%`
+- 下拉框保持 `min-width: 180px` 的最小宽度，同时不会撑满整行
+- URL显示区域正常占据剩余空间，接口地址完整可见
+
+## v5.6.9 (2026-07-18)
+
+### 修复顶部统一接口不显示接口信息
+
+#### 问题根因
+
+1. `.access-item code` 缺少显式的 `color: white`，在某些主题/浏览器下文字颜色不可见
+2. `text-overflow: ellipsis` 需要配合 `display:block + white-space:nowrap + overflow:hidden` 才生效
+3. base 路径计算在根目录部署时可能有问题
+
+#### 修复内容
+
+- 增加 `color: white !important` 确保 URL 文字可见
+- 完善 ellipsis 样式：`display:block + white-space:nowrap + overflow:hidden + text-overflow:ellipsis`
+- 优化 base 路径计算逻辑，兼容根目录和子目录部署
+
 ## v5.6.8 (2026-07-18)
 
 ### 修复接口URL不显示 + 移除管理后台卡片
