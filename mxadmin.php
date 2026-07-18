@@ -2132,9 +2132,6 @@ header('Expires: 0');
             .quick-actions {
                 grid-template-columns: repeat(3, 1fr);
             }
-            .api-preview-section > div:first-child {
-                grid-template-columns: 1fr !important;
-            }
             .container { padding: 20px; }
             .header { padding: 14px 20px; }
         }
@@ -2321,50 +2318,33 @@ header('Expires: 0');
             </div>
 
     <div id="accessPreview" class="api-preview-section" style="background:var(--primary-gradient);color:white;padding:24px 32px;font-size:13px;position:relative">
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;position:relative;z-index:1">
-            <div style="display:flex;flex-direction:column;gap:14px">
-                <div class="api-card-title">
-                    <div class="api-card-icon">🚀</div>
-                    <div>
-                        <div class="api-card-label">V2 统一接口</div>
-                        <div class="api-card-name">支持所有类型，通过 type 参数切换</div>
-                    </div>
-                </div>
-                <div class="api-url-row">
-                    <select id="v2TypeSelect" onchange="updateV2ApiUrl()" class="api-type-select">
-                        <option value="parse" style="color:#333">parse - 统一解析</option>
-                        <option value="info" style="color:#333">info - 解析详情</option>
-                        <option value="mxjx" style="color:#333">mxjx - 去广告M3U8</option>
-                        <option value="deep" style="color:#333">deep - 深度去广告</option>
-                        <option value="official" style="color:#333">official - 官替解析</option>
-                        <option value="analyze" style="color:#333">analyze - 广告分析</option>
-                        <option value="subtitle" style="color:#333">subtitle - 字幕分析</option>
-                        <option value="md5" style="color:#333">md5 - MD5特征码</option>
-                    </select>
-                    <div class="access-item" style="flex:1;min-width:0">
-                        <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制"></code>
-                        <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">📋 复制</button>
-                    </div>
-                </div>
-                <div class="api-hint">
-                    <span class="api-hint-dot"></span>
-                    <span>修改下拉类型后，URL 会自动更新。也可直接在 URL 中通过 <code style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:4px;font-size:10px">?type=xxx</code> 指定类型</span>
+        <div style="display:flex;flex-direction:column;gap:14px;position:relative;z-index:1">
+            <div class="api-card-title">
+                <div class="api-card-icon">🚀</div>
+                <div>
+                    <div class="api-card-label">V2 统一接口</div>
+                    <div class="api-card-name">支持所有类型，通过 type 参数切换</div>
                 </div>
             </div>
-            <div class="admin-preview-card">
-                <div class="admin-preview-header">
-                    <div class="admin-preview-icon">🎛️</div>
-                    <div>
-                        <div class="admin-preview-title">管理后台</div>
-                        <div class="admin-preview-subtitle">点击进入后台管理</div>
-                    </div>
+            <div class="api-url-row">
+                <select id="v2TypeSelect" onchange="updateV2ApiUrl()" class="api-type-select">
+                    <option value="parse" style="color:#333">parse - 统一解析</option>
+                    <option value="info" style="color:#333">info - 解析详情</option>
+                    <option value="mxjx" style="color:#333">mxjx - 去广告M3U8</option>
+                    <option value="deep" style="color:#333">deep - 深度去广告</option>
+                    <option value="official" style="color:#333">official - 官替解析</option>
+                    <option value="analyze" style="color:#333">analyze - 广告分析</option>
+                    <option value="subtitle" style="color:#333">subtitle - 字幕分析</option>
+                    <option value="md5" style="color:#333">md5 - MD5特征码</option>
+                </select>
+                <div class="access-item" style="flex:1;min-width:0;overflow:hidden">
+                    <code id="preview-v2-api" onclick="copyText(this.textContent)" title="点击复制" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></code>
+                    <button class="copy-btn" onclick="copyText(document.getElementById('preview-v2-api').textContent)">📋 复制</button>
                 </div>
-                <div style="font-size:12px;opacity:0.8;line-height:1.6;margin-bottom:12px">
-                    支持广告分析、规则管理、AI去广告、批量处理等丰富功能
-                </div>
-                <button style="width:100%;padding:10px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:10px;color:white;font-size:13px;cursor:pointer;font-weight:500;backdrop-filter:blur(10px);transition:all 0.3s" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
-                    进入后台 →
-                </button>
+            </div>
+            <div class="api-hint">
+                <span class="api-hint-dot"></span>
+                <span>修改下拉类型后，URL 会自动更新。也可直接在 URL 中通过 <code style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:4px;font-size:10px">?type=xxx</code> 指定类型</span>
             </div>
         </div>
         <div class="announcement-card" style="margin-top:20px;position:relative;z-index:1">
@@ -9231,7 +9211,8 @@ header('Expires: 0');
         }
 
         function updateV2ApiUrl() {
-            const base = window.location.origin + window.location.pathname.replace(/mxadmin\.php$/, '').replace(/\/$/, '');
+            const path = window.location.pathname;
+            const base = window.location.origin + path.substring(0, path.lastIndexOf('/') + 1).replace(/\/$/, '');
             const typeSelect = document.getElementById('v2TypeSelect');
             const type = typeSelect ? typeSelect.value : 'parse';
             const urlEl = document.getElementById('preview-v2-api');
