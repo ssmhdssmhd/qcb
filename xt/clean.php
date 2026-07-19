@@ -71,7 +71,55 @@ function shouldShowPlayerPage(): bool
         return true;
     }
     
-    return false;
+    $acceptHeader = isset($_SERVER['HTTP_ACCEPT']) ? strtolower($_SERVER['HTTP_ACCEPT']) : '';
+    if (strpos($acceptHeader, 'text/html') === false) {
+        return false;
+    }
+    
+    if (strpos($acceptHeader, 'application/vnd.apple.mpegurl') !== false) {
+        return false;
+    }
+    
+    if (strpos($acceptHeader, 'application/x-mpegurl') !== false) {
+        return false;
+    }
+    
+    $userAgent = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower($_SERVER['HTTP_USER_AGENT']) : '';
+    
+    $playerKeywords = [
+        'hls.js',
+        'videojs',
+        'video.js',
+        'jwplayer',
+        'flowplayer',
+        'clappr',
+        'mediaelement',
+        'shaka',
+        'exoplayer',
+        'avplayer',
+        'vlc',
+        'mpv',
+        'ffmpeg',
+        'curl',
+        'wget',
+        'python',
+        'node',
+        'okhttp',
+        'nsurlsession',
+    ];
+    
+    foreach ($playerKeywords as $keyword) {
+        if (strpos($userAgent, $keyword) !== false) {
+            return false;
+        }
+    }
+    
+    $rangeHeader = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : '';
+    if (!empty($rangeHeader)) {
+        return false;
+    }
+    
+    return true;
 }
 
 function getBrowserName(): string
