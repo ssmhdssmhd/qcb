@@ -1,5 +1,38 @@
 # 更新日志
 
+## v5.7.2 (2026-07-19)
+
+### 修复 xt 文件夹中 clean.php 不能播放的问题
+
+#### 问题根因
+
+1. **浏览器检测逻辑过于宽泛**：`isBrowserRequest()` 函数通过 User-Agent 中的 "Mozilla/" 等关键词判断是否为浏览器请求，但 HLS.js 等播放器请求 m3u8 时也会携带浏览器 User-Agent（因为是在浏览器环境中运行），导致被误判为浏览器请求
+2. **返回 HTML 而非 m3u8**：被误判为浏览器请求后，返回 HTML 播放器页面而不是 m3u8 内容，导致播放器无法解析，播放失败
+3. **判断逻辑顺序错误**：原来的逻辑是先判断 User-Agent，再判断 Accept 头，导致即使 Accept 头明确请求 m3u8 类型，也会被 User-Agent 拦截
+
+#### 修复内容
+
+**1. 重写浏览器检测逻辑为 `shouldShowPlayerPage()`**
+- 新增 `player=1` 参数显式控制：`clean.php?id=xxx&player=1` 强制显示播放器页面
+- 优先检查 Accept 头：如果 Accept 不包含 `text/html`，直接返回 m3u8
+- 排除 m3u8 类型请求：如果 Accept 包含 `application/vnd.apple.mpegurl` 或 `application/x-mpegurl`，返回 m3u8
+- 排除播放器关键词：User-Agent 中包含 hls.js、videojs、exoplayer、vlc 等播放器标识时，返回 m3u8
+- 排除 Range 请求：有 Range 头的请求（通常是视频分片请求），返回 m3u8
+- 只有同时满足"Accept包含text/html"且"不是播放器请求"时，才显示播放器页面
+
+**2. 优化播放器页面的 m3u8 URL 生成**
+- 使用更可靠的方式构造 m3u8 URL，避免 URL 参数混乱
+- 播放器页面中的 HLS.js 直接请求纯 m3u8 内容，不会再次触发播放器页面
+
+**3. 移除重复的 header 设置**
+- 原来代码中有两处设置 Content-Type 和缓存头，清理为一处
+
+#### 影响范围
+
+- xt/clean.php 去广告 m3u8 播放代理
+- 所有通过 HLS.js、Video.js 等网页播放器播放的视频
+- 所有调用 api.php 返回的播放链接
+
 ## v5.7.1 (2026-07-18)
 
 ### 修复所有用到代理的地方代理无法使用的问题

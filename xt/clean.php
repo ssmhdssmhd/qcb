@@ -4,6 +4,7 @@
  *
  * 功能：根据缓存 ID 输出去广告后的 m3u8 内容，供前端播放器直接使用
  * 用法：clean.php?id=CACHE_ID
+ *      clean.php?id=CACHE_ID&player=1  (在浏览器中显示播放器页面)
  */
 
 $config = require __DIR__ . '/config.php';
@@ -64,51 +65,61 @@ if (!$data || !isset($data['content'])) {
 $cleanM3u8 = $data['content'];
 $originalUrl = $data['original_url'] ?? '';
 
-header('Content-Type: application/vnd.apple.mpegurl');
-header('Cache-Control: public, max-age=3600');
-header('ETag: "' . md5($cleanM3u8) . '"');
-header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $fileMtime) . ' GMT');
-
-if (isset($_SERVER['HTTP_IF_NONE_MATCH']) && trim($_SERVER['HTTP_IF_NONE_MATCH'], '"') === md5($cleanM3u8)) {
-    http_response_code(304);
-    exit;
-}
-
-function isBrowserRequest(): bool
+function shouldShowPlayerPage(): bool
 {
-    $userAgent = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower($_SERVER['HTTP_USER_AGENT']) : '';
-    
-    $browserKeywords = [
-        'mozilla/',
-        'chrome/',
-        'edg/',
-        'safari/',
-        'opera/',
-        'firefox/',
-        'msie',
-        'trident/',
-        'brave/',
-        'vivaldi/',
-        'ucbrowser/',
-        'qqbrowser/',
-        '360se/',
-        '360ee/',
-        'maxthon/',
-        'sogou',
-    ];
-    
-    foreach ($browserKeywords as $keyword) {
-        if (strpos($userAgent, $keyword) !== false) {
-            return true;
-        }
-    }
-    
-    $acceptHeader = isset($_SERVER['HTTP_ACCEPT']) ? strtolower($_SERVER['HTTP_ACCEPT']) : '';
-    if (strpos($acceptHeader, 'text/html') !== false) {
+    if (isset($_GET['player']) && $_GET['player'] === '1') {
         return true;
     }
     
-    return false;
+    $acceptHeader = isset($_SERVER['HTTP_ACCEPT']) ? strtolower($_SERVER['HTTP_ACCEPT']) : '';
+    if (strpos($acceptHeader, 'text/html') === false) {
+        return false;
+    }
+    
+    if (strpos($acceptHeader, 'application/vnd.apple.mpegurl') !== false) {
+        return false;
+    }
+    
+    if (strpos($acceptHeader, 'application/x-mpegurl') !== false) {
+        return false;
+    }
+    
+    $userAgent = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower($_SERVER['HTTP_USER_AGENT']) : '';
+    
+    $playerKeywords = [
+        'hls.js',
+        'videojs',
+        'video.js',
+        'jwplayer',
+        'flowplayer',
+        'clappr',
+        'mediaelement',
+        'shaka',
+        'exoplayer',
+        'avplayer',
+        'vlc',
+        'mpv',
+        'ffmpeg',
+        'curl',
+        'wget',
+        'python',
+        'node',
+        'okhttp',
+        'nsurlsession',
+    ];
+    
+    foreach ($playerKeywords as $keyword) {
+        if (strpos($userAgent, $keyword) !== false) {
+            return false;
+        }
+    }
+    
+    $rangeHeader = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : '';
+    if (!empty($rangeHeader)) {
+        return false;
+    }
+    
+    return true;
 }
 
 function getBrowserName(): string
@@ -136,15 +147,17 @@ function getBrowserName(): string
     return 'Unknown Browser';
 }
 
-if (isBrowserRequest()) {
+if (shouldShowPlayerPage()) {
     $currentUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') 
         . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
-    $m3u8Url = str_replace('clean.php', 'clean.php?stream=1', $currentUrl);
+    $m3u8Url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+        . '://' . $_SERVER['HTTP_HOST']
+        . strtok($_SERVER['REQUEST_URI'], '?')
+        . '?id=' . $cacheId;
     
-    if (!isset($_GET['stream'])) {
-        header('Content-Type: text/html; charset=utf-8');
-        $browserName = getBrowserName();
-        echo <<<HTML
+    header('Content-Type: text/html; charset=utf-8');
+    $browserName = getBrowserName();
+    echo <<<HTML
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -319,8 +332,7 @@ if (isBrowserRequest()) {
 </body>
 </html>
 HTML;
-        exit;
-    }
+    exit;
 }
 
 header('Content-Type: application/vnd.apple.mpegurl');
