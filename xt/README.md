@@ -258,6 +258,14 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 
 ## 版本更新日志
 
+### v5.7.6 (2026-07-19)
+
+- 🐛 **修复 jiexi.php 解析返回的 clean.php URL 路径错误导致不能播放**
+  - 问题：`saveCleanM3u8()` 用 `dirname(SCRIPT_NAME)` 推断路径，jiexi.php 在根目录时生成 `http://host/clean.php?id=xxx`（404）
+  - 修复：改用 `__DIR__`（server.php 所在目录，即 `xt/`）相对 `DOCUMENT_ROOT` 推断 URL 路径
+  - 修复后生成 `http://host/xt/clean.php?id=xxx`，无论从根目录还是 xt/ 调用都正确
+  - 兜底：DOCUMENT_ROOT 不可用时，调用方在根目录则强制补 `/xt`
+
 ### v5.7.5 (2026-07-19)
 
 - 🚀 **修复 jiexi.php 不能同时调用官解和官替**

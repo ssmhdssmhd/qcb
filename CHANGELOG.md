@@ -1,5 +1,54 @@
 # 更新日志
 
+## v5.7.6 (2026-07-19)
+
+### 修复 jiexi.php 解析返回的 clean.php URL 路径错误导致不能播放
+
+#### 问题现象
+
+调用 `http://114.134.184.91:9002/jiexi.php?url=...` 解析腾讯视频，返回结果：
+
+```json
+{
+  "code": 200,
+  "msg": "解析成功",
+  "url": "http://114.134.184.91:9002/clean.php?id=50a555ed8b0c08f1",
+  "info": "TVBox影视专用解析"
+}
+```
+
+URL `http://114.134.184.91:9002/clean.php?id=...` **不能播放**，访问 404。
+
+#### 问题根因
+
+`saveCleanM3u8()` 函数用 `dirname($_SERVER['SCRIPT_NAME'])` 推断 clean.php 的 URL 路径：
+
+| 调用入口 | SCRIPT_NAME | dirname(SCRIPT_NAME) | 生成的 URL | 是否正确 |
+|---------|------------|---------------------|-----------|---------|
+| `/xt/api.php` | `/xt/api.php` | `/xt` | `http://host/xt/clean.php?id=xxx` | ✅ |
+| `/jiexi.php`（根目录） | `/jiexi.php` | `/` | `http://host/clean.php?id=xxx` | ❌ |
+
+**clean.php 实际位置始终在 `/xt/clean.php`**，但通过根目录的 jiexi.php 调用时，路径推断成了根目录，导致 404 无法播放。
+
+#### 修复内容
+
+`saveCleanM3u8()` 改用 `__DIR__`（server.php 所在目录，即 `xt/`）推断 clean.php 的 URL 路径：
+
+1. 优先：用 `__DIR__` 相对 `DOCUMENT_ROOT` 的路径计算 URL 路径
+   - `__DIR__ = /var/www/html/xt`，`DOCUMENT_ROOT = /var/www/html` → URL 路径 = `/xt`
+2. 兜底：如果 DOCUMENT_ROOT 不可用或路径不匹配，用 SCRIPT_NAME 推断
+   - 调用方在根目录时（如 jiexi.php），强制补 `/xt`
+   - 调用方在子目录时，沿用该子目录
+
+修复后，无论从根目录的 jiexi.php、mx.php，还是 xt/ 目录的 api.php 调用，都能正确生成 `/xt/clean.php?id=xxx` 的可播放 URL。
+
+#### 影响范围
+
+- ✅ jiexi.php 解析接口：返回的 clean.php URL 现在可以正常播放
+- ✅ mx.php 后台解析：行为不变（已经在 xt/ 目录）
+- ✅ xt/api.php：行为不变（已经在 xt/ 目录）
+- ✅ TVBox / 影视App：解析结果可直接播放
+
 ## v5.7.5 (2026-07-19)
 
 ### 修复 jiexi.php 不能同时调用官解和官替，多线程高并发提速

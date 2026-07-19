@@ -405,6 +405,13 @@ MIT License
 
 ## 版本历史
 
+### v5.7.6 (2026-07-19)
+
+- 🐛 修复 jiexi.php 解析返回的 clean.php URL 路径错误导致不能播放
+- 🔧 `saveCleanM3u8()` 改用 `__DIR__` 推断 clean.php 的 URL 路径
+- 🐛 旧逻辑用 `dirname(SCRIPT_NAME)` 推断路径，jiexi.php 在根目录时生成 `/clean.php`（404）
+- ✅ 修复后生成正确的 `/xt/clean.php?id=xxx`，无论从根目录还是 xt/ 调用都正确
+
 ### v5.7.5 (2026-07-19)
 
 - 🚀 修复 jiexi.php 不能同时调用官解和官替的问题

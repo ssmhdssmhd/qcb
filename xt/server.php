@@ -831,9 +831,28 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
 
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
 
-    return $protocol . '://' . $host . rtrim($scriptDir, '/') . '/clean.php?id=' . $cacheId;
+    // clean.php 与 server.php 同目录（均为 xt/），用 __DIR__ 推断 URL 路径，
+    // 而非 SCRIPT_NAME（jiexi.php 在根目录时 dirname(SCRIPT_NAME)='/' 会生成错误的根路径）
+    // __DIR__ = /var/www/html/xt，DOCUMENT_ROOT = /var/www/html → URL 路径 = /xt
+    $docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/') : '';
+    $serverDir = rtrim(__DIR__, '/');
+    $urlPath = '';
+    if ($docRoot !== '' && strpos($serverDir, $docRoot) === 0) {
+        $relative = substr($serverDir, strlen($docRoot));
+        $urlPath = rtrim($relative, '/');
+    } else {
+        // 兜底：xt/ 目录的 URL 路径
+        $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+        // 如果调用方在根目录（如 jiexi.php），则强制补 /xt
+        if ($scriptDir === '/' || $scriptDir === '\\') {
+            $urlPath = '/xt';
+        } else {
+            $urlPath = rtrim($scriptDir, '/');
+        }
+    }
+
+    return $protocol . '://' . $host . $urlPath . '/clean.php?id=' . $cacheId;
 }
 
 /**
