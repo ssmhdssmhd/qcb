@@ -1,5 +1,55 @@
 # 更新日志
 
+## v5.7.5 (2026-07-19)
+
+### 修复 jiexi.php 不能同时调用官解和官替，多线程高并发提速
+
+#### 问题分析
+
+之前 jiexi.php → parseVideo() → getVideoLinkBySnifferMode() 的调用链：
+- 根据 `sniffer.mode` 选择走 official 或 replace 通道
+- 当前通道失败时才 fallback 到另一通道
+- 即使开启了 `race_mode`，也只是对 `official_apis` 数组内多个官解接口并发，**官解和官替之间是串行 fallback**，没有真正"同时调用"
+
+#### 修复内容
+
+**1. 新增 `getVideoLinkByConcurrentRace()` 函数（xt/server.php）**
+- 把所有已启用的官解接口（`sniffer.official_apis` / `sniffer.official_api` / `official_apis`）和官替接口（`sniffer.replace_api`）合并到**同一个 curl_multi 并发池**
+- 用 PHP 的 curl_multi 扩展同时发起多个 HTTP 请求，**真正实现多线程并发**
+- 谁先返回有效结果就立即采用，自动取消其他正在进行的请求
+- 自动识别命中的是 official 还是 replace 通道（通过 `_channel` 标记），后续 `parseVideoByOfficialChannel` / `parseVideoByReplaceChannel` 按通道分流处理
+- 总耗时 ≈ 最快的那个接口的耗时，而非多个接口耗时之和
+
+**2. 修改 `parseVideo()` 主流程**
+- 新增 `concurrent_race_enabled` 开关判断分支
+- 开启时调用 `getVideoLinkByConcurrentRace()`（并发模式）
+- 关闭时维持原有 `getVideoLinkBySnifferMode()` 逻辑（向后兼容）
+
+**3. 并发模式下的强制行为**
+- 即使后台「嗅探设置」中 `replace_api.enabled = false`，并发模式也会**强制启用官替**（自动用本地官替接口 `mx.php?action=official_replace/info`）
+- 确保两条通道同时跑，真正实现"同时调用官解和官替"
+- `max_concurrent` 自动扩展为接口总数，避免某通道被排到剩余队列串行调用
+
+**4. 新增配置项（xt/config.php）**
+- `performance.concurrent_race_enabled`（默认 `true`）：是否同时调用官解和官替
+- 与原有的 `race_mode`（官解数组内并发）配合，形成两级并发
+
+#### 性能提升
+
+| 场景 | 旧逻辑（串行 fallback） | 新逻辑（并发竞速） |
+|------|------------------------|-------------------|
+| 官解 2s 成功 | 2s | 2s |
+| 官解失败，官替 3s 成功 | 5s+（官解超时后串行调官替） | 3s（同时并发，官替先成功） |
+| 官解 4s，官替 1.5s 成功 | 4s（官解优先，先成功） | 1.5s（官替先成功，官解被取消） |
+| 都失败 | 5s+（串行累加） | max(超时) 并发失败 |
+
+#### 影响范围
+
+- ✅ jiexi.php 解析接口：同时调用官解和官替，速度大幅提升
+- ✅ mx.php 后台解析：同步受益
+- ✅ TVBox / 影视App：解析响应更快，首屏等待更短
+- ✅ 向后兼容：关闭 `concurrent_race_enabled` 即可回到旧逻辑
+
 ## v5.7.4 (2026-07-19)
 
 ### 优化 clean.php 播放器页面，移除多余 UI 元素

@@ -71,7 +71,15 @@ function parseVideo(string $videoUrl): array
     // 步骤1：根据嗅探设置选择走官解解析还是官替接口
     //   - 官解通道 (official)：调用虾米官解接口，返回原始 m3u8/mp4 直链，需 xt 去广告
     //   - 官替通道 (replace) ：从资源站匹配 + AI 去广告/去插播/去水印，输出最终链接
-    $sniffResult = getVideoLinkBySnifferMode($videoUrl, $config);
+    //
+    // v5.7.5 新增：concurrent_race_enabled 开启时，同时并发调用官解 + 官替，
+    //              最快成功的接口立即返回，自动识别通道（official/replace）
+    $concurrentRace = !empty($config['performance']['concurrent_race_enabled']);
+    if ($concurrentRace) {
+        $sniffResult = getVideoLinkByConcurrentRace($videoUrl, $config);
+    } else {
+        $sniffResult = getVideoLinkBySnifferMode($videoUrl, $config);
+    }
     $videoLink   = $sniffResult['url'];
     $sniffSource = $sniffResult['source'];  // 'official' | 'replace' | null
 
@@ -368,6 +376,115 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
     if (!empty($config['official_apis'])) {
         $link = getVideoLinkFromOfficialApi($videoUrl, $config);
         if ($link) return ['url' => $link, 'source' => 'official'];
+    }
+
+    return ['url' => null, 'source' => null];
+}
+
+/**
+ * 同时并发调用官解 + 官替（v5.7.5 新增）
+ *
+ * 把所有已启用的官解接口（sniffer.official_apis / sniffer.official_api / official_apis）
+ * 和官替接口（sniffer.replace_api）合并到同一个 curl_multi 并发池，
+ * 谁先返回有效结果就立即采用，并自动识别命中的是 official 还是 replace 通道，
+ * 后续 parseVideoByOfficialChannel / parseVideoByReplaceChannel 按通道分流处理。
+ *
+ * 优势：
+ *   - 真正的"同时调用"：官解和官替不再串行 fallback
+ *   - 多线程高并发：curl_multi 同时发起多个 HTTP 请求
+ *   - 速度快：最快成功的接口立即返回，总耗时≈最快的那个接口
+ *
+ * @param string $videoUrl 视频页面 URL
+ * @param array  $config   全局配置
+ * @return array {
+ *     url:    string|null  视频直链 (m3u8/mp4)，失败返回 null
+ *     source: string|null  实际命中通道 'official' | 'replace' | null
+ * }
+ */
+function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
+{
+    $sniffer  = $config['sniffer'] ?? [];
+    $perfCfg  = $config['performance'] ?? [];
+
+    static $optimizer = null;
+    if ($optimizer === null) {
+        $optimizer = new PerformanceOptimizer($config);
+    }
+
+    // ============ 收集所有已启用的接口，打上 _channel 标记 ============
+    $allApis = [];
+
+    // 1. 官解接口：sniffer.official_apis 数组（后台维护）
+    if (!empty($sniffer['official_apis']) && is_array($sniffer['official_apis'])) {
+        foreach ($sniffer['official_apis'] as $api) {
+            if (!empty($api['enabled']) && !empty($api['url'])) {
+                $api['_channel'] = 'official';
+                $allApis[] = $api;
+            }
+        }
+    }
+    // 2. 官解接口：sniffer.official_api 单接口（旧配置兼容）
+    if (empty($allApis) && !empty($sniffer['official_api'])) {
+        $officialApi = $sniffer['official_api'];
+        if (!empty($officialApi['enabled']) && !empty($officialApi['url'])) {
+            $officialApi['_channel'] = 'official';
+            $allApis[] = $officialApi;
+        }
+    }
+    // 3. 官解接口：顶层 official_apis 数组（更老的兼容字段）
+    if (empty($allApis) && !empty($config['official_apis'])) {
+        foreach ($config['official_apis'] as $api) {
+            $api['_channel'] = 'official';
+            $allApis[] = $api;
+        }
+    }
+
+    // 4. 官替接口：sniffer.replace_api
+    //    并发模式下：即使后台开关关闭，也强制启用官替（用本地官替接口）
+    //    这样才能真正实现"同时调用官解和官替"
+    $replaceApi = $sniffer['replace_api'] ?? [];
+    $replaceEnabled = !empty($replaceApi['enabled']) || !empty($perfCfg['concurrent_race_enabled']);
+
+    // 官替接口 URL 为空时，自动使用本项目官替接口
+    if ($replaceEnabled && empty($replaceApi['url'])) {
+        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+        $scriptDir = $scriptDir === '/' ? '' : $scriptDir;
+        $baseUrl = $scheme . '://' . $host . $scriptDir;
+        $replaceApi['url'] = $baseUrl . '/mx.php?action=official_replace/info&url=';
+        $replaceApi['type'] = 'json';
+        $replaceApi['url_field'] = 'ad_skip_url';
+        $replaceApi['name'] = $replaceApi['name'] ?: '本地官替';
+    }
+
+    if ($replaceEnabled && !empty($replaceApi['url'])) {
+        $replaceApi['_channel'] = 'replace';
+        $allApis[] = $replaceApi;
+    }
+
+    if (empty($allApis)) {
+        return ['url' => null, 'source' => null];
+    }
+
+    // ============ AI 学习自动排序（按历史成功率/耗时） ============
+    if (!empty($perfCfg['ai_sort_enabled']) && count($allApis) > 1) {
+        $allApis = $optimizer->sortApisByScore($allApis);
+    }
+
+    $maxConcurrent = max(2, (int)($perfCfg['max_concurrent'] ?? 3));
+    // 确保并发数至少能覆盖官解+官替两条通道，避免某通道被排到剩余队列串行调用
+    if (count($allApis) > $maxConcurrent) {
+        $maxConcurrent = count($allApis);
+    }
+    $timeout = (float)($perfCfg['timeout'] ?? 15.0);
+
+    // ============ curl_multi 并发竞速 ============
+    $result = $optimizer->concurrentRaceRequest($allApis, $videoUrl, $maxConcurrent, $timeout);
+
+    if (!empty($result['url']) && !empty($result['api'])) {
+        $source = $result['api']['_channel'] ?? 'official';
+        return ['url' => $result['url'], 'source' => $source];
     }
 
     return ['url' => null, 'source' => null];

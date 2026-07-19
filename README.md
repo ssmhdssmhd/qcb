@@ -405,6 +405,16 @@ MIT License
 
 ## 版本历史
 
+### v5.7.5 (2026-07-19)
+
+- 🚀 修复 jiexi.php 不能同时调用官解和官替的问题
+- ⚡ 新增 `getVideoLinkByConcurrentRace()`：curl_multi 并发调用官解+官替，最快成功的立即返回
+- 🧵 多线程高并发：合并所有已启用接口到同一并发池，真正同时请求
+- 🎯 自动识别通道：通过 `_channel` 标记区分 official/replace，后续按通道分流处理
+- 🔧 新增配置项 `performance.concurrent_race_enabled`（默认 `true`）
+- 💡 并发模式下强制启用官替，即使后台开关关闭也会自动用本地官替接口
+- ✅ 向后兼容：关闭开关即回到旧的串行 fallback 逻辑
+
 ### v5.7.4 (2026-07-19)
 
 - 🎬 优化 clean.php 播放器页面，移除多余 UI 元素
