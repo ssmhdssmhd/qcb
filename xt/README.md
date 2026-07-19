@@ -258,6 +258,14 @@ AdFilter.php 广告识别（规则引擎 + AI 辅助）
 
 ## 版本更新日志
 
+### v5.7.3 (2026-07-19)
+
+- 🔧 **优化更新备份功能**
+  - 备份文件名增加版本号：`backup_v{version}_{timestamp}.zip`，如 `backup_v5.7.3_20260719_143000.zip`
+  - 备份文件内添加 `.backup_info.json` 版本信息文件，包含 version、commit、创建时间等
+  - getBackupList() 返回版本号、commit、commit_short 等详细信息
+  - 兼容旧格式备份文件（无版本号时显示"未知版本"）
+
 ### v5.7.2 (2026-07-19)
 
 - 🐛 **修复 xt/clean.php 不能播放的问题**

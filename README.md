@@ -405,6 +405,13 @@ MIT License
 
 ## 版本历史
 
+### v5.7.3 (2026-07-19)
+
+- 🔧 优化更新备份功能，备份文件名增加版本号：`backup_v{version}_{timestamp}.zip`
+- 📦 备份文件内添加 `.backup_info.json` 版本信息文件
+- 📋 getBackupList() 返回版本号、commit 等详细信息
+- ⚡ 兼容旧格式备份文件
+
 ### v5.7.2 (2026-07-19)
 
 - 🐛 修复 xt 文件夹中 clean.php 不能播放的问题

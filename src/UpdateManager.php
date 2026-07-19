@@ -245,12 +245,46 @@ class UpdateManager
         if (is_dir($this->backupDir)) {
             $files = glob($this->backupDir . '/backup_*.zip');
             foreach ($files as $file) {
+                $filename = basename($file);
+                
+                $version = '';
+                $commit = '';
+                $versionMatch = [];
+                if (preg_match('/backup_v?([\d\.]+)/i', $filename, $versionMatch)) {
+                    $version = $versionMatch[1];
+                }
+                
+                if (extension_loaded('zip')) {
+                    $zip = new ZipArchive();
+                    if ($zip->open($file) === true) {
+                        $infoIndex = $zip->locateName('.backup_info.json');
+                        if ($infoIndex !== false) {
+                            $infoContent = $zip->getFromIndex($infoIndex);
+                            if ($infoContent) {
+                                $info = json_decode($infoContent, true);
+                                if ($info) {
+                                    if (!empty($info['version'])) {
+                                        $version = $info['version'];
+                                    }
+                                    if (!empty($info['commit'])) {
+                                        $commit = $info['commit'];
+                                    }
+                                }
+                            }
+                        }
+                        $zip->close();
+                    }
+                }
+                
                 $backups[] = [
-                    'filename' => basename($file),
+                    'filename' => $filename,
                     'size' => filesize($file),
                     'size_formatted' => $this->formatSize(filesize($file)),
                     'created' => filemtime($file),
-                    'created_formatted' => date('Y-m-d H:i:s', filemtime($file))
+                    'created_formatted' => date('Y-m-d H:i:s', filemtime($file)),
+                    'version' => $version ?: '未知版本',
+                    'commit' => $commit ?: '',
+                    'commit_short' => !empty($commit) ? substr($commit, 0, 7) : ''
                 ];
             }
             usort($backups, function($a, $b) {
@@ -571,8 +605,12 @@ class UpdateManager
 
     public function createBackup()
     {
+        $currentVersion = $this->getCurrentVersion();
+        $currentCommit = $this->getCurrentCommit();
+        $versionTag = str_replace(['.', 'v'], '', $currentVersion);
+        $versionTag = substr($versionTag, 0, 8);
         $timestamp = date('Ymd_His');
-        $backupFile = $this->backupDir . '/backup_' . $timestamp . '.zip';
+        $backupFile = $this->backupDir . '/backup_v' . $currentVersion . '_' . $timestamp . '.zip';
 
         if (!extension_loaded('zip')) {
             return [
@@ -591,6 +629,17 @@ class UpdateManager
 
         $excludeDirs = ['backups', 'test', '.git'];
         $excludeFiles = ['sq.php'];
+
+        $backupInfo = [
+            'version' => $currentVersion,
+            'commit' => $currentCommit,
+            'created_at' => date('Y-m-d H:i:s'),
+            'created_timestamp' => time(),
+            'backup_type' => 'full',
+            'platform' => PHP_OS,
+            'php_version' => PHP_VERSION
+        ];
+        $zip->addFromString('.backup_info.json', json_encode($backupInfo, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
         $files = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($this->rootDir, RecursiveDirectoryIterator::SKIP_DOTS),
@@ -626,7 +675,9 @@ class UpdateManager
             'backup_file' => $backupFile,
             'filename' => basename($backupFile),
             'size' => filesize($backupFile),
-            'size_formatted' => $this->formatSize(filesize($backupFile))
+            'size_formatted' => $this->formatSize(filesize($backupFile)),
+            'version' => $currentVersion,
+            'commit' => $currentCommit
         ];
     }
 
