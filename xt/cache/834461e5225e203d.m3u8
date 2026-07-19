@@ -1,1 +1,0 @@
-{"content":"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\ntest1.ts\n#EXTINF:10.0,\ntest2.ts\n#EXT-X-ENDLIST\n","original_url":"http://example.com/test.m3u8","created_at":1784470000}

@@ -58,36 +58,96 @@ function parseVideo(string $videoUrl): array
         return buildResult(400, '解析失败', '链接格式不正确', null, $startTime);
     }
 
-    // 检查缓存命中
     $cacheKey = md5($videoUrl);
     $cached = getCache($cacheKey, $config);
     if ($cached) {
-        return buildResult(200, '解析成功', $cached['url'], $cached['url'], $startTime, true);
+        $cachedUrl = $cached['url'];
+        if (strpos($cachedUrl, 'mx.php?action=mxjx') !== false) {
+            $decodedUrl = urldecode(parse_url($cachedUrl, PHP_URL_QUERY) ?? '');
+            parse_str($decodedUrl, $params);
+            $originalM3u8Url = $params['url'] ?? '';
+            
+            if ($originalM3u8Url && filter_var($originalM3u8Url, FILTER_VALIDATE_URL)) {
+                $m3u8Content = fetchM3u8Content($originalM3u8Url, $config);
+                
+                if ($m3u8Content && strpos($m3u8Content, '#EXTM3U') !== false) {
+                    $resolved = resolveMultiLevelM3u8($m3u8Content, $originalM3u8Url, $config);
+                    if ($resolved['url'] !== $originalM3u8Url) {
+                        $originalM3u8Url = $resolved['url'];
+                        $m3u8Content = $resolved['content'];
+                    }
+
+                    $filter = new AdFilter($config);
+                    $result = $filter->process($m3u8Content, $originalM3u8Url);
+
+                    $cleanContent = convertRelativeToAbsolute($result['clean_content'], $originalM3u8Url);
+
+                    $cacheId = generateCacheId();
+                    $playUrl = saveCleanM3u8($cacheId, $cleanContent, $originalM3u8Url, $config);
+
+                    setCache($cacheKey, ['url' => $playUrl], $config);
+                    return buildResult(200, '解析成功', $playUrl, $playUrl, $startTime);
+                }
+            }
+        }
+        return buildResult(200, '解析成功', $cachedUrl, $cachedUrl, $startTime, true);
     }
 
-    // 概率触发过期缓存清理
     maybeCleanExpiredCache($config);
 
-    // 步骤1：根据嗅探设置选择走官解解析还是官替接口
-    //   - 官解通道 (official)：调用虾米官解接口，返回原始 m3u8/mp4 直链，需 xt 去广告
-    //   - 官替通道 (replace) ：从资源站匹配 + AI 去广告/去插播/去水印，输出最终链接
     $sniffResult = getVideoLinkBySnifferMode($videoUrl, $config);
     $videoLink   = $sniffResult['url'];
-    $sniffSource = $sniffResult['source'];  // 'official' | 'replace' | null
+    $sniffSource = $sniffResult['source'];
 
     if (!$videoLink) {
         return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime);
     }
 
-    // ============ 官替通道：从资源站匹配 + AI 去广告/去插播/去水印 ============
-    // 流程：下载 m3u8 → 规则引擎 + AI 识别广告/插播/水印 → 生成去广告 m3u8 → 输出最终链接
     if ($sniffSource === 'replace') {
-        return parseVideoByReplaceChannel($videoUrl, $videoLink, $cacheKey, $startTime);
+        $result = parseVideoByReplaceChannel($videoUrl, $videoLink, $cacheKey, $startTime);
+    } else {
+        $result = parseVideoByOfficialChannel($videoUrl, $videoLink, $cacheKey, $startTime);
     }
 
-    // ============ 官解通道：虾米接口 + xt 去广告 ============
-    // 流程：调用虾米接口 → 下载 m3u8 → 规则引擎 + AI 去广告 → 输出可播放链接
-    return parseVideoByOfficialChannel($videoUrl, $videoLink, $cacheKey, $startTime);
+    if ($result['code'] === 200 && strpos($result['msg'], 'mx.php?action=mxjx') !== false) {
+        $decodedUrl = urldecode(parse_url($result['msg'], PHP_URL_QUERY) ?? '');
+        parse_str($decodedUrl, $params);
+        $originalM3u8Url = $params['url'] ?? '';
+        
+        if ($originalM3u8Url && filter_var($originalM3u8Url, FILTER_VALIDATE_URL)) {
+            $m3u8Content = fetchM3u8Content($originalM3u8Url, $config);
+            
+            if ($m3u8Content && strpos($m3u8Content, '#EXTM3U') !== false) {
+                $resolved = resolveMultiLevelM3u8($m3u8Content, $originalM3u8Url, $config);
+                if ($resolved['url'] !== $originalM3u8Url) {
+                    $originalM3u8Url = $resolved['url'];
+                    $m3u8Content = $resolved['content'];
+                }
+
+                $filter = new AdFilter($config);
+                $filterResult = $filter->process($m3u8Content, $originalM3u8Url);
+
+                $cleanContent = convertRelativeToAbsolute($filterResult['clean_content'], $originalM3u8Url);
+
+                $cacheId = generateCacheId();
+                $playUrl = saveCleanM3u8($cacheId, $cleanContent, $originalM3u8Url, $config);
+
+                setCache($cacheKey, ['url' => $playUrl], $config);
+                
+                $elapsed = round(microtime(true) - $startTime, 3);
+                return [
+                    'code' => 200,
+                    'ZT' => '解析成功',
+                    'msg' => $playUrl,
+                    'url' => $playUrl,
+                    'time' => $elapsed . 's',
+                    'KFZ' => $result['KFZ'] ?? '超级睿探|XT'
+                ];
+            }
+        }
+    }
+
+    return $result;
 }
 
 /**
@@ -108,8 +168,80 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
 
     $isM3u8 = preg_match('/\.m3u8(\?|$)/i', $videoLink);
     $playUrl = $videoLink;
+    $originalM3u8Url = $videoLink;
 
-    if ($isM3u8) {
+    if (strpos($videoLink, 'mx.php?action=mxjx') !== false) {
+        $decodedUrl = urldecode(parse_url($videoLink, PHP_URL_QUERY) ?? '');
+        parse_str($decodedUrl, $params);
+        $extractedOriginalUrl = $params['url'] ?? '';
+        if ($extractedOriginalUrl && filter_var($extractedOriginalUrl, FILTER_VALIDATE_URL)) {
+            $originalM3u8Url = $extractedOriginalUrl;
+        }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $videoLink,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => $config['http']['timeout'],
+            CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
+            CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
+            CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
+            CURLOPT_USERAGENT      => $config['http']['user_agent'],
+            CURLOPT_REFERER        => $videoUrl,
+            CURLOPT_ENCODING       => '',
+        ]);
+        $mxjxContent = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($mxjxContent && $httpCode === 200 && strpos($mxjxContent, '#EXTM3U') !== false) {
+            $isM3u8 = true;
+            $m3u8Content = $mxjxContent;
+
+            $resolved = resolveMultiLevelM3u8($m3u8Content, $originalM3u8Url, $config);
+            if ($resolved['url'] !== $originalM3u8Url) {
+                $originalM3u8Url = $resolved['url'];
+                $m3u8Content = $resolved['content'];
+            }
+
+            $filter = new AdFilter($config);
+            $result = $filter->process($m3u8Content, $originalM3u8Url);
+
+            $cleanContent = convertRelativeToAbsolute($result['clean_content'], $originalM3u8Url);
+
+            $cacheId = generateCacheId();
+            $playUrl = saveCleanM3u8($cacheId, $cleanContent, $originalM3u8Url, $config);
+
+            setCache($cacheKey, ['url' => $playUrl], $config);
+        } else {
+            if ($extractedOriginalUrl && filter_var($extractedOriginalUrl, FILTER_VALIDATE_URL)) {
+                $m3u8Content = fetchM3u8Content($extractedOriginalUrl, $config);
+                
+                if ($m3u8Content && strpos($m3u8Content, '#EXTM3U') !== false) {
+                    $isM3u8 = true;
+                    $originalM3u8Url = $extractedOriginalUrl;
+
+                    $resolved = resolveMultiLevelM3u8($m3u8Content, $originalM3u8Url, $config);
+                    if ($resolved['url'] !== $originalM3u8Url) {
+                        $originalM3u8Url = $resolved['url'];
+                        $m3u8Content = $resolved['content'];
+                    }
+
+                    $filter = new AdFilter($config);
+                    $result = $filter->process($m3u8Content, $originalM3u8Url);
+
+                    $cleanContent = convertRelativeToAbsolute($result['clean_content'], $originalM3u8Url);
+
+                    $cacheId = generateCacheId();
+                    $playUrl = saveCleanM3u8($cacheId, $cleanContent, $originalM3u8Url, $config);
+
+                    setCache($cacheKey, ['url' => $playUrl], $config);
+                }
+            }
+        }
+    } elseif ($isM3u8) {
         $m3u8Content = fetchM3u8Content($videoLink, $config);
 
         if ($m3u8Content) {
@@ -119,7 +251,6 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
                 $m3u8Content = $resolved['content'];
             }
 
-            // 规则引擎 + AI 去广告
             $filter = new AdFilter($config);
             $result = $filter->process($m3u8Content, $videoLink);
 
@@ -128,11 +259,9 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
             $cacheId = generateCacheId();
             $playUrl = saveCleanM3u8($cacheId, $cleanContent, $videoLink, $config);
 
-            // 写入解析缓存（用 videoUrl 做 key，下次直接返回）
             setCache($cacheKey, ['url' => $playUrl], $config);
         }
     } else {
-        // mp4 等直链也写入缓存
         setCache($cacheKey, ['url' => $playUrl], $config);
     }
 
@@ -159,6 +288,50 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
     global $config;
 
     $finalUrl = $videoLink;
+
+    if (strpos($videoLink, 'official_replace/info') !== false || strpos($videoLink, 'official_replace') !== false) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $videoLink,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => $config['http']['timeout'],
+            CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
+            CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
+            CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
+            CURLOPT_USERAGENT      => $config['http']['user_agent'],
+            CURLOPT_REFERER        => $videoUrl,
+            CURLOPT_ENCODING       => '',
+        ]);
+        $apiResponse = curl_exec($ch);
+        curl_close($ch);
+
+        if ($apiResponse) {
+            $apiData = json_decode($apiResponse, true);
+            if ($apiData && is_array($apiData)) {
+                $urlField = 'ad_skip_url';
+                if (!empty($config['sniffer']['replace_api']['url_field'])) {
+                    $urlField = $config['sniffer']['replace_api']['url_field'];
+                } elseif (!empty($config['replace_api']['url_field'])) {
+                    $urlField = $config['replace_api']['url_field'];
+                }
+
+                $realVideoUrl = null;
+                if (isset($apiData[$urlField])) {
+                    $realVideoUrl = $apiData[$urlField];
+                } elseif (isset($apiData['url'])) {
+                    $realVideoUrl = $apiData['url'];
+                } elseif (isset($apiData['play_url'])) {
+                    $realVideoUrl = $apiData['play_url'];
+                }
+
+                if ($realVideoUrl && filter_var($realVideoUrl, FILTER_VALIDATE_URL)) {
+                    $videoLink = $realVideoUrl;
+                }
+            }
+        }
+    }
 
     $m3u8Content = fetchM3u8Content($videoLink, $config);
 
@@ -188,8 +361,34 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
                 return buildResult(200, '解析成功', $extracted, $extracted, $startTime);
             }
         } else {
-            setCache($cacheKey, ['url' => $finalUrl], $config);
-            return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
+            $jsonData = json_decode($m3u8Content, true);
+            if ($jsonData && is_array($jsonData)) {
+                $jsonUrl = null;
+                if (isset($jsonData['url'])) {
+                    $jsonUrl = $jsonData['url'];
+                } elseif (isset($jsonData['play_url'])) {
+                    $jsonUrl = $jsonData['play_url'];
+                } elseif (isset($jsonData['video_url'])) {
+                    $jsonUrl = $jsonData['video_url'];
+                }
+
+                if ($jsonUrl && filter_var($jsonUrl, FILTER_VALIDATE_URL)) {
+                    $subContent = fetchM3u8Content($jsonUrl, $config);
+                    if ($subContent && strpos($subContent, '#EXTM3U') !== false) {
+                        $videoLink = $jsonUrl;
+                        $m3u8Content = $subContent;
+                        $isM3u8Content = true;
+                    } else {
+                        setCache($cacheKey, ['url' => $jsonUrl], $config);
+                        return buildResult(200, '解析成功', $jsonUrl, $jsonUrl, $startTime);
+                    }
+                }
+            }
+
+            if (!$isM3u8Content) {
+                setCache($cacheKey, ['url' => $finalUrl], $config);
+                return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
+            }
         }
     }
 
