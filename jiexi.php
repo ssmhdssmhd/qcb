@@ -123,7 +123,7 @@ function outputSuccess(string $playUrl, string $format, ?string $callback): void
         default:
             $data = [
                 'code' => 200,
-                'msg'  => '解析成功',
+                'msg'  => $playUrl,
                 'url'  => $playUrl,
                 'info' => 'TVBox影视专用解析',
             ];
