@@ -2,6 +2,40 @@
 
 ## v5.7.7 (2026-07-22)
 
+### 新增 AI 智能解析公用 API（ai/sniff.php）
+
+#### 功能说明
+
+新增 `ai/` 目录，提供独立的智能解析公用 API：`ai/sniff.php`，支持从任意网页播放器（腾讯视频、爱奇艺、优酷、芒果TV等）获取真实播放地址链接。
+
+#### 技术实现
+
+- **签名算法**：AES-256-CBC + ZeroPadding，兼容 CryptoJS
+  - key = MD5(timestamp + url) 的 hex 字符串
+  - iv = `fUU9eRmkYzsgbkEK`
+  - plaintext = keyHex（32字节，16字节对齐）
+- **双 API 节点 fallback**：
+  1. `https://cache.0567890.xyz:4433/Api`
+  2. `https://cache.hls.one/Api`
+  - 第一个节点失败时自动重试第二个
+- **解密逻辑**：
+  - 优先 ZeroPadding 模式（匹配 CryptoJS 默认）
+  - 解密失败自动降级 PKCS7 模式
+  - 自动去除 `tg:@xmflv` 水印
+  - 支持 `vurl` / `url` 两种播放地址字段
+- **响应格式**：`[{code, msg, type, label, url, time}]` JSON 数组
+  - label 自动识别：HLS（m3u8/hls）、MP4
+
+#### 使用方式
+
+```
+GET ai/sniff.php?url=https://v.youku.com/v_show/id_xxx.html
+```
+
+支持 CORS 跨域访问（`Access-Control-Allow-Origin: *`）。
+
+---
+
 ### 优化 AI 匹配算法：配置驱动标准化 + 多维度评分重构
 
 #### 背景

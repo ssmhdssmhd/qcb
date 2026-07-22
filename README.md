@@ -407,6 +407,9 @@ MIT License
 
 ### v5.7.7 (2026-07-22)
 
+- 🤖 新增 `ai/sniff.php` 公用 API：从任意网页播放器获取播放地址链接（虾米解析）
+- 🔐 支持 AES-256-CBC 签名加密 + ZeroPadding 解密，兼容 CryptoJS
+- 🌐 双 API 节点 fallback（cache.0567890.xyz / cache.hls.one），自动重试
 - 🧠 优化 AI 匹配算法，配置驱动的标题标准化 + 多维度评分重构
 - 📚 新增 `gz/synonym_config.php`：集中管理 400+ 同义词映射（季/部/番/卷/集/画质/语言/版本/地区/符号）
 - ♻️ 重构 `gz/TitleNormalizer.php`：单遍最长匹配正则替换 + md5 缓存，消除链式副作用

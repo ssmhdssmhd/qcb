@@ -1,0 +1,246 @@
+<?php
+/**
+ * AI 智能解析公用 API - 虾米解析 (jx.xmflv.cc)
+ * 用法: ai/sniff.php?url=https://v.youku.com/v_show/id_xxx.html
+ * 输出 JSON 数组
+ *
+ * API 来源: jx.xmflv.cc 网页播放器 → cache.0567890.xyz:4433/Api
+ * 功能: 从任意网页播放器获取播放地址链接（支持腾讯、爱奇艺、优酷、芒果TV等主流平台）
+ */
+
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Accept');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
+
+$targetUrl = isset($_GET['url']) ? $_GET['url'] : '';
+if (empty($targetUrl)) {
+    echo json_encode([['code' => 400, 'msg' => '缺少 url 参数', 'url' => '']], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ========== 配置 ==========
+$apiEndpoints = [
+    'https://cache.0567890.xyz:4433/Api',
+    'https://cache.hls.one/Api',
+];
+
+// ========== sign 签名（兼容 CryptoJS AES-256-CBC + ZeroPadding） ==========
+function ai_createSign($keyHex) {
+    $aesKeyHex = md5($keyHex);
+    $iv = 'fUU9eRmkYzsgbkEK';
+
+    $plaintext = $keyHex;
+
+    $blockSize = 16;
+    $padLen = $blockSize - (strlen($plaintext) % $blockSize);
+    if ($padLen == $blockSize) {
+        $padLen = 0;
+    }
+    $padded = $plaintext . str_repeat("\x00", $padLen);
+
+    $encrypted = openssl_encrypt(
+        $padded,
+        'aes-256-cbc',
+        $aesKeyHex,
+        OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+        $iv
+    );
+
+    if ($encrypted === false) {
+        return '';
+    }
+    return base64_encode($encrypted);
+}
+
+// ========== HTTP POST（curl + 浏览器伪装头） ==========
+function ai_httpPost($url, $postData) {
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $url,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => http_build_query($postData),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 25,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept: application/json, text/javascript, */*; q=0.01',
+            'Origin: https://jx.xmflv.cc',
+            'Referer: https://jx.xmflv.cc/',
+            'X-Requested-With: XMLHttpRequest',
+        ],
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error    = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false || $httpCode !== 200) {
+        return ['error' => $error ?: "HTTP $httpCode"];
+    }
+    return ['body' => $response];
+}
+
+// ========== 响应解密（AES-CBC + ZeroPadding，兼容 CryptoJS） ==========
+function ai_decryptVideoData($data, $key, $iv) {
+    $ciphertext = base64_decode($data, true);
+    if ($ciphertext === false || strlen($ciphertext) === 0) {
+        return ['_debug' => "base64_decode_failed: data_len=" . strlen($data)];
+    }
+
+    $keyLen = strlen($key);
+    if ($keyLen <= 16) {
+        $method = 'aes-128-cbc';
+    } elseif ($keyLen <= 24) {
+        $method = 'aes-192-cbc';
+    } else {
+        $method = 'aes-256-cbc';
+    }
+
+    if ($keyLen < 16) {
+        return ['_debug' => "key_too_short: key_len=$keyLen, key_hex=" . bin2hex($key)];
+    }
+
+    $decrypted = @openssl_decrypt(
+        $ciphertext,
+        $method,
+        $key,
+        OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+        $iv
+    );
+
+    $pad_ok = false;
+    if ($decrypted !== false && strlen($decrypted) > 0) {
+        $decrypted = rtrim($decrypted, "\x00");
+        $decrypted = str_replace('tg:@xmflv', '', $decrypted);
+        $decrypted = rtrim($decrypted, "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f");
+        $pad_ok = true;
+    }
+
+    if (!$pad_ok && $decrypted === false) {
+        $decrypted = @openssl_decrypt(
+            $ciphertext,
+            $method,
+            $key,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
+        if ($decrypted !== false) {
+            $decrypted = str_replace('tg:@xmflv', '', $decrypted);
+            $decrypted = rtrim($decrypted, "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f");
+        }
+    }
+
+    if ($decrypted === false || strlen($decrypted) === 0) {
+        $err = openssl_error_string();
+        return ['_debug' => "decrypt_failed: method=$method, key_len=$keyLen, key_hex=" . bin2hex($key) . ", iv_hex=" . bin2hex($iv) . ", ct_len=" . strlen($ciphertext) . ", ct_hex=" . substr(bin2hex($ciphertext), 0, 64) . ", openssl_err=" . ($err ?: 'unknown')];
+    }
+
+    $result = json_decode($decrypted, true);
+    if ($result === null && json_last_error() !== JSON_ERROR_NONE) {
+        return ['_debug' => "json_decode_failed: " . json_last_error_msg() . ", decrypted_hex=" . bin2hex($decrypted)];
+    }
+    return $result;
+}
+
+// ========== 格式化时间 ==========
+function ai_now() {
+    $weekMap = ['日', '一', '二', '三', '四', '五', '六'];
+    return date('Y') . '年' . date('m') . '月' . date('d') . '日 星期' . $weekMap[date('w')] . ' ' . date('H:i:s');
+}
+
+// ========== 主逻辑 ==========
+$tm = intval(round(microtime(true) * 1000));
+$keyHex = md5($tm . $targetUrl);
+$sign = ai_createSign($keyHex);
+
+if (empty($sign)) {
+    echo json_encode([['code' => 500, 'msg' => '签名计算失败', 'url' => '']], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$postData = [
+    'tm'   => $tm,
+    'url'  => $targetUrl,
+    'key'  => $keyHex,
+    'sign' => $sign,
+];
+
+$decrypted = null;
+$lastError = '';
+
+foreach ($apiEndpoints as $api) {
+    $result = ai_httpPost($api, $postData);
+    if (isset($result['error'])) {
+        $lastError = $result['error'];
+        continue;
+    }
+
+    $body = $result['body'];
+    $body = str_replace('tg:@xmflv', '', $body);
+    $json = json_decode($body, true);
+
+    if ($json === null || !isset($json['code'])) {
+        $lastError = '响应解析失败';
+        continue;
+    }
+
+    if ($json['code'] !== 200) {
+        $lastError = isset($json['msg']) ? $json['msg'] : '解析失败';
+        continue;
+    }
+
+    if (empty($json['data']) || empty($json['key']) || empty($json['iv'])) {
+        $lastError = '响应缺少 data/key/iv 字段';
+        continue;
+    }
+
+    $decrypted = ai_decryptVideoData($json['data'], $json['key'], $json['iv']);
+    if ($decrypted !== null && !isset($decrypted['_debug'])) {
+        break;
+    }
+    if (isset($decrypted['_debug'])) {
+        $lastError = '解密失败: ' . $decrypted['_debug'];
+    } else {
+        $lastError = '解密失败';
+    }
+}
+
+// ========== 输出 ==========
+$playUrl = isset($decrypted['vurl']) ? $decrypted['vurl'] : (isset($decrypted['url']) ? $decrypted['url'] : '');
+
+if (empty($playUrl)) {
+    echo json_encode([[
+        'code'  => 500,
+        'msg'   => $lastError ?: '未获取到资源',
+        'url'   => '',
+        'time'  => ai_now(),
+    ]], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$type  = isset($decrypted['type']) ? $decrypted['type'] : '';
+$label = '';
+if (strpos($type, 'm3u8') !== false || strpos($type, 'hls') !== false) {
+    $label = 'HLS';
+} elseif (strpos($type, 'mp4') !== false) {
+    $label = 'MP4';
+}
+
+echo json_encode([[
+    'code'  => 200,
+    'msg'   => '解析成功',
+    'type'  => $type,
+    'label' => $label,
+    'url'   => $playUrl,
+    'time'  => ai_now(),
+]], JSON_UNESCAPED_UNICODE);
