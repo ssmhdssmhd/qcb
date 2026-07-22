@@ -10491,7 +10491,8 @@ header('Expires: 0');
             const videos = data.videos;
             let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
             videos.forEach(v => {
-                html += `<div class="stat-card" style="cursor:pointer" onclick="learnOfficialVideo('${escapeHtml(v.first_url || v.url || '')}', '${escapeHtml(v.name || '')}')">
+                const vid = v.id || v.vod_id || 0;
+                html += `<div class="stat-card" style="cursor:pointer" onclick="showOfficialVideoDetail(${vid}, '${escapeHtml(v.name || '')}')">
                     <div style="font-weight:500;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.name || '未知')}</div>
                     <div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(v.remarks || v.type || '')}</div>
                     <div style="margin-top:8px"><span class="tag tag-blue">${v.total || 0} 集</span></div>
@@ -10504,6 +10505,43 @@ header('Expires: 0');
                 </div>` + html;
             }
             container.innerHTML = html;
+        }
+
+        async function showOfficialVideoDetail(vodId, videoName) {
+            if (!currentOfficialSite) return;
+            const container = document.getElementById('officialSiteVideosList');
+            container.innerHTML = '<div class="loading">获取详情中...</div>';
+            try {
+                const res = await fetch(API_BASE + '?action=official_sites/detail&name=' + encodeURIComponent(currentOfficialSite) + '&vod_id=' + encodeURIComponent(vodId) + '&_t=' + Date.now());
+                const data = await res.json();
+                if (!data.success || !data.urls || data.urls.length === 0) {
+                    container.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">${data.message || '未获取到播放地址'}</div>`;
+                    return;
+                }
+
+                let html = `<div style="margin-bottom:16px">
+                    <h3 style="margin:0 0 8px 0">${escapeHtml(videoName || data.name || '未知')}</h3>
+                    <div style="font-size:13px;color:var(--text-secondary)">共 ${data.urls.length} 集</div>
+                </div>`;
+
+                html += '<div style="display:flex;flex-direction:column;gap:8px">';
+                data.urls.forEach((item, index) => {
+                    const url = item.url || '';
+                    const name = item.name || ('第' + (index + 1) + '集');
+                    html += `<div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border-color)">
+                        <span style="font-weight:500;width:60px;text-align:center">${escapeHtml(name)}</span>
+                        <a href="${escapeHtml(url)}" target="_blank" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#409eff;font-size:13px" title="${escapeHtml(url)}">${escapeHtml(url)}</a>
+                        <button class="btn btn-sm btn-primary" onclick="copyText('${escapeHtml(url)}');showToast('已复制', 'success')">复制</button>
+                        <button class="btn btn-sm btn-secondary" onclick="learnOfficialVideo('${escapeHtml(url)}', '${escapeHtml(name)}')">学习</button>
+                    </div>`;
+                });
+                html += '</div>';
+
+                html += `<div style="margin-top:16px"><button class="btn btn-secondary" onclick="viewOfficialSiteVideos('${currentOfficialSite}')">返回视频列表</button></div>`;
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = `<div style="color:#f56c6c;text-align:center;padding:20px">获取失败: ${escapeHtml(e.message)}</div>`;
+            }
         }
 
         async function searchOfficialVideos() {

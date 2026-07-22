@@ -295,6 +295,16 @@ class DbOfficialSiteManager {
         ]);
     }
 
+    public function getVideoDetail($siteName, $vodId) {
+        $site = $this->getSiteByName($siteName);
+        if (!$site) {
+            return ['success' => false, 'message' => '推荐采集资源站不存在'];
+        }
+        return $this->requestWithFallback($site, 'detail', [
+            'vod_id' => $vodId
+        ]);
+    }
+
     private function requestWithFallback($site, $type, $params = []) {
         $domains = $site['domains'] ?? [];
         $settings = $this->getSettings();
@@ -351,6 +361,11 @@ class DbOfficialSiteManager {
                 $params['keyword'] ?? '',
                 $params['page'] ?? 1,
                 $params['limit'] ?? 20
+            );
+        } elseif ($type === 'detail') {
+            return $siteMgr->getVideoDetail(
+                $apiUrl,
+                $params['vod_id'] ?? 0
             );
         }
 

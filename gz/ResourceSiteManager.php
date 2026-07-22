@@ -353,6 +353,74 @@ class ResourceSiteManager {
         return ['success' => false, 'message' => '搜索失败: ' . $lastError];
     }
 
+    public function getVideoDetail($apiUrl, $vodId) {
+        $urlsToTry = $this->generateApiUrlVariants($apiUrl);
+
+        $lastError = '';
+        foreach ($urlsToTry as $tryUrl) {
+            $params = [
+                'ac' => 'detail',
+                'ids' => intval($vodId)
+            ];
+            $url = $this->buildApiUrl($tryUrl, $params);
+
+            $response = $this->httpGet($url);
+            if ($response === false) {
+                $lastError = $this->lastHttpError ?? '未知错误';
+                continue;
+            }
+
+            $data = json_decode($response, true);
+            if (!$data) {
+                $lastError = '解析JSON失败';
+                continue;
+            }
+
+            $list = $data['list'] ?? $data['data'] ?? [];
+            if (empty($list)) {
+                $lastError = '无视频数据';
+                continue;
+            }
+
+            $item = is_array($list) && isset($list[0]) ? $list[0] : $list;
+
+            $vodPlayUrl = $item['vod_play_url'] ?? $item['play_url'] ?? '';
+            $vodPlayFrom = $item['vod_play_from'] ?? $item['play_from'] ?? '';
+            $vodName = $item['vod_name'] ?? $item['name'] ?? '';
+            $vodId = $item['vod_id'] ?? $item['id'] ?? 0;
+            $vodPic = $item['vod_pic'] ?? $item['pic'] ?? '';
+            $vodRemarks = $item['vod_remarks'] ?? $item['remarks'] ?? '';
+
+            if (empty($vodPlayUrl)) {
+                $lastError = '播放地址为空';
+                continue;
+            }
+
+            $allUrls = $this->extractAllPlayUrls($vodPlayUrl, $vodPlayFrom);
+            $m3u8Urls = array_filter($allUrls, function($u) {
+                return stripos($u['url'] ?? '', '.m3u8') !== false;
+            });
+            $m3u8Urls = array_values($m3u8Urls);
+
+            $resultUrls = !empty($m3u8Urls) ? $m3u8Urls : $allUrls;
+
+            return [
+                'success' => true,
+                'id' => $vodId,
+                'name' => $vodName,
+                'pic' => $vodPic,
+                'remarks' => $vodRemarks,
+                'urls' => $resultUrls,
+                'first_url' => !empty($resultUrls) ? $resultUrls[0]['url'] ?? '' : '',
+                'raw_play_url' => $vodPlayUrl,
+                'play_from' => $vodPlayFrom,
+                'total' => count($resultUrls)
+            ];
+        }
+
+        return ['success' => false, 'message' => '获取详情失败: ' . $lastError];
+    }
+
     private function generateApiUrlVariants($apiUrl) {
         $urls = [$apiUrl];
         $parsed = parse_url($apiUrl);

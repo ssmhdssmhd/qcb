@@ -1,5 +1,60 @@
 # 更新日志
 
+## v5.7.8 (2026-07-22)
+
+### 修复推荐采集视频点击不显示播放地址问题
+
+#### 问题现象
+
+在后台「推荐采集」页面搜索视频后，点击视频卡片跳转到集数列表时，显示"为了防止爬虫，播放地址不再显示，如有需要请去采集"，无法获取真实播放地址。
+
+#### 问题根因
+
+MacCMS 资源站在列表接口（`ac=list` / `ac=detail&wd=keyword`）中返回的 `vod_play_url` 被替换为防爬提示文字，不包含真实播放地址。只有通过详情接口（`ac=detail&ids=vod_id`）才能获取完整的播放地址。
+
+#### 修复内容
+
+**1. 新增 `ResourceSiteManager::getVideoDetail($apiUrl, $vodId)`**
+
+通过 `ac=detail&ids=vod_id` 接口获取视频详情，解析真实播放地址：
+
+```php
+$params = [
+    'ac' => 'detail',
+    'ids' => intval($vodId)
+];
+```
+
+**2. 新增 `DbOfficialSiteManager::getVideoDetail($siteName, $vodId)`**
+
+数据库版管理器封装，支持多域名自动切换和重试。
+
+**3. 新增 API 接口 `official_sites/detail`**
+
+```
+GET mx.php?action=official_sites/detail&name=TW推荐采集&vod_id=12345
+```
+
+**4. 前端修改 `mxadmin.php`**
+
+- `renderOfficialVideos()`：点击视频卡片调用 `showOfficialVideoDetail()`（而非直接学习）
+- 新增 `showOfficialVideoDetail(vodId, videoName)`：调用详情接口获取真实播放地址
+- 集数列表展示：集数名称 + 播放地址链接 + 复制按钮 + 学习按钮
+- 支持返回视频列表
+
+#### 使用流程
+
+1. 在「推荐采集」页面搜索视频 → 显示视频卡片列表
+2. 点击视频卡片 → 调用详情接口获取真实播放地址 → 显示集数列表
+3. 每个集数显示：集数名称、可点击的播放地址链接、复制按钮、学习按钮
+4. 点击"返回视频列表"回到视频卡片列表
+
+#### 影响范围
+
+- ✅ 推荐采集页面：视频点击后显示真实播放地址
+- ✅ 资源站防爬限制：通过详情接口绕过
+- ✅ 向后兼容：不影响现有功能
+
 ## v5.7.7 (2026-07-22)
 
 ### 新增 AI 智能解析公用 API（ai/sniff.php）

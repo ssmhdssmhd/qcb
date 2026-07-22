@@ -3429,6 +3429,14 @@ try {
             sendJsonResponse($result);
             break;
 
+        case 'official_sites/detail':
+
+            $name = $_GET['name'] ?? '';
+            $vodId = $_GET['vod_id'] ?? $_GET['id'] ?? '';
+            $result = $officialMgr->getVideoDetail($name, $vodId);
+            sendJsonResponse($result);
+            break;
+
         case 'official_sites/search_all':
 
             $keyword = $_GET['keyword'] ?? '';
