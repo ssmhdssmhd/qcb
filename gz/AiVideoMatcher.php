@@ -8,7 +8,7 @@ require_once __DIR__ . '/TitleNormalizer.php';
  * 基于多维度评分的视频匹配算法，使用 TitleNormalizer 进行标题标准化，
  * 结合同义词语义相似度、季/集匹配、版本匹配等维度综合评分。
  *
- * 优化点（v5.8.0）：
+ * 优化点（v5.7.7）：
  *   - 标题标准化统一委托 TitleNormalizer（消费 synonym_config.php 同义词表）
  *   - 季/集解析委托 TitleNormalizer::getSeasonInfo / getEpisodeInfo，覆盖 S0N/EP\d+/E\d+/罗马数字
  *   - 新增噪声内容排除模式（电影解说/预告片/片花/花絮/混剪/MV/OST 等）
