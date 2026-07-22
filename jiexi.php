@@ -47,12 +47,16 @@ require_once __DIR__ . '/xt/server.php';
 
 $result = parseVideo($videoUrl);
 
+$parseTime = isset($result['time']) ? $result['time'] : '0s';
+$kfz = isset($result['KFZ']) ? $result['KFZ'] : '超级嗅探|XT';
+$zt = isset($result['ZT']) ? $result['ZT'] : '';
+
 if ($result['code'] !== 200 || empty($result['url'])) {
-    outputError($result['msg'] ?: '解析失败', $format, $callback);
+    outputError($result['msg'] ?: '解析失败', $format, $callback, $parseTime, $kfz, $zt);
     exit;
 }
 
-outputSuccess($result['url'], $format, $callback);
+outputSuccess($result['url'], $format, $callback, $parseTime, $kfz, $zt);
 
 /**
  * 获取视频链接参数，兼容多种参数名
@@ -94,7 +98,7 @@ function getFormat(): string
 /**
  * 输出成功结果
  */
-function outputSuccess(string $playUrl, string $format, ?string $callback): void
+function outputSuccess(string $playUrl, string $format, ?string $callback, string $parseTime = '0s', string $kfz = '超级嗅探|XT', string $zt = '解析成功'): void
 {
     switch ($format) {
         case '302':
@@ -123,8 +127,11 @@ function outputSuccess(string $playUrl, string $format, ?string $callback): void
         default:
             $data = [
                 'code' => 200,
+                'ZT'   => $zt,
                 'msg'  => $playUrl,
                 'url'  => $playUrl,
+                'time' => $parseTime,
+                'KFZ'  => $kfz,
                 'info' => 'TVBox影视专用解析',
             ];
             outputJson($data, $callback);
@@ -134,7 +141,7 @@ function outputSuccess(string $playUrl, string $format, ?string $callback): void
 /**
  * 输出错误结果
  */
-function outputError(string $message, string $format, ?string $callback): void
+function outputError(string $message, string $format, ?string $callback, string $parseTime = '0s', string $kfz = '超级嗅探|XT', string $zt = ''): void
 {
     switch ($format) {
         case '302':
@@ -164,8 +171,11 @@ function outputError(string $message, string $format, ?string $callback): void
         default:
             $data = [
                 'code' => 400,
+                'ZT'   => $zt ?: $message,
                 'msg'  => $message,
                 'url'  => '',
+                'time' => $parseTime,
+                'KFZ'  => $kfz,
             ];
             outputJson($data, $callback);
     }
