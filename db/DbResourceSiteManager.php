@@ -774,7 +774,9 @@ class DbResourceSiteManager {
             }
 
             $maxSites = $options['max_sites'] ?? $config['max_sites_per_run'] ?? 5;
+            $maxSites = min($maxSites, 10);
             $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
+            $videosPerSite = min($videosPerSite, 10);
             $minSegments = $config['min_segments'] ?? 50;
             $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
             $keyword = $options['keyword'] ?? '';

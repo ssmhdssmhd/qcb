@@ -1,5 +1,60 @@
 # 更新日志
 
+## v5.8.2 (2026-07-23)
+
+### 修复自动学习502 Bad Gateway报错
+
+#### 问题分析
+
+后台自动学习时报错 "502 Bad Gateway"，错误原因：
+
+1. **执行超时**：自动学习接口缺少 `set_time_limit` 设置，PHP 执行超时导致 PHP-FPM 进程挂掉
+2. **缺少错误兜底**：部分接口未捕获异常，致命错误时 nginx 返回 502 错误页面而非 JSON
+3. **并发过高**：多线程模式并发数和超时时间设置不合理
+4. **HTTP状态码问题**：致命错误返回 500 状态码，部分 nginx 配置会拦截并用默认错误页替换
+
+#### 修复内容
+
+**1. 增加超时和内存限制**
+
+- `sites/learn_video` 接口：增加 `set_time_limit(60)` 和 `memory_limit=256M`
+- `sites/auto_learn/run` 接口：增加 `set_time_limit(300)` 和 `memory_limit=512M`
+- `sites/search_and_learn` 接口：增加 `set_time_limit(180)` 和 `memory_limit=384M`
+
+**2. 完善异常捕获**
+
+- `sites/learn_video`：添加 try-catch，异常时返回 200 状态码的 JSON 错误响应
+- `sites/auto_learn/run`：添加全局 try-catch，异常时优雅降级返回
+- `sites/search_and_learn`：添加 try-catch，确保始终返回 JSON
+
+**3. 优化并发和执行限制**
+
+- 多线程模式并发数：最高 10 → 最高 5
+- 多线程超时：120秒 → 90秒
+- 单次自动学习最大站点数：限制最多 10 个
+- 每站点视频数：限制最多 10 个
+- 搜索学习并发数：最高 10 → 最高 5
+
+**4. 修复致命错误处理**
+
+- 全局致命错误处理器 `jsonFatalHandler`：状态码从 500 改为 200
+- 确保即使 PHP 致命错误也返回 JSON 格式响应
+- 避免 nginx 拦截 5xx 状态码并用 HTML 错误页替换
+
+**5. 统一限制应用到所有管理器**
+
+- 文件版 `ResourceSiteManager::runAutoLearn` 添加数量限制
+- 数据库版 `DbResourceSiteManager::runAutoLearn` 添加数量限制
+
+#### 修改文件
+
+- `mx.php` - 所有学习相关接口增加超时、内存限制、异常捕获
+- `gz/ResourceSiteManager.php` - 单线程自动学习增加数量限制
+- `db/DbResourceSiteManager.php` - 数据库版增加数量限制
+- `version.php` - 版本号 v5.8.1 → v5.8.2
+
+---
+
 ## v5.8.1 (2026-07-23)
 
 ### 资源站深度分析与修复

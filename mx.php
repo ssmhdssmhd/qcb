@@ -615,10 +615,10 @@ function jsonFatalHandler() {
             ob_end_clean();
         }
         @header('Content-Type: application/json; charset=utf-8');
-        @http_response_code(500);
+        @http_response_code(200);
         safe_echo_json([
             'success' => false,
-            'message' => $error['message'],
+            'message' => '服务器内部错误: ' . $error['message'],
             'error_detail' => [
                 'file' => basename($error['file']),
                 'line' => $error['line']
@@ -2509,6 +2509,9 @@ try {
             break;
 
         case 'sites/learn_video':
+            @set_time_limit(60);
+            @ini_set('memory_limit', '256M');
+
             $input = getInputJson();
             $videoUrl = $input['url'] ?? $_GET['url'] ?? '';
 
@@ -2523,11 +2526,23 @@ try {
             if ($minSegments !== null) $options['min_segments'] = $minSegments;
             if ($maxAdPercentage !== null) $options['max_ad_percentage'] = $maxAdPercentage;
 
-            $result = $siteManager->learnFromVideoUrl($videoUrl, $ruleManager, $options);
-            sendJsonResponse($result, $result['success'] ? 200 : 400);
+            try {
+                $result = $siteManager->learnFromVideoUrl($videoUrl, $ruleManager, $options);
+                sendJsonResponse($result, $result['success'] ? 200 : 400);
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '学习异常: ' . $e->getMessage(),
+                    'error_file' => basename($e->getFile()),
+                    'error_line' => $e->getLine()
+                ], 200);
+            }
             break;
 
         case 'sites/search_and_learn':
+            @set_time_limit(180);
+            @ini_set('memory_limit', '384M');
+
             $input = getInputJson();
             $keyword = $input['keyword'] ?? $_GET['keyword'] ?? '';
             $siteName = $input['site_name'] ?? $_GET['site_name'] ?? 'all';
@@ -2542,8 +2557,12 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '请输入搜索关键词'], 400);
             }
 
-            $concurrency = max(1, min(10, $concurrency));
+            $concurrency = max(1, min(5, $concurrency));
+            $maxSites = min($maxSites, 10);
+            $limitPerSite = min($limitPerSite, 10);
             $startTime = microtime(true);
+
+            try {
 
             if ($siteName === 'all') {
                 $searchResult = $siteManager->searchAllSites($keyword, $maxSites, $limitPerSite);
@@ -2816,6 +2835,18 @@ try {
                 'site_results' => array_values($siteResults),
                 'details' => $resultDetails
             ]);
+
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '搜索学习异常: ' . $e->getMessage(),
+                    'error_file' => basename($e->getFile()),
+                    'error_line' => $e->getLine(),
+                    'keyword' => $keyword,
+                    'total_learned' => 0,
+                    'total_failed' => 0
+                ], 200);
+            }
             break;
 
         case 'sites/learn_batch':
@@ -3166,6 +3197,10 @@ try {
             break;
 
         case 'sites/auto_learn/run':
+            @set_time_limit(300);
+            @ini_set('memory_limit', '512M');
+            @ignore_user_abort(true);
+
             $input = getInputJson();
             $useMultiThread = !empty($input['multi_thread']);
             $concurrency = isset($input['concurrency']) ? intval($input['concurrency']) : 5;
@@ -3175,6 +3210,8 @@ try {
                 'keyword' => $input['keyword'] ?? ''
             ];
 
+            try {
+
             if ($useMultiThread && TaskRunner::isMultiThreadAvailable()) {
                 $config = $siteManager->getAutoLearnConfig();
                 if (empty($config['enabled'])) {
@@ -3182,7 +3219,9 @@ try {
                 }
 
                 $maxSites = $options['max_sites'] ?? $config['max_sites_per_run'] ?? 5;
+                $maxSites = min($maxSites, 10);
                 $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
+                $videosPerSite = min($videosPerSite, 10);
                 $minSegments = $config['min_segments'] ?? 50;
                 $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
                 $keyword = $options['keyword'] ?? '';
@@ -3231,11 +3270,11 @@ try {
                     }
                 }
 
-                $concurrency = max(1, min(10, $concurrency));
+                $concurrency = max(1, min(5, $concurrency));
                 $runner = TaskRunner::create([
                     'concurrency' => $concurrency,
                     'mode' => TaskRunner::MODE_CURL_MULTI,
-                    'timeout' => 120
+                    'timeout' => 90
                 ]);
 
                 $learnTasks = [];
@@ -3338,6 +3377,18 @@ try {
             } else {
                 $result = $siteManager->runAutoLearn($ruleManager, $options);
                 sendJsonResponse($result, $result['success'] ? 200 : 400);
+            }
+
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '自动学习异常: ' . $e->getMessage(),
+                    'error_file' => basename($e->getFile()),
+                    'error_line' => $e->getLine(),
+                    'sites_processed' => 0,
+                    'total_learned' => 0,
+                    'total_failed' => 0
+                ], 200);
             }
             break;
 
