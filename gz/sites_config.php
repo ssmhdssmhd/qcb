@@ -1,13 +1,12 @@
 <?php
 /**
  * 资源站配置列表
- * 包含支持的资源站信息：官网、采集接口、备注等
- * 自动学习功能会从这些资源站获取视频进行规则学习
+ * 自动更新于: 2026-07-23 19:32:22
  */
 
 return [
-    'version' => '4.1.0',
-    'update_date' => '2026-07-15',
+    'version' => '4.2.0',
+    'update_date' => '2026-07-23 19:32:22',
     'sites' => [
         [
             'name' => '量子',
@@ -557,6 +556,555 @@ return [
             'status' => 'active',
             'note' => '新增',
             'priority' => 6
+        ],
+        [
+            'name' => '聚合资源',
+            'site_url' => 'https://vod.korge.cn',
+            'api_url' => 'https://vod.korge.cn/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '官方推荐',
+            'priority' => 1
+        ],
+        [
+            'name' => '华为吧',
+            'site_url' => 'https://cjhwba.com',
+            'api_url' => 'https://cjhwba.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '官方推荐',
+            'priority' => 2
+        ],
+        [
+            'name' => '黑木耳资源',
+            'site_url' => 'https://json02.heimuer.xyz',
+            'api_url' => 'https://json02.heimuer.xyz/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '官方推荐',
+            'priority' => 2
+        ],
+        [
+            'name' => 'ikun资源',
+            'site_url' => 'https://ikunzyapi.com',
+            'api_url' => 'https://ikunzyapi.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '官方推荐',
+            'priority' => 2
+        ],
+        [
+            'name' => '旺旺短剧',
+            'site_url' => 'http://api.wzy.tv',
+            'api_url' => 'http://api.wzy.tv/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '短剧资源',
+            'priority' => 3
+        ],
+        [
+            'name' => '1080zyku',
+            'site_url' => 'https://api.1080zyku.com',
+            'api_url' => 'https://api.1080zyku.com/inc/api_mac10.php/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '官方推荐',
+            'priority' => 2
+        ],
+        [
+            'name' => '卧龙资源',
+            'site_url' => 'https://collect.wolongzy.cc',
+            'api_url' => 'https://collect.wolongzy.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '官方推荐',
+            'priority' => 2
+        ],
+        [
+            'name' => '海外看',
+            'site_url' => 'https://haiwaikan.com',
+            'api_url' => 'https://haiwaikan.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '海外资源',
+            'priority' => 6
+        ],
+        [
+            'name' => '360资源',
+            'site_url' => 'https://360zy.com',
+            'api_url' => 'https://360zy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 6
+        ],
+        [
+            'name' => '刺桐资源',
+            'site_url' => 'http://ys9.cttv.vip',
+            'api_url' => 'http://ys9.cttv.vip/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '业余资源',
+            'site_url' => 'https://yyff.540734621.xyz',
+            'api_url' => 'https://yyff.540734621.xyz/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '华为吧2',
+            'site_url' => 'https://hw8.live',
+            'api_url' => 'https://hw8.live/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '备用线路',
+            'priority' => 7
+        ],
+        [
+            'name' => '小黄人',
+            'site_url' => 'https://iqyi.xiaohuangrenhtv.com',
+            'api_url' => 'https://iqyi.xiaohuangrenhtv.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => 'U酷资源',
+            'site_url' => 'https://api.ukuapi.com',
+            'api_url' => 'https://api.ukuapi.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 6
+        ],
+        [
+            'name' => '四九资源',
+            'site_url' => 'https://49zyw.com',
+            'api_url' => 'https://49zyw.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 6
+        ],
+        [
+            'name' => '快看资源',
+            'site_url' => 'https://www.kuaikan-api.com',
+            'api_url' => 'https://www.kuaikan-api.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '熊掌资源',
+            'site_url' => 'https://xzcjz.com',
+            'api_url' => 'https://xzcjz.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '飘花资源',
+            'site_url' => 'http://www.ahjiuman.com',
+            'api_url' => 'http://www.ahjiuman.com/api.php/provide/vod/at/json/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '天翼资源',
+            'site_url' => 'https://www.911ysw.top',
+            'api_url' => 'https://www.911ysw.top/tianyi.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '虎牙资源',
+            'site_url' => 'https://www.huyaapi.com',
+            'api_url' => 'https://www.huyaapi.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '百度资源',
+            'site_url' => 'https://api.apibdzy.com',
+            'api_url' => 'https://api.apibdzy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 6
+        ],
+        [
+            'name' => '飘零资源',
+            'site_url' => 'https://p2100.net',
+            'api_url' => 'https://p2100.net/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '速博资源',
+            'site_url' => 'https://subocaiji.com',
+            'api_url' => 'https://subocaiji.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '魔都资源',
+            'site_url' => 'https://caiji.moduapi.cc',
+            'api_url' => 'https://caiji.moduapi.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 6
+        ],
+        [
+            'name' => '奇虎资源',
+            'site_url' => 'https://caiji.qhzyapi.com',
+            'api_url' => 'https://caiji.qhzyapi.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '快云资源',
+            'site_url' => 'https://www.kuaiyunzy.com',
+            'api_url' => 'https://www.kuaiyunzy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => 'JSON接口',
+            'priority' => 7
+        ],
+        [
+            'name' => '开放电影',
+            'site_url' => 'http://vod-demo.onrender.com',
+            'api_url' => 'http://vod-demo.onrender.com/pubdvod.php',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '公开测试接口',
+            'priority' => 8
+        ],
+        [
+            'name' => '39影视',
+            'site_url' => 'http://39kan.com',
+            'api_url' => 'http://39kan.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '矢量资源',
+            'site_url' => 'http://vlbmv.cc',
+            'api_url' => 'http://vlbmv.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '乐活影视',
+            'site_url' => 'http://lehootv.com',
+            'api_url' => 'http://lehootv.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '唐人街',
+            'site_url' => 'http://tangrenjie.tv',
+            'api_url' => 'http://tangrenjie.tv/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '酷点资源',
+            'site_url' => 'http://api.kuapi.cc',
+            'api_url' => 'http://api.kuapi.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '酷点备用',
+            'site_url' => 'http://kudian10.com',
+            'api_url' => 'http://kudian10.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '酷点备用线路',
+            'priority' => 8
+        ],
+        [
+            'name' => '森林资源',
+            'site_url' => 'http://slapibf.com',
+            'api_url' => 'http://slapibf.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '影库资源',
+            'site_url' => 'http://api.ykapi.net',
+            'api_url' => 'http://api.ykapi.net/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '探探资源',
+            'site_url' => 'http://apitzy.com',
+            'api_url' => 'http://apitzy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '金鹰资源',
+            'site_url' => 'http://j8zyapi.com',
+            'api_url' => 'http://j8zyapi.com/provide/vod/from/jin/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '奥斯卡资源',
+            'site_url' => 'http://aosikazy.com',
+            'api_url' => 'http://aosikazy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '老鸭资源',
+            'site_url' => 'http://api.apilyzy.com',
+            'api_url' => 'http://api.apilyzy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '北斗资源',
+            'site_url' => 'https://m3u8.bdxzyapi.com',
+            'api_url' => 'https://m3u8.bdxzyapi.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '快播资源',
+            'site_url' => 'http://www.kuaibozy.com',
+            'api_url' => 'http://www.kuaibozy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '艾旦影视',
+            'site_url' => 'http://lovedan.net',
+            'api_url' => 'http://lovedan.net/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '飘花电影',
+            'site_url' => 'http://www.zzrhgg.com',
+            'api_url' => 'http://www.zzrhgg.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '网片电影',
+            'site_url' => 'http://prinevillesda.org',
+            'api_url' => 'http://prinevillesda.org/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '麒麟资源',
+            'site_url' => 'https://www.qilinzyz.com',
+            'api_url' => 'https://www.qilinzyz.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '番茄资源',
+            'site_url' => 'http://api.lqzy.cc',
+            'api_url' => 'http://api.lqzy.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 8
+        ],
+        [
+            'name' => '8090资源',
+            'site_url' => 'http://zy.yilans.net:8090',
+            'api_url' => 'http://zy.yilans.net:8090/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 9
+        ],
+        [
+            'name' => '官网采集',
+            'site_url' => 'http://gwcmslctv.vip',
+            'api_url' => 'http://gwcmslctv.vip/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '补充资源站',
+            'priority' => 9
+        ],
+        [
+            'name' => '黑料资源网',
+            'site_url' => 'https://www.heiliaozydh.com',
+            'api_url' => 'https://www.heiliaozydh.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '奶香香资源',
+            'site_url' => 'https://www.nxxzyuan.cc',
+            'api_url' => 'https://www.nxxzyuan.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '玉兔资源',
+            'site_url' => 'https://yutuzy.com',
+            'api_url' => 'https://yutuzy.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => 'CK资源网',
+            'site_url' => 'https://ckzy1.com',
+            'api_url' => 'https://ckzy1.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '888联盟',
+            'site_url' => 'https://888lm.vip',
+            'api_url' => 'https://888lm.vip/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '杏吧资源站',
+            'site_url' => 'https://sex8zy8.com',
+            'api_url' => 'https://sex8zy8.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '暴风资源站',
+            'site_url' => 'http://bfzy3.tv',
+            'api_url' => 'http://bfzy3.tv/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '155资源站',
+            'site_url' => 'https://155zy3.com',
+            'api_url' => 'https://155zy3.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '森林资源站',
+            'site_url' => 'http://senlinzy3.com',
+            'api_url' => 'http://senlinzy3.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '无水印资源站',
+            'site_url' => 'https://wsyzy.sbs',
+            'api_url' => 'https://wsyzy.sbs/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '九游联盟',
+            'site_url' => 'https://www.jiuyo.com',
+            'api_url' => 'https://www.jiuyo.com/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '合作共赢',
+            'site_url' => 'https://xn--2qqq4c14c921h.cc',
+            'api_url' => 'https://xn--2qqq4c14c921h.cc/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
+        ],
+        [
+            'name' => '98资源网',
+            'site_url' => 'https://98zy.me',
+            'api_url' => 'https://98zy.me/api.php/provide/vod/',
+            'type' => 'maccms',
+            'status' => 'active',
+            'note' => '萌芽合作站',
+            'priority' => 9
         ]
     ],
     'auto_learn' => [
