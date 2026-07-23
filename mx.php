@@ -4526,6 +4526,180 @@ try {
             ]);
             break;
 
+        case 'announcement/list':
+        case 'notice/list':
+            $announcementFile = __DIR__ . '/gg.txt';
+            $announcements = [];
+            $lastModified = null;
+            
+            if (file_exists($announcementFile)) {
+                $content = file_get_contents($announcementFile);
+                $lastModified = date('Y-m-d H:i:s', filemtime($announcementFile));
+                $lines = explode("\n", $content);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if (empty($line)) continue;
+                    
+                    $date = '';
+                    $text = $line;
+                    
+                    if (preg_match('/^\[(\d{4}-\d{2}-\d{2})\]\s*(.+)$/', $line, $matches)) {
+                        $date = $matches[1];
+                        $text = trim($matches[2]);
+                    }
+                    
+                    $announcements[] = [
+                        'date' => $date,
+                        'text' => $text,
+                        'content' => $line
+                    ];
+                }
+            }
+            
+            sendJsonResponse([
+                'success' => true,
+                'announcements' => $announcements,
+                'total' => count($announcements),
+                'last_modified' => $lastModified,
+                'source' => 'local'
+            ]);
+            break;
+
+        case 'announcement/save':
+        case 'notice/save':
+            $input = getInputJson();
+            $announcements = $input['announcements'] ?? $input['list'] ?? [];
+            $content = '';
+            
+            if (is_array($announcements) && !empty($announcements)) {
+                foreach ($announcements as $item) {
+                    if (is_string($item)) {
+                        $content .= trim($item) . "\n";
+                    } elseif (is_array($item)) {
+                        $date = $item['date'] ?? '';
+                        $text = $item['text'] ?? '';
+                        if (!empty($date) && !empty($text)) {
+                            $content .= "[{$date}] {$text}\n";
+                        } elseif (!empty($text)) {
+                            $content .= "{$text}\n";
+                        }
+                    }
+                }
+            }
+            
+            $announcementFile = __DIR__ . '/gg.txt';
+            $result = @file_put_contents($announcementFile, $content);
+            
+            if ($result !== false) {
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '公告已更新',
+                    'total' => count($announcements),
+                    'last_modified' => date('Y-m-d H:i:s')
+                ]);
+            } else {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '保存失败，文件不可写'
+                ], 200);
+            }
+            break;
+
+        case 'announcement/add':
+        case 'notice/add':
+            $input = getInputJson();
+            $text = $input['text'] ?? $input['content'] ?? '';
+            $date = $input['date'] ?? date('Y-m-d');
+            
+            if (empty($text)) {
+                sendJsonResponse(['success' => false, 'message' => '公告内容不能为空'], 200);
+            }
+            
+            $announcementFile = __DIR__ . '/gg.txt';
+            $existing = '';
+            if (file_exists($announcementFile)) {
+                $existing = file_get_contents($announcementFile);
+            }
+            
+            $newLine = "[{$date}] {$text}";
+            $newContent = $newLine . "\n" . $existing;
+            
+            $result = @file_put_contents($announcementFile, $newContent);
+            
+            if ($result !== false) {
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '公告已添加',
+                    'date' => $date,
+                    'text' => $text
+                ]);
+            } else {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '保存失败，文件不可写'
+                ], 200);
+            }
+            break;
+
+        case 'announcement/refresh':
+        case 'notice/refresh':
+            $remoteUrls = [
+                'https://raw.githubusercontent.com/ssmhdssmhd/qcb/main/gg.txt',
+                'https://cdn.jsdelivr.net/gh/ssmhdssmhd/qcb@main/gg.txt',
+                'https://fastly.jsdelivr.net/gh/ssmhdssmhd/qcb@main/gg.txt',
+                'http://114.134.184.91:9001/公告.txt',
+            ];
+            
+            $remoteContent = null;
+            $usedSource = null;
+            
+            foreach ($remoteUrls as $url) {
+                try {
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $url);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+                    $response = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                    
+                    if ($httpCode === 200 && !empty($response) && strlen($response) > 10) {
+                        $remoteContent = $response;
+                        $usedSource = $url;
+                        break;
+                    }
+                } catch (Throwable $e) {
+                    continue;
+                }
+            }
+            
+            if ($remoteContent !== null) {
+                $announcementFile = __DIR__ . '/gg.txt';
+                $result = @file_put_contents($announcementFile, $remoteContent);
+                
+                $lines = explode("\n", trim($remoteContent));
+                $count = count(array_filter($lines, function($l) { return trim($l) !== ''; }));
+                
+                sendJsonResponse([
+                    'success' => true,
+                    'message' => '公告已从远程更新',
+                    'source' => $usedSource,
+                    'count' => $count,
+                    'last_modified' => date('Y-m-d H:i:s')
+                ]);
+            } else {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '从远程获取公告失败，请检查网络连接'
+                ], 200);
+            }
+            break;
+
         case 'official/list':
             $includePaused = isset($_GET['include_paused']) && $_GET['include_paused'] === '1';
             $sites = $officialMgr->getAllSites($includePaused);

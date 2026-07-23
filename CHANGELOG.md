@@ -1,5 +1,57 @@
 # 更新日志
 
+## v5.8.3 (2026-07-23)
+
+### 修复公告不能自动更新内容
+
+#### 问题分析
+
+公告系统存在以下问题：
+
+1. **依赖外部服务器**：公告仅从 `http://114.134.184.91:9001/公告.txt` 单一外部服务器获取，服务器不可用时无法显示公告
+2. **无本地存储**：本地 `gg.txt` 文件未被有效利用，无法通过后台管理
+3. **无管理功能**：没有后台界面可以编辑和管理公告内容
+4. **无降级机制**：远程获取失败时仅有静态内置公告，无法缓存上次获取的内容
+
+#### 修复内容
+
+**1. 新增公告 API 接口**
+
+- `announcement/list` - 获取公告列表（从本地 gg.txt 读取）
+- `announcement/save` - 保存公告列表
+- `announcement/add` - 添加单条公告
+- `announcement/refresh` - 从远程源同步公告
+
+**2. 优化公告加载多级降级机制**
+
+- 第一级：本地 API 接口（优先读取本地 gg.txt）
+- 第二级：GitHub Raw（https://raw.githubusercontent.com/ssmhdssmhd/qcb/main/gg.txt）
+- 第三级：jsDelivr CDN
+- 第四级：备用服务器
+- 第五级：localStorage 缓存
+- 第六级：内置默认公告
+
+**3. 新增后台公告管理页面**
+
+- 公告列表可视化编辑
+- 添加/删除/排序公告
+- 从远程同步公告
+- 显示公告总数和最后更新时间
+
+**4. 多远程源自动切换**
+
+- 配置 4 个远程公告源，按优先级尝试
+- 支持 HTTPS 优先，HTTP 备用
+- CDN 加速，国内访问更快
+
+#### 修改文件
+
+- [mx.php](file:///workspace/mx.php) — 新增公告相关 API 接口
+- [mxadmin.php](file:///workspace/mxadmin.php) — 公告管理页面和加载逻辑优化
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.8.3
+
+---
+
 ## v5.8.2 (2026-07-23)
 
 ### 修复自动学习502 Bad Gateway报错

@@ -1142,6 +1142,23 @@ header('Expires: 0');
             padding: 10px 0;
         }
         
+        .announcement-edit-item {
+            padding: 12px;
+            background: var(--v3-bg-card);
+            border: 1px solid var(--v3-border-color);
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .announcement-edit-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 12px;
+            border-radius: 6px;
+        }
         .announcement-empty {
             text-align: center;
             opacity: 0.5;
@@ -3557,6 +3574,39 @@ header('Expires: 0');
             </div>
         </div>
 
+        <div class="page" id="page-announcement">
+            <div class="card">
+                <div class="card-title">公告管理</div>
+                <p style="color:#606266;font-size:13px;margin-bottom:16px">管理系统公告内容，支持从远程同步最新公告。</p>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+                    <button class="btn btn-primary" onclick="loadAnnouncementList()">📄 刷新公告</button>
+                    <button class="btn btn-success" onclick="refreshRemoteAnnouncement()">🔄 从远程同步</button>
+                    <button class="btn btn-warning" onclick="showAddAnnouncementModal()">➕ 添加公告</button>
+                    <button class="btn btn-primary" onclick="saveAnnouncements()">💾 保存修改</button>
+                </div>
+                <div id="announcementStats" style="font-size:13px;color:#606266;margin-bottom:12px">加载中...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">公告列表</div>
+                <div id="announcementList" style="max-height:500px;overflow-y:auto">
+                    <div style="text-align:center;padding:40px;color:#909399">加载中...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">公告源设置</div>
+                <p style="color:#606266;font-size:13px;margin-bottom:12px">公告优先从本地读取，本地无数据时自动从远程源获取。多个远程源按顺序尝试。</p>
+                <div style="font-size:12px;color:#909399;line-height:1.8">
+                    <div>📌 本地文件：gg.txt（优先读取）</div>
+                    <div>🌐 远程源1：GitHub Raw</div>
+                    <div>🌐 远程源2：jsDelivr CDN</div>
+                    <div>🌐 远程源3：fastly CDN</div>
+                    <div>🌐 远程源4：备用服务器</div>
+                </div>
+            </div>
+        </div>
+
         <div class="page" id="page-auth">
             <div class="card">
                 <div class="card-title">授权状态概览</div>
@@ -4275,6 +4325,7 @@ header('Expires: 0');
                 group: '系统管理',
                 items: [
                     { page: 'database', icon: '🗄️', text: '数据库管理' },
+                    { page: 'announcement', icon: '📢', text: '公告管理' },
                     { page: 'play', icon: '▶️', text: '在线播放' },
                     { page: 'update', icon: '🔧', text: '系统更新' },
                     { page: 'auth', icon: '🔐', text: '授权管理' },
@@ -9157,6 +9208,10 @@ header('Expires: 0');
 
         function getLocalAnnouncements() {
             return [
+                { date: '2026-07-23', text: 'v5.8.3 版本发布：修复公告不能自动更新问题，新增公告管理后台' },
+                { date: '2026-07-23', text: 'v5.8.2 版本发布：修复自动学习502 Bad Gateway报错' },
+                { date: '2026-07-23', text: 'v5.8.1 版本发布：资源站深度分析修复，修复3个可恢复资源站' },
+                { date: '2026-07-23', text: 'v5.8.0 版本发布：批量新增61个资源站，资源站总数达122个' },
                 { date: '2026-07-19', text: 'v5.7.6 版本发布：修复jiexi.php解析返回的clean.php URL路径错误导致不能播放' },
                 { date: '2026-07-19', text: 'v5.7.5 版本发布：修复jiexi.php不能同时调用官解和官替，多线程高并发，速度快' },
                 { date: '2026-07-19', text: 'v5.7.4 版本发布：优化clean.php播放器页面，移除多余UI元素，视频全屏显示' },
@@ -9164,7 +9219,6 @@ header('Expires: 0');
                 { date: '2026-07-19', text: 'v5.7.2 版本发布：修复xt/clean.php不能播放的问题' },
                 { date: '2026-07-18', text: 'v5.7.1 版本发布：全面修复代理功能，所有模块代理立即可用' },
                 { date: '2026-07-18', text: 'v5.7.0 版本发布：修复顶部统一接口URL显示问题' },
-                { date: '2026-07-18', text: 'v5.6.9 版本发布：修复顶部统一接口不显示接口信息' },
             ];
         }
 
@@ -9219,27 +9273,67 @@ header('Expires: 0');
             const loadingEl = document.getElementById('announcementLoading');
             if (!contentEl) return;
 
-            const remoteUrl = 'http://114.134.184.91:9001/公告.txt?_t=' + Date.now();
+            const localApiUrl = (baseUrl || '') + 'mx.php?action=announcement/list&_t=' + Date.now();
+            const remoteUrls = [
+                'https://raw.githubusercontent.com/ssmhdssmhd/qcb/main/gg.txt',
+                'https://cdn.jsdelivr.net/gh/ssmhdssmhd/qcb@main/gg.txt',
+                'http://114.134.184.91:9001/公告.txt'
+            ];
             
-            fetch(remoteUrl, { cache: 'no-store' })
+            fetch(localApiUrl, { cache: 'no-store' })
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error('HTTP ' + response.status);
-                    }
-                    return response.text();
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
                 })
-                .then(text => {
-                    const lines = text.trim().split('\n').filter(line => line.trim());
-                    if (lines.length > 0) {
-                        renderAnnouncements(lines);
-                    } else {
-                        renderAnnouncements(getLocalAnnouncements());
+                .then(data => {
+                    if (data.success && data.announcements && data.announcements.length > 0) {
+                        renderAnnouncements(data.announcements);
+                        localStorage.setItem('announcement_cache', JSON.stringify(data.announcements));
+                        return;
                     }
+                    throw new Error('本地公告为空');
                 })
                 .catch(err => {
-                    console.warn('加载远程公告失败，使用本地更新:', err);
-                    renderAnnouncements(getLocalAnnouncements());
+                    console.warn('加载本地公告失败，尝试远程获取:', err);
+                    tryRemoteAnnouncements(0);
                 });
+            
+            function tryRemoteAnnouncements(index) {
+                if (index >= remoteUrls.length) {
+                    const cached = localStorage.getItem('announcement_cache');
+                    if (cached) {
+                        try {
+                            const cachedData = JSON.parse(cached);
+                            if (cachedData && cachedData.length > 0) {
+                                renderAnnouncements(cachedData);
+                                return;
+                            }
+                        } catch (e) {}
+                    }
+                    renderAnnouncements(getLocalAnnouncements());
+                    return;
+                }
+                
+                const url = remoteUrls[index] + (remoteUrls[index].includes('?') ? '&' : '?') + '_t=' + Date.now();
+                fetch(url, { cache: 'no-store' })
+                    .then(response => {
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        return response.text();
+                    })
+                    .then(text => {
+                        const lines = text.trim().split('\n').filter(line => line.trim());
+                        if (lines.length > 0) {
+                            renderAnnouncements(lines);
+                            localStorage.setItem('announcement_cache', JSON.stringify(lines));
+                        } else {
+                            tryRemoteAnnouncements(index + 1);
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('远程公告源 ' + (index + 1) + ' 失败:', err);
+                        tryRemoteAnnouncements(index + 1);
+                    });
+            }
         }
 
         function updateV2ApiUrl() {
@@ -9255,6 +9349,156 @@ header('Expires: 0');
             const urlEl = document.getElementById('preview-v2-api');
             if (urlEl) {
                 urlEl.textContent = base + '/mx.php?action=api/v2&type=' + type + '&url=';
+            }
+        }
+
+        let currentAnnouncements = [];
+
+        async function loadAnnouncementList() {
+            const listEl = document.getElementById('announcementList');
+            const statsEl = document.getElementById('announcementStats');
+            if (!listEl) return;
+
+            listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#909399">加载中...</div>';
+
+            try {
+                const res = await fetch(API_BASE + '?action=announcement/list&_t=' + Date.now());
+                const data = await res.json();
+
+                if (data.success) {
+                    currentAnnouncements = data.announcements || [];
+                    renderAnnouncementList();
+                    if (statsEl) {
+                        statsEl.innerHTML = `共 <b>${data.total}</b> 条公告 | 最后更新：${data.last_modified || '未知'}`;
+                    }
+                } else {
+                    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#f56c6c">加载失败：' + (data.message || '未知错误') + '</div>';
+                }
+            } catch (e) {
+                listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#f56c6c">加载失败：' + e.message + '</div>';
+            }
+        }
+
+        function renderAnnouncementList() {
+            const listEl = document.getElementById('announcementList');
+            if (!listEl) return;
+
+            if (currentAnnouncements.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#909399">暂无公告</div>';
+                return;
+            }
+
+            let html = '';
+            currentAnnouncements.forEach((item, index) => {
+                const date = item.date || '';
+                const text = item.text || item.content || '';
+                html += `
+                    <div class="announcement-edit-item" data-index="${index}">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                            <span style="font-size:14px">📌</span>
+                            <input type="date" value="${date}" onchange="updateAnnouncementDate(${index}, this.value)" 
+                                style="padding:6px 10px;border:1px solid #dcdfe6;border-radius:6px;font-size:13px">
+                            <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${index})">删除</button>
+                            <button class="btn btn-secondary btn-sm" onclick="moveAnnouncement(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
+                            <button class="btn btn-secondary btn-sm" onclick="moveAnnouncement(${index}, 1)" ${index === currentAnnouncements.length - 1 ? 'disabled' : ''}>↓</button>
+                        </div>
+                        <textarea onchange="updateAnnouncementText(${index}, this.value)" 
+                            style="width:100%;padding:10px;border:1px solid #dcdfe6;border-radius:8px;font-size:13px;resize:vertical;min-height:50px;font-family:inherit">${escapeHtml(text)}</textarea>
+                    </div>
+                `;
+            });
+
+            listEl.innerHTML = html;
+        }
+
+        function updateAnnouncementDate(index, value) {
+            if (currentAnnouncements[index]) {
+                currentAnnouncements[index].date = value;
+                if (!currentAnnouncements[index].text && currentAnnouncements[index].content) {
+                    currentAnnouncements[index].text = currentAnnouncements[index].content;
+                }
+            }
+        }
+
+        function updateAnnouncementText(index, value) {
+            if (currentAnnouncements[index]) {
+                currentAnnouncements[index].text = value;
+                if (!currentAnnouncements[index].date) {
+                    currentAnnouncements[index].date = '';
+                }
+            }
+        }
+
+        function deleteAnnouncement(index) {
+            if (!confirm('确定要删除这条公告吗？')) return;
+            currentAnnouncements.splice(index, 1);
+            renderAnnouncementList();
+            showToast('已删除', 'success');
+        }
+
+        function moveAnnouncement(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= currentAnnouncements.length) return;
+            const temp = currentAnnouncements[index];
+            currentAnnouncements[index] = currentAnnouncements[newIndex];
+            currentAnnouncements[newIndex] = temp;
+            renderAnnouncementList();
+        }
+
+        function showAddAnnouncementModal() {
+            const text = prompt('请输入公告内容：');
+            if (!text || !text.trim()) return;
+            const today = new Date().toISOString().split('T')[0];
+            currentAnnouncements.unshift({
+                date: today,
+                text: text.trim()
+            });
+            renderAnnouncementList();
+            showToast('已添加，记得保存', 'success');
+        }
+
+        async function saveAnnouncements() {
+            if (!confirm('确定要保存公告修改吗？')) return;
+
+            try {
+                const res = await fetch(API_BASE + '?action=announcement/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ announcements: currentAnnouncements })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast('保存成功', 'success');
+                    loadAnnouncementList();
+                } else {
+                    showToast('保存失败：' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('保存失败：' + e.message, 'error');
+            }
+        }
+
+        async function refreshRemoteAnnouncement() {
+            if (!confirm('确定要从远程同步公告吗？这将覆盖本地公告。')) return;
+
+            showToast('正在从远程同步...', 'info');
+
+            try {
+                const res = await fetch(API_BASE + '?action=announcement/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast('同步成功：' + data.count + ' 条公告', 'success');
+                    loadAnnouncementList();
+                } else {
+                    showToast('同步失败：' + (data.message || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('同步失败：' + e.message, 'error');
             }
         }
 
@@ -11106,6 +11350,7 @@ header('Expires: 0');
             }
             updateMobileNav(pageName);
             if (pageName === 'history') renderHistory();
+            if (pageName === 'announcement') loadAnnouncementList();
             if (pageName === 'dashboard') {
                 updateDashboardStats();
                 renderDashboardRecent();
