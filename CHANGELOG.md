@@ -1,5 +1,64 @@
 # 更新日志
 
+## v5.8.4 (2026-07-23)
+
+### 彻底修复自动学习502 Bad Gateway报错（二次修复）
+
+#### 问题分析
+
+v5.8.2 修复后仍然出现 502 错误，深入分析发现更多问题：
+
+1. **遗漏接口未加固**：`sites/learn_batch`、`sites/analyze_batch` 等接口完全缺少超时设置和异常捕获
+2. **多线程超时过长**：多线程模式超时设置为 120s/90s，超过 nginx 默认 fastcgi_read_timeout (60s)
+3. **单次学习数量过多**：最多 10 个站点 × 10 个视频 = 100 个视频学习，执行时间远超 nginx 超时
+4. **M3U8 下载超时硬编码**：`M3U8Parser` 超时硬编码为 60s，无法外部控制
+5. **单个视频学习无超时保护**：`learnFromVideoUrl` 方法内部没有执行时间检查
+
+#### 修复内容
+
+**1. 全面加固所有学习/分析接口**
+
+| 接口 | 新增保护 |
+|------|---------|
+| `sites/learn_batch` | 超时180s、内存384M、try-catch、数量限制20个 |
+| `sites/analyze_batch` | 超时180s、内存384M、try-catch、数量限制20个 |
+| `sites/search_and_learn` | 多线程超时 120s → 45s |
+| `sites/auto_learn/run` | 多线程超时 90s → 45s、并发数 5 → 3 |
+
+**2. 严格限制单次学习数量**
+
+- 自动学习最大站点数：10 → **5**
+- 自动学习每站点视频数：10 → **5**（默认 5 → 3）
+- 批量学习最大视频数：无限制 → **20**
+- 批量分析最大视频数：无限制 → **20**
+
+**3. M3U8Parser 增加超时控制**
+
+- 新增 `setTimeout($seconds)` 方法
+- 新增 `setConnectTimeout($seconds)` 方法
+- 下载超时从硬编码 60s 改为可配置
+
+**4. learnFromVideoUrl 增加执行时间保护**
+
+- 默认最大执行时间：30 秒
+- 增加阶段性超时检查（解析前、解析后）
+- 最大片段数：3000 → 1000
+- 返回执行耗时统计
+
+**5. 并发数进一步降低**
+
+- 多线程并发：最高 5 → 最高 **3**
+- 避免高并发导致 PHP-FPM 进程耗尽
+
+#### 修改文件
+
+- [mx.php](file:///workspace/mx.php) — 所有批量接口加固、超时和数量限制优化
+- [src/M3U8Parser.php](file:///workspace/src/M3U8Parser.php) — 增加超时控制方法
+- [gz/ResourceSiteManager.php](file:///workspace/gz/ResourceSiteManager.php) — learnFromVideoUrl 增加超时保护
+- [version.php](file:///workspace/version.php) — 版本号升级到 v5.8.4
+
+---
+
 ## v5.8.3 (2026-07-23)
 
 ### 修复公告不能自动更新内容

@@ -8,9 +8,19 @@ class M3U8Parser {
     private $useProxy = true;
     private $forceProxy = null;
     private $useProxyOnFirstTry = true;
+    private $timeout = 60;
+    private $connectTimeout = 15;
 
     public function setMaxSegments($max) {
         $this->maxSegments = intval($max);
+    }
+
+    public function setTimeout($seconds) {
+        $this->timeout = max(5, intval($seconds));
+    }
+
+    public function setConnectTimeout($seconds) {
+        $this->connectTimeout = max(2, intval($seconds));
     }
 
     public function setSaveRaw($save) {
@@ -92,8 +102,8 @@ class M3U8Parser {
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $this->connectTimeout);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
             curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);

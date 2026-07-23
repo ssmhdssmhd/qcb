@@ -1089,6 +1089,9 @@ class ResourceSiteManager {
     public function learnFromVideoUrl($videoUrl, $domainRuleManager, $options = []) {
         $minSegments = $options['min_segments'] ?? 50;
         $maxAdPercentage = $options['max_ad_percentage'] ?? 90;
+        $maxExecTime = $options['max_exec_time'] ?? 30;
+
+        $startTime = microtime(true);
 
         try {
             $parsedUrl = parse_url($videoUrl);
@@ -1105,15 +1108,32 @@ class ResourceSiteManager {
                 }
             }
 
+            if (function_exists('set_time_limit')) {
+                @set_time_limit($maxExecTime + 10);
+            }
+
             $mediaUrl = $this->resolveMasterPlaylist($videoUrl);
+
+            $elapsed = microtime(true) - $startTime;
+            if ($elapsed > $maxExecTime) {
+                return ['success' => false, 'message' => '执行超时(' . round($elapsed, 1) . 's)', 'domain' => $videoDomain];
+            }
 
             if (!class_exists('M3U8Parser')) {
                 require_once __DIR__ . '/../src/M3U8Parser.php';
             }
             $parser = new M3U8Parser();
-            $parser->setMaxSegments(3000);
+            $parser->setMaxSegments(1000);
+            $parser->setConnectTimeout(10);
+            $parser->setTimeout($maxExecTime - 10);
             $playlist = $parser->parse($mediaUrl);
             unset($parser);
+
+            $elapsed = microtime(true) - $startTime;
+            if ($elapsed > $maxExecTime) {
+                unset($playlist);
+                return ['success' => false, 'message' => '解析超时(' . round($elapsed, 1) . 's)', 'domain' => $videoDomain];
+            }
 
             if (empty($playlist['segments']) || count($playlist['segments']) < $minSegments) {
                 unset($playlist);
@@ -1146,6 +1166,8 @@ class ResourceSiteManager {
             $domainResult = $domainRuleManager->learnFromAnalysis($videoDomain, $analysis);
             unset($analysis);
 
+            $elapsed = microtime(true) - $startTime;
+
             if ($domainResult) {
                 return [
                     'success' => true,
@@ -1153,10 +1175,11 @@ class ResourceSiteManager {
                     'segments_count' => $segmentsCount,
                     'ad_count' => 0,
                     'ad_percentage' => $adPercentage,
-                    'rule_updated' => $domainResult
+                    'rule_updated' => $domainResult,
+                    'duration' => round($elapsed * 1000, 2)
                 ];
             } else {
-                return ['success' => false, 'message' => '规则学习失败', 'domain' => $videoDomain];
+                return ['success' => false, 'message' => '规则学习失败', 'domain' => $videoDomain, 'duration' => round($elapsed * 1000, 2)];
             }
         } catch (Throwable $e) {
             if (isset($playlist)) unset($playlist);
@@ -1166,7 +1189,8 @@ class ResourceSiteManager {
             if (strpos($msg, 'memory') !== false || strpos($msg, 'Allowed memory') !== false) {
                 return ['success' => false, 'message' => '内存不足，视频过大', 'domain' => $videoDomain ?? ''];
             }
-            return ['success' => false, 'message' => $msg];
+            $elapsed = microtime(true) - $startTime;
+            return ['success' => false, 'message' => $msg, 'duration' => round($elapsed * 1000, 2)];
         }
     }
 

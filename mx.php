@@ -2682,7 +2682,7 @@ try {
                 $runner = TaskRunner::create([
                     'concurrency' => $concurrency,
                     'mode' => TaskRunner::MODE_CURL_MULTI,
-                    'timeout' => 120
+                    'timeout' => 45
                 ]);
 
                 $results = $runner->run($tasks, $selfBase);
@@ -2850,6 +2850,10 @@ try {
             break;
 
         case 'sites/learn_batch':
+            @set_time_limit(180);
+            @ini_set('memory_limit', '384M');
+            @ignore_user_abort(true);
+
             $input = getInputJson();
             $urls = $input['urls'] ?? [];
             $concurrency = isset($input['concurrency']) ? intval($input['concurrency']) : 5;
@@ -2859,8 +2863,12 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '请提供视频URL列表'], 400);
             }
 
-            $concurrency = max(1, min(10, $concurrency));
+            $concurrency = max(1, min(5, $concurrency));
             $total = count($urls);
+            $total = min($total, 20);
+            $urls = array_slice($urls, 0, $total);
+
+            try {
 
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -2884,7 +2892,7 @@ try {
                     $runner = TaskRunner::create([
                         'concurrency' => $concurrency,
                         'mode' => TaskRunner::MODE_CURL_MULTI,
-                        'timeout' => 120
+                        'timeout' => 60
                     ]);
 
                     $startTime = microtime(true);
@@ -2968,7 +2976,13 @@ try {
                 $resultDetails = [];
 
                 foreach ($urls as $i => $url) {
-                    $result = $siteManager->learnFromVideoUrl($url, $ruleManager, []);
+                    $elapsed = microtime(true) - $startTime;
+                    if ($elapsed > 150) {
+                        $failCount++;
+                        $resultDetails[] = ['url' => $url, 'success' => false, 'message' => '批量学习超时'];
+                        continue;
+                    }
+                    $result = $siteManager->learnFromVideoUrl($url, $ruleManager, ['max_exec_time' => 25]);
                     if (!empty($result['success'])) {
                         $successCount++;
                         if (!empty($result['domain'])) {
@@ -2993,9 +3007,25 @@ try {
                     'results' => $resultDetails
                 ]);
             }
+
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '批量学习异常: ' . $e->getMessage(),
+                    'error_file' => basename($e->getFile()),
+                    'error_line' => $e->getLine(),
+                    'total' => $total,
+                    'success_count' => 0,
+                    'fail_count' => 0
+                ], 200);
+            }
             break;
 
         case 'sites/analyze_batch':
+            @set_time_limit(180);
+            @ini_set('memory_limit', '384M');
+            @ignore_user_abort(true);
+
             $input = getInputJson();
             $urls = $input['urls'] ?? [];
             $concurrency = isset($input['concurrency']) ? intval($input['concurrency']) : 5;
@@ -3005,8 +3035,12 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '请提供视频URL列表'], 400);
             }
 
-            $concurrency = max(1, min(10, $concurrency));
+            $concurrency = max(1, min(5, $concurrency));
             $total = count($urls);
+            $total = min($total, 20);
+            $urls = array_slice($urls, 0, $total);
+
+            try {
 
             $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -3029,7 +3063,7 @@ try {
                     $runner = TaskRunner::create([
                         'concurrency' => $concurrency,
                         'mode' => TaskRunner::MODE_CURL_MULTI,
-                        'timeout' => 120
+                        'timeout' => 45
                     ]);
 
                     $startTime = microtime(true);
@@ -3099,7 +3133,7 @@ try {
                     $multiThreadFailed = true;
                 }
             }
-            
+
             if ($multiThreadFailed || !$useMultiThread || !TaskRunner::isMultiThreadAvailable()) {
                 $startTime = microtime(true);
                 $successCount = 0;
@@ -3107,45 +3141,41 @@ try {
                 $resultDetails = [];
 
                 foreach ($urls as $i => $url) {
-                    try {
-                        $parsedUrl = parse_url($url);
-                        $domain = $parsedUrl['host'] ?? '';
-                        $mediaUrl = resolveMasterPlaylist($url);
-
-                        $engine = new EnhancedAdRuleEngine([
-                            'checkDiscontinuity' => true,
-                            'checkRepetitiveDuration' => true
-                        ]);
-                        $engine->setDomain($domain);
-
-                        $parser = new M3U8Parser();
-                        $playlist = $parser->parse($mediaUrl);
-
-                        if (empty($playlist['segments'])) {
-                            $failCount++;
-                            $resultDetails[] = ['url' => $url, 'success' => false, 'message' => '无法解析视频片段'];
+                    $elapsed = microtime(true) - $startTime;
+                    if ($elapsed > 150) {
+                        $failCount++;
+                        $resultDetails[] = ['url' => $url, 'success' => false, 'message' => '批量分析超时'];
+                        continue;
+                    }
+                    
+                    $analyzeUrl = $selfBase . '&url=' . urlencode($url);
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $analyzeUrl);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                    $response = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                    
+                    if ($httpCode === 200 && $response) {
+                        $data = json_decode($response, true);
+                        if ($data && !empty($data['success'])) {
+                            $successCount++;
+                            $resultDetails[] = [
+                                'url' => $url,
+                                'success' => true,
+                                'domain' => $data['domain'] ?? '',
+                                'fast_mode' => $data['fastMode'] ?? false,
+                                'stats' => $data['stats'] ?? []
+                            ];
                             continue;
                         }
-
-                        $analysis = $engine->analyzeAllSegments($playlist['segments']);
-                        $successCount++;
-                        $resultDetails[] = [
-                            'url' => $url,
-                            'success' => true,
-                            'domain' => $domain,
-                            'fast_mode' => false,
-                            'stats' => [
-                                'totalSegments' => $analysis['totalCount'],
-                                'adSegments' => $analysis['adCount'],
-                                'discontinuityCount' => $analysis['discontinuityCount'],
-                                'sequenceJumps' => count($analysis['sequenceJumps']),
-                                'adClusters' => count($analysis['adClusters'])
-                            ]
-                        ];
-                    } catch (Throwable $e) {
-                        $failCount++;
-                        $resultDetails[] = ['url' => $url, 'success' => false, 'message' => $e->getMessage()];
                     }
+                    $failCount++;
+                    $resultDetails[] = ['url' => $url, 'success' => false, 'message' => '分析失败'];
                 }
                 $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -3159,6 +3189,18 @@ try {
                     'total_time' => $totalTime,
                     'results' => $resultDetails
                 ]);
+            }
+
+            } catch (Throwable $e) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => '批量分析异常: ' . $e->getMessage(),
+                    'error_file' => basename($e->getFile()),
+                    'error_line' => $e->getLine(),
+                    'total' => $total,
+                    'success_count' => 0,
+                    'fail_count' => 0
+                ], 200);
             }
             break;
 
@@ -3219,9 +3261,9 @@ try {
                 }
 
                 $maxSites = $options['max_sites'] ?? $config['max_sites_per_run'] ?? 5;
-                $maxSites = min($maxSites, 10);
-                $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 5;
-                $videosPerSite = min($videosPerSite, 10);
+                $maxSites = min($maxSites, 5);
+                $videosPerSite = $options['videos_per_site'] ?? $config['videos_per_site'] ?? 3;
+                $videosPerSite = min($videosPerSite, 5);
                 $minSegments = $config['min_segments'] ?? 50;
                 $maxAdPercentage = $config['max_ad_percentage'] ?? 90;
                 $keyword = $options['keyword'] ?? '';
@@ -3270,11 +3312,11 @@ try {
                     }
                 }
 
-                $concurrency = max(1, min(5, $concurrency));
+                $concurrency = max(1, min(3, $concurrency));
                 $runner = TaskRunner::create([
                     'concurrency' => $concurrency,
                     'mode' => TaskRunner::MODE_CURL_MULTI,
-                    'timeout' => 90
+                    'timeout' => 45
                 ]);
 
                 $learnTasks = [];
