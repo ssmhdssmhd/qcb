@@ -1,5 +1,61 @@
 # 更新日志
 
+## v5.9.0 (2026-08-03)
+
+### 新增 AI 自动学习功能（频繁更新规则专用）
+
+#### 核心功能
+
+- 🧠 **AI 自动学习引擎**：每隔几小时自动从指定资源站（默认如意资源站）获取热门/更新视频
+- 🎯 **精准播放源过滤**：按 `play_from` 标识过滤（默认 `rym3u8`），只学习指定源的无广告地址
+- 🔥 **热门视频优先**：按 `vod_remarks`（更新至xx集/完结等）智能排序，优先学习正在更新的热门影视
+- 🚫 **视频去重机制**：已学习视频 7 天内不重复分析（可配置保留天数）
+- 📊 **深度广告分析**：EnhancedAdRuleEngine + ProfessionalAdDetector 双引擎分析，识别广告/插播/水印
+- ⚡ **按小时调度**：与原自动学习（按天）互补，支持 1-24 小时执行间隔
+- 🔧 **按资源站单独配置**：可自由指定目标资源站列表和播放源标识
+
+#### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `gz/AiAutoLearner.php` | AI 自动学习核心引擎类 |
+| `gz/ai_auto_learn_config.php` | 配置文件（后台自动维护） |
+| `cron_ai_autolearn.php` | 定时任务入口（CLI/HTTP/锁机制） |
+
+#### 新增 API 端点
+
+| 端点 | 说明 |
+|------|------|
+| `GET /mx.php?action=ai_autolearn/config` | 获取配置和状态 |
+| `POST /mx.php?action=ai_autolearn/config/save` | 保存配置 |
+| `GET /mx.php?action=ai_autolearn/status` | 获取运行状态 |
+| `POST /mx.php?action=ai_autolearn/run` | 立即执行 AI 自动学习 |
+| `GET /mx.php?action=ai_autolearn/logs` | 获取执行日志 |
+
+#### 后台管理
+
+- 资源管理 → AI自动学习（🧠 NEW 标签）
+- 状态概览卡片（运行状态/上次执行/执行间隔/目标资源站）
+- 完整配置表单（启用/间隔/站点/播放源/热门排序/去重/密钥等）
+- 一键执行 + 执行结果详情展示 + 日志查看
+
+#### 定时任务配置
+
+```bash
+# Crontab 每4小时执行（推荐）
+0 0,4,8,12,16,20 * * * php /path/to/cron_ai_autolearn.php
+
+# 或 URL 触发
+curl "http://你的域名/cron_ai_autolearn.php?key=你的密钥"
+```
+
+#### 测试验证
+
+- ✅ 从如意资源站成功获取 rym3u8 视频列表
+- ✅ 成功分析并更新域名规则（cdn.ryplay11.com, svip.ryplay17.com, cdn7.ryplay7.com）
+- ✅ 视频去重、热门排序、play_from 过滤均正常工作
+- ✅ CLI 和 HTTP 两种触发方式均通过测试
+
 ## v5.8.4 (2026-07-23)
 
 ### 彻底修复自动学习502 Bad Gateway报错（二次修复）

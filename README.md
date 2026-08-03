@@ -37,6 +37,12 @@
   - 完整日志记录，便于排查优化
 - 🤖 **自动化规则更新** - 定时从资源站采集视频自动学习更新规则
 - ⏰ **定时任务支持** - 支持宝塔/Cron/URL触发等多种定时任务方式
+- 🧠 **AI 自动学习（频繁更新专用）** - 每隔几小时自动从指定资源站（默认如意）获取热门/更新视频，提取 rym3u8 地址进行深度广告分析并更新规则
+  - 按小时调度（1-24h），与原自动学习（按天）互补
+  - 按 `play_from` 过滤（rym3u8），精准定位无广告源
+  - 热门视频优先排序，视频去重避免重复学习
+  - EnhancedAdRuleEngine + ProfessionalAdDetector 双引擎深度分析
+  - 可单独配置目标资源站和播放源标识
 - 🔄 **动态规则更新** - 提供 gzgx.php 接口，支持远程动态更新规则
 - 🌐 **Web API 服务** - 支持通过 URL 参数直接调用，返回 JSON 或 M3U8
 - 🔓 **CORS 支持** - 支持跨域访问，可直接在前端调用
@@ -70,6 +76,7 @@
 ├── mx.php                 # API 接口入口
 ├── mxadmin.php            # 后台管理页面
 ├── jiexi.php              # TVBox/影视App专用解析接口
+├── cron_ai_autolearn.php  # AI自动学习定时任务（频繁更新规则专用）
 ├── index.php              # 首页路由
 ├── router.php             # 路由配置
 ├── xt/                    # 超级嗅探模块（官解对接 + AI去广告）
@@ -311,6 +318,43 @@ http://你的域名/mx.php?action=<action>&...
 #### 19. 执行自动学习
 
 **POST** `/mx.php?action=sites/auto_learn/run`
+
+### AI 自动学习接口（频繁更新规则专用）
+
+每隔几小时自动从指定资源站（默认如意）获取热门/更新视频，提取 rym3u8 地址进行深度广告分析。
+
+#### 20. AI 自动学习配置
+
+**GET** `/mx.php?action=ai_autolearn/config`
+
+#### 21. 保存 AI 自动学习配置
+
+**POST** `/mx.php?action=ai_autolearn/config/save`
+
+#### 22. AI 自动学习状态
+
+**GET** `/mx.php?action=ai_autolearn/status`
+
+#### 23. 执行 AI 自动学习
+
+**POST** `/mx.php?action=ai_autolearn/run`
+
+#### 24. AI 自动学习日志
+
+**GET** `/mx.php?action=ai_autolearn/logs`
+
+### 定时任务
+
+| 脚本 | 说明 | 推荐频率 |
+|------|------|---------|
+| `cron_autolearn.php` | 原自动学习（按天，全站） | 每天1次 |
+| `cron_ai_autolearn.php` | AI自动学习（按小时，指定站） | 每4小时 |
+
+```bash
+# Crontab 配置示例
+0 3 * * * php /path/to/cron_autolearn.php          # 每天3点执行原自动学习
+0 0,4,8,12,16,20 * * * php /path/to/cron_ai_autolearn.php  # 每4小时执行AI自动学习
+```
 
 ## 动态规则更新接口（gzgx.php）
 

@@ -3446,6 +3446,73 @@ try {
             ]);
             break;
 
+        // ==================== AI 自动学习（频繁更新规则专用） ====================
+        case 'ai_autolearn/config':
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            sendJsonResponse([
+                'success' => true,
+                'config' => $aiLearner->getConfig(),
+                'status' => $aiLearner->getStatus(),
+            ]);
+            break;
+
+        case 'ai_autolearn/config/save':
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            $input = getInputJson();
+            $ok = $aiLearner->saveConfig($input);
+            sendJsonResponse(
+                $ok ? ['success' => true, 'message' => 'AI 自动学习配置已保存', 'config' => $aiLearner->getConfig()]
+                    : ['success' => false, 'message' => '配置保存失败'],
+                $ok ? 200 : 500
+            );
+            break;
+
+        case 'ai_autolearn/status':
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            sendJsonResponse([
+                'success' => true,
+                'status' => $aiLearner->getStatus(),
+            ]);
+            break;
+
+        case 'ai_autolearn/run':
+            @set_time_limit(300);
+            @ini_set('memory_limit', '512M');
+            @ignore_user_abort(true);
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            $input = getInputJson();
+            $options = [];
+            if (isset($input['max_sites'])) $options['max_sites'] = intval($input['max_sites']);
+            if (isset($input['videos_per_site'])) $options['videos_per_site'] = intval($input['videos_per_site']);
+            $result = $aiLearner->run($options);
+            sendJsonResponse($result, $result['success'] ? 200 : 500);
+            break;
+
+        case 'ai_autolearn/logs':
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 50;
+            $limit = max(1, min(100, $limit));
+            sendJsonResponse([
+                'success' => true,
+                'logs' => $aiLearner->getLogs($limit),
+            ]);
+            break;
+
         case 'official_sites/status':
 
             sendJsonResponse([
@@ -5835,6 +5902,11 @@ try {
                     'sites/auto_learn/config/save' => '保存自动学习配置',
                     'sites/auto_learn/run' => '执行自动学习',
                     'sites/auto_learn/status' => '自动学习状态',
+                    'ai_autolearn/config' => 'AI自动学习配置（频繁更新规则专用）',
+                    'ai_autolearn/config/save' => '保存AI自动学习配置',
+                    'ai_autolearn/status' => 'AI自动学习状态',
+                    'ai_autolearn/run' => '执行AI自动学习',
+                    'ai_autolearn/logs' => 'AI自动学习日志',
                     'official_replace/config' => '官替配置',
                     'official_replace/config/save' => '保存官替配置',
                     'official_replace/platforms' => '官替平台列表',

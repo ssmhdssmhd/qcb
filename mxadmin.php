@@ -2935,6 +2935,104 @@ header('Expires: 0');
             </div>
         </div>
 
+        <div class="page" id="page-ai_autolearn">
+            <div class="card">
+                <div class="card-title">AI 自动学习配置（频繁更新规则专用）</div>
+                <p style="color:var(--text-regular);font-size:13px;margin-bottom:16px">
+                    每隔几小时自动从指定资源站（默认<b>如意</b>）获取热门/更新视频，提取 <code style="background:var(--fill-lighter);padding:2px 6px;border-radius:4px">rym3u8</code> 等指定播放源地址，
+                    进行深度广告分析（EnhancedAdRuleEngine + ProfessionalAdDetector）并自动更新域名规则。支持视频去重、热门排序、按资源站单独配置。
+                </p>
+                <div class="stats-grid" id="aiAutoLearnStats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="aiAlStatus">-</div>
+                        <div class="stat-label">运行状态</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="aiAlLastRun">-</div>
+                        <div class="stat-label">上次执行</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="aiAlInterval">-</div>
+                        <div class="stat-label">执行间隔</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="aiAlTargets">-</div>
+                        <div class="stat-label">目标资源站</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>启用 AI 自动学习</label>
+                        <select id="aiAlEnabled">
+                            <option value="false">禁用</option>
+                            <option value="true">启用</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>执行间隔 (小时)</label>
+                        <input type="number" id="aiAlIntervalHours" min="1" max="24" value="4">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>每站视频数</label>
+                        <input type="number" id="aiAlVideosPerSite" min="1" max="10" value="5">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>每次最大站点数</label>
+                        <input type="number" id="aiAlMaxSites" min="1" max="10" value="3">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>最小片段数</label>
+                        <input type="number" id="aiAlMinSegments" min="10" max="500" value="50">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>最大广告占比 (%)</label>
+                        <input type="number" id="aiAlMaxAdPct" min="10" max="100" value="90">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>单视频超时 (秒)</label>
+                        <input type="number" id="aiAlMaxExecTime" min="10" max="120" value="30">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>去重保留天数</label>
+                        <input type="number" id="aiAlDedupDays" min="1" max="30" value="7">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>目标资源站（逗号分隔，对应资源站名称）</label>
+                        <input type="text" id="aiAlTargetSites" value="如意" placeholder="如：如意,暴风,量子">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>播放源标识（逗号分隔，匹配 play_from）</label>
+                        <input type="text" id="aiAlPlayFromPatterns" value="rym3u8" placeholder="如：rym3u8,lzm3u8">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>优先热门/更新视频</label>
+                        <select id="aiAlPreferHot">
+                            <option value="true">启用</option>
+                            <option value="false">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>访问密钥（定时任务保护，留空不校验）</label>
+                        <input type="text" id="aiAlAccessKey" value="" placeholder="留空则不校验">
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="saveAiAutoLearnConfig()">保存配置</button>
+                    <button class="btn btn-success" onclick="runAiAutoLearn()">立即执行学习</button>
+                    <button class="btn btn-secondary" onclick="refreshAiAutoLearn()">刷新</button>
+                    <button class="btn btn-secondary" onclick="loadAiAutoLearnLogs()">查看日志</button>
+                </div>
+                <div id="aiAutoLearnResult" style="margin-top:16px;display:none"></div>
+                <div id="aiAutoLearnLogs" style="margin-top:16px;display:none"></div>
+            </div>
+        </div>
+
         <div class="page" id="page-official_sites">
             <div class="card">
                 <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -4308,6 +4406,7 @@ header('Expires: 0');
                 group: '资源管理',
                 items: [
                     { page: 'sites', icon: '🌐', text: '资源站管理' },
+                    { page: 'ai_autolearn', icon: '🧠', text: 'AI自动学习', badge: 'NEW' },
                     { page: 'official_sites', icon: '⭐', text: '推荐采集' },
                     { page: 'official_replace', icon: '🔄', text: '官替管理' },
                 ]
@@ -4386,6 +4485,7 @@ header('Expires: 0');
             const page = item.dataset.page;
             if (page === 'rules') refreshRules();
             if (page === 'sites') refreshSites();
+            if (page === 'ai_autolearn') refreshAiAutoLearn();
             if (page === 'auth') refreshAuthInfo();
             if (page === 'update') { checkUpdate(); loadVersion(); loadBackupList(); }
             if (page === 'database') checkDbStatus();
@@ -8396,6 +8496,162 @@ header('Expires: 0');
             document.getElementById('analyzeUrl').value = url;
             document.querySelector('.nav-item[data-page="analyze"]').click();
             setTimeout(() => analyzeVideo(), 300);
+        }
+
+        // ==================== AI 自动学习（频繁更新规则专用） ====================
+        async function refreshAiAutoLearn() {
+            try {
+                const res = await fetch(API_BASE + '?action=ai_autolearn/config&_t=' + Date.now());
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                const config = data.config || {};
+                const status = data.status || {};
+                const statusEl = document.getElementById('aiAlStatus');
+                if (config.enabled) {
+                    statusEl.textContent = status.should_run ? '待执行' : '就绪';
+                    statusEl.className = 'stat-value ' + (status.should_run ? 'warning' : 'success');
+                } else {
+                    statusEl.textContent = '已禁用';
+                    statusEl.className = 'stat-value danger';
+                }
+                document.getElementById('aiAlLastRun').textContent = status.last_run_time || '从未执行';
+                document.getElementById('aiAlInterval').textContent = (config.interval_hours || 4) + ' 小时';
+                const targets = config.target_sites || ['如意'];
+                document.getElementById('aiAlTargets').textContent = targets.join(', ');
+
+                document.getElementById('aiAlEnabled').value = config.enabled ? 'true' : 'false';
+                document.getElementById('aiAlIntervalHours').value = config.interval_hours ?? 4;
+                document.getElementById('aiAlVideosPerSite').value = config.videos_per_site ?? 5;
+                document.getElementById('aiAlMaxSites').value = config.max_sites_per_run ?? 3;
+                document.getElementById('aiAlMinSegments').value = config.min_segments ?? 50;
+                document.getElementById('aiAlMaxAdPct').value = config.max_ad_percentage ?? 90;
+                document.getElementById('aiAlMaxExecTime').value = config.max_exec_time_per_video ?? 30;
+                document.getElementById('aiAlDedupDays').value = config.dedup_retention_days ?? 7;
+                document.getElementById('aiAlTargetSites').value = (config.target_sites || ['如意']).join(',');
+                document.getElementById('aiAlPlayFromPatterns').value = (config.play_from_patterns || ['rym3u8']).join(',');
+                document.getElementById('aiAlPreferHot').value = config.prefer_hot_videos ? 'true' : 'false';
+                document.getElementById('aiAlAccessKey').value = config.access_key || '';
+            } catch (e) {
+                showToast('加载 AI 自动学习配置失败: ' + e.message, 'error');
+            }
+        }
+
+        async function saveAiAutoLearnConfig() {
+            const config = {
+                enabled: document.getElementById('aiAlEnabled').value === 'true',
+                interval_hours: parseInt(document.getElementById('aiAlIntervalHours').value) || 4,
+                videos_per_site: parseInt(document.getElementById('aiAlVideosPerSite').value) || 5,
+                max_sites_per_run: parseInt(document.getElementById('aiAlMaxSites').value) || 3,
+                min_segments: parseInt(document.getElementById('aiAlMinSegments').value) || 50,
+                max_ad_percentage: parseInt(document.getElementById('aiAlMaxAdPct').value) || 90,
+                max_exec_time_per_video: parseInt(document.getElementById('aiAlMaxExecTime').value) || 30,
+                dedup_retention_days: parseInt(document.getElementById('aiAlDedupDays').value) || 7,
+                target_sites: document.getElementById('aiAlTargetSites').value.split(',').map(s => s.trim()).filter(s => s),
+                play_from_patterns: document.getElementById('aiAlPlayFromPatterns').value.split(',').map(s => s.trim()).filter(s => s),
+                prefer_hot_videos: document.getElementById('aiAlPreferHot').value === 'true',
+                access_key: document.getElementById('aiAlAccessKey').value.trim(),
+            };
+            try {
+                const res = await fetch(API_BASE + '?action=ai_autolearn/config/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                showToast('AI 自动学习配置已保存', 'success');
+                refreshAiAutoLearn();
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function runAiAutoLearn() {
+            if (!confirm('确定要立即执行 AI 自动学习吗？将从如意等资源站获取热门视频并分析广告规则，可能需要一些时间。')) return;
+            const resultEl = document.getElementById('aiAutoLearnResult');
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<div class="loading">正在执行 AI 自动学习，请稍候...</div>';
+            try {
+                const res = await fetch(API_BASE + '?action=ai_autolearn/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                let data;
+                try { data = await res.json(); }
+                catch (jsonErr) {
+                    const text = await res.text();
+                    throw new Error('服务器返回非JSON: ' + text.substring(0, 200));
+                }
+                if (!data.success) throw new Error(data.message);
+                let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
+                html += '<div style="font-weight:600;color:#67c23a;margin-bottom:8px">✅ ' + escapeHtml(data.message || 'AI 自动学习完成') + '</div>';
+                html += '<div style="font-size:13px;color:#606266">';
+                html += '处理站点: ' + (data.sites_processed || 0) + ' | ';
+                html += '学习成功: <span style="color:#67c23a">' + (data.total_learned || 0) + '</span> | ';
+                html += '失败: <span style="color:#f56c6c">' + (data.total_failed || 0) + '</span> | ';
+                html += '去重跳过: <span style="color:#909399">' + (data.total_skipped || 0) + '</span>';
+                if (data.duration_seconds) html += ' | 耗时: <span style="color:#e6a23c">' + data.duration_seconds + 's</span>';
+                html += '</div>';
+                if (data.learned_domains && data.learned_domains.length > 0) {
+                    html += '<div style="font-size:12px;color:#909399;margin-top:8px">更新域名: ' + escapeHtml(data.learned_domains.join(', ')) + '</div>';
+                }
+                if (data.details && data.details.length > 0) {
+                    html += '<div style="margin-top:12px;max-height:400px;overflow-y:auto">';
+                    data.details.forEach(d => {
+                        html += '<div style="padding:8px;background:white;border-radius:4px;margin-bottom:6px;font-size:12px">';
+                        html += '<strong>' + escapeHtml(d.site) + '</strong>: ';
+                        html += '检查 ' + d.videos_checked + ', 学习 ' + d.videos_learned + ', 失败 ' + d.videos_failed + ', 跳过 ' + d.videos_skipped;
+                        if (d.error) html += ' <span style="color:#f56c6c">(' + escapeHtml(d.error) + ')</span>';
+                        if (d.details && d.details.length > 0) {
+                            html += '<div style="margin-top:4px;padding-left:12px;border-left:2px solid #dcdfe6">';
+                            d.details.forEach(v => {
+                                const color = v.result === 'success' ? '#67c23a' : '#f56c6c';
+                                html += '<div style="color:' + color + '">• ' + escapeHtml(v.name) + ' [' + escapeHtml(v.play_from || '') + '] ' + escapeHtml(v.message) + (v.domain ? ' (' + escapeHtml(v.domain) + ')' : '') + '</div>';
+                            });
+                            html += '</div>';
+                        }
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+                resultEl.innerHTML = html;
+                showToast('AI 自动学习完成', 'success');
+                refreshAiAutoLearn();
+            } catch (e) {
+                resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">❌ ' + escapeHtml(e.message) + '</div>';
+                showToast('执行失败: ' + e.message, 'error');
+            }
+        }
+
+        async function loadAiAutoLearnLogs() {
+            const logsEl = document.getElementById('aiAutoLearnLogs');
+            logsEl.style.display = 'block';
+            logsEl.innerHTML = '<div class="loading">加载日志中...</div>';
+            try {
+                const res = await fetch(API_BASE + '?action=ai_autolearn/logs&limit=30&_t=' + Date.now());
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                const logs = data.logs || [];
+                if (logs.length === 0) {
+                    logsEl.innerHTML = '<div style="padding:12px;color:#909399;font-size:13px">暂无日志记录</div>';
+                    return;
+                }
+                let html = '<div style="padding:12px;background:var(--fill-lighter);border:1px solid var(--border-lighter);border-radius:6px;max-height:400px;overflow-y:auto">';
+                html += '<div style="font-weight:600;margin-bottom:8px">AI 自动学习执行日志</div>';
+                logs.forEach(log => {
+                    const color = log.type === 'error' ? '#f56c6c' : (log.type === 'warning' ? '#e6a23c' : '#606266');
+                    html += '<div style="padding:4px 0;border-bottom:1px solid var(--border-lighter);font-size:12px">';
+                    html += '<span style="color:#909399">[' + log.time + ']</span> ';
+                    html += '<span style="color:' + color + '">' + escapeHtml(log.message) + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+                logsEl.innerHTML = html;
+            } catch (e) {
+                logsEl.innerHTML = '<div style="color:#f56c6c">加载日志失败: ' + escapeHtml(e.message) + '</div>';
+            }
         }
 
         async function saveAutoLearnConfig() {
