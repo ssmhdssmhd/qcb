@@ -8578,10 +8578,13 @@ header('Expires: 0');
                     body: JSON.stringify({})
                 });
                 let data;
-                try { data = await res.json(); }
+                let text;
+                try {
+                    text = await res.text();
+                    data = JSON.parse(text);
+                }
                 catch (jsonErr) {
-                    const text = await res.text();
-                    throw new Error('服务器返回非JSON: ' + text.substring(0, 200));
+                    throw new Error('服务器返回非JSON: ' + (text || '').substring(0, 200));
                 }
                 if (!data.success) throw new Error(data.message);
                 let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
@@ -9464,6 +9467,7 @@ header('Expires: 0');
 
         function getLocalAnnouncements() {
             return [
+                { date: '2026-08-03', text: 'v5.9.4 版本发布：修复AI自动学习执行报错 body stream already read' },
                 { date: '2026-08-03', text: 'v5.9.3 版本发布：自动成长系统-默认全部资源站、自动清理失效规则、部署即可自动运行' },
                 { date: '2026-08-03', text: 'v5.9.2 版本发布：修复AI自动学习失败返回HTTP 500、版本号不递增问题' },
                 { date: '2026-08-03', text: 'v5.9.1 版本发布：修复如意rym3u8规则误判，AI自动学习样本提升至50-100' },

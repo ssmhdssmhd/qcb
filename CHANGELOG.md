@@ -1,5 +1,16 @@
 # 更新日志
 
+## v5.9.4 (2026-08-03)
+
+### Bug 修复
+
+#### AI 自动学习执行报错 `body stream already read`
+
+- **问题**：点击"执行 AI 自动学习"按钮时报错 `Failed to execute 'text' on 'Response': body stream already read`
+- **原因**：前端 `try { data = await res.json(); } catch { const text = await res.text(); }` 模式中，`res.json()` 解析失败时 body stream 已被消耗，再调 `res.text()` 会抛出此错误
+- **修复**：改为先 `text = await res.text()` 再 `JSON.parse(text)` 的安全模式，避免 body 重复读取
+- **影响文件**：`mxadmin.php`（AI 自动学习 run 按钮的响应处理）
+
 ## v5.9.3 (2026-08-03)
 
 ### 重大功能升级 - 自动成长系统
