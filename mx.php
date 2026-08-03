@@ -3520,6 +3520,46 @@ try {
             ]);
             break;
 
+        case 'ai_autolearn/cleanup':
+            @set_time_limit(120);
+            @ini_set('memory_limit', '256M');
+            @ignore_user_abort(true);
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            $force = !empty($_GET['force']) || !empty(getInputJson()['force']);
+            $result = $aiLearner->cleanupStaleRules($force);
+            sendJsonResponse($result);
+            break;
+
+        case 'ai_autolearn/trigger':
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            $triggerResult = $aiLearner->autoTriggerIfNeeded();
+            sendJsonResponse([
+                'success' => true,
+                'trigger' => $triggerResult,
+                'status' => $aiLearner->getStatus(),
+            ]);
+            break;
+
+        case 'ai_autolearn/sites':
+            if (!class_exists('AiAutoLearner')) {
+                require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+            sendJsonResponse([
+                'success' => true,
+                'target_mode' => $aiLearner->getConfig()['target_mode'] ?? 'all',
+                'effective_sites' => $aiLearner->resolveTargetSites(),
+                'effective_count' => $aiLearner->getEffectiveSiteCount(),
+                'all_sites' => $siteManager->getAllSites(false),
+            ]);
+            break;
+
         case 'official_sites/status':
 
             sendJsonResponse([
@@ -4601,6 +4641,19 @@ try {
         case 'info/version':
             $versionData = file_exists(__DIR__ . '/version.php') ? include __DIR__ . '/version.php' : ['version' => '1.0.0'];
             $version = is_array($versionData) ? ($versionData['version'] ?? '1.0.0') : $versionData;
+            // 懒触发：每次版本查询时检查是否需要后台异步执行 AI 学习/清理
+            // 完全非阻塞，不影响当前请求响应时间
+            if (!class_exists('AiAutoLearner')) {
+                @require_once $rootDir . '/gz/AiAutoLearner.php';
+            }
+            if (class_exists('AiAutoLearner')) {
+                try {
+                    $aiLearnerLazy = new AiAutoLearner($siteManager, $ruleManager);
+                    $aiLearnerLazy->autoTriggerIfNeeded();
+                } catch (Throwable $e) {
+                    // 懒触发失败不影响版本查询
+                }
+            }
             sendJsonResponse([
                 'success' => true,
                 'version' => $version,
@@ -5928,6 +5981,9 @@ try {
                     'ai_autolearn/status' => 'AI自动学习状态',
                     'ai_autolearn/run' => '执行AI自动学习',
                     'ai_autolearn/logs' => 'AI自动学习日志',
+                    'ai_autolearn/cleanup' => '清理失效规则（重新获取）',
+                    'ai_autolearn/trigger' => '懒触发自动学习+清理',
+                    'ai_autolearn/sites' => '查看生效资源站列表',
                     'official_replace/config' => '官替配置',
                     'official_replace/config/save' => '保存官替配置',
                     'official_replace/platforms' => '官替平台列表',

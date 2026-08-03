@@ -1,5 +1,70 @@
 # 更新日志
 
+## v5.9.3 (2026-08-03)
+
+### 重大功能升级 - 自动成长系统
+
+#### 1. 默认覆盖全部资源站
+
+- **新增**：`target_mode` 配置字段
+  - `all`（默认）：自动覆盖全部启用资源站，无需手动维护列表
+  - `custom`：仅处理 `target_sites` 列表中的资源站
+- **新增**：`resolveTargetSites()` 方法动态解析生效站点
+- **新增**：`ai_autolearn/sites` 端点查看生效资源站列表
+- 实测：自动识别 98 个启用资源站
+
+#### 2. 广告规则自动更新（免手动）
+
+- 学习成功后规则自动保存到 `gz/rules_*.php`
+- M3U8 处理流程（lz.php/gzgx.php）自动读取最新规则
+- 完全自动化：学习 → 保存 → 应用，无需任何手动干预
+
+#### 3. 定期清理失效规则
+
+- **新增**：`cleanupStaleRules()` 方法
+  - 超过 `stale_rule_days`（默认 30 天）未更新的规则进入候选
+  - 对候选域名做 HTTP 健康检查（HEAD/GET）
+  - 不可达的域名规则自动删除，下次学习时重新获取
+- **新增**：`ai_autolearn/cleanup` 端点（支持 `force=1` 强制清理）
+- **新增**：cron 脚本 `cleanup` 模式（每天凌晨 3 点执行）
+- 时间间隔保护：`cleanup_interval_hours`（默认 24 小时）避免频繁清理
+
+#### 4. 部署即可自动成长
+
+- **新增**：懒触发机制 `autoTriggerIfNeeded()`
+  - 前端访问 `info/version` 时自动检查是否需要执行
+  - 后台非阻塞触发（exec + & 或异步 HTTP），不影响当前请求
+  - 同时触发学习任务和规则清理
+- **新增**：`ai_autolearn/trigger` 端点手动触发
+- **新增**：`install_cron.sh` 一键部署脚本
+  - `./install_cron.sh` 安装定时任务（每 4 小时学习 + 每天 3 点清理）
+  - `./install_cron.sh uninstall` 卸载
+  - `./install_cron.sh status` 查看状态
+- 即使不配置 cron，前端访问也能自动触发（懒触发机制）
+
+#### 5. 配置项扩展
+
+| 新增字段 | 默认值 | 说明 |
+|---------|--------|------|
+| `target_mode` | `all` | 资源站选择模式 |
+| `auto_trigger_on_request` | `true` | 请求时懒触发 |
+| `auto_cleanup_stale_rules` | `true` | 自动清理失效规则 |
+| `stale_rule_days` | `30` | 规则过期天数 |
+| `cleanup_health_timeout` | `6` | 健康检查超时秒数 |
+| `cleanup_interval_hours` | `24` | 清理最小间隔小时 |
+| `last_cleanup_time` | `null` | 最后清理时间 |
+
+#### 修改文件
+
+| 文件 | 修改 |
+|------|------|
+| `gz/AiAutoLearner.php` | 重构：新增 target_mode/清理/懒触发机制 |
+| `gz/ai_auto_learn_config.php` | 新增自动成长相关配置 |
+| `cron_ai_autolearn.php` | 新增 cleanup 模式 |
+| `mx.php` | 新增 cleanup/trigger/sites 端点；info/version 集成懒触发 |
+| `install_cron.sh` | 新增：一键部署定时任务脚本 |
+| `version.php` | 版本号升级到 v5.9.3 |
+
 ## v5.9.2 (2026-08-03)
 
 ### Bug 修复

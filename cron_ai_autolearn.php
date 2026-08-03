@@ -2,16 +2,24 @@
 /**
  * AI 自动学习定时任务脚本
  *
- * 功能：每隔几小时自动从指定资源站（默认如意）获取热门/更新视频，
- *       提取 rym3u8 地址进行深度广告分析并更新规则
+ * 功能：每隔几小时自动从指定资源站（默认全部启用资源站）获取热门/更新视频，
+ *       提取 rym3u8 地址进行深度广告分析并更新规则；
+ *       同时支持清理失效规则（重新获取）
  *
  * 使用方式：
  *   1. Cron 定时任务：  php /path/to/cron_ai_autolearn.php
  *      推荐 crontab (每4小时)：0 0,4,8,12,16,20 * * * php /path/to/cron_ai_autolearn.php
+ *      清理失效规则（每天一次）：0 3 * * * php /path/to/cron_ai_autolearn.php cleanup
  *   2. 浏览器访问：     http://你的域名/cron_ai_autolearn.php?key=你的密钥
- *   3. 强制执行：       php cron_ai_autolearn.php force   或   ?key=xxx&force=1
+ *   3. 强制执行学习：   php cron_ai_autolearn.php force   或   ?key=xxx&force=1
+ *   4. 执行规则清理：   php cron_ai_autolearn.php cleanup 或   ?key=xxx&cleanup=1
  *
  * 配置文件：gz/ai_auto_learn_config.php（后台 → AI自动学习 页面维护）
+ *
+ * 部署即可自动成长：
+ *   - target_mode=all 默认覆盖全部启用资源站
+ *   - auto_trigger_on_request=true 时前端访问 info/version 会自动后台触发
+ *   - auto_cleanup_stale_rules=true 时自动清理失效规则
  */
 
 error_reporting(E_ALL);
@@ -42,6 +50,8 @@ function sendAiResponse($data, $httpCode = 200) {
         if (isset($data['total_skipped'])) echo "去重跳过: " . $data['total_skipped'] . " 个\n";
         if (isset($data['duration_seconds'])) echo "执行耗时: " . $data['duration_seconds'] . " 秒\n";
         if (!empty($data['learned_domains'])) echo "更新域名: " . implode(', ', $data['learned_domains']) . "\n";
+        if (isset($data['checked'])) echo "规则检查: " . $data['checked'] . " 条\n";
+        if (isset($data['deleted'])) echo "规则删除: " . $data['deleted'] . " 条\n";
         echo "========================================\n";
         exit($data['success'] ? 0 : 1);
     }
@@ -98,13 +108,29 @@ try {
         }
     }
 
-    // 判断是否到执行时间
-    $forceRun = false;
+    // 模式判断：cleanup / force / normal
+    $mode = 'normal';
     if ($isCli) {
-        $forceRun = isset($argv[1]) && $argv[1] === 'force';
+        foreach ($argv as $arg) {
+            if ($arg === 'cleanup') $mode = 'cleanup';
+            elseif ($arg === 'force') $mode = 'force';
+        }
     } else {
-        $forceRun = isset($_GET['force']) && $_GET['force'] === '1';
+        if (isset($_GET['cleanup']) && $_GET['cleanup'] === '1') $mode = 'cleanup';
+        elseif (isset($_GET['force']) && $_GET['force'] === '1') $mode = 'force';
     }
+
+    // ============ 清理模式 ============
+    if ($mode === 'cleanup') {
+        $learner->writeLog('AI 自动学习-规则清理任务开始执行', 'info');
+        $result = $learner->cleanupStaleRules(true); // force=true 忽略时间间隔
+        releaseAiLock();
+        $result['code'] = $result['success'] ? 200 : 500;
+        sendAiResponse($result, $result['success'] ? 200 : 500);
+    }
+
+    // ============ 学习模式（normal / force）============
+    $forceRun = ($mode === 'force');
 
     if (!$forceRun && !$learner->shouldRun()) {
         releaseAiLock();
