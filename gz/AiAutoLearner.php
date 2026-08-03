@@ -832,46 +832,114 @@ class AiAutoLearner {
 
     /**
      * 公开方法：异步触发学习任务（供 mx.php ai_autolearn/run 调用）
-     * 与 triggerBackgroundRun 区别：返回触发结果，支持传入 options
+     *
+     * 触发策略（按优先级回退，兼容禁用 exec() 的服务器）：
+     *   1. exec() 可用  → exec('php cron_ai_autolearn.php force > /dev/null 2>&1 &')
+     *   2. fsockopen     → 非阻塞 HTTP 请求本机 cron_ai_autolearn.php（立即关闭不等待）
+     *   3. curl 1s 超时  → 短超时 HTTP 请求（可能略阻塞但能工作）
      *
      * @param array $options max_sites/videos_per_site 等
      * @return array 触发结果
      */
     public function triggerBackgroundRunAsync($options = []) {
         $script = __DIR__ . '/../cron_ai_autolearn.php';
-        if (!file_exists($script)) {
-            // 回退：异步 HTTP 触发本机 cron_ai_autolearn.php
-            $host = $_SERVER['HTTP_HOST'] ?? '';
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            if (!empty($host)) {
-                $params = ['force' => 1];
-                if (isset($options['max_sites'])) $params['max_sites'] = intval($options['max_sites']);
-                if (isset($options['videos_per_site'])) $params['videos_per_site'] = intval($options['videos_per_site']);
-                $url = $scheme . '://' . $host . '/cron_ai_autolearn.php?key=' . urlencode($this->config['access_key'] ?? '');
-                foreach ($params as $k => $v) $url .= '&' . $k . '=' . urlencode($v);
-                $this->asyncHttpTriggerRaw($url);
-                return ['method' => 'http', 'url' => $url, 'success' => true];
-            }
-            return ['method' => 'none', 'success' => false, 'error' => 'No trigger method available'];
-        }
-
-        $phpBin = PHP_BINARY ?: 'php';
         $args = 'force';
         if (isset($options['max_sites'])) $args .= ' max_sites=' . intval($options['max_sites']);
         if (isset($options['videos_per_site'])) $args .= ' videos_per_site=' . intval($options['videos_per_site']);
 
-        if (PHP_OS_FAMILY === 'Windows') {
-            $cmd = 'start /B "aicron" ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($script) . ' ' . $args . ' > NUL 2>&1';
-            pclose(popen($cmd, 'r'));
-        } else {
-            $cmd = escapeshellarg($phpBin) . ' ' . escapeshellarg($script) . ' ' . $args . ' > /dev/null 2>&1 &';
-            @exec($cmd);
+        // 构建 HTTP 触发 URL（用于 exec 不可用时的回退）
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $httpUrl = '';
+        if (!empty($host)) {
+            $params = ['force' => 1];
+            if (isset($options['max_sites'])) $params['max_sites'] = intval($options['max_sites']);
+            if (isset($options['videos_per_site'])) $params['videos_per_site'] = intval($options['videos_per_site']);
+            $httpUrl = $scheme . '://' . $host . '/cron_ai_autolearn.php?key=' . urlencode($this->config['access_key'] ?? '');
+            foreach ($params as $k => $v) $httpUrl .= '&' . $k . '=' . urlencode($v);
         }
-        return ['method' => 'exec', 'script' => basename($script), 'args' => $args, 'success' => true];
+
+        // ========== 策略 1：exec() ==========
+        if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions') ?: '')))) {
+            if (file_exists($script)) {
+                $phpBin = PHP_BINARY ?: 'php';
+                if (PHP_OS_FAMILY === 'Windows') {
+                    $cmd = 'start /B "aicron" ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($script) . ' ' . $args . ' > NUL 2>&1';
+                    @pclose(@popen($cmd, 'r'));
+                } else {
+                    $cmd = escapeshellarg($phpBin) . ' ' . escapeshellarg($script) . ' ' . $args . ' > /dev/null 2>&1 &';
+                    @exec($cmd);
+                }
+                return ['method' => 'exec', 'script' => basename($script), 'args' => $args, 'success' => true];
+            }
+        }
+
+        // ========== 策略 2：fsockopen 非阻塞 HTTP ==========
+        if (!empty($httpUrl)) {
+            $fs = $this->asyncHttpViaFsockopen($httpUrl);
+            if ($fs['success']) {
+                return ['method' => 'fsockopen', 'url' => $httpUrl, 'success' => true];
+            }
+        }
+
+        // ========== 策略 3：curl 短超时 HTTP ==========
+        if (!empty($httpUrl) && function_exists('curl_init')) {
+            $this->asyncHttpTriggerRaw($httpUrl);
+            return ['method' => 'curl', 'url' => $httpUrl, 'success' => true];
+        }
+
+        return ['method' => 'none', 'success' => false, 'error' => '所有触发方式均不可用（exec 被禁用、fsockopen/curl 不可用）'];
     }
 
     /**
-     * 异步 HTTP 触发（原始 URL，回退方案）
+     * 通过 fsockopen 实现真正的非阻塞 HTTP 触发
+     * 发送请求后立即关闭 socket，不等待响应
+     *
+     * @param string $url 完整的 HTTP/HTTPS URL
+     * @return array ['success'=>bool, 'error'=>string]
+     */
+    private function asyncHttpViaFsockopen($url) {
+        $parts = parse_url($url);
+        if (empty($parts['host']) || empty($parts['path'])) {
+            return ['success' => false, 'error' => 'URL 解析失败'];
+        }
+
+        $scheme = ($parts['scheme'] ?? 'http');
+        $isHttps = ($scheme === 'https');
+        $port = $parts['port'] ?? ($isHttps ? 443 : 80);
+        $host = $parts['host'];
+        $path = $parts['path'] . (isset($parts['query']) ? '?' . $parts['query'] : '');
+
+        // 构造 HTTP 请求
+        $req = "GET {$path} HTTP/1.1\r\n";
+        $req .= "Host: {$host}\r\n";
+        $req .= "User-Agent: M3U8-AdSkipper-AsyncTrigger/1.0\r\n";
+        $req .= "Connection: Close\r\n";
+        $req .= "\r\n";
+
+        // 优先尝试 stream_socket_client（支持 TLS）
+        $remote = ($isHttps ? 'ssl://' : 'tcp://') . $host . ':' . $port;
+        $ctx = stream_context_create(['ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
+        $fp = @stream_socket_client($remote, $errno, $errstr, 1, STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT, $ctx);
+        if (!$fp) {
+            // 回退到 fsockopen
+            $fp = @fsockopen(($isHttps ? 'ssl://' : '') . $host, $port, $errno, $errstr, 1);
+        }
+
+        if (!$fp) {
+            return ['success' => false, 'error' => "socket 连接失败: {$errstr} ({$errno})"];
+        }
+
+        // 设置非阻塞模式，写入后立即关闭
+        stream_set_blocking($fp, false);
+        fwrite($fp, $req);
+        // 不读取响应，直接关闭连接
+        fclose($fp);
+        return ['success' => true];
+    }
+
+    /**
+     * 异步 HTTP 触发（curl 短超时，回退方案）
      */
     private function asyncHttpTriggerRaw($url) {
         $ch = curl_init($url);

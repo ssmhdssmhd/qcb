@@ -1,5 +1,47 @@
 # 更新日志
 
+## v5.9.7 (2026-08-03)
+
+### Bug 修复 - exec 被禁用时 AI 学习报错
+
+#### 问题
+
+- v5.9.6 改为异步执行后，部分服务器报错：`Call to undefined function exec()`
+- 原因：服务器 `disable_functions` 禁用了 `exec()` / `popen()` 等进程控制函数
+
+#### 修复 - 三层回退触发策略
+
+重写 [AiAutoLearner.php#L844-L892](file:///workspace/gz/AiAutoLearner.php#L844-L892) `triggerBackgroundRunAsync()`：
+
+1. **策略 1：exec()**（优先）
+   - 检测 `function_exists('exec')` 且不在 `disable_functions` 列表中
+   - 通过则 `exec('php cron_ai_autolearn.php force > /dev/null 2>&1 &')` 非阻塞
+2. **策略 2：fsockopen 非阻塞 HTTP**（exec 不可用时回退）
+   - 新增 [asyncHttpViaFsockopen()](file:///workspace/gz/AiAutoLearner.php#L901-L939)
+   - 通过 `stream_socket_client` + `STREAM_CLIENT_ASYNC_CONNECT` 建立非阻塞连接
+   - 发送 HTTP 请求后立即关闭 socket，**不等待响应**
+   - 支持 HTTPS（SSL 协议）
+3. **策略 3：curl 短超时 HTTP**（兜底）
+   - 1 秒超时的 curl 请求（可能略阻塞但能工作）
+
+#### 验证
+
+模拟禁用 exec 测试：
+```
+$ php -d disable_functions=exec,popen -r "...triggerBackgroundRunAsync..."
+exec 是否可用: NO
+触发结果: {"method":"fsockopen","url":"http://ssmhd.com/cron_ai_autolearn.php?...","success":true}
+```
+
+#### 修改文件
+
+| 文件 | 修改 |
+|------|------|
+| `gz/AiAutoLearner.php` | 重写 `triggerBackgroundRunAsync()`：exec 检测+三层回退；新增 `asyncHttpViaFsockopen()` |
+| `mxadmin.php` | 公告列表添加 v5.9.7 |
+| `version.php` | 版本号升级到 v5.9.7 |
+| `CHANGELOG.md` | 记录 exec 禁用修复 |
+
 ## v5.9.6 (2026-08-03)
 
 ### Bug 修复 - AI 自动学习 502 Bad Gateway

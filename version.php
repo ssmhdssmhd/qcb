@@ -1,8 +1,8 @@
 <?php
 return [
-    'version' => 'v5.9.6',
+    'version' => 'v5.9.7',
     'build' => '20260803',
-    'version_code' => 50906,
-    'commit' => '5e66ad9',
+    'version_code' => 50907,
+    'commit' => '3b51990',
     'updated_at' => '2026-08-03',
 ];

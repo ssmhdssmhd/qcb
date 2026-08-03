@@ -9779,6 +9779,7 @@ header('Expires: 0');
 
         function getLocalAnnouncements() {
             return [
+                { date: '2026-08-03', text: 'v5.9.7 版本发布：修复exec被禁用时AI学习报错-改用fsockopen非阻塞HTTP触发' },
                 { date: '2026-08-03', text: 'v5.9.6 版本发布：修复AI自动学习502超时-改为后台异步执行+日志轮询监控进度' },
                 { date: '2026-08-03', text: 'v5.9.5 版本发布：所有请稍后/加载中提示全部升级为带进度条显示' },
                 { date: '2026-08-03', text: 'v5.9.4 版本发布：修复AI自动学习执行报错 body stream already read' },
