@@ -24,7 +24,7 @@ return array (
   'dedup_retention_days' => 7,
   'min_learn_count_to_track' => 1,
   'access_key' => '',
-  'last_run_time' => '2026-08-03 03:21:52',
+  'last_run_time' => '2026-08-03 04:09:03',
   'auto_trigger_on_request' => true,
   'auto_cleanup_stale_rules' => true,
   'stale_rule_days' => 30,
