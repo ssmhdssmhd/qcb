@@ -81,3 +81,9 @@ cache/m3u8/*
 db/db_config.php
 auth_config.php
 sq.php
+
+# ===== AI 自动学习运行时数据（自动生成）=====
+gz/ai_auto_learn_dedup.php
+gz/ai_auto_learn_logs.php
+gz/rules_*.php
+!gz/rules_example.php

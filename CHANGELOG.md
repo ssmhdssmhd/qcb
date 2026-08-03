@@ -1,5 +1,28 @@
 # 更新日志
 
+## v5.9.2 (2026-08-03)
+
+### Bug 修复
+
+#### 1. AI 自动学习失败返回 HTTP 500
+
+- **问题**：`ai_autolearn/run` 接口在未启用或业务逻辑失败时返回 HTTP 500，导致前端报错
+- **修复**：业务逻辑失败（如"未启用"）统一返回 HTTP 200 + `success: false`，只有服务器异常才返回 500
+
+#### 2. 版本号不递增/不显示
+
+- **问题**：前端侧边栏调用 `action=info/version` 获取版本号，但 mx.php 中缺少此路由，请求落入 `default` 分支
+- **修复**：新增 `case 'info/version'` 端点，返回 version/commit/version_code/build/updated_at
+- **修复**：后台公告列表 `getLocalAnnouncements()` 缺少 v5.9.0、v5.9.1、v5.9.2 记录，已补充
+
+#### 修改文件
+
+| 文件 | 修改 |
+|------|------|
+| `mx.php` | 修复 `ai_autolearn/run` HTTP 状态码；新增 `info/version` 端点；路由列表补充 |
+| `mxadmin.php` | 公告列表添加 v5.9.0、v5.9.1、v5.9.2 |
+| `version.php` | 版本号升级到 v5.9.2，version_code=50902 |
+
 ## v5.9.1 (2026-08-03)
 
 ### 规则引擎优化 - 修复如意 rym3u8 误判问题

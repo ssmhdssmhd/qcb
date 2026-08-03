@@ -3504,7 +3504,7 @@ try {
             if (isset($input['max_sites'])) $options['max_sites'] = intval($input['max_sites']);
             if (isset($input['videos_per_site'])) $options['videos_per_site'] = intval($input['videos_per_site']);
             $result = $aiLearner->run($options);
-            sendJsonResponse($result, $result['success'] ? 200 : 500);
+            sendJsonResponse($result);
             break;
 
         case 'ai_autolearn/logs':
@@ -4596,6 +4596,20 @@ try {
             } catch (Throwable $e) {
                 sendJsonResponse(['success' => false, 'message' => '初始化失败: ' . $e->getMessage()], 500);
             }
+            break;
+
+        case 'info/version':
+            $versionData = file_exists(__DIR__ . '/version.php') ? include __DIR__ . '/version.php' : ['version' => '1.0.0'];
+            $version = is_array($versionData) ? ($versionData['version'] ?? '1.0.0') : $versionData;
+            sendJsonResponse([
+                'success' => true,
+                'version' => $version,
+                'commit' => is_array($versionData) ? ($versionData['commit'] ?? '') : '',
+                'updated_at' => is_array($versionData) ? ($versionData['updated_at'] ?? '') : '',
+                'version_code' => is_array($versionData) ? ($versionData['version_code'] ?? 0) : 0,
+                'build' => is_array($versionData) ? ($versionData['build'] ?? '') : '',
+                'php_version' => PHP_VERSION,
+            ]);
             break;
 
         case 'info':
@@ -5939,6 +5953,8 @@ try {
                     'parse' => '统一解析视频（智能解析）',
                     'parse/info' => '统一解析详情',
                     'update/version' => '获取当前版本',
+                    'info/version' => '获取版本信息（侧边栏显示）',
+                    'info' => '系统信息',
                     'update/check' => '检查更新',
                     'update/integrity' => '完整性检查',
                     'auth/info' => '授权信息',
