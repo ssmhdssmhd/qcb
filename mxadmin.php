@@ -562,6 +562,66 @@ header('Expires: 0');
             vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== 通用进度条组件（请稍后 + 进度条） ===== */
+        .loading-wrapper {
+            text-align: center;
+            padding: 24px 16px;
+            color: var(--text-secondary);
+        }
+        .loading-wrapper .loading-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+        .loading-wrapper .loading-label::before {
+            content: '';
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--primary);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .progress-bar-container {
+            width: 100%;
+            max-width: 520px;
+            height: 10px;
+            background: var(--border-lighter);
+            border-radius: 999px;
+            overflow: hidden;
+            margin: 8px auto 6px;
+            position: relative;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #409eff, #67c23a);
+            border-radius: 999px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-bar-fill.indeterminate {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 40%;
+            animation: progress-indeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+            background: linear-gradient(90deg, #409eff, #67c23a);
+        }
+        @keyframes progress-indeterminate {
+            0% { left: -40%; }
+            100% { left: 100%; }
+        }
+        .progress-bar-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-family: monospace;
+        }
         .segment-list {
             max-height: 400px;
             overflow-y: auto;
@@ -4474,6 +4534,84 @@ header('Expires: 0');
             setTimeout(() => toast.remove(), 3000);
         }
 
+        /**
+         * 在指定容器内显示「请稍后 + 进度条」
+         * @param {HTMLElement|string} container 容器元素或其 ID
+         * @param {Object} opts
+         *   label:       文案（默认"请稍候，正在处理中..."）
+         *   total:       总数量（有确定进度时传；不传则用不确定进度动画）
+         *   current:     当前进度（0 起步）
+         *   extraText:   附加在进度条下方的文字（如 0/10 并发:3）
+         *   indeterminateClass: 仅作样式标记
+         * @returns {function} update({ current, total, label, extraText, done }) 调用此函数更新进度，done=true 时清空
+         */
+        function showLoadingWithProgress(container, opts = {}) {
+            const el = typeof container === 'string' ? document.getElementById(container) : container;
+            if (!el) return function () {};
+
+            const labelText = opts.label || '请稍候，正在处理中...';
+            const total = opts.total ? Math.max(1, parseInt(opts.total, 10) || 0) : 0;
+            const current = Math.max(0, parseInt(opts.current, 10) || 0);
+            const hasDeterminate = total > 0;
+            const pct = hasDeterminate ? Math.min(100, Math.round(current * 100 / total)) : 0;
+            const extra = opts.extraText || '';
+
+            el.innerHTML = `
+                <div class="loading-wrapper">
+                    <div class="loading-label">${escapeHtml(labelText)}</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill ${hasDeterminate ? '' : 'indeterminate'}"
+                             data-progress-fill
+                             style="width:${pct}%"></div>
+                    </div>
+                    <div class="progress-bar-text" data-progress-text>
+                        ${hasDeterminate ? (pct + ' %  (' + current + '/' + total + ')') : '正在处理中，请稍候...'}
+                        ${extra ? '  ·  ' + escapeHtml(extra) : ''}
+                    </div>
+                </div>
+            `;
+
+            return function update(state = {}) {
+                if (state.done) { el.innerHTML = ''; return; }
+                const fill = el.querySelector('[data-progress-fill]');
+                const text = el.querySelector('[data-progress-text]');
+                const lab = el.querySelector('.loading-label');
+                if (state.label != null && lab) lab.firstChild
+                    ? lab.childNodes[0].nodeValue = state.label
+                    : lab.innerHTML = escapeHtml(state.label);
+
+                const newTotal = state.total != null ? Math.max(1, parseInt(state.total, 10) || 0) : total;
+                const newCurrent = state.current != null ? Math.max(0, parseInt(state.current, 10) || 0) : current;
+                const newExtra = state.extraText != null ? state.extraText : extra;
+                const newDeterminate = newTotal > 0;
+
+                if (fill) {
+                    if (newDeterminate) {
+                        fill.classList.remove('indeterminate');
+                        const np = Math.min(100, Math.round(newCurrent * 100 / newTotal));
+                        fill.style.position = '';
+                        fill.style.left = '';
+                        fill.style.width = np + '%';
+                    } else {
+                        fill.classList.add('indeterminate');
+                        fill.style.width = '';
+                    }
+                }
+                if (text) {
+                    text.innerHTML = newDeterminate
+                        ? (Math.min(100, Math.round(newCurrent * 100 / newTotal)) + ' %  (' + newCurrent + '/' + newTotal + ')'
+                           + (newExtra ? '  ·  ' + escapeHtml(newExtra) : ''))
+                        : ('正在处理中，请稍候...' + (newExtra ? '  ·  ' + escapeHtml(newExtra) : ''));
+                }
+            };
+        }
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         function handleNavClick(item) {
             if (!item.dataset.page) return;
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -7895,43 +8033,67 @@ header('Expires: 0');
                     document.body.appendChild(statusEl);
                 }
             }
+            function appendInfo(html) {
+                const wrap = document.createElement('div');
+                wrap.innerHTML = html;
+                statusEl.appendChild(wrap);
+            }
 
             try {
-                statusEl.innerHTML = '<div style="color:#409eff">正在验证授权...</div>';
+                // 4 个阶段：授权验证 → 下载更新 → 完整性检查 → 清理缓存
+                const updateSteps = 4;
+                const updateProgress = showLoadingWithProgress(statusEl, {
+                    label: '正在验证授权，请稍候...',
+                    total: updateSteps,
+                    current: 0,
+                    extraText: '步骤 1/4：授权验证',
+                });
+                statusEl.style.color = ''; // 使用进度条组件颜色
+                statusEl.style.padding = '';
+                statusEl.style.background = '';
+                statusEl.style.borderRadius = '';
+
+                appendInfo('<div style="color:#409eff;margin-top:8px">正在验证授权...</div>');
                 const authRes = await fetch(API_BASE + '?action=update/integrity');
                 const authData = await authRes.json();
                 if (!authData.auth_valid) {
                     throw new Error('授权验证失败: ' + (authData.issues?.join(', ') || '未知错误'));
                 }
-                statusEl.innerHTML += '<div style="color:#67c23a">授权验证通过</div>';
-                statusEl.innerHTML += '<div style="color:#409eff">正在下载更新...</div>';
+                appendInfo('<div style="color:#67c23a">授权验证通过</div>');
+                updateProgress({ current: 1, total: updateSteps, label: '正在下载更新，请稍候...', extraText: '步骤 2/4：下载更新' });
+
+                appendInfo('<div style="color:#409eff">正在下载更新...</div>');
                 const res = await fetch(API_BASE + '?action=update/download');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
-                statusEl.innerHTML += '<div style="color:#67c23a">更新完成</div>';
+                appendInfo('<div style="color:#67c23a">更新完成</div>');
+                updateProgress({ current: 2, total: updateSteps, label: '正在进行完整性检查，请稍候...', extraText: '步骤 3/4：完整性检查' });
+
                 if (data.cleaned_files && data.cleaned_files.length > 0) {
-                    statusEl.innerHTML += '<div style="color:#e6a23c">清理了 ' + data.cleaned_files.length + ' 个差异文件:</div>';
+                    appendInfo('<div style="color:#e6a23c">清理了 ' + data.cleaned_files.length + ' 个差异文件:</div>');
                     data.cleaned_files.forEach(f => {
-                        statusEl.innerHTML += '<div style="color:#909399;font-size:11px">' + escapeHtml(f) + '</div>';
+                        appendInfo('<div style="color:#909399;font-size:11px">' + escapeHtml(f) + '</div>');
                     });
                 }
                 if (data.integrity_check) {
                     if (data.integrity_check.success) {
-                        statusEl.innerHTML += '<div style="color:#67c23a">完整性检查通过</div>';
+                        appendInfo('<div style="color:#67c23a">完整性检查通过</div>');
                     } else {
-                        statusEl.innerHTML += '<div style="color:#f56c6c">完整性检查发现问题:</div>';
+                        appendInfo('<div style="color:#f56c6c">完整性检查发现问题:</div>');
                         data.integrity_check.issues.forEach(i => {
-                            statusEl.innerHTML += '<div style="color:#f56c6c;font-size:11px">' + escapeHtml(i) + '</div>';
+                            appendInfo('<div style="color:#f56c6c;font-size:11px">' + escapeHtml(i) + '</div>');
                         });
                     }
                 }
                 showToast('更新成功！备份: ' + data.backup_file, 'success');
-                statusEl.innerHTML += '<div style="color:#409eff">正在清理缓存...</div>';
+                updateProgress({ current: 3, total: updateSteps, label: '正在清理缓存，请稍候...', extraText: '步骤 4/4：清理缓存' });
+                appendInfo('<div style="color:#409eff">正在清理缓存...</div>');
                 await clearAllCaches();
-                statusEl.innerHTML += '<div style="color:#67c23a">缓存已清理，2秒后刷新页面...</div>';
+                updateProgress({ current: 4, total: updateSteps, label: '更新完成', extraText: '已完成所有步骤' });
+                appendInfo('<div style="color:#67c23a">缓存已清理，2秒后刷新页面...</div>');
                 setTimeout(() => location.reload(true), 2000);
             } catch (e) {
-                statusEl.innerHTML = '<div style="color:#f56c6c">更新失败: ' + escapeHtml(e.message) + '</div>';
+                appendInfo('<div style="color:#f56c6c">更新失败: ' + escapeHtml(e.message) + '</div>');
                 showToast('更新失败: ' + e.message, 'error');
                 if (btn) {
                     btn.disabled = false;
@@ -8438,7 +8600,7 @@ header('Expires: 0');
         async function fetchSiteVideos(name) {
             document.getElementById('siteVideosTitle').textContent = name + ' - 视频列表';
             document.getElementById('siteVideos').style.display = 'block';
-            document.getElementById('siteVideosList').innerHTML = '<div class="loading">正在获取视频列表...</div>';
+            showLoadingWithProgress(document.getElementById('siteVideosList'), { label: '正在获取视频列表，请稍候...' });
             document.getElementById('siteVideos').scrollIntoView({ behavior: 'smooth' });
             try {
                 const res = await fetch(API_BASE + '?action=sites/fetch_videos&name=' + encodeURIComponent(name) + '&limit=10');
@@ -8570,7 +8732,34 @@ header('Expires: 0');
             if (!confirm('确定要立即执行 AI 自动学习吗？将从如意等资源站获取热门视频并分析广告规则，可能需要一些时间。')) return;
             const resultEl = document.getElementById('aiAutoLearnResult');
             resultEl.style.display = 'block';
-            resultEl.innerHTML = '<div class="loading">正在执行 AI 自动学习，请稍候...</div>';
+            // 基于配置估算总视频数作为进度分母
+            let estTotal = 10;
+            try {
+                const cfg = document.getElementById('aiAlVideosPerSite');
+                const mxs = document.getElementById('aiAlMaxSites');
+                const v = cfg ? parseInt(cfg.value) || 5 : 5;
+                const m = mxs ? parseInt(mxs.value) || 3 : 3;
+                estTotal = Math.max(5, v * m);
+            } catch (_) {}
+            const updateProgress = showLoadingWithProgress(resultEl, {
+                label: '正在执行 AI 自动学习，请稍候...',
+                total: estTotal,
+                current: 0,
+                extraText: '准备请求服务器...',
+            });
+            let progressTimer = setInterval(() => {
+                const el = resultEl.querySelector('[data-progress-fill]');
+                if (!el || el.classList.contains('indeterminate')) return;
+                const style = el.getAttribute('style') || '';
+                const m = style.match(/width:\s*(\d+)%/);
+                let pct = m ? parseInt(m[1]) : 0;
+                if (pct < 85) pct = Math.min(85, pct + Math.random() * 2);
+                el.style.width = pct + '%';
+                const text = resultEl.querySelector('[data-progress-text]');
+                if (text) {
+                    text.innerHTML = Math.round(pct) + ' %  (AI 学习中，基于视频数估算)  ·  后台运行中...';
+                }
+            }, 1000);
             try {
                 const res = await fetch(API_BASE + '?action=ai_autolearn/run', {
                     method: 'POST',
@@ -8586,6 +8775,8 @@ header('Expires: 0');
                 catch (jsonErr) {
                     throw new Error('服务器返回非JSON: ' + (text || '').substring(0, 200));
                 }
+                clearInterval(progressTimer);
+                updateProgress({ current: estTotal, total: estTotal, extraText: '学习完成', done: false });
                 if (!data.success) throw new Error(data.message);
                 let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
                 html += '<div style="font-weight:600;color:#67c23a;margin-bottom:8px">✅ ' + escapeHtml(data.message || 'AI 自动学习完成') + '</div>';
@@ -8623,6 +8814,8 @@ header('Expires: 0');
                 showToast('AI 自动学习完成', 'success');
                 refreshAiAutoLearn();
             } catch (e) {
+                clearInterval(progressTimer);
+                if (typeof updateProgress === 'function') updateProgress({ done: true });
                 resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">❌ ' + escapeHtml(e.message) + '</div>';
                 showToast('执行失败: ' + e.message, 'error');
             }
@@ -8631,7 +8824,7 @@ header('Expires: 0');
         async function loadAiAutoLearnLogs() {
             const logsEl = document.getElementById('aiAutoLearnLogs');
             logsEl.style.display = 'block';
-            logsEl.innerHTML = '<div class="loading">加载日志中...</div>';
+            showLoadingWithProgress(logsEl, { label: '加载日志中，请稍候...' });
             try {
                 const res = await fetch(API_BASE + '?action=ai_autolearn/logs&limit=30&_t=' + Date.now());
                 const data = await res.json();
@@ -8684,10 +8877,28 @@ header('Expires: 0');
         async function runAutoLearn() {
             if (!confirm('确定要立即执行自动学习吗？这可能需要一些时间。')) return;
             const useMultiThread = document.getElementById('autoLearnMultiThread').value === 'true';
-            const concurrency = parseInt(document.getElementById('autoLearnConcurrency').value) || 5;
+            const concurrency = parseInt(document.getElementById('autoLearnConcurrency').value || 5);
+            const vps = parseInt(document.getElementById('videosPerSite').value || 5);
+            const mx = parseInt(document.getElementById('maxSitesPerRun').value || 5);
+            const estTotal = Math.max(10, vps * mx);
             const resultEl = document.getElementById('autoLearnResult');
             resultEl.style.display = 'block';
-            resultEl.innerHTML = '<div class="loading">正在执行自动学习，请稍候... (' + (useMultiThread ? '多线程模式，并发 ' + concurrency : '串行模式') + ')</div>';
+            const modeText = useMultiThread ? ('多线程模式，并发 ' + concurrency) : '串行模式';
+            const updateProgress = showLoadingWithProgress(resultEl, {
+                label: '正在执行自动学习，请稍候...',
+                total: estTotal,
+                current: 0,
+                extraText: modeText,
+            });
+            const progressTimer = setInterval(() => {
+                const el = resultEl.querySelector('[data-progress-fill]');
+                if (!el || el.classList.contains('indeterminate')) return;
+                const style = el.getAttribute('style') || '';
+                const m = style.match(/width:\s*(\d+)%/);
+                let pct = m ? parseInt(m[1]) : 0;
+                if (pct < 85) pct = Math.min(85, pct + Math.random() * 2);
+                el.style.width = pct + '%';
+            }, 1000);
             try {
                 const res = await fetch(API_BASE + '?action=sites/auto_learn/run', {
                     method: 'POST',
@@ -8697,7 +8908,7 @@ header('Expires: 0');
                         concurrency: concurrency
                     })
                 });
-                
+
                 let data;
                 let text;
                 try {
@@ -8707,6 +8918,8 @@ header('Expires: 0');
                     console.error('JSON解析失败，响应内容:', jsonErr.message);
                     throw new Error('服务器返回非JSON响应: ' + text.substring(0, 200));
                 }
+                clearInterval(progressTimer);
+                updateProgress({ current: estTotal, total: estTotal, extraText: '完成 · ' + modeText, done: false });
 
                 if (!data.success) throw new Error(data.message);
                 let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
@@ -8743,6 +8956,8 @@ header('Expires: 0');
                 showToast('自动学习完成', 'success');
                 refreshSites();
             } catch (e) {
+                clearInterval(progressTimer);
+                if (typeof updateProgress === 'function') updateProgress({ done: true });
                 resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">学习失败: ' + escapeHtml(e.message) + '</div>';
                 showToast('学习失败: ' + e.message, 'error');
             }
@@ -9100,7 +9315,14 @@ header('Expires: 0');
             resultEl.style.display = 'block';
             resultEl.style.background = '#fffbe6';
             resultEl.style.border = '1px solid #ffe58f';
-            resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (0/' + videos.length + ') 并发: ' + concurrency + ' (' + modeText + ')</div>';
+
+            const updateProgress = showLoadingWithProgress(resultEl, {
+                label: '正在批量学习中，请稍候...',
+                total: videos.length,
+                current: 0,
+                extraText: '并发: ' + concurrency + ' (' + modeText + ')',
+            });
+            window.__batchLearnProgressUpdate = updateProgress;
 
             const startTime = Date.now();
             let successCount = 0;
@@ -9120,7 +9342,7 @@ header('Expires: 0');
                             multi_thread: true
                         })
                     });
-                    
+
                     let data;
                     let text;
                     try {
@@ -9129,6 +9351,8 @@ header('Expires: 0');
                     } catch (jsonErr) {
                         throw new Error('服务器返回非JSON响应: ' + text.substring(0, 200));
                     }
+
+                    updateProgress({ current: videos.length, total: videos.length, extraText: '完成 · 并发: ' + concurrency + ' (' + modeText + ')' });
 
                     if (data.success) {
                         successCount = data.success_count || 0;
@@ -9151,7 +9375,7 @@ header('Expires: 0');
                         throw new Error(data.message || '批量学习失败');
                     }
                 } catch (e) {
-                    resultEl.innerHTML = '<div class="loading">后端批量失败，回退到前端并发模式...</div>';
+                    showLoadingWithProgress(resultEl, { label: '后端批量失败，回退到前端并发模式...' });
                     await batchLearnFrontend(videos, concurrency, resultEl);
                 }
             } else {
@@ -9168,6 +9392,14 @@ header('Expires: 0');
             let failCount = 0;
             const results = [];
             const learnedDomains = new Set();
+            const updateProgress = typeof window.__batchLearnProgressUpdate === 'function'
+                ? window.__batchLearnProgressUpdate
+                : showLoadingWithProgress(resultEl, {
+                    label: '正在批量学习中，请稍候...',
+                    total: videos.length,
+                    current: 0,
+                    extraText: '前端并发模式',
+                  });
 
             async function learnOne(video) {
                 try {
@@ -9176,7 +9408,7 @@ header('Expires: 0');
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url: video.url })
                     });
-                    
+
                     let data;
                     let text;
                     try {
@@ -9219,7 +9451,18 @@ header('Expires: 0');
                 }
 
                 completedCount++;
-                resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + completedCount + '/' + videos.length + ') 并发: ' + concurrency + ' (前端模式)</div>';
+                try {
+                    if (typeof updateProgress === 'function') {
+                        updateProgress({
+                            current: completedCount,
+                            total: videos.length,
+                            label: '正在批量学习中，请稍候...',
+                            extraText: '并发: ' + concurrency + ' (前端模式) · 成功 ' + successCount + ' · 失败 ' + failCount,
+                        });
+                    } else {
+                        resultEl.innerHTML = '<div class="loading">正在批量学习中，请稍候... (' + completedCount + '/' + videos.length + ') 并发: ' + concurrency + ' (前端模式)</div>';
+                    }
+                } catch (_) {}
                 document.getElementById('searchStats').textContent = `已完成 ${completedCount}/${videos.length}，成功 ${successCount}，失败 ${failCount}`;
             }
 
@@ -9306,7 +9549,31 @@ header('Expires: 0');
             resultEl.style.display = 'block';
             resultEl.style.background = '#fffbe6';
             resultEl.style.border = '1px solid #ffe58f';
-            resultEl.innerHTML = '<div class="loading">正在批量分析中，请稍候... (0/' + videos.length + ') 并发: ' + concurrency + ' (' + modeText + ')</div>';
+
+            const updateProgress = showLoadingWithProgress(resultEl, {
+                label: '正在批量分析中，请稍候...',
+                total: videos.length,
+                current: 0,
+                extraText: '并发: ' + concurrency + ' (' + modeText + ')',
+            });
+            // 不确定进度动画（后端无细粒度回调时使用）：自动缓慢推进
+            const progressTimer = setInterval(() => {
+                const el = resultEl.querySelector('[data-progress-fill]');
+                if (!el || el.classList.contains('indeterminate')) return;
+                const style = el.getAttribute('style') || '';
+                const m = style.match(/width:\s*(\d+)%/);
+                let pct = m ? parseInt(m[1]) : 0;
+                if (pct < 90) {
+                    pct = Math.min(90, pct + Math.random() * 1.5);
+                    el.style.width = pct + '%';
+                    const text = resultEl.querySelector('[data-progress-text]');
+                    if (text) {
+                        const parts = (text.textContent || '').split('·');
+                        parts[0] = Math.round(pct) + ' %  (后端批量分析中，请稍候...)  ';
+                        text.innerHTML = parts.join('·');
+                    }
+                }
+            }, 1000);
 
             const startTime = Date.now();
 
@@ -9321,7 +9588,16 @@ header('Expires: 0');
                         multi_thread: useMultiThread
                     })
                 });
-                const data = await res.json();
+                let data;
+                let text;
+                try {
+                    text = await res.text();
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error('服务器返回非JSON响应: ' + text.substring(0, 200));
+                }
+                clearInterval(progressTimer);
+                updateProgress({ current: videos.length, total: videos.length, extraText: '完成 · 并发: ' + concurrency + ' (' + modeText + ')' });
 
                 if (data.success) {
                     const successCount = data.success_count || 0;
@@ -9375,6 +9651,8 @@ header('Expires: 0');
                     throw new Error(data.message || '批量分析失败');
                 }
             } catch (e) {
+                clearInterval(progressTimer);
+                if (typeof updateProgress === 'function') updateProgress({ done: true });
                 resultEl.style.background = '#fef0f0';
                 resultEl.style.border = '1px solid #fbc4c4';
                 resultEl.innerHTML = '<div style="color:#f56c6c">批量分析失败: ' + escapeHtml(e.message) + '</div>';
@@ -9467,6 +9745,7 @@ header('Expires: 0');
 
         function getLocalAnnouncements() {
             return [
+                { date: '2026-08-03', text: 'v5.9.5 版本发布：所有请稍后/加载中提示全部升级为带进度条显示' },
                 { date: '2026-08-03', text: 'v5.9.4 版本发布：修复AI自动学习执行报错 body stream already read' },
                 { date: '2026-08-03', text: 'v5.9.3 版本发布：自动成长系统-默认全部资源站、自动清理失效规则、部署即可自动运行' },
                 { date: '2026-08-03', text: 'v5.9.2 版本发布：修复AI自动学习失败返回HTTP 500、版本号不递增问题' },
@@ -10976,7 +11255,7 @@ header('Expires: 0');
             document.getElementById('officialSiteVideoTitle').textContent = siteName + ' - 视频列表';
             document.getElementById('officialSiteVideos').style.display = 'block';
             document.getElementById('officialVideoSearch').value = '';
-            document.getElementById('officialSiteVideosList').innerHTML = '<div class="loading">加载中...</div>';
+            showLoadingWithProgress(document.getElementById('officialSiteVideosList'), { label: '加载中，请稍候...' });
             try {
                 const res = await fetch(API_BASE + '?action=official_sites/fetch_videos&name=' + encodeURIComponent(siteName) + '&_t=' + Date.now());
                 const data = await res.json();
@@ -11015,7 +11294,7 @@ header('Expires: 0');
         async function showOfficialVideoDetail(vodId, videoName) {
             if (!currentOfficialSite) return;
             const container = document.getElementById('officialSiteVideosList');
-            container.innerHTML = '<div class="loading">获取详情中...</div>';
+            showLoadingWithProgress(container, { label: '获取视频详情中，请稍候...' });
             try {
                 const res = await fetch(API_BASE + '?action=official_sites/detail&name=' + encodeURIComponent(currentOfficialSite) + '&vod_id=' + encodeURIComponent(vodId) + '&_t=' + Date.now());
                 const data = await res.json();
@@ -11052,7 +11331,7 @@ header('Expires: 0');
         async function searchOfficialVideos() {
             const keyword = document.getElementById('officialVideoSearch').value.trim();
             if (!keyword || !currentOfficialSite) return;
-            document.getElementById('officialSiteVideosList').innerHTML = '<div class="loading">搜索中...</div>';
+            showLoadingWithProgress(document.getElementById('officialSiteVideosList'), { label: '搜索中，请稍候...' });
             try {
                 const res = await fetch(API_BASE + '?action=official_sites/search&name=' + encodeURIComponent(currentOfficialSite) + '&keyword=' + encodeURIComponent(keyword) + '&_t=' + Date.now());
                 const data = await res.json();

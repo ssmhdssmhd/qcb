@@ -1,5 +1,39 @@
 # 更新日志
 
+## v5.9.5 (2026-08-03)
+
+### UI 增强 - 所有「请稍后/加载中」提示升级为进度条
+
+#### 新增通用进度条组件
+
+- **CSS 组件**：`mxadmin.php` 新增 `.loading-wrapper` / `.progress-bar-container` / `.progress-bar-fill` / `.progress-bar-text`
+  - **确定进度条**：传入 `total/current`，显示百分比 X % (N/Total)
+  - **不确定进度条（动画）**：不传 `total`，使用 `@keyframes progress-indeterminate` 流动动画（蓝→绿渐变条）
+- **JS 工具**：`showLoadingWithProgress(container, opts)` 返回 `update(state)` 闭包
+  - `opts.label/extraText/total/current`：初始化
+  - `update({ label, current, total, extraText, done })`：动态更新，`done=true` 清空容器
+
+| 改造点 | 进度类型 | 说明 |
+|--------|---------|------|
+| `runAiAutoLearn()` AI 自动学习执行 | 确定进度 (N = videos_per_site * max_sites) | 1% / 秒渐进增长至 85%，完成后 100% |
+| `runAutoLearn()` 自动学习执行 | 确定进度 (N = videos_per_site * max_sites) | 同上 |
+| `batchLearnAll()` / `batchLearnFrontend()` 批量学习 | 确定进度 (N = videos.length) | 前端每完成 1 条实时更新进度+成功/失败计数 |
+| `batchAnalyzeAll()` 批量分析 | 确定进度 (N = videos.length) | 后端批次渐进增长模拟，完成补 100% |
+| `doUpdate()` 系统更新 | 确定进度 4 步骤 | 1/4 授权验证 → 2/4 下载更新 → 3/4 完整性检查 → 4/4 清理缓存 |
+| `fetchSiteVideos()` 资源站视频列表 | 不确定进度动画条 | 文案「正在获取视频列表，请稍候...」 |
+| `loadAiAutoLearnLogs()` 日志加载 | 不确定进度动画条 | 文案「加载日志中，请稍候...」 |
+| `viewOfficialSiteVideos()` 官方资源站 | 不确定进度动画条 | 文案「加载中，请稍候...」 |
+| `showOfficialVideoDetail()` 视频详情 | 不确定进度动画条 | 文案「获取视频详情中，请稍候...」 |
+| `searchOfficialVideos()` 搜索 | 不确定进度动画条 | 文案「搜索中，请稍候...」 |
+
+#### 修改文件
+
+| 文件 | 修改 |
+|------|------|
+| `mxadmin.php` | 新增进度条 CSS/JS 组件，10+ 长耗时/loading 接口改造，v5.9.5 公告 |
+| `version.php` | 版本号升级到 v5.9.5，version_code=50905 |
+| `CHANGELOG.md` | 记录进度条改造内容 |
+
 ## v5.9.4 (2026-08-03)
 
 ### Bug 修复
