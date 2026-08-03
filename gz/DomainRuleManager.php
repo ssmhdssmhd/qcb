@@ -244,7 +244,8 @@ class DomainRuleManager {
         $adCount = $analysisResult['adCount'] ?? 0;
         $adPercentage = $totalCount > 0 ? ($adCount / $totalCount * 100) : 0;
 
-        if ($totalCount >= 10 && $adPercentage >= 85) {
+        // 广告占比过高保护：≥75% 视为误判，跳过学习
+        if ($totalCount >= 10 && $adPercentage >= 75) {
             return [
                 'success' => false,
                 'reason' => '广告占比过高 (' . round($adPercentage, 1) . '%)，可能是误判，跳过学习',
@@ -252,10 +253,11 @@ class DomainRuleManager {
             ];
         }
 
-        if ($totalCount >= 20 && ($totalCount - $adCount) < $totalCount * 0.15) {
+        // 保留内容过少保护：正片不足 20% 视为误判
+        if ($totalCount >= 20 && ($totalCount - $adCount) < $totalCount * 0.20) {
             return [
                 'success' => false,
-                'reason' => '保留内容过少，可能是误判，跳过学习',
+                'reason' => '保留内容过少 (' . round(100 - $adPercentage, 1) . '%)，可能是误判，跳过学习',
                 'skipped' => true
             ];
         }
@@ -264,6 +266,15 @@ class DomainRuleManager {
             return [
                 'success' => false,
                 'reason' => '所有片段均被判定为广告，跳过学习',
+                'skipped' => true
+            ];
+        }
+
+        // 总片段过少不学习
+        if ($totalCount < 10) {
+            return [
+                'success' => false,
+                'reason' => '片段数过少 (' . $totalCount . ')，不足以学习',
                 'skipped' => true
             ];
         }
@@ -331,7 +342,7 @@ class DomainRuleManager {
                     'enabled' => true,
                     'type' => 'discontinuity',
                     'reason' => 'DISCONTINUITY 标记表示插播切换',
-                    'weight' => 80
+                    'weight' => 40
                 ];
             }
         }
@@ -358,12 +369,19 @@ class DomainRuleManager {
         $learnCount = $existing['learn_count'] ?? 1;
         $adjustFactor = max(0.2, 1 / sqrt($learnCount));
 
+        // 阈值调整：广告占比适中时降低阈值，占比低时提高阈值
+        // 最低阈值不低于 45，避免阈值过低导致大量误判
         if ($adPct > 30 && $adPct < 70) {
-            $adjustment = round(5 * $adjustFactor, 1);
-            $merged['ad_threshold'] = max(30, min(90, ($existing['ad_threshold'] ?? 50) - $adjustment));
+            $adjustment = round(3 * $adjustFactor, 1);
+            $merged['ad_threshold'] = max(45, min(90, ($existing['ad_threshold'] ?? 60) - $adjustment));
         } elseif ($adPct < 10) {
             $adjustment = round(3 * $adjustFactor, 1);
-            $merged['ad_threshold'] = min(90, ($existing['ad_threshold'] ?? 50) + $adjustment);
+            $merged['ad_threshold'] = min(90, ($existing['ad_threshold'] ?? 60) + $adjustment);
+        } else {
+            // 广告占比过高（>70%）或无广告时，保持阈值不降低
+            if (!isset($merged['ad_threshold']) || $merged['ad_threshold'] < 50) {
+                $merged['ad_threshold'] = 60;
+            }
         }
 
         $insertionPoints = $analysisResult['insertionPoints'] ?? null;
@@ -515,17 +533,34 @@ class DomainRuleManager {
             }
         }
         if (count($adNames) >= 3) {
-            $prefixes = [];
+            // 过滤掉 MD5/哈希类文件名（32位纯十六进制），这类文件名无规律，提取前缀会导致误判
+            $validNames = [];
             foreach ($adNames as $name) {
-                $prefix = substr($name, 0, 8);
-                if (!isset($prefixes[$prefix])) {
-                    $prefixes[$prefix] = 0;
+                $cleanName = preg_replace('/\.(ts|mp4|m4s)$/i', '', $name);
+                // 跳过纯十六进制哈希文件名（如 32位MD5、8位短哈希等）
+                if (preg_match('/^[a-f0-9]{6,}$/i', $cleanName)) {
+                    continue;
                 }
-                $prefixes[$prefix]++;
+                // 跳过纯数字文件名
+                if (preg_match('/^\d+$/', $cleanName)) {
+                    continue;
+                }
+                $validNames[] = $name;
             }
-            foreach ($prefixes as $prefix => $count) {
-                if ($count >= 3) {
-                    $patterns[] = '/^' . preg_quote($prefix, '/') . '/i';
+            // 只对有意义的文件名提取前缀模式
+            if (count($validNames) >= 3) {
+                $prefixes = [];
+                foreach ($validNames as $name) {
+                    $prefix = substr($name, 0, 8);
+                    if (!isset($prefixes[$prefix])) {
+                        $prefixes[$prefix] = 0;
+                    }
+                    $prefixes[$prefix]++;
+                }
+                foreach ($prefixes as $prefix => $count) {
+                    if ($count >= 3) {
+                        $patterns[] = '/^' . preg_quote($prefix, '/') . '/i';
+                    }
                 }
             }
         }
@@ -798,9 +833,9 @@ class DomainRuleManager {
                     'enabled' => $analysisResult['discontinuityCount'] > 5,
                     'type' => 'discontinuity',
                     'reason' => 'DISCONTINUITY 标记表示插播切换',
-                    'weight' => 80,
-                    'confidence' => 90,
-                    'description' => '检测 #EXT-X-DISCONTINUITY 标记，用于识别插播内容'
+                    'weight' => 40,
+                    'confidence' => 70,
+                    'description' => '检测 #EXT-X-DISCONTINUITY 标记，用于识别插播内容（权重降低，部分源的正常编码切换也会产生此标记）'
                 ]
             ],
             'sequence_jump_rules' => [
@@ -811,8 +846,8 @@ class DomainRuleManager {
                     'direction' => 'forward',
                     'threshold' => 100000,
                     'reason' => '序列号向前跳跃可能表示广告插播',
-                    'weight' => 90,
-                    'confidence' => 85,
+                    'weight' => 50,
+                    'confidence' => 75,
                     'description' => '序列号向前跳跃检测，识别广告开始'
                 ],
                 [
@@ -822,8 +857,8 @@ class DomainRuleManager {
                     'direction' => 'backward',
                     'threshold' => 100000,
                     'reason' => '序列号向后跳跃可能表示广告结束',
-                    'weight' => 90,
-                    'confidence' => 85,
+                    'weight' => 50,
+                    'confidence' => 75,
                     'description' => '序列号向后跳跃检测，识别广告结束'
                 ]
             ],
@@ -834,7 +869,7 @@ class DomainRuleManager {
                 'enabled' => $hasMarkers
             ],
             'filename_patterns' => [],
-            'ad_threshold' => 50,
+            'ad_threshold' => 60,
             'confidence' => [
                 'high' => 80,
                 'medium' => 50,

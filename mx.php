@@ -1665,7 +1665,11 @@ try {
 
             $stats = $result['stats'] ?? [];
             $adPercentage = $stats['adPercentage'] ?? 0;
-            if ($adPercentage >= 95 && $stats['totalSegments'] > 10) {
+            $safeguardTriggeredInfo = false;
+            $safeguardReasonInfo = '';
+            if ($adPercentage >= 90 && $stats['totalSegments'] > 10) {
+                $safeguardTriggeredInfo = true;
+                $safeguardReasonInfo = '广告占比过高 (' . round($adPercentage, 1) . '%)，可能存在误判，已回退原始M3U8';
                 $ch = curl_init();
                 curl_setopt($ch, CURLOPT_URL, $url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -1680,6 +1684,7 @@ try {
                 curl_close($ch);
                 if ($newM3U8Content === false || $httpCode !== 200) {
                     $newM3U8Content = $result['output'];
+                    $safeguardTriggeredInfo = false;
                 }
             } else {
                 $newM3U8Content = $result['output'];
@@ -1733,6 +1738,8 @@ try {
                     'domain' => $domain,
                     'play_url' => $playUrl,
                     'has_domain_rules' => $hasRules,
+                    'safeguard_triggered' => $safeguardTriggeredInfo,
+                    'safeguard_reason' => $safeguardReasonInfo,
                     'stats' => [
                         'total_segments' => $stats['totalSegments'] ?? 0,
                         'kept_segments' => $stats['keptSegments'] ?? 0,

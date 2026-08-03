@@ -10,8 +10,8 @@ return [
     'target_sites' => ['如意'],
     // 仅学习包含指定 play_from 标识的视频（为空则不限制）
     'play_from_patterns' => ['rym3u8'],
-    // 每次运行每个站点学习多少个视频
-    'videos_per_site' => 5,
+    // 每次运行每个站点学习多少个视频（建议 50-100 用于充分学习）
+    'videos_per_site' => 50,
     // 每次运行最大站点数
     'max_sites_per_run' => 3,
     // 最小片段数（低于此数视为无效视频）

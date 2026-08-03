@@ -55,7 +55,7 @@ class AiAutoLearner {
             'interval_hours' => 4,
             'target_sites' => ['如意'],
             'play_from_patterns' => ['rym3u8'],
-            'videos_per_site' => 5,
+            'videos_per_site' => 50,
             'max_sites_per_run' => 3,
             'min_segments' => 50,
             'max_ad_percentage' => 90,
@@ -389,7 +389,7 @@ class AiAutoLearner {
 
             $targetSites = $this->config['target_sites'] ?? ['如意'];
             $playFromPatterns = $this->config['play_from_patterns'] ?? ['rym3u8'];
-            $videosPerSite = min(10, max(1, intval($options['videos_per_site'] ?? $this->config['videos_per_site'] ?? 5)));
+            $videosPerSite = min(100, max(1, intval($options['videos_per_site'] ?? $this->config['videos_per_site'] ?? 50)));
             $maxSites = min(10, max(1, intval($options['max_sites'] ?? $this->config['max_sites_per_run'] ?? 3)));
             $minSegments = $this->config['min_segments'] ?? 50;
             $maxAdPct = $this->config['max_ad_percentage'] ?? 90;
@@ -426,8 +426,8 @@ class AiAutoLearner {
                         continue;
                     }
 
-                    // 获取视频列表（多取一些用于过滤）
-                    $fetchLimit = $videosPerSite * 4;
+                    // 获取视频列表（多取一些用于过滤后仍有足够样本）
+                    $fetchLimit = min(500, $videosPerSite * 4);
                     $fetchResult = $this->siteManager->fetchVideos($site['api_url'], 1, $fetchLimit);
 
                     if (!$fetchResult['success']) {

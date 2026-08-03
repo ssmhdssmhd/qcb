@@ -2973,8 +2973,8 @@ header('Expires: 0');
                         <input type="number" id="aiAlIntervalHours" min="1" max="24" value="4">
                     </div>
                     <div class="form-group" style="margin-bottom:0">
-                        <label>每站视频数</label>
-                        <input type="number" id="aiAlVideosPerSite" min="1" max="10" value="5">
+                        <label>每站视频数 (建议50-100)</label>
+                        <input type="number" id="aiAlVideosPerSite" min="1" max="100" value="50">
                     </div>
                     <div class="form-group" style="margin-bottom:0">
                         <label>每次最大站点数</label>
