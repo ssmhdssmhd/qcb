@@ -1,5 +1,51 @@
 # 更新日志
 
+## v5.9.6 (2026-08-03)
+
+### Bug 修复 - AI 自动学习 502 Bad Gateway
+
+#### 问题
+
+- 点击「执行 AI 自动学习」报错 `502 Bad Gateway`（nginx 返回 HTML 错误页）
+- 前端报：`❌ 服务器返回非JSON: <html><head><title>502 Bad Gateway</title>...</html>`
+
+#### 原因
+
+- `ai_autolearn/run` 同步阻塞执行学习（耗时 1-3 分钟）
+- PHP-FPM `request_terminate_timeout` 或 nginx `fastcgi_read_timeout` 默认 60s 触发
+- 后端被强杀 → nginx 返回 502
+
+#### 修复 - 改为异步执行模式
+
+- **后端** [mx.php#L3494-L3540](file:///workspace/mx.php#L3494-L3540) `ai_autolearn/run` 端点改造：
+  - 立即返回 `{success:true, async:true, message:"已提交后台执行"}`
+  - 通过 `triggerBackgroundRunAsync()` exec 非阻塞启动 `cron_ai_autolearn.php force`
+  - 锁文件检测：已有任务运行时返回 `already_running:true`，避免重复触发
+- **新增** [AiAutoLearner.php#L840-L871](file:///workspace/gz/AiAutoLearner.php#L840-L871) `triggerBackgroundRunAsync($options)`：
+  - 主路径：`exec('php cron_ai_autolearn.php force > /dev/null 2>&1 &')` 非阻塞
+  - 回退：异步 HTTP 触发 `cron_ai_autolearn.php?key=xxx&force=1`（1s 超时）
+- **前端** [mxadmin.php runAiAutoLearn()](file:///workspace/mxadmin.php#L8731-L8856) 重写为两阶段：
+  1. 提交任务（立即返回）→ 显示「任务已提交后台，开始监控进度...」
+  2. 轮询日志（每 1 秒）→ 检测「完成/异常」关键字自动停止，最多轮询 5 分钟
+  - 进度条根据日志变化动态推进（日志变化时 +3%，否则 +0.5%）
+  - 完成后展示最近 10 条日志 + 「查看完整日志」按钮
+
+#### 验证
+
+- 接口响应耗时 < 5ms（之前会等到学习完成或 502）
+- 返回 JSON：`{"success":true,"async":true,"triggered":{"method":"exec","success":true}}`
+- 后台进程独立运行，不受 nginx/PHP-FPM 超时限制
+
+#### 修改文件
+
+| 文件 | 修改 |
+|------|------|
+| `mx.php` | `ai_autolearn/run` 改为异步：立即返回+锁检测+后台 exec 触发 |
+| `gz/AiAutoLearner.php` | 新增 `triggerBackgroundRunAsync()`、`asyncHttpTriggerRaw()`；`updateLastRunTime()` 改为 public |
+| `mxadmin.php` | `runAiAutoLearn()` 重写为异步两阶段：提交+日志轮询 |
+| `version.php` | 版本号升级到 v5.9.6 |
+| `CHANGELOG.md` | 记录 502 修复内容 |
+
 ## v5.9.5 (2026-08-03)
 
 ### UI 增强 - 所有「请稍后/加载中」提示升级为进度条

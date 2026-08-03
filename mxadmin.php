@@ -8729,7 +8729,7 @@ header('Expires: 0');
         }
 
         async function runAiAutoLearn() {
-            if (!confirm('确定要立即执行 AI 自动学习吗？将从如意等资源站获取热门视频并分析广告规则，可能需要一些时间。')) return;
+            if (!confirm('确定要立即执行 AI 自动学习吗？\n\n将在后台异步执行（避免 nginx 502 超时），可通过日志实时查看进度。')) return;
             const resultEl = document.getElementById('aiAutoLearnResult');
             resultEl.style.display = 'block';
             // 基于配置估算总视频数作为进度分母
@@ -8741,84 +8741,118 @@ header('Expires: 0');
                 const m = mxs ? parseInt(mxs.value) || 3 : 3;
                 estTotal = Math.max(5, v * m);
             } catch (_) {}
+
             const updateProgress = showLoadingWithProgress(resultEl, {
-                label: '正在执行 AI 自动学习，请稍候...',
+                label: '正在提交 AI 自动学习任务到后台...',
                 total: estTotal,
                 current: 0,
-                extraText: '准备请求服务器...',
+                extraText: '异步执行模式（避免 502）',
             });
-            let progressTimer = setInterval(() => {
-                const el = resultEl.querySelector('[data-progress-fill]');
-                if (!el || el.classList.contains('indeterminate')) return;
-                const style = el.getAttribute('style') || '';
-                const m = style.match(/width:\s*(\d+)%/);
-                let pct = m ? parseInt(m[1]) : 0;
-                if (pct < 85) pct = Math.min(85, pct + Math.random() * 2);
-                el.style.width = pct + '%';
-                const text = resultEl.querySelector('[data-progress-text]');
-                if (text) {
-                    text.innerHTML = Math.round(pct) + ' %  (AI 学习中，基于视频数估算)  ·  后台运行中...';
-                }
-            }, 1000);
+
+            // 阶段 1：提交任务（立即返回）
+            let submitOk = false;
+            let alreadyRunning = false;
             try {
                 const res = await fetch(API_BASE + '?action=ai_autolearn/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({})
                 });
-                let data;
                 let text;
                 try {
                     text = await res.text();
-                    data = JSON.parse(text);
-                }
-                catch (jsonErr) {
+                    const data = JSON.parse(text);
+                    if (!data.success) throw new Error(data.message);
+                    submitOk = true;
+                    alreadyRunning = !!data.already_running;
+                    updateProgress({
+                        current: 0,
+                        total: estTotal,
+                        label: alreadyRunning ? '已有任务在后台运行，开始监控进度...' : '任务已提交后台，开始监控进度...',
+                        extraText: '异步执行 · 实时日志轮询中',
+                    });
+                } catch (jsonErr) {
                     throw new Error('服务器返回非JSON: ' + (text || '').substring(0, 200));
                 }
-                clearInterval(progressTimer);
-                updateProgress({ current: estTotal, total: estTotal, extraText: '学习完成', done: false });
-                if (!data.success) throw new Error(data.message);
-                let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
-                html += '<div style="font-weight:600;color:#67c23a;margin-bottom:8px">✅ ' + escapeHtml(data.message || 'AI 自动学习完成') + '</div>';
-                html += '<div style="font-size:13px;color:#606266">';
-                html += '处理站点: ' + (data.sites_processed || 0) + ' | ';
-                html += '学习成功: <span style="color:#67c23a">' + (data.total_learned || 0) + '</span> | ';
-                html += '失败: <span style="color:#f56c6c">' + (data.total_failed || 0) + '</span> | ';
-                html += '去重跳过: <span style="color:#909399">' + (data.total_skipped || 0) + '</span>';
-                if (data.duration_seconds) html += ' | 耗时: <span style="color:#e6a23c">' + data.duration_seconds + 's</span>';
-                html += '</div>';
-                if (data.learned_domains && data.learned_domains.length > 0) {
-                    html += '<div style="font-size:12px;color:#909399;margin-top:8px">更新域名: ' + escapeHtml(data.learned_domains.join(', ')) + '</div>';
-                }
-                if (data.details && data.details.length > 0) {
-                    html += '<div style="margin-top:12px;max-height:400px;overflow-y:auto">';
-                    data.details.forEach(d => {
-                        html += '<div style="padding:8px;background:white;border-radius:4px;margin-bottom:6px;font-size:12px">';
-                        html += '<strong>' + escapeHtml(d.site) + '</strong>: ';
-                        html += '检查 ' + d.videos_checked + ', 学习 ' + d.videos_learned + ', 失败 ' + d.videos_failed + ', 跳过 ' + d.videos_skipped;
-                        if (d.error) html += ' <span style="color:#f56c6c">(' + escapeHtml(d.error) + ')</span>';
-                        if (d.details && d.details.length > 0) {
-                            html += '<div style="margin-top:4px;padding-left:12px;border-left:2px solid #dcdfe6">';
-                            d.details.forEach(v => {
-                                const color = v.result === 'success' ? '#67c23a' : '#f56c6c';
-                                html += '<div style="color:' + color + '">• ' + escapeHtml(v.name) + ' [' + escapeHtml(v.play_from || '') + '] ' + escapeHtml(v.message) + (v.domain ? ' (' + escapeHtml(v.domain) + ')' : '') + '</div>';
-                            });
-                            html += '</div>';
-                        }
-                        html += '</div>';
-                    });
-                    html += '</div>';
-                }
-                html += '</div>';
-                resultEl.innerHTML = html;
-                showToast('AI 自动学习完成', 'success');
-                refreshAiAutoLearn();
             } catch (e) {
-                clearInterval(progressTimer);
                 if (typeof updateProgress === 'function') updateProgress({ done: true });
-                resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">❌ ' + escapeHtml(e.message) + '</div>';
+                resultEl.innerHTML = '<div style="padding:12px;background:#fef0f0;border:1px solid #fbc4c4;border-radius:6px;color:#f56c6c">❌ 提交任务失败: ' + escapeHtml(e.message) + '</div>';
                 showToast('执行失败: ' + e.message, 'error');
+                return;
             }
+
+            // 阶段 2：轮询日志监控进度
+            let pollCount = 0;
+            let lastLogCount = 0;
+            let finished = false;
+            const maxPolls = 300; // 最多轮询 5 分钟（1秒/次）
+            const pollTimer = setInterval(async () => {
+                pollCount++;
+                if (pollCount > maxPolls) {
+                    clearInterval(pollTimer);
+                    updateProgress({ done: true });
+                    resultEl.innerHTML += '<div style="padding:8px;color:#e6a23c;font-size:12px;margin-top:8px">⚠ 监控超时（5分钟），任务仍在后台执行，请稍后查看日志</div>';
+                    return;
+                }
+                try {
+                    const lr = await fetch(API_BASE + '?action=ai_autolearn/logs&limit=10&_t=' + Date.now());
+                    const ld = await lr.json();
+                    if (!ld.success || !ld.logs) return;
+                    const logs = ld.logs;
+
+                    // 检测完成/异常关键字
+                    const latest = logs[0] || {};
+                    const msg = (latest.message || '').toLowerCase();
+                    const isFinished = msg.includes('完成') || msg.includes('异常') || msg.includes('失败：') || msg.includes('success') || msg.includes('error');
+                    if (isFinished && pollCount > 2) {
+                        clearInterval(pollTimer);
+                        finished = true;
+                        updateProgress({ current: estTotal, total: estTotal, extraText: '任务完成', done: false });
+                        // 显示最终日志
+                        let html = '<div style="padding:12px;background:#f0f9eb;border:1px solid #c2e7b0;border-radius:6px">';
+                        html += '<div style="font-weight:600;color:#67c23a;margin-bottom:8px">✅ ' + escapeHtml(latest.message || 'AI 自动学习任务完成') + '</div>';
+                        html += '<div style="font-size:12px;color:#909399;margin-top:8px">最新日志（最近 10 条）：</div>';
+                        html += '<div style="margin-top:6px;max-height:240px;overflow-y:auto;font-family:monospace;font-size:11px">';
+                        logs.slice().reverse().forEach(l => {
+                            const color = (l.type === 'error') ? '#f56c6c' : ((l.type === 'warning') ? '#e6a23c' : '#606266');
+                            html += '<div style="padding:3px 0;border-bottom:1px solid #f0f0f0"><span style="color:#909399">[' + escapeHtml(l.time || '') + ']</span> <span style="color:' + color + '">' + escapeHtml(l.message || '') + '</span></div>';
+                        });
+                        html += '</div>';
+                        html += '<div style="margin-top:8px"><button class="btn btn-sm btn-primary" onclick="loadAiAutoLearnLogs()">查看完整日志</button></div>';
+                        html += '</div>';
+                        resultEl.innerHTML = html;
+                        showToast('AI 自动学习任务完成', 'success');
+                        refreshAiAutoLearn();
+                        return;
+                    }
+
+                    // 模拟进度推进（日志数变化时加速）
+                    const el = resultEl.querySelector('[data-progress-fill]');
+                    if (el && !el.classList.contains('indeterminate')) {
+                        const style = el.getAttribute('style') || '';
+                        const m = style.match(/width:\s*(\d+)%/);
+                        let pct = m ? parseInt(m[1]) : 0;
+                        const step = (logs.length !== lastLogCount) ? 3 : 0.5;
+                        if (pct < 90) pct = Math.min(90, pct + step + Math.random());
+                        el.style.width = pct + '%';
+                        const text = resultEl.querySelector('[data-progress-text]');
+                        if (text) {
+                            text.innerHTML = Math.round(pct) + ' %  (后台执行中)  ·  最新: ' + escapeHtml((latest.message || '').substring(0, 50));
+                        }
+                    }
+                    lastLogCount = logs.length;
+                } catch (_) {}
+            }, 1000);
+
+            // 提供手动停止按钮（注入到容器）
+            setTimeout(() => {
+                if (!finished) {
+                    const btn = document.createElement('div');
+                    btn.style.cssText = 'text-align:center;margin-top:8px;font-size:12px;color:#909399';
+                    btn.innerHTML = '🔄 后台异步执行中，自动每秒刷新日志... <a href="javascript:loadAiAutoLearnLogs()" style="color:#409eff">手动查看日志</a>';
+                    resultEl.appendChild(btn);
+                }
+            }, 2000);
         }
 
         async function loadAiAutoLearnLogs() {
@@ -9745,6 +9779,7 @@ header('Expires: 0');
 
         function getLocalAnnouncements() {
             return [
+                { date: '2026-08-03', text: 'v5.9.6 版本发布：修复AI自动学习502超时-改为后台异步执行+日志轮询监控进度' },
                 { date: '2026-08-03', text: 'v5.9.5 版本发布：所有请稍后/加载中提示全部升级为带进度条显示' },
                 { date: '2026-08-03', text: 'v5.9.4 版本发布：修复AI自动学习执行报错 body stream already read' },
                 { date: '2026-08-03', text: 'v5.9.3 版本发布：自动成长系统-默认全部资源站、自动清理失效规则、部署即可自动运行' },

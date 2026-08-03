@@ -248,7 +248,7 @@ class AiAutoLearner {
     /**
      * 更新最后运行时间
      */
-    private function updateLastRunTime() {
+    public function updateLastRunTime() {
         $this->config['last_run_time'] = date('Y-m-d H:i:s');
         $this->writeConfigFile($this->config);
     }
@@ -828,6 +828,61 @@ class AiAutoLearner {
             // 使用 exec + & 实现非阻塞
             @exec($cmd);
         }
+    }
+
+    /**
+     * 公开方法：异步触发学习任务（供 mx.php ai_autolearn/run 调用）
+     * 与 triggerBackgroundRun 区别：返回触发结果，支持传入 options
+     *
+     * @param array $options max_sites/videos_per_site 等
+     * @return array 触发结果
+     */
+    public function triggerBackgroundRunAsync($options = []) {
+        $script = __DIR__ . '/../cron_ai_autolearn.php';
+        if (!file_exists($script)) {
+            // 回退：异步 HTTP 触发本机 cron_ai_autolearn.php
+            $host = $_SERVER['HTTP_HOST'] ?? '';
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            if (!empty($host)) {
+                $params = ['force' => 1];
+                if (isset($options['max_sites'])) $params['max_sites'] = intval($options['max_sites']);
+                if (isset($options['videos_per_site'])) $params['videos_per_site'] = intval($options['videos_per_site']);
+                $url = $scheme . '://' . $host . '/cron_ai_autolearn.php?key=' . urlencode($this->config['access_key'] ?? '');
+                foreach ($params as $k => $v) $url .= '&' . $k . '=' . urlencode($v);
+                $this->asyncHttpTriggerRaw($url);
+                return ['method' => 'http', 'url' => $url, 'success' => true];
+            }
+            return ['method' => 'none', 'success' => false, 'error' => 'No trigger method available'];
+        }
+
+        $phpBin = PHP_BINARY ?: 'php';
+        $args = 'force';
+        if (isset($options['max_sites'])) $args .= ' max_sites=' . intval($options['max_sites']);
+        if (isset($options['videos_per_site'])) $args .= ' videos_per_site=' . intval($options['videos_per_site']);
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            $cmd = 'start /B "aicron" ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($script) . ' ' . $args . ' > NUL 2>&1';
+            pclose(popen($cmd, 'r'));
+        } else {
+            $cmd = escapeshellarg($phpBin) . ' ' . escapeshellarg($script) . ' ' . $args . ' > /dev/null 2>&1 &';
+            @exec($cmd);
+        }
+        return ['method' => 'exec', 'script' => basename($script), 'args' => $args, 'success' => true];
+    }
+
+    /**
+     * 异步 HTTP 触发（原始 URL，回退方案）
+     */
+    private function asyncHttpTriggerRaw($url) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_exec($ch);
+        curl_close($ch);
     }
 
     /**

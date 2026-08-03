@@ -3492,19 +3492,51 @@ try {
             break;
 
         case 'ai_autolearn/run':
-            @set_time_limit(300);
-            @ini_set('memory_limit', '512M');
-            @ignore_user_abort(true);
+            // 异步执行模式：立即返回，后台 cron_ai_autolearn.php 执行
+            // 避免长耗时操作导致 nginx 502 Bad Gateway（PHP-FPM 超时）
             if (!class_exists('AiAutoLearner')) {
                 require_once $rootDir . '/gz/AiAutoLearner.php';
             }
             $aiLearner = new AiAutoLearner($siteManager, $ruleManager);
+
+            // 检查是否已有任务在运行（锁文件存在且未超时）
+            $lockFile = $rootDir . '/gz/ai_autolearn_lock.tmp';
+            $lockTimeout = 600;
+            if (file_exists($lockFile)) {
+                $lockAge = time() - filemtime($lockFile);
+                if ($lockAge < $lockTimeout) {
+                    sendJsonResponse([
+                        'success' => true,
+                        'async' => true,
+                        'already_running' => true,
+                        'message' => '已有 AI 自动学习任务在后台运行中，请通过日志查看进度',
+                        'lock_age_seconds' => $lockAge,
+                    ]);
+                    break;
+                }
+                @unlink($lockFile);
+            }
+
+            // 写入任务标记，后台非阻塞触发
             $input = getInputJson();
             $options = [];
             if (isset($input['max_sites'])) $options['max_sites'] = intval($input['max_sites']);
             if (isset($input['videos_per_site'])) $options['videos_per_site'] = intval($input['videos_per_site']);
-            $result = $aiLearner->run($options);
-            sendJsonResponse($result);
+
+            // 预先更新 last_run_time，避免重复触发
+            $aiLearner->updateLastRunTime();
+
+            // 后台异步触发（exec + & 非阻塞，或 HTTP 异步）
+            $triggered = $aiLearner->triggerBackgroundRunAsync($options);
+
+            sendJsonResponse([
+                'success' => true,
+                'async' => true,
+                'already_running' => false,
+                'message' => 'AI 自动学习任务已提交后台执行，请通过日志或状态接口查看进度',
+                'triggered' => $triggered,
+                'tip' => '可调用 action=ai_autolearn/status 或 action=ai_autolearn/logs 轮询进度',
+            ]);
             break;
 
         case 'ai_autolearn/logs':
