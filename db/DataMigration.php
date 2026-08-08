@@ -88,12 +88,26 @@ class DataMigration {
                         'marker_detection', 'confidence'
                     ];
 
+                    // schema 中存在的列白名单，过滤掉规则文件中多余字段（如 rules 扁平数组等）
+                    $allowedColumns = [
+                        'domain', 'name', 'note', 'ad_threshold', 'confidence_score',
+                        'learn_count', 'analysis_date', 'last_learn_date',
+                        'duration_rules', 'discontinuity_rules', 'sequence_jump_rules',
+                        'filename_patterns', 'insertion_patterns', 'ad_type_stats',
+                        'psychological_profile', 'marker_stats', 'analysis_stats',
+                        'history_stats', 'marker_detection', 'confidence',
+                        'enable_marker_detection'
+                    ];
+
                     $insertData = [];
                     foreach ($normalized as $key => $value) {
+                        if (!in_array($key, $allowedColumns, true)) {
+                            continue; // 跳过 schema 中不存在的列（如 rules、_filename、_filemtime 等）
+                        }
                         if ($key === 'history_stats') {
-                            $insertData[$key] = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : $value;
+                            $insertData[$key] = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : (is_string($value) ? $value : null);
                         } elseif (in_array($key, $jsonFields)) {
-                            $insertData[$key] = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : null;
+                            $insertData[$key] = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : (is_string($value) ? $value : null);
                         } else {
                             $insertData[$key] = $value;
                         }

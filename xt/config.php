@@ -7,8 +7,10 @@
 
 return [
 
-    // ============ 版本信息 ============
-    'version' => '5.7.9',
+    // ============ 版本信息（单一来源：version.php 同步写入） ============
+    'version' => '5.10.0',
+    'version_build' => '20260808',
+    'version_full' => 'v5.10.0 build 20260808',
 
     // ============ 嗅探设置（后台「嗅探设置」页面维护） ============
     // sniffer_config.php 由后台写入，此处作为兜底默认值
@@ -96,22 +98,132 @@ return [
         // ],
     ],
 
-    // ============ AI 大模型配置（辅助广告识别） ============
+    // ============ AI 大模型配置（辅助广告识别 + 接口自动切换） ============
     'ai' => [
         // 是否启用 AI 辅助识别（规则引擎无法判断时调用）
         'enabled'    => false,
-        // API 提供商: openai / qwen / deepseek
-        'provider'   => 'qwen',
-        // API 密钥
-        'api_key'    => 'YOUR_AI_API_KEY',
-        // 模型名称
-        'model'      => 'qwen-plus',
-        // API 端点（按需修改）
-        'api_url'    => 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-        // 最大 token 数
-        'max_tokens' => 2000,
         // 触发 AI 的条件：规则引擎识别置信度低于此值时调用 AI（0-1）
         'confidence_threshold' => 0.6,
+
+        // v5.10 新增：多端点自动切换 / 故障转移（AiEndpointRouter 读取）
+        // 说明：按 priority 从小到大排序，健康检查失败自动 fallback 到下一个
+        'endpoints' => [
+            [
+                'name'       => '通义千问-官方',
+                'enabled'    => true,
+                'provider'   => 'qwen',
+                'type'       => 'openai_compatible',
+                'model'      => 'qwen-plus',
+                'api_url'    => 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+                'health_url' => 'https://dashscope.aliyuncs.com/compatible-mode/v1/models',
+                'api_key'    => 'YOUR_AI_API_KEY',
+                'max_tokens' => 2000,
+                'priority'   => 1,
+            ],
+            [
+                'name'       => 'DeepSeek-V3',
+                'enabled'    => true,
+                'provider'   => 'deepseek',
+                'type'       => 'openai_compatible',
+                'model'      => 'deepseek-chat',
+                'api_url'    => 'https://api.deepseek.com/v1/chat/completions',
+                'health_url' => 'https://api.deepseek.com/v1/models',
+                'api_key'    => 'YOUR_DEEPSEEK_API_KEY',
+                'max_tokens' => 2000,
+                'priority'   => 2,
+            ],
+            [
+                'name'       => '硅基流动-备用',
+                'enabled'    => true,
+                'provider'   => 'siliconflow',
+                'type'       => 'openai_compatible',
+                'model'      => 'Qwen/Qwen2.5-7B-Instruct',
+                'api_url'    => 'https://api.siliconflow.cn/v1/chat/completions',
+                'health_url' => 'https://api.siliconflow.cn/v1/models',
+                'api_key'    => 'YOUR_SILICONFLOW_API_KEY',
+                'max_tokens' => 2000,
+                'priority'   => 3,
+            ],
+        ],
+
+        // 兼容旧版单接口配置（读取时 fallback）
+        'provider'   => 'qwen',
+        'api_key'    => 'YOUR_AI_API_KEY',
+        'model'      => 'qwen-plus',
+        'api_url'    => 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+        'max_tokens' => 2000,
+    ],
+
+    // ============ v5.10 新增：AI 自动学习引擎配置 ============
+    'auto_learn' => [
+        // 自动学习总开关
+        'enabled'               => true,
+        // 学习运行间隔（秒），默认 4 小时（14400s）。也可由 TaskScheduler + cron 触发。
+        'interval_seconds'      => 14400,
+        // 每次学习最多处理多少个资源站
+        'max_sites_per_run'     => 5,
+        // 每个资源站最多抽取多少部剧集（视频）
+        'videos_per_site'       => 5,
+        // 最少要有多少个 segment 才值得学习（避免过短的预告片被当成样本）
+        'min_segments'          => 50,
+        // 超过此广告率视为极端情况，不学习（防误判正片为广告）
+        'max_ad_percentage'     => 90,
+        // 触发学习的最低广告率阈值（低于此说明没广告，不值得学习）
+        'min_ad_percentage'     => 10,
+        // 保底机制触发时：正片片段保留率低于此值则放弃学习（避免高风险样本污染规则）
+        'safeguard_min_keep_ratio' => 0.6,
+        // 访问秘钥（用于通过 HTTP 触发执行：scheduler.php?action=run&task=auto_learn&secret=xxx）
+        'trigger_secret'        => 'm3u8_learn_secret_2026',
+        // 是否在 mxadmin 后台显示学习记录日志
+        'show_in_admin'         => true,
+    ],
+
+    // ============ v5.10 新增：CCTV 直播源扩展模块配置 ============
+    'cctv_live' => [
+        // CCTV 模块开关
+        'enabled'           => true,
+        // 抓取源列表（按顺序尝试，成功即止；支持随时在后台增删）
+        'fetch_sources' => [
+            [
+                'name'     => 'ipv6-cn/iptv (GitHub官方主源)',
+                'url'      => 'https://raw.githubusercontent.com/ipv6-cn/iptv/main/cctv.m3u',
+                'format'   => 'm3u',
+                'enabled'  => true,
+                'priority' => 1,
+            ],
+            [
+                'name'     => 'SuMaiKaDe/iptv (备用TXT源)',
+                'url'      => 'https://raw.githubusercontent.com/SuMaiKaDe/iptv/main/cctv.txt',
+                'format'   => 'txt',
+                'enabled'  => true,
+                'priority' => 2,
+            ],
+            [
+                'name'     => 'yanG-1101/Auto_iptv (备用M3U源)',
+                'url'      => 'https://raw.githubusercontent.com/yanG-1101/Auto_iptv/main/m3u/cctv.m3u',
+                'format'   => 'm3u',
+                'enabled'  => true,
+                'priority' => 3,
+            ],
+        ],
+        // 自动更新周期（秒），默认每 6 小时（21600s）
+        'update_interval'   => 21600,
+        // 缓存 TTL（秒），超过此时间即便源文件没更新也从网络重新拉
+        'cache_ttl'         => 21600,
+        // 频道过滤：true 只保留 CCTV + 省级卫视；false 保留全部频道
+        'filter_cctv_only'  => true,
+        // 是否在输出播放列表前执行可用性验证（建议开启，去掉死源）
+        'verify_before_save' => true,
+        // 验证并发数（越高越快，对服务器网络压力大）
+        'verify_concurrent' => 8,
+        // 单频道保留最快的 N 个可用源作为 fallback 链
+        'best_per_channel'  => 3,
+        // 对外输出接口路径（mx.php 路由挂载点）：mx.php?action=cctv/xxx
+        'route_prefix'      => 'cctv',
+        // 在 mxadmin 后台是否显示「直播源管理」菜单
+        'show_in_admin'     => true,
+        // HTTP 触发更新秘钥（scheduler.php?action=run&task=cctv_update&secret=xxx）
+        'trigger_secret'    => 'm3u8_cctv_secret_2026',
     ],
 
     // ============ 广告识别规则配置 ============

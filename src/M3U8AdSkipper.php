@@ -265,6 +265,39 @@ class M3U8AdSkipper {
         return $this->outputGenerator;
     }
 
+    /**
+     * 替换规则引擎（用于注入 EnhancedAdRuleEngine 等增强版引擎）
+     * 同时自动同步到内部 AdFilter，保持一致
+     */
+    public function setRuleEngine($ruleEngine) {
+        $this->ruleEngine = $ruleEngine;
+        if ($this->filter !== null && method_exists($this->filter, 'setRuleEngine')) {
+            $this->filter->setRuleEngine($ruleEngine);
+        }
+        return $this;
+    }
+
+    /**
+     * 替换广告过滤器
+     */
+    public function setFilter($filter) {
+        $this->filter = $filter;
+        return $this;
+    }
+
+    /**
+     * 设置域名，向下传递给规则引擎和过滤器（支持链式调用）
+     */
+    public function setDomain($domain) {
+        if ($this->ruleEngine !== null && method_exists($this->ruleEngine, 'setDomain')) {
+            $this->ruleEngine->setDomain($domain);
+        }
+        if ($this->filter !== null && method_exists($this->filter, 'setDomain')) {
+            $this->filter->setDomain($domain);
+        }
+        return $this;
+    }
+
     private function resolveMediaUrl($baseUrl, $variantUri) {
         if (preg_match('/^https?:\/\//i', $variantUri)) {
             return $variantUri;

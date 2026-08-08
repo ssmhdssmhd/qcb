@@ -45,10 +45,33 @@ class AuthConfig
                 'auth_file_compare' => 'sq.txt',
                 'enable_remote_verify' => true,
                 'enable_timestamp_check' => true,
-                'timestamp_tolerance' => 86400
+                'timestamp_tolerance' => 86400,
+                // 统一全局联系信息（授权、售后）
+                'contact_qq' => '2094332348',
+                'developer_name' => 'M3U8官方解析团队',
+                'official_api_domain' => '114.134.184.91',
+                'official_api_port' => '9002'
             ];
             $this->saveConfig();
         }
+    }
+
+    /**
+     * 获取全局联系QQ（集中管理，避免多处硬编码）
+     */
+    public function getContactQQ()
+    {
+        return $this->get('contact_qq', '2094332348');
+    }
+
+    /**
+     * 获取官解 API 基础 URL（根据配置动态拼接）
+     */
+    public function getOfficialParseApiUrl()
+    {
+        $domain = $this->get('official_api_domain', '114.134.184.91');
+        $port = $this->get('official_api_port', '9002');
+        return 'http://' . $domain . ':' . $port . '/mx.php?action=api/v2&type=parse&url=';
     }
 
     public function getConfig()

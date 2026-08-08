@@ -16,7 +16,10 @@
  *   - generate_test_m3u8.php?type=all             生成全部测试文件
  */
 
-header('Content-Type: text/plain; charset=utf-8');
+// CLI 模式下不发送 HTTP header
+if (php_sapi_name() !== 'cli' && !headers_sent()) {
+    header('Content-Type: text/plain; charset=utf-8');
+}
 
 $type = $_GET['type'] ?? 'basic';
 $outputDir = __DIR__ . '/cache/m3u8/test';

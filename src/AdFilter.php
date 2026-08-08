@@ -2,9 +2,28 @@
 
 class AdFilter {
     private $ruleEngine;
+    private $domain = '';
 
     public function __construct($ruleEngine) {
         $this->ruleEngine = $ruleEngine;
+    }
+
+    public function setRuleEngine($ruleEngine) {
+        $this->ruleEngine = $ruleEngine;
+        return $this;
+    }
+
+    public function getRuleEngine() {
+        return $this->ruleEngine;
+    }
+
+    public function setDomain($domain) {
+        $this->domain = $domain;
+        return $this;
+    }
+
+    public function getDomain() {
+        return $this->domain;
     }
 
     public function filter($playlist) {

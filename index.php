@@ -1,7 +1,39 @@
 <?php
+// 生产环境：对外不显示错误，但完整记录错误到日志文件（避免 error_reporting(0) 让问题静默）
 @ini_set('display_errors', 0);
 @ini_set('html_errors', 0);
-error_reporting(0);
+@ini_set('log_errors', 1);
+@ini_set('error_log', __DIR__ . '/cache/php_error_' . date('Y-m-d') . '.log');
+// 同时使用 cache 目录下自定义日志（独立于系统 php.ini 配置）
+$GLOBALS['_app_error_log'] = __DIR__ . '/cache/app_error_' . date('Y-m-d') . '.log';
+error_reporting(E_ALL);
+
+// 自定义错误处理：把错误写入到项目可访问的日志文件，便于排查
+set_error_handler(function ($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) {
+        return false;
+    }
+    $typeMap = [
+        E_WARNING => 'WARNING', E_NOTICE => 'NOTICE', E_DEPRECATED => 'DEPRECATED',
+        E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE_ERROR',
+        E_COMPILE_ERROR => 'COMPILE_ERROR', E_USER_ERROR => 'USER_ERROR',
+        E_USER_WARNING => 'USER_WARNING', E_USER_NOTICE => 'USER_NOTICE',
+        E_RECOVERABLE_ERROR => 'RECOVERABLE_ERROR', E_ALL => 'ALL'
+    ];
+    $type = $typeMap[$severity] ?? 'UNKNOWN';
+    $logFile = $GLOBALS['_app_error_log'] ?? (__DIR__ . '/cache/app_error_' . date('Y-m-d') . '.log');
+    $line = sprintf("[%s] [%s] %s in %s:%d%s", date('Y-m-d H:i:s'), $type, $message, $file, $line, PHP_EOL);
+    @file_put_contents($logFile, $line, FILE_APPEND);
+    return true; // 阻止 PHP 内部错误处理继续
+});
+
+set_exception_handler(function ($e) {
+    $logFile = $GLOBALS['_app_error_log'] ?? (__DIR__ . '/cache/app_error_' . date('Y-m-d') . '.log');
+    $line = sprintf("[%s] [EXCEPTION] %s in %s:%d  trace=%s%s",
+        date('Y-m-d H:i:s'), $e->getMessage(), $e->getFile(), $e->getLine(),
+        str_replace(PHP_EOL, ' | ', $e->getTraceAsString()), PHP_EOL);
+    @file_put_contents($logFile, $line, FILE_APPEND);
+});
 
 if (ob_get_level()) {
     ob_end_clean();
@@ -55,20 +87,24 @@ try {
 try {
     $authValidator = new AuthValidator();
     $sqFile = __DIR__ . '/sq.php';
+    $authConfig = $authValidator->getAuthConfig();
+    $contactQQ = method_exists($authConfig, 'getContactQQ') ? $authConfig->getContactQQ() : '2094332348';
 
     if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
         sendIndexJson([
             'success' => false,
             'error' => 'Forbidden',
-            'message' => '授权异常，请联系 QQ2094332348 进行授权',
-            'contact_qq' => '2094332348'
+            'message' => '授权异常，请联系 QQ' . $contactQQ . ' 进行授权',
+            'contact_qq' => $contactQQ
         ], 403);
     }
 } catch (Throwable $e) {
+    $contactQQ = '2094332348';
     sendIndexJson([
         'success' => false,
         'error' => '授权验证失败',
-        'message' => $e->getMessage()
+        'message' => $e->getMessage(),
+        'contact_qq' => $contactQQ
     ], 500);
 }
 
@@ -245,25 +281,12 @@ if ($relativePath === '/mxjx' || $relativePath === '/api/mxjx') {
 
         $skipper = new M3U8AdSkipper();
 
-        $reflection = new ReflectionClass($skipper);
-        $ruleEngineProp = $reflection->getProperty('ruleEngine');
-        $ruleEngineProp->setAccessible(true);
-
         $enhancedEngine = new EnhancedAdRuleEngine([
             'checkDiscontinuity' => true,
             'checkRepetitiveDuration' => true
         ]);
         $enhancedEngine->setDomain($domain);
-        $ruleEngineProp->setValue($skipper, $enhancedEngine);
-
-        $filterProp = $reflection->getProperty('filter');
-        $filterProp->setAccessible(true);
-        $filter = $filterProp->getValue($skipper);
-
-        $filterReflection = new ReflectionClass($filter);
-        $filterEngineProp = $filterReflection->getProperty('ruleEngine');
-        $filterEngineProp->setAccessible(true);
-        $filterEngineProp->setValue($filter, $enhancedEngine);
+        $skipper->setRuleEngine($enhancedEngine);
 
         $result = $skipper->process($url);
 

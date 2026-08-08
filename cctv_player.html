@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>CCTV直播频道 - M3U8智能广告分析系统 v5.10.0</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#0f1419;color:#e6e6e6;min-height:100vh}
+  .wrap{max-width:1400px;margin:0 auto;padding:16px;display:grid;grid-template-columns:320px 1fr;gap:16px}
+  @media(max-width:860px){.wrap{grid-template-columns:1fr}}
+  header{max-width:1400px;margin:0 auto;padding:20px 16px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:20px;font-weight:600;color:#fff}
+  header .ver{font-size:12px;padding:3px 8px;background:#2563eb;color:#fff;border-radius:4px}
+  header .tip{font-size:12px;color:#8b949e;margin-left:auto}
+  .panel{background:#161b22;border:1px solid #30363d;border-radius:10px;overflow:hidden}
+  .panel h2{font-size:14px;padding:10px 14px;background:#1c2128;border-bottom:1px solid #30363d;color:#e6edf3;display:flex;align-items:center;gap:6px}
+  .panel h2 .dot{width:8px;height:8px;background:#238636;border-radius:50%}
+  #chList{max-height:calc(100vh - 160px);overflow:auto}
+  .group{padding:6px 12px;background:#1c2128;font-size:12px;color:#8b949e;font-weight:600;position:sticky;top:0}
+  .ch{padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid #21262d;transition:.15s}
+  .ch:hover{background:#21262d}
+  .ch.active{background:#1f6feb20;border-left:3px solid #58a6ff;padding-left:11px}
+  .ch .id{font-size:11px;color:#8b949e;min-width:58px}
+  .ch .name{flex:1;font-size:13px}
+  .ch .ms{font-size:11px;color:#3fb950}
+  .ch .ms.warn{color:#d29922}
+  .ch .ms.bad{color:#f85149;opacity:.6}
+  .search{padding:10px}
+  .search input{width:100%;padding:8px 10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;outline:none}
+  .search input:focus{border-color:#58a6ff}
+  .player{aspect-ratio:16/9;background:#000;position:relative}
+  video{width:100%;height:100%;background:#000;display:block}
+  .ch-info{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:#c9d1d9}
+  .ch-info b{color:#fff;font-weight:600}
+  .ch-info .tag{font-size:11px;padding:2px 6px;border-radius:3px;background:#21262d;color:#8b949e}
+  .fallback{padding:10px 16px;border-top:1px solid #30363d}
+  .fallback h3{font-size:12px;color:#8b949e;margin-bottom:8px;font-weight:500}
+  .fb{display:inline-block;margin:4px 6px 4px 0;padding:5px 10px;border:1px solid #30363d;border-radius:5px;cursor:pointer;font-size:12px;background:#0d1117;color:#c9d1d9;transition:.15s}
+  .fb:hover{border-color:#58a6ff;color:#fff}
+  .fb.active{background:#1f6feb;color:#fff;border-color:#58a6ff}
+  .btns{padding:10px 16px;border-top:1px solid #30363d;display:flex;gap:8px;flex-wrap:wrap}
+  .btn{padding:7px 12px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#c9d1d9;font-size:12px;cursor:pointer;text-decoration:none;display:inline-block}
+  .btn:hover{border-color:#58a6ff;color:#fff;background:#1f6feb20}
+  .btn.primary{background:#238636;border-color:#2ea043;color:#fff}
+  .btn.primary:hover{background:#2ea043}
+  .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0008;color:#fff;backdrop-filter:blur(2px);font-size:14px}
+  .loading.hidden{display:none}
+  .err{padding:12px 16px;color:#f85149;font-size:13px;background:#f8514910;border-top:1px solid #f8514955}
+  .muted-hint{padding:10px 16px;background:#d2992215;color:#d29922;font-size:12px;border-top:1px solid #d2992255;display:none}
+  .muted-hint button{margin-left:8px;padding:3px 8px;background:#d29922;border:none;border-radius:3px;color:#000;font-size:12px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📺 CCTV / 卫视直播</h1>
+  <span class="ver">v5.10.0</span>
+  <span class="tip">数据来自 GitHub 官方 IPTV 开源仓库 · 自动去重 · 可用性测速 · 主备源自动切换</span>
+</header>
+
+<div class="wrap">
+
+  <aside class="panel">
+    <h2><span class="dot"></span>频道列表 <span id="countTag" style="margin-left:auto;font-size:11px;color:#8b949e"></span></h2>
+    <div class="search">
+      <input id="q" placeholder="🔍 搜索频道，如：cctv1 / 湖南 / 体育" />
+    </div>
+    <div id="chList"></div>
+  </aside>
+
+  <main class="panel">
+    <h2><span class="dot"></span><span id="nowName">请选择左侧频道开始播放</span>
+      <span id="qualityTag" class="tag" style="margin-left:auto"></span>
+    </h2>
+    <div class="player">
+      <video id="video" controls autoplay playsinline crossorigin="anonymous"></video>
+      <div id="loading" class="loading">⏳ 正在加载直播源…</div>
+    </div>
+    <div id="mutedHint" class="muted-hint">⚠ 部分浏览器策略要求首次播放静音。已自动静音，点击按钮恢复声音
+      <button onclick="unmuteVideo()">🔊 恢复声音</button>
+    </div>
+    <div id="err" class="err" style="display:none"></div>
+    <div id="chInfo" class="ch-info" style="display:none"></div>
+    <div id="fbWrap" class="fallback" style="display:none">
+      <h3>备用源（主源卡顿/失败可点击切换，播放器也会按顺序自动 fallback）</h3>
+      <div id="fbList"></div>
+    </div>
+    <div class="btns">
+      <a class="btn" href="cctv.php?action=m3u" target="_blank">⬇ 下载完整M3U</a>
+      <a class="btn" href="cctv.php?action=txt" target="_blank">⬇ 下载TXT</a>
+      <a class="btn" href="cctv.php?action=list" target="_blank">🌐 JSON频道接口</a>
+      <button class="btn" onclick="refreshSources()">🔄 刷新频道数据</button>
+      <button class="btn primary" onclick="location.href='index.php'">🎬 返回M3U8解析</button>
+    </div>
+  </main>
+
+</div>
+
+<script>
+const API = 'cctv.php';
+let channels = [];
+let filtered = [];
+let currentId = null;
+let hls = null;
+let fbIdx = 0;
+let fbUrls = [];
+
+function $(id){return document.getElementById(id)}
+
+async function loadChannels(){
+  $('loading').classList.remove('hidden');
+  try {
+    const r = await fetch(API+'?action=list&_='+Date.now());
+    channels = await r.json();
+    filtered = channels;
+    renderList();
+    $('countTag').textContent = '共 '+channels.length+' 个频道';
+    $('loading').classList.add('hidden');
+  } catch(e) {
+    $('err').style.display='block';
+    $('err').textContent = '加载频道列表失败：'+e.message+' (请先访问 cctv.php?action=update 生成缓存)';
+    $('loading').classList.add('hidden');
+  }
+}
+
+function renderList(){
+  const groups = {};
+  filtered.forEach(c => {
+    const g = c.group || '其他频道';
+    if(!groups[g]) groups[g] = [];
+    groups[g].push(c);
+  });
+  const order = ['央视频道','卫视频道','其他频道'];
+  let html = '';
+  order.filter(g=>groups[g]).forEach(g => {
+    html += `<div class="group">📡 ${g} · ${groups[g].length}</div>`;
+    groups[g].forEach(c => {
+      const ms = c.latency_ms != null ? c.latency_ms + 'ms' : '-';
+      const msCls = c.latency_ms == null ? 'bad' : (c.latency_ms<500?'':(c.latency_ms<1500?'warn':'bad'));
+      html += `<div class="ch ${c.id===currentId?'active':''}" data-id="${c.id}">
+        <span class="id">${c.id.toUpperCase()}</span>
+        <span class="name">${c.name}</span>
+        <span class="ms ${msCls}">${ms}</span>
+      </div>`;
+    });
+  });
+  // 剩余没分组的
+  Object.keys(groups).filter(g=>!order.includes(g)).forEach(g => {
+    html += `<div class="group">📡 ${g} · ${groups[g].length}</div>`;
+    groups[g].forEach(c => {
+      html += `<div class="ch ${c.id===currentId?'active':''}" data-id="${c.id}">
+        <span class="id">${c.id.toUpperCase()}</span>
+        <span class="name">${c.name}</span>
+        <span class="ms">${c.latency_ms != null ? c.latency_ms+'ms' : '-'}</span>
+      </div>`;
+    });
+  });
+  $('chList').innerHTML = html || '<div class="group">无匹配结果</div>';
+  document.querySelectorAll('#chList .ch').forEach(el => {
+    el.onclick = () => playChannel(el.dataset.id);
+  });
+}
+
+$('q').addEventListener('input', e => {
+  const kw = e.target.value.trim().toLowerCase();
+  if(!kw){ filtered = channels; renderList(); return; }
+  filtered = channels.filter(c =>
+    c.id.toLowerCase().includes(kw) ||
+    c.name.toLowerCase().includes(kw) ||
+    (c.group||'').toLowerCase().includes(kw));
+  renderList();
+});
+
+function playChannel(id){
+  const ch = channels.find(c=>c.id===id);
+  if(!ch) return;
+  currentId = id;
+  fbIdx = 0;
+  fbUrls = [ch.url, ...(ch.urls||[]).filter(u=>u!==ch.url)].slice(0,3);
+  renderList();
+  $('nowName').textContent = ch.name + '  ·  LIVE';
+  $('qualityTag').textContent = ch.quality || 'AUTO';
+  $('qualityTag').style.display = 'inline-block';
+  const info = [
+    ['频道ID', ch.id.toUpperCase()],
+    ['频道名', ch.name],
+    ['分类', ch.group || '-'],
+    ['画质', ch.quality || '-'],
+    ['主源延迟', ch.latency_ms != null ? ch.latency_ms+'ms' : '未检测'],
+    ['备用源', (ch.urls?.length||0)+' 个']
+  ];
+  $('chInfo').style.display='flex';
+  $('chInfo').innerHTML = info.map(i=>`<span><b>${i[0]}：</b>${i[1]}</span>`).join('');
+  $('mutedHint').style.display='none';
+  loadSource(ch);
+}
+
+function loadSource(ch){
+  const url = fbUrls[fbIdx];
+  showError('');
+  $('loading').classList.remove('hidden');
+  if(hls){ try{ hls.destroy(); }catch(e){} hls=null; }
+  const video = $('video');
+
+  // iOS Safari 原生支持 m3u8
+  if(video.canPlayType('application/vnd.apple.mpegurl')){
+    video.src = url;
+    video.play().then(()=>{
+      $('loading').classList.add('hidden');
+    }).catch(err=>{
+      // 自动静音策略
+      video.muted = true;
+      video.play().then(()=>{
+        $('mutedHint').style.display='block';
+        $('loading').classList.add('hidden');
+      }).catch(e2=>tryNextFallback(e2.message));
+    });
+    return;
+  }
+
+  if(Hls.isSupported()){
+    hls = new Hls({maxBufferLength:30,lowLatencyMode:true,enableWorker:true});
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, ()=>{
+      video.play().then(()=>{
+        $('loading').classList.add('hidden');
+      }).catch(err=>{
+        video.muted = true;
+        video.play().then(()=>{
+          $('mutedHint').style.display='block';
+          $('loading').classList.add('hidden');
+        }).catch(e2=>tryNextFallback(e2.message));
+      });
+    });
+    hls.on(Hls.Events.ERROR, (e, data)=>{
+      if(data.fatal){
+        console.warn('HLS fatal error:', data);
+        tryNextFallback(data.type+'/'+data.details);
+      }
+    });
+  } else {
+    showError('当前浏览器不支持 HLS.js 播放，请改用 Chrome/Edge/Safari');
+  }
+}
+
+function tryNextFallback(msg){
+  fbIdx++;
+  if(fbIdx >= fbUrls.length){
+    showError('所有主备源均播放失败：'+msg+'（可手动点击右侧备用源或尝试其他频道）');
+    $('loading').classList.add('hidden');
+    return;
+  }
+  const errEl = $('err');
+  if(errEl.style.display==='none' || !errEl.textContent){
+    // 只临时提示
+    errEl.style.display='block';
+    errEl.textContent = `主源异常(${msg})，正在切换到备用源 ${fbIdx+1}/${fbUrls.length} ...`;
+  }
+  setTimeout(()=>{
+    const ch = channels.find(c=>c.id===currentId);
+    loadSource(ch);
+  }, 600);
+}
+
+function unmuteVideo(){
+  const v = $('video');
+  v.muted = false;
+  v.volume = 1;
+  $('mutedHint').style.display='none';
+}
+
+function showError(msg){
+  $('err').style.display = msg ? 'block' : 'none';
+  $('err').textContent = msg || '';
+}
+
+function refreshSources(){
+  if(!confirm('确定立即从 GitHub 官方仓库重新拉取并验证所有源？（需要几秒到几十秒）')) return;
+  const btn = event.target;
+  const orig = btn.textContent;
+  btn.textContent = '更新中…';
+  btn.disabled = true;
+  fetch(API+'?action=update&secret=m3u8_cctv_secret_2026').then(r=>r.json()).then(r=>{
+    alert(r.success ? `更新成功！共 ${r.count} 个频道，用时 ${r.elapsed_ms}ms` : ('更新失败：'+ JSON.stringify(r.errors||[])));
+    loadChannels();
+  }).catch(e=>alert('更新请求失败：'+e.message)).finally(()=>{btn.textContent=orig;btn.disabled=false});
+}
+
+// 渲染备用源按钮（加载完成后调用）
+setInterval(()=>{
+  if(!currentId) return;
+  const ch = channels.find(c=>c.id===currentId);
+  if(!ch) return;
+  const urls = [ch.url, ...(ch.urls||[]).filter(u=>u!==ch.url)].slice(0,3);
+  if(urls.length<=1){ $('fbWrap').style.display='none'; return; }
+  $('fbWrap').style.display='block';
+  $('fbList').innerHTML = urls.map((u,i)=>
+    `<button class="fb ${i===fbIdx?'active':''}" data-i="${i}">${i===0?'主源':'备用'+i} #${i+1}</button>`
+  ).join('');
+  document.querySelectorAll('#fbList .fb').forEach(b=>{
+    b.onclick = ()=>{ fbIdx = parseInt(b.dataset.i); loadSource(ch); };
+  });
+}, 500);
+
+loadChannels();
+</script>
+</body>
+</html>

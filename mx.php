@@ -733,6 +733,46 @@ try {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
+// ============ v5.10.0 新增：CCTV 直播源 / 调度器 路由（可能输出非JSON，需在 JSON guard 输出前内部转发） ============
+if ($action !== '' && (strpos($action, 'cctv/') === 0 || strpos($action, 'scheduler/') === 0)) {
+    // 关闭 JSON guard，CCTV 的 m3u/txt/单频道需要自定义 Content-Type
+    define('JSON_OUTPUT_GUARD_CCTV_BYPASS', true);
+    $sub = substr($action, strpos($action, '/') + 1);
+    $mod = strpos($action, 'cctv/') === 0 ? 'cctv' : 'scheduler';
+
+    // 构造转发目标：cctv.php 或 scheduler.php 的 action 子命令
+    $_GET['action'] = $sub;
+    $_GET['_from_mx'] = '1';
+    $forwardFile = __DIR__ . '/' . $mod . '.php';
+
+    if (!file_exists($forwardFile)) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => '模块文件不存在: ' . $mod . '.php （请重新部署）',
+            'error_code' => 'MODULE_NOT_FOUND'
+        ], 500);
+    }
+    // 转发加载（子文件会自行设置 Content-Type 和输出）
+    try {
+        $executeForward = function() use ($forwardFile) {
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            require $forwardFile;
+            // 如果执行到这里还有缓冲区，刷出去
+            while (ob_get_level() > 0) { ob_end_flush(); }
+            exit;
+        };
+        $executeForward();
+    } catch (Throwable $e) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => $mod . ' 模块执行失败: ' . $e->getMessage(),
+            'error_file' => basename($e->getFile()),
+            'error_line' => $e->getLine()
+        ], 500);
+    }
+    exit; // 理论上不会执行到这里
+}
+
 function getInputJson() {
     $input = file_get_contents('php://input');
     return json_decode($input, true) ?: [];
@@ -6055,7 +6095,20 @@ try {
                     'signatures/add' => '添加广告特征码',
                     'signatures/delete' => '删除广告特征码',
                     'signatures/stats' => '广告特征码统计',
-                    'signatures/clean' => '清理低置信度特征码'
+                    'signatures/clean' => '清理低置信度特征码',
+                    // v5.10 新增 CCTV 直播源扩展模块接口
+                    'cctv/list' => 'CCTV频道列表（JSON）',
+                    'cctv/m3u' => 'CCTV完整M3U播放列表（含主备源）',
+                    'cctv/txt' => 'CCTV完整TXT播放列表（含分组）',
+                    'cctv/play' => 'CCTV单频道m3u8包装接口（id参数指定频道）',
+                    'cctv/update' => '强制更新CCTV直播源缓存（从GitHub拉取+验证）',
+                    'cctv/status' => 'CCTV直播源缓存状态',
+                    'cctv/player' => 'CCTV HTML5播放页（302重定向）',
+                    // v5.10 新增 任务调度器接口（自动学习 / CCTV更新 / AI健康检查）
+                    'scheduler/status' => '调度器所有任务状态',
+                    'scheduler/list' => '调度器任务列表（别名）',
+                    'scheduler/run' => '执行调度器任务（task,secret,force参数）',
+                    'scheduler/ping' => '调度器心跳检测'
                 ]
             ], 400);
             break;
