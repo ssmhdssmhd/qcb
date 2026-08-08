@@ -8,9 +8,9 @@
 return [
 
     // ============ 版本信息（单一来源：version.php 同步写入） ============
-    'version' => '5.10.0',
-    'version_build' => '20260808',
-    'version_full' => 'v5.10.0 build 20260808',
+    'version' => '5.10.1',
+    'version_build' => '20260808-2',
+    'version_full' => 'v5.10.1 build 20260808-2',
 
     // ============ 嗅探设置（后台「嗅探设置」页面维护） ============
     // sniffer_config.php 由后台写入，此处作为兜底默认值

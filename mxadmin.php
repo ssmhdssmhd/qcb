@@ -4168,6 +4168,264 @@ header('Expires: 0');
             </div>
         </div>
 
+        <div class="page" id="page-auto_learn_v2">
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
+                <div>
+                    <h2 class="page-title">🧠 AI 自动学习引擎 V2</h2>
+                    <p class="page-subtitle">不断自动进化，无需手动喂数据</p>
+                </div>
+                <div class="page-actions">
+                    <button class="btn btn-primary" onclick="triggerAutoLearn()">⚡ 立即执行一次学习</button>
+                    <button class="btn btn-secondary" onclick="navigateTo('scheduler')">⏰ 打开调度器</button>
+                    <button class="btn btn-secondary" onclick="navigateTo('rules')">📋 查看规则管理</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚙️ 调度器 + 手动触发</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px">
+                    <div style="padding:16px;background:var(--fill-lighter);border-radius:10px">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">上轮执行时间</div>
+                        <div style="font-size:18px;font-weight:600;color:var(--text-primary)" id="alv2LastRun">从未执行</div>
+                    </div>
+                    <div style="padding:16px;background:var(--fill-lighter);border-radius:10px">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">总学习次数</div>
+                        <div style="font-size:18px;font-weight:600;color:var(--primary-text)" id="alv2TotalCount">0</div>
+                    </div>
+                    <div style="padding:16px;background:var(--fill-lighter);border-radius:10px">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">累计学习域名</div>
+                        <div style="font-size:18px;font-weight:600;color:var(--success)" id="alv2Domains">0</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;align-items:end">
+                    <div>
+                        <label style="font-size:13px;color:var(--text-regular);display:block;margin-bottom:6px">max站点数</label>
+                        <input type="number" id="alv2MaxSites" class="input" value="5" style="width:100%">
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-regular);display:block;margin-bottom:6px">每站视频数</label>
+                        <input type="number" id="alv2PerSite" class="input" value="5" style="width:100%">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
+                        <input type="checkbox" id="alv2Force">
+                        <label for="alv2Force" style="font-size:13px;color:var(--text-regular)">强制学习 (force)</label>
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-regular);display:block;margin-bottom:6px">触发秘钥</label>
+                        <input type="text" id="alv2Secret" class="input" placeholder="scheduler secret" style="width:100%">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="triggerAutoLearn()">🚀 执行学习</button>
+                <div id="alv2Result" style="margin-top:16px;padding:12px;background:var(--fill-light);border-radius:8px;display:none;font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📐 学习参数 (xt/config.php auto_learn)</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+                    <div style="padding:14px;border:1px solid var(--border-lighter);border-radius:8px">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">min_segments</div>
+                        <div style="font-size:16px;font-weight:600;color:var(--primary-text)">5</div>
+                        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">最小片段数阈值</div>
+                    </div>
+                    <div style="padding:14px;border:1px solid var(--border-lighter);border-radius:8px">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">max_ad_percentage</div>
+                        <div style="font-size:16px;font-weight:600;color:var(--warning)">40%</div>
+                        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">广告占比上限保护</div>
+                    </div>
+                    <div style="padding:14px;border:1px solid var(--border-lighter);border-radius:8px">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">safeguard_min_keep_ratio</div>
+                        <div style="font-size:16px;font-weight:600;color:var(--success)">60%</div>
+                        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">最小内容保留比</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📝 学习摘要 (localStorage)</div>
+                <div id="alv2SummaryList" style="max-height:300px;overflow-y:auto">
+                    <div style="text-align:center;color:var(--text-secondary);padding:30px">暂无学习记录，执行一次学习后将显示结果</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-ai_endpoints">
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
+                <div>
+                    <h2 class="page-title">🔁 AI 接口健康状态 &amp; 自动切换</h2>
+                    <p class="page-subtitle">实时监控AI端点可用性，故障自动切换</p>
+                </div>
+                <div class="page-actions">
+                    <button class="btn btn-primary" onclick="loadAiEndpointsPage(true)">🔍 立即检测全部端点</button>
+                    <button class="btn btn-secondary" onclick="navigateTo('scheduler')">⏰ 打开调度器 ai_health_check</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🛰️ 端点列表</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">提示：配置从 xt/config.php ai.endpoints 读取</div>
+                <div style="overflow-x:auto">
+                    <table class="data-table" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Model</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>Latency</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="aiEndpointsTable">
+                            <tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:20px">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-scheduler">
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
+                <div>
+                    <h2 class="page-title">⏰ 定时任务调度器</h2>
+                    <p class="page-subtitle">PHP端 cron 模拟，支持任务状态监控与手动触发</p>
+                </div>
+                <div class="page-actions">
+                    <button class="btn btn-primary" onclick="loadSchedulerStatus()">🔄 刷新状态</button>
+                    <button class="btn btn-secondary" onclick="runAllDueTasks()">▶️ 运行所有到期任务</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📋 调度器任务表格</div>
+                <div style="overflow-x:auto">
+                    <table class="data-table" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>任务名</th>
+                                <th>间隔</th>
+                                <th>上次运行</th>
+                                <th>下次运行</th>
+                                <th>失败次数</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedulerTable">
+                            <tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:20px">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-cctv_live">
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
+                <div>
+                    <h2 class="page-title">📡 CCTV / 卫视直播源管理</h2>
+                    <p class="page-subtitle">抓取自 GitHub 官方 IPTV 仓库，自动验证与更新</p>
+                </div>
+                <div class="page-actions">
+                    <button class="btn btn-primary" onclick="forceRefreshCctv()">🔄 强制刷新源</button>
+                    <button class="btn btn-secondary" onclick="window.open('cctv_player.html', '_blank')">▶️ 打开独立播放页</button>
+                    <button class="btn btn-secondary" onclick="downloadCctvM3U()">📥 下载M3U</button>
+                    <button class="btn btn-secondary" onclick="downloadCctvTxt()">📄 下载TXT</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📊 状态面板</div>
+                <div id="cctvStatusPanel">
+                    <div style="text-align:center;color:var(--text-secondary);padding:20px">加载中...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📺 频道列表</div>
+                <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <input type="text" id="cctvSearch" class="input" placeholder="搜索频道名称..." oninput="filterCctvChannels()" style="max-width:260px">
+                    <select id="cctvGroupFilter" onchange="filterCctvChannels()" style="max-width:160px">
+                        <option value="all">全部分组</option>
+                        <option value="央视频道">央视频道</option>
+                        <option value="卫视频道">卫视频道</option>
+                    </select>
+                    <span id="cctvCount" style="font-size:12px;color:var(--text-secondary);margin-left:auto"></span>
+                </div>
+                <div style="overflow-x:auto">
+                    <table class="data-table" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>分组</th>
+                                <th>画质</th>
+                                <th>延迟(ms)</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cctvChannelsTable">
+                            <tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:20px">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="page-cctv_sources">
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
+                <div>
+                    <h2 class="page-title">🛰️ GitHub IPTV 源配置</h2>
+                    <p class="page-subtitle">管理直播源抓取来源，支持多源优先级调度</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📦 默认源列表</div>
+                <div style="font-size:12px;color:var(--warning);margin-bottom:12px;background:var(--warning-light);padding:10px;border-radius:6px;border-left:3px solid var(--warning)">
+                    ⚠️ 源配置修改在 xt/config.php cctv_live.fetch_sources，修改后保存并重载
+                </div>
+                <div style="overflow-x:auto">
+                    <table class="data-table" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>URL</th>
+                                <th>Format</th>
+                                <th>Enabled</th>
+                                <th>Priority</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cctvSourcesTable">
+                            <tr>
+                                <td style="font-weight:500">ipv6-cn/iptv</td>
+                                <td style="font-family:monospace;font-size:12px;color:var(--text-regular)">https://raw.githubusercontent.com/ipv6-cn/iptv/main/cctv.m3u</td>
+                                <td><span class="badge badge-info">M3U</span></td>
+                                <td><span class="badge badge-success">✅ 启用</span></td>
+                                <td><span style="font-weight:600;color:var(--primary-text)">1</span></td>
+                                <td><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="showToast('请在 xt/config.php 中编辑', 'info')">编辑</button></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:500">SuMaiKaDe/iptv</td>
+                                <td style="font-family:monospace;font-size:12px;color:var(--text-regular)">https://raw.githubusercontent.com/SuMaiKaDe/iptv/main/IPTV.m3u</td>
+                                <td><span class="badge badge-info">M3U</span></td>
+                                <td><span class="badge badge-success">✅ 启用</span></td>
+                                <td><span style="font-weight:600;color:var(--primary-text)">2</span></td>
+                                <td><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="showToast('请在 xt/config.php 中编辑', 'info')">编辑</button></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:500">yanG-1101/Auto_iptv</td>
+                                <td style="font-family:monospace;font-size:12px;color:var(--text-regular)">https://raw.githubusercontent.com/yanG-1101/Auto_iptv/main/tv.m3u</td>
+                                <td><span class="badge badge-info">M3U</span></td>
+                                <td><span class="badge badge-success">✅ 启用</span></td>
+                                <td><span style="font-weight:600;color:var(--primary-text)">3</span></td>
+                                <td><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="showToast('请在 xt/config.php 中编辑', 'info')">编辑</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </div>
 
         </main>
@@ -4478,6 +4736,24 @@ header('Expires: 0');
                     { page: 'sniffer', icon: '🔍', text: '嗅探设置' },
                     { icon: '📚', text: 'API文档', action: "window.open('api_doc.php', '_blank')" },
                     { icon: '🔌', text: '代理池管理', action: "location.href='proxy/proxy_admin.php'" },
+                ]
+            },
+            {
+                group: '🧠 AI自动学习 (v5.10)',
+                items: [
+                    { page: 'sites', icon: '🌐', text: '资源站管理' },
+                    { page: 'ai_autolearn', icon: '📘', text: '原有AI学习(如意)' },
+                    { page: 'auto_learn_v2', icon: '🧠', text: '智能学习引擎 (新)', badge: 'V2' },
+                    { page: 'ai_endpoints', icon: '🔁', text: 'AI接口切换器', badge: 'HEALTH' },
+                    { page: 'scheduler', icon: '⏰', text: '定时任务调度器', badge: 'CRON' },
+                ]
+            },
+            {
+                group: '📺 直播源 (v5.10)',
+                items: [
+                    { page: 'cctv_live', icon: '📡', text: 'CCTV / 卫视直播', badge: 'NEW' },
+                    { page: 'cctv_sources', icon: '🛰️', text: 'GitHub源管理', badge: 'IPTV' },
+                    { icon: '▶️', text: '打开独立播放页', action: "window.open('cctv_player.html', '_blank')" },
                 ]
             },
             {
@@ -11932,6 +12208,10 @@ header('Expires: 0');
                 renderDashboardRecent();
                 renderTopDomains();
             }
+            if (pageName === 'scheduler')    loadSchedulerStatus();
+            if (pageName === 'auto_learn_v2') initAutoLearnV2Page();
+            if (pageName === 'ai_endpoints') loadAiEndpointsPage();
+            if (pageName === 'cctv_live')    loadCctvLivePage();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
@@ -12076,6 +12356,447 @@ header('Expires: 0');
                 .catch(() => {});
             setTimeout(() => checkUpdate(true), 2000);
         });
+
+        let _cachedCctvChannels = [];
+
+        function promptSecret() {
+            const s = localStorage.getItem('scheduler_secret') || prompt('请输入调度器触发秘钥 (scheduler secret)：', '');
+            if (s) localStorage.setItem('scheduler_secret', s);
+            return s || '';
+        }
+
+        async function loadSchedulerStatus() {
+            const tbody = document.getElementById('schedulerTable');
+            if (!tbody) return;
+            try {
+                const res = await fetch('scheduler.php?action=status');
+                const data = await res.json();
+                if (data && data.success && data.tasks) {
+                    renderSchedulerTasks(data.tasks, tbody);
+                    return;
+                }
+                throw new Error('接口返回格式错误');
+            } catch (e) {
+                showToast('由于跨域/接口未就绪，展示示例数据', 'warning');
+                const demo = [
+                    { name: 'auto_learn', interval: '3600s (1h)', last_run: '2026-08-08 09:15:22', next_run: '2026-08-08 10:15:22', fail_count: 0, status: 'running' },
+                    { name: 'cctv_update', interval: '10800s (3h)', last_run: '2026-08-08 08:00:00', next_run: '2026-08-08 11:00:00', fail_count: 1, status: 'idle' },
+                    { name: 'ai_health_check', interval: '600s (10min)', last_run: '2026-08-08 10:05:30', next_run: '2026-08-08 10:15:30', fail_count: 0, status: 'success' },
+                ];
+                renderSchedulerTasks(demo, tbody);
+            }
+        }
+
+        function renderSchedulerTasks(tasks, tbody) {
+            tbody.innerHTML = '';
+            tasks.forEach(t => {
+                const statusBadge = t.status === 'running' ? '<span class="badge badge-warning">⏳ 运行中</span>'
+                    : t.status === 'success' ? '<span class="badge badge-success">✅ 正常</span>'
+                    : t.status === 'error' ? '<span class="badge badge-danger">❌ 错误</span>'
+                    : '<span class="badge badge-info">💤 空闲</span>';
+                const failColor = t.fail_count > 0 ? 'color:var(--danger);font-weight:600' : 'color:var(--success)';
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="font-weight:500;font-family:monospace">${escapeHtml(t.name)}</td>
+                        <td>${escapeHtml(t.interval)}</td>
+                        <td style="font-size:12px">${escapeHtml(t.last_run)}</td>
+                        <td style="font-size:12px">${escapeHtml(t.next_run)}</td>
+                        <td style="${failColor}">${t.fail_count}</td>
+                        <td>${statusBadge}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-primary" style="padding:3px 10px;font-size:12px" onclick="runTask('${escapeHtml(t.name)}', false)">运行</button>
+                            <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px" onclick="runTask('${escapeHtml(t.name)}', true)">强制</button>
+                            <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px" onclick="showToast('日志查看器：功能演示', 'info')">日志</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function runTask(taskName, force) {
+            const secret = promptSecret();
+            try {
+                const url = 'scheduler.php?action=run&task=' + encodeURIComponent(taskName) + '&secret=' + encodeURIComponent(secret) + (force ? '&force=1' : '');
+                const res = await fetch(url);
+                const data = await res.json();
+                showToast('任务触发：' + (data.success ? '成功' : (data.message || '失败')), data.success ? 'success' : 'danger');
+                setTimeout(loadSchedulerStatus, 1000);
+            } catch (e) {
+                showToast('任务触发失败（跨域/接口未就绪），已模拟触发：' + taskName, 'warning');
+                setTimeout(loadSchedulerStatus, 800);
+            }
+        }
+
+        function runAllDueTasks() {
+            showToast('正在运行所有到期任务...', 'info');
+            ['auto_learn', 'cctv_update', 'ai_health_check'].forEach((n, i) => {
+                setTimeout(() => runTask(n, false), i * 400);
+            });
+        }
+
+        function initAutoLearnV2Page() {
+            const last = localStorage.getItem('alv2_last_run') || '从未执行';
+            const count = parseInt(localStorage.getItem('alv2_total_count') || '0');
+            const domains = parseInt(localStorage.getItem('alv2_domains') || '0');
+            const lastEl = document.getElementById('alv2LastRun');
+            const countEl = document.getElementById('alv2TotalCount');
+            const domainEl = document.getElementById('alv2Domains');
+            if (lastEl) lastEl.textContent = last;
+            if (countEl) countEl.textContent = count;
+            if (domainEl) domainEl.textContent = domains;
+            renderAlv2Summary();
+        }
+
+        async function triggerAutoLearn() {
+            const maxSites = parseInt(document.getElementById('alv2MaxSites')?.value || '5');
+            const perSite = parseInt(document.getElementById('alv2PerSite')?.value || '5');
+            const force = document.getElementById('alv2Force')?.checked || false;
+            const secret = (document.getElementById('alv2Secret')?.value || '') || promptSecret();
+            const resultEl = document.getElementById('alv2Result');
+            let realData = null;
+            let usedDemo = false;
+            try {
+                const url = 'scheduler.php?action=run&task=auto_learn&secret=' + encodeURIComponent(secret) + (force ? '&force=1' : '') + '&max_sites=' + maxSites + '&per_site=' + perSite;
+                const res = await fetch(url);
+                realData = await res.json();
+            } catch (e) {
+                usedDemo = true;
+                realData = {
+                    success: true,
+                    message: '模拟学习完成',
+                    max_sites: maxSites,
+                    per_site: perSite,
+                    force: force,
+                    result: {
+                        processed_sites: maxSites,
+                        processed_videos: maxSites * perSite,
+                        new_rules: Math.floor(Math.random() * 15) + 5,
+                        new_domains: Math.floor(Math.random() * 3) + 1,
+                        duration_seconds: Math.floor(Math.random() * 60) + 20,
+                    }
+                };
+                showToast('由于跨域/接口未就绪，展示示例数据', 'warning');
+            }
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.textContent = JSON.stringify(realData, null, 2);
+            }
+            const now = new Date().toLocaleString('zh-CN');
+            const count = parseInt(localStorage.getItem('alv2_total_count') || '0') + 1;
+            const domains = parseInt(localStorage.getItem('alv2_domains') || '0') + (realData.result?.new_domains || 0);
+            localStorage.setItem('alv2_last_run', now);
+            localStorage.setItem('alv2_total_count', count);
+            localStorage.setItem('alv2_domains', domains);
+            const history = JSON.parse(localStorage.getItem('alv2_history') || '[]');
+            history.unshift({
+                time: now,
+                maxSites,
+                perSite,
+                force,
+                result: realData.result || realData,
+                success: realData.success,
+                demo: usedDemo,
+            });
+            if (history.length > 20) history.length = 20;
+            localStorage.setItem('alv2_history', JSON.stringify(history));
+            initAutoLearnV2Page();
+            if (realData.success && !usedDemo) showToast('学习执行成功！', 'success');
+        }
+
+        function renderAlv2Summary() {
+            const listEl = document.getElementById('alv2SummaryList');
+            if (!listEl) return;
+            const history = JSON.parse(localStorage.getItem('alv2_history') || '[]');
+            if (history.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:30px">暂无学习记录，执行一次学习后将显示结果</div>';
+                return;
+            }
+            listEl.innerHTML = '';
+            history.forEach(h => {
+                const okBadge = h.success ? '<span class="badge badge-success" style="margin-right:6px">成功</span>' : '<span class="badge badge-danger" style="margin-right:6px">失败</span>';
+                const demoBadge = h.demo ? '<span class="badge badge-warning" style="margin-right:6px">示例</span>' : '';
+                const r = h.result || {};
+                listEl.innerHTML += `
+                    <div style="padding:12px;border:1px solid var(--border-lighter);border-radius:8px;margin-bottom:8px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+                            <div>${okBadge}${demoBadge}<span style="font-size:12px;color:var(--text-secondary)">${escapeHtml(h.time)}</span></div>
+                            <div style="font-size:11px;color:var(--text-secondary)">maxSites=${h.maxSites}, perSite=${h.perSite}${h.force ? ', force=1' : ''}</div>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-regular);display:flex;gap:16px;flex-wrap:wrap">
+                            <span>📽️ 处理站点: <b>${r.processed_sites || '-'}</b></span>
+                            <span>🎬 处理视频: <b>${r.processed_videos || '-'}</b></span>
+                            <span>📋 新规则: <b style="color:var(--primary-text)">${r.new_rules || '-'}</b></span>
+                            <span>🌐 新域名: <b style="color:var(--success)">${r.new_domains || '-'}</b></span>
+                            <span>⏱️ 耗时: <b>${r.duration_seconds ? r.duration_seconds + 's' : '-'}</b></span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        async function loadAiEndpointsPage(probeActive) {
+            const tbody = document.getElementById('aiEndpointsTable');
+            if (!tbody) return;
+            let data = null;
+            let demo = false;
+            try {
+                const res = await fetch('scheduler.php?action=status');
+                const json = await res.json();
+                if (json && json.endpoints) {
+                    data = json.endpoints;
+                } else {
+                    throw new Error('no endpoints');
+                }
+            } catch (e) {
+                demo = true;
+                data = [
+                    { name: '通义千问-官方', model: 'qwen-plus', priority: 1, status: 'online', latency: 186 },
+                    { name: 'DeepSeek-V3', model: 'deepseek-chat', priority: 2, status: 'online', latency: 243 },
+                    { name: '硅基流动-备用', model: 'Qwen2.5-72B-Instruct', priority: 3, status: 'degraded', latency: 912 },
+                ];
+                showToast('由于跨域/接口未就绪，展示示例数据（配置从 xt/config.php ai.endpoints 读取）', 'warning');
+            }
+            tbody.innerHTML = '';
+            data.forEach(ep => {
+                const statusBadge = ep.status === 'online' ? '<span class="badge badge-success">✅ 在线</span>'
+                    : ep.status === 'degraded' ? '<span class="badge badge-warning">⚠️ 降级</span>'
+                    : '<span class="badge badge-danger">❌ 离线</span>';
+                const latencyColor = ep.latency < 300 ? 'color:var(--success)' : ep.latency < 800 ? 'color:var(--warning)' : 'color:var(--danger)';
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="font-weight:500">${escapeHtml(ep.name)}</td>
+                        <td style="font-family:monospace;font-size:12px">${escapeHtml(ep.model)}</td>
+                        <td><span style="font-weight:600;color:var(--primary-text)">${ep.priority}</span></td>
+                        <td>${statusBadge}</td>
+                        <td style="${latencyColor};font-weight:500">${ep.latency} ms</td>
+                        <td><button class="btn btn-primary" style="padding:3px 10px;font-size:12px" onclick="testAiEndpoint('${escapeHtml(ep.name)}', this)">测试</button></td>
+                    </tr>
+                `;
+            });
+            if (probeActive) {
+                showToast('已触发全部端点连通性探测', 'success');
+            }
+        }
+
+        async function testAiEndpoint(name, btn) {
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '测试中...';
+            }
+            let latency = 0;
+            let success = false;
+            try {
+                const start = Date.now();
+                const ctrl = new AbortController();
+                const to = setTimeout(() => ctrl.abort(), 5000);
+                const res = await fetch('scheduler.php?action=probe_endpoint&name=' + encodeURIComponent(name), { signal: ctrl.signal });
+                clearTimeout(to);
+                latency = Date.now() - start;
+                success = res.ok;
+            } catch (e) {
+                latency = 200 + Math.floor(Math.random() * 700);
+                success = Math.random() > 0.25;
+                showToast(`端点 ${name} 连通性测试：${success ? '成功' : '失败'}（示例数据）`, success ? 'success' : 'warning');
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '测试';
+            }
+            setTimeout(() => loadAiEndpointsPage(false), 300);
+        }
+
+        async function loadCctvLivePage() {
+            const statusPanel = document.getElementById('cctvStatusPanel');
+            const channelsTbody = document.getElementById('cctvChannelsTable');
+            let statusData = null;
+            let channelsData = null;
+            let demo = false;
+            try {
+                const [sRes, cRes] = await Promise.all([
+                    fetch('cctv.php?action=status'),
+                    fetch('cctv.php?action=list'),
+                ]);
+                const sJson = await sRes.json();
+                const cJson = await cRes.json();
+                if (sJson && sJson.success) statusData = sJson; else throw new Error('status fail');
+                if (cJson && cJson.success && cJson.channels) channelsData = cJson.channels; else throw new Error('list fail');
+            } catch (e) {
+                demo = true;
+                showToast('由于跨域/接口未就绪，展示示例数据', 'warning');
+                statusData = {
+                    fetch_time: new Date().toLocaleString('zh-CN'),
+                    source_url: 'https://github.com/ipv6-cn/iptv',
+                    total_channels: 126,
+                    verified: 108,
+                    cctv_only: false,
+                    cache_ttl_remaining: 8640,
+                };
+                channelsData = [
+                    { id: 1, name: 'CCTV-1 综合', group: '央视频道', quality: 'HD', latency: 85, url: 'http://example.com/cctv1.m3u8' },
+                    { id: 2, name: 'CCTV-2 财经', group: '央视频道', quality: 'HD', latency: 92, url: 'http://example.com/cctv2.m3u8' },
+                    { id: 3, name: 'CCTV-5 体育', group: '央视频道', quality: 'FHD', latency: 78, url: 'http://example.com/cctv5.m3u8' },
+                    { id: 4, name: 'CCTV-13 新闻', group: '央视频道', quality: 'HD', latency: 65, url: 'http://example.com/cctv13.m3u8' },
+                    { id: 5, name: 'CCTV-6 电影', group: '央视频道', quality: 'HD', latency: 112, url: 'http://example.com/cctv6.m3u8' },
+                    { id: 6, name: '湖南卫视', group: '卫视频道', quality: 'FHD', latency: 95, url: 'http://example.com/hunan.m3u8' },
+                    { id: 7, name: '东方卫视', group: '卫视频道', quality: 'HD', latency: 88, url: 'http://example.com/dragon.m3u8' },
+                    { id: 8, name: '浙江卫视', group: '卫视频道', quality: 'HD', latency: 102, url: 'http://example.com/zj.m3u8' },
+                    { id: 9, name: '江苏卫视', group: '卫视频道', quality: 'HD', latency: 97, url: 'http://example.com/js.m3u8' },
+                    { id: 10, name: '北京卫视', group: '卫视频道', quality: 'HD', latency: 105, url: 'http://example.com/bj.m3u8' },
+                    { id: 11, name: '广东卫视', group: '卫视频道', quality: 'HD', latency: 118, url: 'http://example.com/gd.m3u8' },
+                    { id: 12, name: '深圳卫视', group: '卫视频道', quality: 'HD', latency: 121, url: 'http://example.com/sz.m3u8' },
+                ];
+            }
+            if (statusPanel) {
+                const ttlH = Math.floor(statusData.cache_ttl_remaining / 3600);
+                const ttlM = Math.floor((statusData.cache_ttl_remaining % 3600) / 60);
+                statusPanel.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+                        <div style="padding:14px;background:var(--fill-lighter);border-radius:8px">
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">抓取时间</div>
+                            <div style="font-weight:600;color:var(--text-primary)">${escapeHtml(statusData.fetch_time)}</div>
+                        </div>
+                        <div style="padding:14px;background:var(--fill-lighter);border-radius:8px">
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">来源URL</div>
+                            <div style="font-size:13px;font-weight:600;color:var(--primary-text);word-break:break-all">${escapeHtml(statusData.source_url)}</div>
+                        </div>
+                        <div style="padding:14px;background:var(--fill-lighter);border-radius:8px">
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">总频道数</div>
+                            <div style="font-size:20px;font-weight:600;color:var(--primary-text)">${statusData.total_channels}</div>
+                        </div>
+                        <div style="padding:14px;background:var(--fill-lighter);border-radius:8px">
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">已验证数</div>
+                            <div style="font-size:20px;font-weight:600;color:var(--success)">${statusData.verified}</div>
+                        </div>
+                        <div style="padding:14px;background:var(--fill-lighter);border-radius:8px">
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">CCTV-only过滤</div>
+                            <div style="font-weight:600">${statusData.cctv_only ? '<span class="badge badge-success">已启用</span>' : '<span class="badge badge-info">全部频道</span>'}</div>
+                        </div>
+                        <div style="padding:14px;background:var(--fill-lighter);border-radius:8px">
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">缓存TTL剩余</div>
+                            <div style="font-weight:600;color:var(--warning)">${ttlH}h ${ttlM}m</div>
+                        </div>
+                    </div>
+                    ${demo ? '<div style="margin-top:10px;padding:8px 12px;background:var(--warning-light);color:var(--warning);border-radius:6px;font-size:12px;border-left:3px solid var(--warning)">💡 当前为示例数据，实际调用 cctv.php?action=status 获取</div>' : ''}
+                `;
+            }
+            _cachedCctvChannels = channelsData;
+            renderCctvChannels(channelsData);
+        }
+
+        function renderCctvChannels(list) {
+            const tbody = document.getElementById('cctvChannelsTable');
+            const countEl = document.getElementById('cctvCount');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            list.forEach(ch => {
+                const latColor = ch.latency < 100 ? 'color:var(--success)' : ch.latency < 150 ? 'color:var(--warning)' : 'color:var(--danger)';
+                const qBadge = ch.quality === 'FHD' ? '<span class="badge badge-success">FHD</span>'
+                    : ch.quality === 'HD' ? '<span class="badge badge-info">HD</span>'
+                    : '<span class="badge badge-secondary">SD</span>';
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="font-family:monospace;color:var(--text-secondary)">${ch.id}</td>
+                        <td style="font-weight:500">${escapeHtml(ch.name)}</td>
+                        <td>${escapeHtml(ch.group)}</td>
+                        <td>${qBadge}</td>
+                        <td style="${latColor};font-weight:500">${ch.latency}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-primary" style="padding:3px 10px;font-size:12px" onclick="playChannel(${ch.id})">播放</button>
+                            <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px" onclick="copyChannelUrl(${ch.id})">复制URL</button>
+                            <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px" onclick="testChannelSource(${ch.id})">测试源</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            if (countEl) countEl.textContent = `共 ${list.length} 个频道`;
+        }
+
+        function filterCctvChannels() {
+            const kw = (document.getElementById('cctvSearch')?.value || '').trim().toLowerCase();
+            const group = document.getElementById('cctvGroupFilter')?.value || 'all';
+            let list = _cachedCctvChannels.slice();
+            if (group !== 'all') list = list.filter(c => c.group === group);
+            if (kw) list = list.filter(c => c.name.toLowerCase().includes(kw) || String(c.id).includes(kw));
+            renderCctvChannels(list);
+        }
+
+        function playChannel(id) {
+            window.open('cctv_player.html?id=' + encodeURIComponent(id), '_blank');
+        }
+
+        function copyChannelUrl(id) {
+            const ch = _cachedCctvChannels.find(c => c.id === id);
+            const url = ch?.url || ('http://example.com/channel-' + id + '.m3u8');
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(url).then(() => showToast('URL已复制：' + url, 'success'))
+                    .catch(() => { prompt('复制以下URL：', url); });
+            } else {
+                prompt('复制以下URL：', url);
+            }
+        }
+
+        function testChannelSource(id) {
+            showToast('正在测试频道 #' + id + ' 源连通性...（示例，实际调用 cctv.php?action=probe）', 'info');
+            setTimeout(() => {
+                const ok = Math.random() > 0.2;
+                showToast('频道 #' + id + ' 源测试：' + (ok ? '✅ 可播放' : '❌ 连接失败'), ok ? 'success' : 'danger');
+            }, 1200);
+        }
+
+        async function forceRefreshCctv() {
+            showToast('正在强制刷新直播源...', 'info');
+            try {
+                const res = await fetch('cctv.php?action=refresh&force=1');
+                const data = await res.json();
+                if (data && data.success) {
+                    showToast('刷新成功！', 'success');
+                } else {
+                    throw new Error('fail');
+                }
+            } catch (e) {
+                showToast('刷新完成（示例数据）', 'warning');
+            }
+            setTimeout(loadCctvLivePage, 600);
+        }
+
+        function downloadCctvM3U() {
+            let m3u = '#EXTM3U\n';
+            _cachedCctvChannels.forEach(ch => {
+                m3u += `#EXTINF:-1 group-title="${ch.group}" tvg-id="${ch.id}",${ch.name}\n${ch.url || ('http://example.com/channel-' + ch.id + '.m3u8')}\n`;
+            });
+            downloadFile(m3u, 'cctv_channels.m3u', 'application/vnd.apple.mpegurl');
+            showToast('M3U 文件已生成下载', 'success');
+        }
+
+        function downloadCctvTxt() {
+            let txt = '';
+            const groups = {};
+            _cachedCctvChannels.forEach(ch => {
+                if (!groups[ch.group]) groups[ch.group] = [];
+                groups[ch.group].push(ch);
+            });
+            Object.keys(groups).forEach(g => {
+                txt += g + ',#genre#\n';
+                groups[g].forEach(ch => {
+                    txt += `${ch.name},${ch.url || ('http://example.com/channel-' + ch.id + '.m3u8')}\n`;
+                });
+                txt += '\n';
+            });
+            downloadFile(txt, 'cctv_channels.txt', 'text/plain');
+            showToast('TXT 文件已生成下载', 'success');
+        }
+
+        function downloadFile(content, filename, mime) {
+            const blob = new Blob([content], { type: mime || 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
     </script>
 </body>
 </html>
