@@ -71,19 +71,54 @@ backups/
 # ===== Cache =====
 cache/*
 !cache/.gitkeep
-!cache/m3u8/
-cache/m3u8/*
-!cache/m3u8/.gitkeep
 !cache/index.html
 !cache/.htaccess
+# xt 模块内部缓存
+xt/cache/*
+!xt/cache/.gitkeep
+# 调度器运行时文件（cron 锁/状态）
+cache/scheduler/
+# CCTV 直播源缓存
+cache/cctv/
+# M3U8 测试/临时下载文件
+cache/m3u8/*
+!cache/m3u8/.gitkeep
 
-# ===== Config (sensitive) =====
+# ===== Database / 运行时数据文件 =====
+# SQLite 数据库（可重建，不该入仓库）
+db/*.db
+db/*.sqlite
+db/*.sqlite3
+db/data.*
+# MySQL 初始化时 auto-generated 配置已在上方 db/db_config.php 处忽略
+
+# ===== Sensitive config / 授权文件（缺失可生成） =====
 db/db_config.php
 auth_config.php
+auth_config.json
 sq.php
+sq.txt
+sqm.php
+# 授权校验产生的临时比较文件
+auth_*.tmp
 
-# ===== AI 自动学习运行时数据（自动生成）=====
+# ===== IDE / 平台临时打包产物 =====
+.trae-html-share-packages/
+.trae/
+.trae-bindings/
+
+# ===== AI 自动学习运行时数据（仅忽略自动生成的规则，保留种子规则） =====
 gz/ai_auto_learn_dedup.php
 gz/ai_auto_learn_logs.php
-gz/rules_*.php
+# 只忽略 auto-learn 产生的临时/样例/损坏规则（明确列出 pattern）
+gz/rules_test*_example_*.php
+gz/rules_corruptdebug*.php
+gz/rules_tmp_*.php
 !gz/rules_example.php
+
+# ===== 错误日志 / 运行日志（cache/*.log 被 cache/* 覆盖，此处额外兜底） =====
+app_error_*.log
+php_error_*.log
+cctv_*.log
+auto_learn_*.log
+scheduler_*.log
