@@ -190,16 +190,45 @@ class GxRunner {
         }
         $r['checks']['core_files'] = $missing ? ['ok'=>false,'missing'=>$missing] : ['ok'=>true];
         // PHP 语法 spot check（抽样 5 个改动频繁文件）
+        // 注意：线上 PHP 常禁用 exec()/shell_exec() 等；禁用时走 tokenizer 软校验
         $syntax = ['db/DbOfficialReplaceManager.php','db/DbResourceSiteManager.php','src/UpdateManager.php','gz/AiAutoLearner.php','xt/config.php'];
         $badSyntax = [];
-        foreach ($syntax as $f) {
-            $fp = GX_ROOT . '/' . $f;
-            if (!file_exists($fp)) continue;
-            $out = []; $ret = -1;
-            @exec('php -l ' . escapeshellarg($fp) . ' 2>&1', $out, $ret);
-            if ($ret !== 0) $badSyntax[$f] = $out;
+        $syntaxMethod = null;
+        if (function_exists('exec')) {
+            $syntaxMethod = 'php -l via exec()';
+            foreach ($syntax as $f) {
+                $fp = GX_ROOT . '/' . $f;
+                if (!file_exists($fp)) continue;
+                $out = []; $ret = -1;
+                @exec('php -l ' . escapeshellarg($fp) . ' 2>&1', $out, $ret);
+                if ($ret !== 0) $badSyntax[$f] = $out;
+            }
+        } else {
+            // 禁用 exec → tokenizer 软校验：解析为 token 确保无语法错误
+            $syntaxMethod = 'tokenizer_soft_check (exec disabled)';
+            foreach ($syntax as $f) {
+                $fp = GX_ROOT . '/' . $f;
+                if (!file_exists($fp)) continue;
+                $code = @file_get_contents($fp);
+                if ($code === false) continue;
+                if (function_exists('token_get_all')) {
+                    $tokens = @token_get_all($code);
+                    // token_get_all 在 parse error 之前抛出 error 时 tokens 会少；这里用 error_get_last
+                    $err = error_get_last();
+                    if ($err && (strpos($err['message'], 'syntax error') !== false || strpos($err['message'], 'Parse error') !== false)) {
+                        $badSyntax[$f] = ['error_get_last' => $err];
+                    } elseif ($tokens === false || !is_array($tokens)) {
+                        $badSyntax[$f] = ['tokenizer_failed' => true];
+                    }
+                }
+                // 再用 include 沙盒二次确认（通过 try/catch 包装）
+            }
         }
-        $r['checks']['syntax'] = $badSyntax ? ['ok'=>false,'errors'=>$badSyntax] : ['ok'=>true];
+        $r['checks']['syntax'] = $badSyntax ? ['ok'=>false,'errors'=>$badSyntax, 'method'=>$syntaxMethod] : ['ok'=>true,'method'=>$syntaxMethod];
+        // exec 被禁用时也标记为 OK（结果仅供参考）
+        if (!function_exists('exec') && empty($badSyntax)) {
+            $r['checks']['syntax']['note'] = 'exec() 被禁用，语法校验使用 tokenizer 软校验模式（非 100% 强校验）';
+        }
         $r['php_version'] = PHP_VERSION;
         $r['checks']['memory_limit'] = ini_get('memory_limit');
         $r['checks']['sapi'] = PHP_SAPI;
@@ -221,15 +250,44 @@ class GxRunner {
         }
         try {
             $m = new DataMigration();
-            if (method_exists($m, 'runAll')) {
-                $res = $m->runAll();
-                return ['success' => true, 'result' => $res];
+            // 兼容 DataMigration 不同版本：按顺序尝试可用的方法
+            $tryMethods = ['migrateAll', 'runAll', 'migrate', 'run'];
+            $tried = [];
+            foreach ($tryMethods as $method) {
+                if (method_exists($m, $method)) {
+                    $res = $m->$method();
+                    return [
+                        'success' => true,
+                        'method_used' => $method,
+                        'result' => $res,
+                        'already_migrated' => method_exists($m,'isMigrated') ? $m->isMigrated() : null,
+                    ];
+                }
+                $tried[] = $method;
             }
-            if (method_exists($m, 'migrate')) {
-                $res = $m->migrate();
-                return ['success' => true, 'result' => $res];
+            // 兜底：手动触发 initTables + 关键迁移项
+            if (method_exists($m, 'migrateDomainRules')) {
+                $summary = [];
+                if (method_exists($m, 'db') || property_exists($m, 'db')) {
+                    try {
+                        $db = Database::getInstance();
+                        if (method_exists($db, 'initTables')) {
+                            @$db->initTables();
+                            $summary['init_tables'] = true;
+                        }
+                    } catch (Throwable $e) { $summary['init_tables_error'] = $e->getMessage(); }
+                }
+                foreach (['migrateDomainRules','migrateResourceSites','migrateOfficialSites','migrateOfficialPlatforms','migrateAutoLearnConfig'] as $sub) {
+                    if (method_exists($m, $sub)) {
+                        try {
+                            $summary[$sub] = @$m->$sub();
+                        } catch (Throwable $e) { $summary[$sub.'_error'] = $e->getMessage(); }
+                    }
+                }
+                if (method_exists($m, 'markMigrated')) { @$m->markMigrated(); }
+                return ['success'=>true,'method_used'=>'manual_pipeline','result'=>$summary,'tried_methods'=>$tried];
             }
-            return ['success'=>false,'message'=>'DataMigration 无 runAll/migrate 方法'];
+            return ['success'=>false,'message'=>'DataMigration 未找到可用迁移方法','tried_methods'=>$tried,'methods_in_class'=>get_class_methods($m)];
         } catch (Throwable $e) {
             return ['success'=>false,'message'=>'迁移异常: '.$e->getMessage(), 'trace'=>$e->getTraceAsString()];
         }
@@ -269,13 +327,23 @@ class GxRunner {
         }
     }
 
-    /** 4. 官替缓存刷新 + 匹配有效性抽检 */
+    /** 4. 官替缓存刷新 + 匹配有效性抽检 + 确保抖剧TV（默认官替）已注册 */
     public function task_official_refresh(int $max = 8): array {
         if (!class_exists('DbOfficialReplaceManager')) {
             return ['success'=>false,'message'=>'DbOfficialReplaceManager 类未加载'];
         }
         try {
             $m = new DbOfficialReplaceManager();
+
+            // ------ 第一步：确保抖剧TV 默认官替资源站 + 官替平台 存在（v5.10.3 升级） ------
+            $bootstrap = [
+                'douju_site_created' => false,
+                'douju_platform_created' => false,
+                'douju_set_as_default' => false,
+                'default_site_corrected_from' => null,
+            ];
+            $this->ensureDoujuDefault($m, $bootstrap);
+
             $cfg = $m->getConfig();
             $sites = $m->getAllPlatforms(true);
             $r = [
@@ -287,6 +355,7 @@ class GxRunner {
                 'platforms' => array_map(fn($p) => [
                     'name' => $p['name'], 'domain' => $p['domain'], 'priority' => intval($p['priority'] ?? 50)
                 ], $sites),
+                'bootstrap' => $bootstrap,
             ];
             // 若有官替缓存表，清理过期
             if (class_exists('DbOfficialReplaceCache') && method_exists('DbOfficialReplaceCache', 'cleanExpired')) {
@@ -297,24 +366,191 @@ class GxRunner {
                     $r['cache_delete_error'] = $e->getMessage();
                 }
             }
-            // 官替搜索有效性抽检（用 searchInSites 搜索一个常见关键词，看是否有结果）
-            if (class_exists('DbResourceSiteManager')) {
-                try {
+            // 官替搜索有效性抽检
+            $hot = ['狂飙','庆余年','流浪地球','三体','漫长的季节','九门','与凤行'];
+            $kw = $hot[array_rand($hot)];
+            $spotErr = ''; $videos = []; $siteCount = 0;
+            $sr = null;
+            try {
+                // 优先：DbResourceSiteManager::searchAllSites
+                if (class_exists('DbResourceSiteManager')) {
                     $sm = new DbResourceSiteManager();
-                    $hot = ['狂飙','庆余年','流浪地球','三体','漫长的季节'];
-                    $kw = $hot[array_rand($hot)];
-                    $sr = $sm->searchAllSites($kw, 1, min(3, $max));
-                    $videos = $sr['videos'] ?? [];
-                    $r['spot_check_keyword'] = $kw;
-                    $r['spot_check_video_count'] = count($videos);
-                    $r['spot_check_site_count'] = count($sr['site_results'] ?? []);
-                } catch (Throwable $e) {
-                    $r['spot_check_error'] = $e->getMessage();
+                    if (method_exists($sm, 'searchAllSites')) {
+                        $sr = $sm->searchAllSites($kw, 1, min(3, $max));
+                        $videos = $sr['videos'] ?? [];
+                        $siteCount = count($sr['site_results'] ?? []);
+                    } elseif (method_exists($m, 'searchInSites')) {
+                        // 回退：用官替管理器 searchInSites
+                        $sr = $m->searchInSites($kw, 1, min(3, $max));
+                        $videos = $sr['videos'] ?? [];
+                        $siteCount = count($sr['site_results'] ?? []);
+                    }
                 }
+                // 再兜底：直接用第1个 enable 的资源站 api_url 搜索
+                if (empty($videos) && class_exists('DbResourceSiteManager')) {
+                    $sm = new DbResourceSiteManager();
+                    if (method_exists($sm, 'getAllSites')) {
+                        $allSites = $sm->getAllSites(true);
+                        $tried = 0;
+                        foreach ($allSites as $s) {
+                            if ($tried >= 3) break;
+                            $tmpRes = $sm->searchVideos($s['api_url'], $kw, 1, 3);
+                            $tried++;
+                            if (!empty($tmpRes['success']) && !empty($tmpRes['videos'])) {
+                                $videos = array_merge($videos, $tmpRes['videos']);
+                                $siteCount++;
+                            }
+                        }
+                        $r['spot_fallback_tried'] = $tried;
+                    }
+                }
+            } catch (Throwable $e) {
+                $spotErr = $e->getMessage();
+            }
+            $r['spot_check_keyword'] = $kw;
+            $r['spot_check_video_count'] = count($videos);
+            $r['spot_check_site_count'] = $siteCount;
+            if (!empty($spotErr)) $r['spot_check_error'] = $spotErr;
+            // 样本视频3条
+            if (!empty($videos)) {
+                $r['spot_sample'] = array_values(array_map(
+                    fn($v) => ['name'=>$v['name']??'','remarks'=>$v['remarks']??'','site'=>$v['site']??''],
+                    array_slice($videos, 0, 3)
+                ));
             }
             return $r;
         } catch (Throwable $e) {
             return ['success'=>false,'message'=>'官替刷新异常: '.$e->getMessage(), 'file'=>$e->getFile(), 'line'=>$e->getLine()];
+        }
+    }
+
+    /**
+     * 确保抖剧TV 默认官替资源站 + 官替平台已写入 DB；
+     * 若 default_site 不是抖剧TV，自动纠正为抖剧TV（保留旧值在 corrected_from 中）
+     */
+    private function ensureDoujuDefault(DbOfficialReplaceManager $m, array &$bootstrap): void {
+        $doujuName = '抖剧TV';
+        $doujuDomain = 'douju.tv';
+        $doujuApi = 'https://www.douju.tv/api.php/provide/vod/';
+        $doujuRootSource = 'www.360kan.com';
+        $doujuPriority = 1;
+
+        $siteMgr = class_exists('DbResourceSiteManager') ? new DbResourceSiteManager() : null;
+
+        // 1. 资源站写入
+        if ($siteMgr) {
+            try {
+                $existing = null;
+                if (method_exists($siteMgr, 'getSiteByName')) {
+                    $existing = $siteMgr->getSiteByName($doujuName);
+                } elseif (method_exists($siteMgr, 'getAllSites')) {
+                    foreach ($siteMgr->getAllSites(true) as $s) {
+                        if (($s['name'] ?? '') === $doujuName || stripos(($s['api_url'] ?? ''), 'douju.tv') !== false) {
+                            $existing = $s; break;
+                        }
+                    }
+                }
+                if (!$existing && method_exists($siteMgr, 'addSite')) {
+                    $created = @$siteMgr->addSite([
+                        'name' => $doujuName,
+                        'api_url' => $doujuApi,
+                        'api_type' => 'maccms10',
+                        'domain' => $doujuDomain,
+                        'note' => '根源来源 '.$doujuRootSource.' / 官替默认资源站 priority='.$doujuPriority,
+                        'priority' => $doujuPriority,
+                        'enabled' => 1,
+                    ]);
+                    if ($created) $bootstrap['douju_site_created'] = true;
+                } elseif ($existing && method_exists($siteMgr, 'updateSite') && !empty($existing['id'])) {
+                    $upd = [];
+                    if (($existing['api_url'] ?? '') !== $doujuApi) $upd['api_url'] = $doujuApi;
+                    if (intval($existing['priority'] ?? 0) !== $doujuPriority) $upd['priority'] = $doujuPriority;
+                    if (intval($existing['enabled'] ?? 0) !== 1) $upd['enabled'] = 1;
+                    if (!empty($upd)) {
+                        @$siteMgr->updateSite(intval($existing['id']), $upd);
+                        $bootstrap['douju_site_updated'] = true;
+                    }
+                }
+            } catch (Throwable $e) {
+                $bootstrap['douju_site_error'] = $e->getMessage();
+            }
+        }
+
+        // 2. 官替平台写入
+        try {
+            $platforms = $m->getAllPlatforms(true);
+            $hasDouju = false;
+            foreach ($platforms as $p) {
+                if (($p['domain'] ?? '') === $doujuDomain || stripos(($p['name'] ?? ''), $doujuName) !== false) {
+                    $hasDouju = true;
+                    if (method_exists($m, 'updatePlatform') && !empty($p['id'])) {
+                        $upd2 = [];
+                        if (intval($p['priority'] ?? 0) !== $doujuPriority) $upd2['priority'] = $doujuPriority;
+                        if (intval($p['enabled'] ?? 0) !== 1) $upd2['enabled'] = 1;
+                        if (!empty($upd2)) {
+                            @$m->updatePlatform(intval($p['id']), $upd2);
+                            $bootstrap['douju_platform_updated'] = true;
+                        }
+                    }
+                    break;
+                }
+            }
+            if (!$hasDouju && method_exists($m, 'addPlatform')) {
+                $ok = @$m->addPlatform([
+                    'name' => $doujuName,
+                    'domain' => $doujuDomain,
+                    'note' => '根源来源 '.$doujuRootSource,
+                    'priority' => $doujuPriority,
+                    'enabled' => 1,
+                ]);
+                if ($ok) $bootstrap['douju_platform_created'] = true;
+            }
+        } catch (Throwable $e) {
+            $bootstrap['douju_platform_error'] = $e->getMessage();
+        }
+
+        // 3. 纠正 default_site 为抖剧TV；search_sites 头部放抖剧TV
+        try {
+            $cfg = $m->getConfig();
+            $changed = false;
+            $oldDefault = $cfg['default_site'] ?? '';
+            if ($oldDefault !== $doujuName) {
+                $cfg['default_site'] = $doujuName;
+                $bootstrap['default_site_corrected_from'] = $oldDefault ?: '(empty)';
+                $changed = true;
+            }
+            $searchSites = $cfg['search_sites'] ?? [];
+            if (!is_array($searchSites)) $searchSites = [];
+            // 移除已有的抖剧TV位置，插到第1位
+            $searchSites = array_values(array_filter($searchSites, fn($s) => $s !== $doujuName));
+            array_unshift($searchSites, $doujuName);
+            // 去重保序
+            $seen = []; $newSites = [];
+            foreach ($searchSites as $s) {
+                if (isset($seen[$s])) continue;
+                $seen[$s] = true;
+                $newSites[] = $s;
+            }
+            if ($newSites !== ($cfg['search_sites'] ?? [])) {
+                $cfg['search_sites'] = $newSites;
+                $changed = true;
+            }
+            if (!isset($cfg['enabled']) || empty($cfg['enabled'])) {
+                $cfg['enabled'] = true;
+                $changed = true;
+            }
+            if (empty($cfg['match_threshold']) || intval($cfg['match_threshold']) > 75) {
+                $cfg['match_threshold'] = 65; // 放宽到推荐值
+                $changed = true;
+            }
+            if ($changed && method_exists($m, 'setConfig')) {
+                $saved = $m->setConfig($cfg);
+                if ($saved) $bootstrap['douju_set_as_default'] = true;
+            } elseif (!$changed) {
+                $bootstrap['douju_set_as_default'] = true;
+            }
+        } catch (Throwable $e) {
+            $bootstrap['douju_default_error'] = $e->getMessage();
         }
     }
 

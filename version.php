@@ -1,11 +1,25 @@
 <?php
 return [
-    'version' => 'v5.10.5',
-    'build' => '20260809',
-    'version_code' => 51005,
-    'commit' => 'gx-dispatch-center',
-    'updated_at' => '2026-08-09',
+    'version' => 'v5.10.6',
+    'build' => '20260810',
+    'version_code' => 51006,
+    'commit' => 'gx-fix-online-errors',
+    'updated_at' => '2026-08-10',
     'changelog' => [
+        'v5.10.6' => [
+            'date' => '2026-08-10',
+            'title' => '【gx.php 线上错误修复 v2】check/migrate/official_refresh 三大任务修复',
+            'changes' => [
+                '修复 check 任务 exec() 被禁用报错：禁用时改为 tokenizer 软校验（token_get_all），避免 Call to undefined function exec()',
+                '语法校验兼容：function_exists(exec) → php -l / token_get_all 双通道，线上 disable_functions 环境零报错',
+                '修复 migrate 任务：DataMigration 实际方法名是 migrateAll，新增按优先级尝试 migrateAll → runAll → migrate → run；无方法时走手动 pipeline(migrateDomainRules+migrateResourceSites+migrateOfficialPlatforms 等)',
+                '修复 official_refresh default_site=量子 纠正为抖剧TV：新增 ensureDoujuDefault() 自动写入/更新抖剧资源站/官替平台，default_site/search_sites 首位强制抖剧TV',
+                '官替阈值纠正：若 match_threshold 过高(>75) 自动降到推荐 65，enabled=true 默认开启',
+                '官替抽检 searchAllSites 不存在时 3 级回退：DbResourceSiteManager::searchAllSites → OfficialReplaceManager::searchInSites → 直接遍历前3个资源站searchVideos 逐个试',
+                '官替抽检新增 spot_sample：返回前3个命中视频样例(name/site/remarks)，便于排查空结果',
+                '官替平台 count 8个：含抖剧TV平台（360kan.com/抖剧TV 根源来源 priority=1）',
+            ],
+        ],
         'v5.10.5' => [
             'date' => '2026-08-09',
             'title' => '【新增 gx.php 全局定时/自动更新调度中心】',
