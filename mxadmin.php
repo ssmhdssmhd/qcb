@@ -12255,6 +12255,13 @@ if (!$_mxGXSecret) {
             lastTaskId: null,
             autoScroll: true,
             intervalMs: 1200,
+            // ===== 卡住自愈 v5.10.8 =====
+            stuck_lastPct: -1,       // 上一次 percent
+            stuck_lastTs: 0,         // 上一次 percent 变化的时间戳(ms)
+            stuck_warnCount: 0,      // 已警告次数（避免无限刷日志）
+            stuck_maxWarns: 3,       // 最多警告次数
+            stuck_threshold_s: 25,   // 进度超过 N 秒不动 => 警告
+            stuck_forceStop_s: 180,  // 超过 3 分钟完全不动 => 停轮询+提示
         };
 
         // ---------- HMAC-SHA256 工具（顶层函数，供 gxBuildSignedPayload 调用）----------
@@ -12491,12 +12498,58 @@ if (!$_mxGXSecret) {
                     }
                     return;
                 }
-                // 切换 task_id 时重置日志
+                // 切换 task_id 时重置日志 & 卡住检测
                 if (GX_STATE.lastTaskId !== prog.task_id) {
                     GX_STATE.lastTaskId = prog.task_id;
+                    GX_STATE.stuck_lastPct = -1;
+                    GX_STATE.stuck_lastTs = Date.now();
+                    GX_STATE.stuck_warnCount = 0;
                     gxResetLogs();
                 }
+                // ===== v5.10.8 进度卡住自愈检测 =====
+                const now = Date.now();
                 const pct = Math.round((prog.percent||0)*100)/100;
+                // percent 变化时：刷新基线
+                if (Math.abs(pct - GX_STATE.stuck_lastPct) > 0.001) {
+                    GX_STATE.stuck_lastPct = pct;
+                    GX_STATE.stuck_lastTs = now;
+                    GX_STATE.stuck_warnCount = 0; // 进度有推进，重置告警计数
+                } else {
+                    // percent 没动：判断是否超阈值
+                    const stuckSec = (now - GX_STATE.stuck_lastTs) / 1000;
+                    const isFinishedState = ['success','failed','partial'].indexOf(prog.overall_status) >= 0;
+                    if (!isFinishedState && GX_STATE.stuck_lastPct >= 0) {
+                        // 超过 3 分钟完全不动 → 停轮询 + 提示用户手动刷新
+                        if (stuckSec >= GX_STATE.stuck_forceStop_s) {
+                            if (GX_STATE.polling) {
+                                GX_STATE.polling = false;
+                                if (GX_STATE.timer) { clearTimeout(GX_STATE.timer); GX_STATE.timer=null; }
+                                const sb = document.getElementById('gxStopBtn');
+                                if (sb) sb.style.display = 'none';
+                            }
+                            gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'error',
+                                `⚠️ 进度已 ${Math.round(stuckSec)}s 未变化（${pct}%），已停止轮询。` +
+                                ` 请 <a href="javascript:void(0)" onclick="gxRefreshProgress(true);showToast('已手动刷新进度','warn')" style="color:#fbbf24;text-decoration:underline">点此手动刷新</a>` +
+                                ` 或检查后台任务是否异常。`);
+                            showToast('进度长时间未变化，已停止轮询。可手动刷新或重新启动任务。', 'warn');
+                        }
+                        // 超过 25s 不动且警告次数未达上限 → 打一条 warn（避免刷屏）
+                        else if (stuckSec >= GX_STATE.stuck_threshold_s && GX_STATE.stuck_warnCount < GX_STATE.stuck_maxWarns) {
+                            GX_STATE.stuck_warnCount++;
+                            const curStep = prog.current_step || 'site_check';
+                            let hint = '';
+                            if (curStep.indexOf('site_') === 0 || curStep === 'site_check_prepare' || curStep === 'site_check_summary' || curStep === 'site_check') {
+                                hint = '（资源站巡检为独立小步骤，单站 ≤8s，若超过该时间说明某站网络慢，可耐心等待或稍后手动刷新）';
+                            } else if (curStep === 'ai_learn') {
+                                hint = '（AI 学习需抓取多站点样本，可能耗时 30-60s，属正常现象）';
+                            } else if (curStep === 'official_refresh') {
+                                hint = '（官替刷新含搜索抽检，可能耗时 10-20s）';
+                            }
+                            gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'warn',
+                                `⏳ 进度 ${pct}% 已 ${Math.round(stuckSec)}s 未变化，当前步骤 [${curStep}]。${hint}`);
+                        }
+                    }
+                }
                 const cur = prog.current_step ? `当前步骤：${prog.current_step}${prog.current_message?` · ${prog.current_message}`:''}` : (prog.overall_status||'');
                 gxSetPct(pct, cur);
                 gxRenderSteps(prog);
@@ -12540,6 +12593,10 @@ if (!$_mxGXSecret) {
             const btn = document.getElementById('gxStartBtn');
             try {
                 if (btn) { btn.disabled = true; btn.textContent = '🔄 提交中...'; }
+                // 启动新任务：重置卡住检测器 v5.10.8
+                GX_STATE.stuck_lastPct = -1;
+                GX_STATE.stuck_lastTs = Date.now();
+                GX_STATE.stuck_warnCount = 0;
                 const body = await gxBuildSignedPayload(action, max, force);
                 gxResetLogs();
                 gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'info', `请求启动：action=${action}, max=${max==null?'默认':max}, force=${force?'是':'否'}`);

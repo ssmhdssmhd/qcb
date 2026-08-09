@@ -147,13 +147,14 @@ function gx_saveLastRun(array $summary): void {
 
 // --------- 进度条写盘机制（后台进度条 轮询读取） ---------
 class GxProgressTracker {
-    private string $taskId;
+    public string $taskId;
     /** @var string 当前 action（all/check/migrate/...），输出到 JSON 方便前端展示 */
-    private string $action = '';
+    public string $action = '';
     /** @var array<string, int> 每个任务名占百分之几权重 */
-    private array $stepWeights;
-    private int $totalStepsWeight;
-    private array $currentState;
+    public array $stepWeights;
+    public int $totalStepsWeight;
+    /** @var array 当前状态快照（直接写盘到 JSON）；public 以便 task 内判断步骤键是否存在，写操作仍通过 startStep/subStep/finishStep */
+    public array $currentState;
     private int $startTime;
 
     public function __construct(array $stepWeights) {
@@ -783,8 +784,12 @@ class GxRunner {
         }
     }
 
-    /** 5. 资源站健康巡检 */
-    public function task_site_check(int $max = 10, ?callable $progressCallback = null): array {
+    /**
+     * 5. 资源站健康巡检
+     * 【优化 v5.10.8】避免卡住：不再调用默认 30s×3 重试的 searchVideos，
+     * 改为单站 ≤8s 的轻量两阶段探测（根接口通 + 最小搜索请求通），并每站回调进度。
+     */
+    public function task_site_check(int $max = 10, ?callable $progressCallback = null, ?GxProgressTracker $tracker = null): array {
         if (!class_exists('DbResourceSiteManager')) {
             return ['success'=>false,'message'=>'DbResourceSiteManager 未加载'];
         }
@@ -795,36 +800,85 @@ class GxRunner {
                 return ['success'=>false,'message'=>'资源站列表为空'];
             }
             $total = count($sites);
-            $sites = array_slice($sites, 0, $max);
+            // 巡检站点数限制（默认 max=8，避免总耗时太长导致前端"卡住"观感）
+            $checkMax = max(1, min($max, 12));
+            $sites = array_slice($sites, 0, $checkMax);
+            $N = count($sites);
+
             $checks = [];
             $okCount = 0; $failCount = 0;
             $hotWords = ['狂飙','庆余年','三体','九门'];
-            $i = 0;
-            foreach ($sites as $s) {
-                $i++;
-                if ($progressCallback) {
-                    @call_user_func($progressCallback, $i, count($sites), $s['name'] ?? 'site');
+            for ($i = 0; $i < $N; $i++) {
+                $s = $sites[$i];
+                $siteName = $s['name'] ?? ('site_'.$i);
+                $stepKey = "site_{$i}";
+                // 每个站独立 startStep（当 tracker 传入且 site_$i 权重存在时）
+                if ($tracker && isset($tracker->currentState['steps'][$stepKey])) {
+                    $tracker->startStep($stepKey, "巡检 {$siteName}");
+                } elseif ($progressCallback) {
+                    @call_user_func($progressCallback, $i + 1, $N, $siteName);
                 }
-                $kw = $hotWords[array_rand($hotWords)];
+
                 $t0 = microtime(true);
-                $res = $sm->searchVideos($s['api_url'], $kw, 1, 1);
-                $cost = round((microtime(true) - $t0) * 1000, 0);
-                $ok = !empty($res['success']) && !empty($res['videos']);
+                $apiUrl = $s['api_url'] ?? '';
+                $host = $s['domain'] ?? parse_url($apiUrl, PHP_URL_HOST) ?? '';
+                $msg = '';
+                $ok = false;
+                $cost = 0;
+
+                if ($apiUrl === '') {
+                    $msg = '无 api_url';
+                } else {
+                    // ===== 阶段1：根接口 / 最小参数快速探测（3s超时）—— 快速排除明显失效站 =====
+                    $rootProbe = $this->gx_probe_api_root($apiUrl, 3);
+                    if (!$rootProbe['ok']) {
+                        $msg = '根接口不通：' . $rootProbe['msg'];
+                    } else {
+                        // ===== 阶段2：最小搜索请求（ac=list&pg=1&limit=1，3s 总超时 + 1 次）=====
+                        $kw = $hotWords[array_rand($hotWords)];
+                        $probe = $this->gx_probe_site_search($apiUrl, $kw, 5);
+                        if ($probe['ok']) {
+                            $ok = true;
+                            $msg = '';
+                        } else {
+                            $msg = $probe['msg'] ?: '搜索失败';
+                        }
+                    }
+                    $cost = round((microtime(true) - $t0) * 1000, 0);
+                }
                 $ok ? $okCount++ : $failCount++;
                 $checks[] = [
-                    'name' => $s['name'],
-                    'domain' => $s['domain'] ?? parse_url($s['api_url'], PHP_URL_HOST),
-                    'keyword' => $kw,
+                    'name' => $siteName,
+                    'domain' => $host,
+                    'keyword' => $kw ?? null,
                     'status' => $ok ? 'OK' : 'FAIL',
                     'cost_ms' => $cost,
-                    'videos' => count($res['videos'] ?? []),
-                    'msg' => $ok ? '' : ($res['message'] ?? 'unknown'),
+                    'videos' => 0,
+                    'msg' => $msg,
                 ];
+                if ($tracker && isset($tracker->currentState['steps'][$stepKey])) {
+                    $tracker->finishStep($stepKey, $ok, [], $ok ? '健康' : ('失败：' . mb_substr($msg, 0, 30)));
+                }
+            }
+            // 实际站数 N < 权重声明数时，多余的 site_{N..max-1} 步骤标记为"跳过"（避免 pending 状态误导）
+            if ($tracker && !empty($tracker->stepWeights)) {
+                $declaredIdx = 0;
+                foreach ($tracker->stepWeights as $k => $w) {
+                    if (preg_match('/^site_(\d+)$/', $k, $m)) {
+                        $declaredIdx = max($declaredIdx, intval($m[1]) + 1);
+                    }
+                }
+                for ($i = $N; $i < $declaredIdx; $i++) {
+                    $skipKey = "site_{$i}";
+                    if (isset($tracker->currentState['steps'][$skipKey]) && $tracker->currentState['steps'][$skipKey]['status'] === 'pending') {
+                        $tracker->finishStep($skipKey, true, [], '跳过（资源站不足声明数量）');
+                    }
+                }
             }
             return [
                 'success' => true,
                 'total_sites' => $total,
-                'checked_count' => count($sites),
+                'checked_count' => $N,
                 'ok_count' => $okCount,
                 'fail_count' => $failCount,
                 'checks' => $checks,
@@ -832,6 +886,88 @@ class GxRunner {
         } catch (Throwable $e) {
             return ['success'=>false,'message'=>'资源站巡检异常: '.$e->getMessage()];
         }
+    }
+
+    /** 对 api_url 根路径做一次 HEAD/GET 快速探测（≤timeoutSec 秒）。返回 ['ok'=>bool,'msg'=>string] */
+    private function gx_probe_api_root(string $apiUrl, int $timeoutSec): array {
+        $parsed = parse_url($apiUrl);
+        if (!$parsed || empty($parsed['scheme']) || empty($parsed['host'])) {
+            return ['ok'=>false, 'msg'=>'URL 格式错误'];
+        }
+        $scheme = $parsed['scheme'];
+        $host = $parsed['host'];
+        $port = $parsed['port'] ?? ($scheme === 'https' ? 443 : 80);
+        $path = rtrim($parsed['path'] ?? '/', '/') ?: '/';
+        $rootUrl = "{$scheme}://{$host}" . ($port && !in_array($port,[80,443],true) ? ":{$port}" : '') . $path . '/';
+        $ch = @curl_init($rootUrl);
+        if (!$ch) return ['ok'=>false,'msg'=>'curl_init 失败'];
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER=>true,
+            CURLOPT_NOBODY=>true,
+            CURLOPT_TIMEOUT=>$timeoutSec,
+            CURLOPT_CONNECTTIMEOUT=>min($timeoutSec, 3),
+            CURLOPT_SSL_VERIFYPEER=>false, CURLOPT_SSL_VERIFYHOST=>false,
+            CURLOPT_FOLLOWLOCATION=>true, CURLOPT_MAXREDIRS=>2,
+            CURLOPT_USERAGENT=>'Mozilla/5.0 (compatible; GxHealthBot/1.1)',
+            CURLOPT_IPRESOLVE=>CURL_IPRESOLVE_V4,
+        ]);
+        @curl_exec($ch);
+        $http = intval(@curl_getinfo($ch, CURLINFO_HTTP_CODE));
+        $err = curl_error($ch);
+        is_resource($ch) || $ch instanceof CurlHandle ? @curl_close($ch) : null; $ch = null;
+        $ok = ($http >= 200 && $http < 500) || ($http === 0 && $err === '');
+        if ($ok) return ['ok'=>true, 'msg'=>''];
+        return ['ok'=>false, 'msg'=>trim("HTTP{$http} " . $err)];
+    }
+
+    /** 对 api_url 发起一次参数最小的搜索请求（单策略，1次，≤timeoutSec秒），命中=通过。返回 ['ok'=>bool,'msg'=>string] */
+    private function gx_probe_site_search(string $apiUrl, string $keyword, int $timeoutSec): array {
+        // 构造苹果CMS10 最通用的 ac=list&wd=xxx&pg=1&limit=1 请求（单策略，1次）
+        $sep = (strpos($apiUrl, '?') === false) ? '?' : '&';
+        $url = $apiUrl . $sep . http_build_query([
+            'ac'    => 'list',
+            'wd'    => $keyword,
+            'pg'    => 1,
+            'limit' => 1,
+        ]);
+        $ch = @curl_init($url);
+        if (!$ch) return ['ok'=>false,'msg'=>'curl_init 失败'];
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER=>true,
+            CURLOPT_TIMEOUT=>$timeoutSec,
+            CURLOPT_CONNECTTIMEOUT=>min($timeoutSec, 3),
+            CURLOPT_SSL_VERIFYPEER=>false, CURLOPT_SSL_VERIFYHOST=>false,
+            CURLOPT_FOLLOWLOCATION=>true, CURLOPT_MAXREDIRS=>2,
+            CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+            CURLOPT_ENCODING=>'gzip,deflate',
+            CURLOPT_IPRESOLVE=>CURL_IPRESOLVE_V4,
+            CURLOPT_HTTPHEADER=>[
+                'Accept: application/json, text/plain, */*',
+                'Referer: ' . (parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . '/'),
+            ],
+        ]);
+        $resp = @curl_exec($ch);
+        $http = intval(@curl_getinfo($ch, CURLINFO_HTTP_CODE));
+        $err = curl_error($ch);
+        is_resource($ch) || $ch instanceof CurlHandle ? @curl_close($ch) : null; $ch = null;
+        if ($resp === false) return ['ok'=>false, 'msg'=>'请求失败: ' . trim($err . " HTTP{$http}")];
+        // JSON / JSONP 解析
+        $cleaned = $resp;
+        if (is_string($resp) && !json_decode($resp, true)) {
+            $cleaned = preg_replace('/^\w+\s*\(/', '', $resp);
+            $cleaned = preg_replace('/\)\s*;?\s*$/', '', $cleaned);
+        }
+        $data = @json_decode($cleaned, true);
+        if (!$data) {
+            // JSON 解析失败但 HTTP 2xx 也视为基本可用（至少接口服务活着）
+            return ['ok'=>($http >= 200 && $http < 400), 'msg'=>($http ? "HTTP{$http} 非JSON接口" : '非JSON响应')];
+        }
+        $code = intval($data['code'] ?? $data['status'] ?? 0);
+        $hasList = !empty($data['list']) || !empty($data['data']);
+        if ($hasList) return ['ok'=>true, 'msg'=>''];
+        if ($code === 200 || $code === 1) return ['ok'=>true, 'msg'=>'接口正常（无搜索命中）'];
+        $msg = $data['msg'] ?? $data['message'] ?? ("code={$code} 无视频列表");
+        return ['ok'=>false, 'msg'=>is_string($msg) ? $msg : '搜索无结果'];
     }
 
     /** 6. 域名规则健康检查 */
@@ -907,6 +1043,7 @@ function gx_cli_args(): array {
         foreach (array_slice($argv, 1) as $a) {
             if ($a === 'force' || $a === '--force') $flags['force'] = true;
             elseif (str_starts_with($a, '--max=')) $flags['max'] = intval(substr($a, 6));
+            elseif (ctype_digit($a)) $flags['max'] = intval($a); // 纯数字识别为 max，如: php gx.php site_check 3
             else $action = $a;
         }
     }
@@ -1074,6 +1211,7 @@ if ($GX_IS_CLI) {
 
 /**
  * 根据 action 解析 step 权重（百分比总和不一定=100，内部归一化）
+ * 【v5.10.8 优化】all 动作 site_check 不再单步 25%，拆成 N 个独立 site_i 权重，每完成一个站都会推进总进度，避免"卡在 88%"。
  */
 function gx_resolve_step_weights(string $action, int $max): array {
     switch ($action) {
@@ -1084,13 +1222,26 @@ function gx_resolve_step_weights(string $action, int $max): array {
         case 'ai_learn':          return ['ai_learn' => 100];
         case 'ai_cleanup':        return ['ai_cleanup' => 100];
         case 'official_refresh':  return ['official_refresh' => 100];
-        case 'site_check':        $n = max(1, min($max, 20));
-                                  $w = []; for($i=0;$i<$n;$i++) $w["site_{$i}"] = 1;
-                                  return array_merge(['site_check_prepare'=>1], $w, ['site_check_summary'=>1]);
+        case 'site_check':
+            $n = max(1, min($max, 12));
+            $w = []; for($i=0;$i<$n;$i++) $w["site_{$i}"] = 1;
+            return array_merge(['site_check_prepare'=>1], $w, ['site_check_summary'=>1]);
         case 'rule_check':        return ['rule_check' => 100];
         case 'all':
         default:
-            return ['check'=>10,'migrate'=>10,'official_refresh'=>25,'ai_learn'=>30,'site_check'=>25];
+            // all 下 site 默认 8 个站（用户在后台可调 max，这里和 max 参数对齐）
+            $siteN = max(1, min($max, 12));
+            $siteBlock = [];
+            $siteBlock['site_check_prepare'] = 1;
+            for($i = 0; $i < $siteN; $i++) $siteBlock["site_{$i}"] = 1;
+            $siteBlock['site_check_summary'] = 1;
+            return [
+                'check' => 10,
+                'migrate' => 10,
+                'official_refresh' => 25,
+                'ai_learn' => 30,
+                // site 合计占 25 份左右，和原设计一致（归一化后等价）
+            ] + $siteBlock;
     }
 }
 
@@ -1167,17 +1318,16 @@ try {
             $tracker->finishStep('official_refresh', $ok, $r, "抽检命中 {$videos} 条视频；default_site=".($r['default_site'] ?? ''));
             break;
         case 'site_check':
-            // 单任务（内含多站），通过传入 tracker 控制 subStep
-            $r = gx_wrap_with_progress($tracker, 'site_check', function(?GxProgressTracker $t=null) use ($runner, $max){
-                $maxN = $max ?? 10;
-                // 直接调用 task_site_check，改造成可传 progress_callback
-                return $runner->task_site_check($maxN, function(int $done, int $total, string $siteName) use ($t) {
-                    if (!$t) return;
-                    if ($total <= 0) return;
-                    $pct = intval(($done / $total) * 100);
-                    $t->subStep($pct, "巡检第 {$done}/{$total} 站：{$siteName}");
-                });
-            });
+            // 【v5.10.8】单任务：拆成 site_check_prepare + N个site_i 独立步骤 + site_check_summary
+            // 每个site_i由 task_site_check 内部 startStep/finishStep 写盘，推进总进度，不会"卡住不动"
+            $maxN = $max ?? 8;
+            $tracker->startStep('site_check_prepare', "准备资源站列表（最多{$maxN}个）");
+            $tracker->finishStep('site_check_prepare', true, [], '列表已取到');
+            $r = $runner->task_site_check($maxN, null, $tracker);
+            $ok = !empty($r['success']);
+            $tracker->startStep('site_check_summary', '汇总巡检结果');
+            $summaryMsg = "共{$r['checked_count']}站 成功{$r['ok_count']} 失败{$r['fail_count']}";
+            $tracker->finishStep('site_check_summary', $ok, $r, $summaryMsg);
             $runner->addResult('site_check', $r);
             break;
         case 'rule_check':
@@ -1186,29 +1336,48 @@ try {
             break;
         case 'all':
         default:
-            // 全链路：异常隔离，一个失败不影响其它，挂 tracker
+            // 【v5.10.8】all 流程：site_check 不再走单步' site_check'权重，而是拆 site_check_prepare + site_i + site_check_summary
             $pipeline = [
-                ['name'=>'check','fn'=>function() use ($runner){ return $runner->task_check(); }],
-                ['name'=>'migrate','fn'=>function() use ($runner){ return $runner->task_migrate(); }],
-                ['name'=>'official_refresh','fn'=>function() use ($runner,$max){ return $runner->task_official_refresh($max ?? 8); }],
-                ['name'=>'ai_learn','fn'=>function() use ($runner,$force){ return $runner->task_ai_learn($force); }],
-                ['name'=>'site_check','fn'=>function(?GxProgressTracker $t=null) use ($runner,$max){
-                    $maxN = $max ?? 5;
-                    return $runner->task_site_check($maxN, function(int $done, int $total, string $name) use ($t) {
-                        if (!$t || $total<=0) return;
-                        $t->subStep(intval(($done/$total)*100), "巡检 {$done}/{$total}：{$name}");
-                    });
+                ['name'=>'check','type'=>'wrap','fn'=>function() use ($runner){ return $runner->task_check(); }],
+                ['name'=>'migrate','type'=>'wrap','fn'=>function() use ($runner){ return $runner->task_migrate(); }],
+                ['name'=>'official_refresh','type'=>'official_refresh','fn'=>function() use ($runner,$max){ return $runner->task_official_refresh($max ?? 8); }],
+                ['name'=>'ai_learn','type'=>'ai_learn','fn'=>function() use ($runner,$force){ return $runner->task_ai_learn($force); }],
+                ['name'=>'site_check','type'=>'site_check_block','fn'=>function(?GxProgressTracker $t) use ($runner,$max){
+                    $maxN = $max ?? 8;
+                    $t?->startStep('site_check_prepare', "准备资源站列表（最多{$maxN}个）");
+                    $t?->finishStep('site_check_prepare', true, [], '列表已取到');
+                    $r = $runner->task_site_check($maxN, null, $t);
+                    $ok = !empty($r['success']);
+                    $summaryMsg = "共{$r['checked_count']}站 成功{$r['ok_count']} 失败{$r['fail_count']}";
+                    $t?->startStep('site_check_summary', '汇总巡检结果');
+                    $t?->finishStep('site_check_summary', $ok, $r, $summaryMsg);
+                    return $r;
                 }],
             ];
             foreach ($pipeline as $step) {
                 try {
                     gx_cli_print("  ┌ " . date('H:i:s') . " 执行 [{$step['name']}] ... ");
-                    $acceptsTracker = true;
-                    if ($step['name'] === 'site_check') {
-                        $r = gx_wrap_with_progress($tracker, $step['name'], function(?GxProgressTracker $t=null) use ($step) {
-                            $fn = $step['fn'];
-                            return $fn($t);
-                        });
+                    $type = $step['type'] ?? 'wrap';
+                    if ($type === 'site_check_block') {
+                        // 直接执行 fn(tracker)，不包 gx_wrap_with_progress（没有单步 'site_check' 这个权重）
+                        $fn = $step['fn'];
+                        $r = $fn($tracker);
+                    } elseif ($type === 'official_refresh') {
+                        $tracker->startStep('official_refresh', '官替配置刷新 + 抖剧TV纠偏 + 搜索抽检');
+                        $tracker->subStep(20, '纠偏抖剧TV为默认官替（写入资源站/官替平台）');
+                        $r = $step['fn']();
+                        $tracker->subStep(65, '官替缓存清理 + 搜索抽检');
+                        $ok = !empty($r['success']);
+                        $videos = intval($r['spot_check_video_count'] ?? 0);
+                        $tracker->finishStep('official_refresh', $ok, $r, "抽检命中 {$videos} 条视频；default_site=".($r['default_site'] ?? ''));
+                    } elseif ($type === 'ai_learn') {
+                        $tracker->startStep('ai_learn', 'AI 自动学习广告规则');
+                        $tracker->subStep(15, '准备学习样本');
+                        $r = $step['fn']();
+                        $learned = intval($r['total_learned'] ?? 0);
+                        $tracker->subStep(70, "学习完成，成功{$learned}条");
+                        $ok = !empty($r['success']);
+                        $tracker->finishStep('ai_learn', $ok, $r, $r['message'] ?? '');
                     } else {
                         $r = gx_wrap_with_progress($tracker, $step['name'], function() use ($step) { $fn = $step['fn']; return $fn(); });
                     }

@@ -1,11 +1,26 @@
 <?php
 return [
-    'version' => 'v5.10.7',
+    'version' => 'v5.10.8',
     'build' => '20260810',
-    'version_code' => 51007,
-    'commit' => 'autoupdate-progress-ui',
+    'version_code' => 51008,
+    'commit' => 'sitecheck-lightweight-stuck-healing',
     'updated_at' => '2026-08-10',
     'changelog' => [
+        'v5.10.8' => [
+            'date' => '2026-08-10',
+            'title' => '【进度条卡住问题彻底修复 v2】site_check 轻量探测 + 每站独立推进 + 前端卡住自愈',
+            'changes' => [
+                '【重点修复】资源站巡检 task_site_check 彻底重构：从 searchVideos(30s×3重试×5策略=最坏几十分钟/站) 改为轻量两阶段探测',
+                '两阶段探测：阶段1=根接口 HEAD(3s超时快速排除明显失效)，阶段2=最小搜索 ac=list&limit=1(5s超时单次无重试)，单站最坏 ≤8s',
+                '【重点修复】all 动作进度步长拆分：site_check 不再是单步 25% 大权重，拆成 site_check_prepare + N×site_i(每站独立) + site_check_summary，每完成 1 个站立即写盘推进总进度，彻底解决"卡在 88% 不动"',
+                '【重点修复】GxProgressTracker 成员变量 public：task_site_check 内可直接判断 steps[$stepKey] 是否存在，精准调用 startStep/finishStep 写盘',
+                '前端进度卡住自愈（v5.10.8）：GX_STATE 增加 stuck_* 检测器，percent ≥25s 不变打 warn 日志(最多3条，避免刷屏)，≥180s 不变停轮询 + 手动刷新链接 + toast 提示',
+                '卡住自愈分级提示：按当前步骤（site_/ai_learn/official_refresh）给出人性化说明，消除用户"卡住了"的焦虑',
+                'task_id 切换时自动重置日志 & 卡住检测器：避免历史任务遗留数据干扰',
+                'site_check 默认巡检数量从 max=10 收紧为 max=8（all 动作），单步超时 8s，总耗时上限 ~64s（用户仍可在后台 max 输入框调大调小）',
+                'gx_probe_api_root / gx_probe_site_search 新增 CURL_IPRESOLVE_V4：避免 IPv6 DNS 解析超时拉长探测时间',
+            ],
+        ],
         'v5.10.7' => [
             'date' => '2026-08-10',
             'title' => '【后台自动更新进度条可视化】一键操作+进度跟踪+彩色日志',
