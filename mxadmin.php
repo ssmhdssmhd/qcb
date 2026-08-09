@@ -3161,6 +3161,10 @@ header('Expires: 0');
                         <div class="stat-label">功能状态</div>
                     </div>
                     <div class="stat-card">
+                        <div class="stat-value" id="orDefaultSiteStat">-</div>
+                        <div class="stat-label">默认官替站</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-value" id="orSearchSites">-</div>
                         <div class="stat-label">搜索资源站</div>
                     </div>
@@ -3178,17 +3182,26 @@ header('Expires: 0');
                         </select>
                     </div>
                     <div class="form-group" style="margin-bottom:0">
+                        <label>默认官替资源站 (default_site)</label>
+                        <input type="text" id="orDefaultSite" placeholder="默认站：抖剧TV">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
                         <label>匹配阈值 (0-100)</label>
                         <input type="number" id="orThresholdInput" min="0" max="100" value="60">
                     </div>
                     <div class="form-group" style="margin-bottom:0">
                         <label>最大搜索站点数</label>
-                        <input type="number" id="orMaxSites" min="1" max="20" value="5">
+                        <input type="number" id="orMaxSites" min="1" max="100" value="5">
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>搜索资源站 (逗号分隔)</label>
-                        <input type="text" id="orSearchSitesInput" placeholder="留空表示搜索全部">
+                    <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
+                        <label>搜索资源站 (逗号分隔，按顺序优先搜索，建议第1个：抖剧TV)</label>
+                        <input type="text" id="orSearchSitesInput" placeholder="留空表示搜索全部（按 priority ASC 自动排序，1=最优先）">
                     </div>
+                </div>
+                <div style="background:linear-gradient(135deg,#fff7ed,#eef2ff);border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#4b5563;margin-bottom:14px;line-height:1.7">
+                    <strong style="color:#1f2937">⭐ 官替优先度规则：</strong>数字越小越优先（范围：1 ~ 2000+），<span style="color:#dc2626;font-weight:600">priority=1 为最高优先</span>。
+                    <br>抖剧TV 已默认 <code>priority=1</code>，作为官替第一优先资源站（根源来源 www.360kan.com，采集：<code>https://www.douju.tv/api.php/provide/vod/</code>）。
+                    <br>资源站 / 官替平台 列表均已按 priority ASC 升序排列（即越靠前匹配越优先）。
                 </div>
                 <button class="btn btn-primary" onclick="saveOfficialReplaceConfig()">保存配置</button>
             </div>
@@ -10091,12 +10104,22 @@ header('Expires: 0');
                     document.getElementById('orTotalPlatforms').textContent = (cfg.platforms || []).length;
                     document.getElementById('orStatus').textContent = cfg.enabled ? '已启用' : '已禁用';
                     document.getElementById('orStatus').style.color = cfg.enabled ? '#67c23a' : '#f56c6c';
+                    const defaultSite = cfg.default_site || '抖剧TV';
+                    const defaultSiteEl = document.getElementById('orDefaultSiteStat');
+                    defaultSiteEl.textContent = defaultSite;
+                    if (/抖剧/.test(defaultSite)) {
+                        defaultSiteEl.style.color = '#dc2626';
+                        defaultSiteEl.textContent = '⭐ ' + defaultSite;
+                    } else {
+                        defaultSiteEl.style.color = '#111827';
+                    }
                     document.getElementById('orSearchSites').textContent = (cfg.search_sites || []).length > 0 ? (cfg.search_sites || []).length + '个' : '全部';
-                    document.getElementById('orThreshold').textContent = cfg.match_threshold || 60;
+                    document.getElementById('orThreshold').textContent = cfg.match_threshold ?? 60;
 
                     document.getElementById('orEnabled').value = cfg.enabled ? 'true' : 'false';
-                    document.getElementById('orThresholdInput').value = cfg.match_threshold || 60;
-                    document.getElementById('orMaxSites').value = cfg.max_search_sites || 5;
+                    document.getElementById('orDefaultSite').value = defaultSite;
+                    document.getElementById('orThresholdInput').value = cfg.match_threshold ?? 60;
+                    document.getElementById('orMaxSites').value = cfg.max_search_sites ?? 5;
                     document.getElementById('orSearchSitesInput').value = (cfg.search_sites || []).join(',');
 
                     const base = window.location.protocol + '//' + window.location.host + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
@@ -10117,16 +10140,33 @@ header('Expires: 0');
                 return;
             }
 
-            let html = '<table class="rule-table"><thead><tr><th>平台名称</th><th>域名</th><th>状态</th><th>优先级</th><th>操作</th></tr></thead><tbody>';
-            platforms.forEach((p, index) => {
+            // 按 priority ASC 升序显示（数据库虽然已排，但前端再次确保排序稳定性）
+            const sorted = [...platforms].sort((a, b) => (parseInt(a.priority ?? 10) || 9999) - (parseInt(b.priority ?? 10) || 9999));
+
+            let html = '<div style="margin-bottom:10px;font-size:12.5px;color:#6b7280">按 <strong>priority 数字越小越优先</strong> 升序排列，priority=1 的平台会被最先匹配/搜索。</div>';
+            html += '<table class="rule-table"><thead><tr><th>#</th><th>平台名称</th><th>域名</th><th>状态</th><th>Priority</th><th>操作</th></tr></thead><tbody>';
+            sorted.forEach((p, displayIndex) => {
+                const originalIndex = platforms.indexOf(p);
+                const pri = parseInt(p.priority ?? 10) || 9999;
+                let badge = '';
+                if (pri <= 1) {
+                    badge = ' <span title="最高优先官替资源站" style="display:inline-block;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#fee2e2,#fecaca);color:#dc2626;font-size:11px;font-weight:600;border:1px solid #fca5a5">⭐ 默认官替</span>';
+                } else if (pri <= 3) {
+                    badge = ' <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#ecfdf5;color:#059669;font-size:11px;font-weight:600;border:1px solid #a7f3d0">高优先</span>';
+                } else if (pri <= 10) {
+                    badge = ' <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:11px;font-weight:500;border:1px solid #bfdbfe">普通</span>';
+                } else {
+                    badge = ' <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#f3f4f6;color:#6b7280;font-size:11px;border:1px solid #e5e7eb">低优先</span>';
+                }
                 html += `<tr>
-                    <td><strong>${escapeHtml(p.name || '')}</strong></td>
+                    <td style="color:#9ca3af">${displayIndex + 1}</td>
+                    <td><strong>${escapeHtml(p.name || '')}</strong>${badge}</td>
                     <td><code>${escapeHtml(p.domain || '')}</code></td>
                     <td><span style="color:${p.enabled ? '#67c23a' : '#f56c6c'}">${p.enabled ? '启用' : '禁用'}</span></td>
-                    <td>${p.priority || '-'}</td>
+                    <td><strong style="${pri <= 1 ? 'color:#dc2626;font-size:15px' : (pri <= 5 ? 'color:#ea580c' : 'color:#111827')}">${pri}</strong></td>
                     <td>
-                        <button class="btn btn-sm btn-primary" onclick="editOfficialPlatform(${index})">编辑</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteOfficialPlatform(${index})">删除</button>
+                        <button class="btn btn-sm btn-primary" onclick="editOfficialPlatform(${originalIndex})">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteOfficialPlatform(${originalIndex})">删除</button>
                     </td>
                 </tr>`;
             });
@@ -10139,6 +10179,8 @@ header('Expires: 0');
             
             const newConfig = JSON.parse(JSON.stringify(currentOfficialConfig));
             newConfig.enabled = document.getElementById('orEnabled').value === 'true';
+            const defaultSiteInput = (document.getElementById('orDefaultSite').value || '').trim();
+            if (defaultSiteInput) newConfig.default_site = defaultSiteInput;
             newConfig.match_threshold = parseInt(document.getElementById('orThresholdInput').value) || 60;
             newConfig.max_search_sites = parseInt(document.getElementById('orMaxSites').value) || 5;
             
@@ -10190,7 +10232,8 @@ header('Expires: 0');
                     <div class="form-group"><label>启用</label><select id="pe-enabled"><option value="true" ${platform.enabled ? 'selected' : ''}>启用</option><option value="false" ${!platform.enabled ? 'selected' : ''}>禁用</option></select></div>
                     <div class="form-group"><label>URL 匹配正则</label><input type="text" id="pe-pattern" placeholder="如: /v\\.qq\\.com\\/.*?(?:vid=|\\/)([a-zA-Z0-9]+)/i" value="${escapeHtml(platform.pattern || '')}"></div>
                     <div class="form-group"><label>标题选择器</label><input type="text" id="pe-title_selector" placeholder="如: meta[property=og:title]" value="${escapeHtml(platform.title_selector || '')}"></div>
-                    <div class="form-group"><label>优先级</label><input type="number" id="pe-priority" value="${platform.priority || 10}"></div>
+                    <div class="form-group"><label>优先级 <span style="color:#6b7280;font-weight:400">(数字越小越优先，1=最高，1-2000)</span></label><input type="number" min="1" max="2000" step="1" id="pe-priority" value="${platform.priority || 10}" title="priority=1 为默认官替最高优先；数字越大搜索/匹配时优先级越靠后"></div>
+                    <div style="font-size:11.5px;color:#6b7280;margin-top:-6px;margin-bottom:8px">抖剧TV priority=1 为默认官替资源站（根源 www.360kan.com，采集接口 douju.tv）。</div>
                     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
                         <button class="btn btn-secondary" onclick="closePlatformEditor()">取消</button>
                         <button class="btn btn-primary" onclick="savePlatformEditor()">保存</button>

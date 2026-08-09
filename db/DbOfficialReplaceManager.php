@@ -143,14 +143,15 @@ class DbOfficialReplaceManager {
 
     private function getDefaultConfig() {
         return [
-            'version' => '1.0',
+            'version' => '1.1',
             'update_date' => date('Y-m-d H:i:s'),
             'enabled' => true,
-            'default_site' => '量子',
-            'max_search_sites' => 40,
+            'default_site' => '抖剧TV',
+            'max_search_sites' => 8,
             'cache_ttl' => 3600,
-            'search_sites' => ['量子', '暴风', '非凡', '天影', '6度资源', '豆包', '猫眼', '索尼', '最大', 'OK资源', '快车', '闪电', '丫丫（鸭鸭）', '无尽', '速播', '红牛', '豪华', '光速', '蓝光', '魔都', '看看', '樱花', '好花', '电影天堂', '茅台', '13大众', '百度', '爱奇艺资', '牛牛6', '蓝志', '天逸', '如意', '天繁', '西瓜'],
-            'match_threshold' => 75
+            'search_sites' => ['抖剧TV', '量子', '暴风', '非凡', '天影', '6度资源', '豆包', '猫眼', '索尼', '最大', 'OK资源', '快车', '闪电', '丫丫（鸭鸭）', '无尽', '速播', '红牛', '豪华', '光速', '蓝光', '魔都', '看看', '樱花', '好花', '电影天堂', '茅台', '13大众', '百度', '爱奇艺资', '牛牛6', '蓝志', '天逸', '如意', '天繁', '西瓜'],
+            'match_threshold' => 70,
+            'default_priority_rule' => '数字越小越优先，范围 1-2000+，priority=1=最高优先',
         ];
     }
 
@@ -2191,7 +2192,26 @@ class DbOfficialReplaceManager {
     }
 
     public function searchInSites($keyword, $maxSites = 5) {
-        $siteMgr = new ResourceSiteManager();
+        // 优先使用 DbResourceSiteManager（数据库版本，含 priority 排序和最新资源站列表）
+        $dbSiteMgrClass = __DIR__ . '/DbResourceSiteManager.php';
+        $siteMgr = null;
+        if (file_exists($dbSiteMgrClass) && class_exists('Database')) {
+            require_once $dbSiteMgrClass;
+            if (class_exists('DbResourceSiteManager')) {
+                try {
+                    $siteMgr = new DbResourceSiteManager();
+                } catch (Throwable $e) {
+                    $siteMgr = null;
+                }
+            }
+        }
+        if (!$siteMgr) {
+            if (!class_exists('ResourceSiteManager', false)) {
+                require_once __DIR__ . '/ResourceSiteManager.php';
+            }
+            $siteMgr = new ResourceSiteManager();
+        }
+
         $config = $this->getConfig();
         $sites = $config['search_sites'] ?? [];
         $allVideos = [];
@@ -2200,13 +2220,15 @@ class DbOfficialReplaceManager {
         $searchedSites = 0;
 
         if (empty($sites)) {
+            // DbResourceSiteManager 的 getAllSites 已按 priority ASC 排序（1=最优先），抖剧TV 将第一个被搜索
             $result = $siteMgr->searchAllSites($keyword, 3, 5);
             if ($result['success']) {
                 foreach (($result['results'] ?? []) as $siteResult) {
-                    $siteName = $siteResult['site'] ?? '未知';
+                    $siteName = $siteResult['site'] ?? ($siteResult['site_name'] ?? '未知');
                     if (!empty($siteResult['videos'])) {
                         foreach ($siteResult['videos'] as $v) {
-                            $v['site'] = $siteName;
+                            if (empty($v['site']) && !empty($siteResult['site_name'])) $v['site'] = $siteResult['site_name'];
+                            if (empty($v['site'])) $v['site'] = $siteName;
                             $allVideos[] = $v;
                         }
                         $successfulSites[] = $siteName;
@@ -2217,6 +2239,7 @@ class DbOfficialReplaceManager {
                 }
             }
         } else {
+            // DbResourceSiteManager 的 getAllSites 已按 priority ASC 排序；但优先遵循 config.search_sites 指定顺序（抖剧TV第一）
             $allSites = $siteMgr->getAllSites(false);
             $siteMap = [];
             foreach ($allSites as $s) {
@@ -2232,7 +2255,8 @@ class DbOfficialReplaceManager {
                     $result = $siteMgr->searchVideos($apiUrl, $keyword, 1, 10);
                     if ($result && $result['success'] && !empty($result['videos'])) {
                         foreach ($result['videos'] as $v) {
-                            $v['site'] = $siteName;
+                            if (empty($v['site'])) $v['site'] = $siteName;
+                            if (empty($v['site_name'])) $v['site_name'] = $siteName;
                             $allVideos[] = $v;
                         }
                         $successfulSites[] = $siteName;
