@@ -1,11 +1,31 @@
 <?php
 return [
-    'version' => 'v5.10.4',
+    'version' => 'v5.10.5',
     'build' => '20260809',
-    'version_code' => 51004,
-    'commit' => 'official-recognize-fix',
+    'version_code' => 51005,
+    'commit' => 'gx-dispatch-center',
     'updated_at' => '2026-08-09',
     'changelog' => [
+        'v5.10.5' => [
+            'date' => '2026-08-09',
+            'title' => '【新增 gx.php 全局定时/自动更新调度中心】',
+            'changes' => [
+                '新增 gx.php v1.0：全局调度中心（CLI+Web 双模式，一键全部 or 单项）',
+                'CLI 子命令：all / status / check / migrate / ai_learn / ai_cleanup / official_refresh / site_check / rule_check / reset_key',
+                'Web 模式：自动生成随机32位密钥 gx/.gx_secret.php，访问 ?key=密钥&action=动作',
+                '互斥锁机制 (flock+pid)：防止 crontab 重叠运行 DB 死锁',
+                '分模块异常隔离：一个模块挂不影响其它模块',
+                '结构化日志 gx/gx_run.log + 最后一次执行摘要 gx/.gx_last_run.php',
+                'task_check 健康检查：本地版本、核心文件存在性、语法 spot-check、目录可写、PHP版本',
+                'task_migrate：DataMigration 自动升级 DB schema',
+                'task_ai_learn：调用 AiAutoLearner::run()（force 忽略间隔，立即学）',
+                'task_ai_cleanup：调用 AiAutoLearner::cleanupStaleRules() 清理失效规则域名',
+                'task_official_refresh：官替配置重载 + 缓存清理 + 搜索抽检（随机热门词）',
+                'task_site_check：资源站随机API健康巡检（返回OK/FAIL/cost_ms/videos数）',
+                'task_rule_check：随机抽样 gz/rules_*.php 域名做 HTTPS HEAD 健康检查',
+                '兼容修复：DbResourceSiteManager curl_close 在 PHP 8.0+ 已废弃改为 null',
+            ],
+        ],
         'v5.10.4' => [
             'date' => '2026-08-09',
             'title' => '【官替识别大优化 v2】全链路修复识别不准、漏配、搜索无结果问题',

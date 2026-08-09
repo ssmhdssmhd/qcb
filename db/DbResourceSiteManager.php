@@ -1193,7 +1193,7 @@ class DbResourceSiteManager {
                 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 $error = curl_error($ch);
                 $responseTime = round((microtime(true) - $startTime) * 1000, 2);
-                curl_close($ch);
+                if (PHP_VERSION_ID < 80000) { @curl_close($ch); } else { $ch = null; }
 
                 if ($currentProxy) {
                     if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
