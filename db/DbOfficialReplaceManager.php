@@ -255,12 +255,41 @@ class DbOfficialReplaceManager {
                 return ['success' => false, 'message' => '官替功能已禁用'];
             }
 
+            // Step 0.1: 短链 / 跳转链接 解析（快手/抖音/微信跳转/360kan跳转/各种短链）
+            $origUrl = $url;
+            $resolvedUrl = $this->resolveRedirectChain($url, 5);
+            if ($resolvedUrl && $resolvedUrl !== $url) {
+                $url = $resolvedUrl;
+            }
+
+            // Step 0.2: URL 规范化（去掉 anchor，补充 https）
+            $url = $this->normalizeVideoUrl($url);
+
             $platform = $this->detectPlatform($url);
+            // 若 detectPlatform 失败，可能是移动域名（m.xxx.com / wx.mgtv.com / m.iqiyi.com / m.v.qq.com / m.bilibili.com / 360kan.com / douju.tv）
             if (!$platform) {
-                return ['success' => false, 'message' => '不支持的视频平台'];
+                $platform = $this->detectPlatformFuzzy($url);
+            }
+            if (!$platform) {
+                return [
+                    'success' => false,
+                    'message' => '不支持的视频平台',
+                    'original_url' => $origUrl,
+                    'normalized_url' => $url,
+                ];
             }
 
             $videoIds = $this->extractVideoId($url, $platform);
+            if ((empty($videoIds['video_id']) && empty($videoIds['cover_id']))) {
+                // 若一次提取失败，将 url 再次交给 移动站URL 重试 extract
+                $mobileGuessUrl = $this->guessMobileUrl($url, $platform);
+                if ($mobileGuessUrl && $mobileGuessUrl !== $url) {
+                    $videoIds2 = $this->extractVideoId($mobileGuessUrl, $platform);
+                    if (!empty($videoIds2['video_id']) || !empty($videoIds2['cover_id'])) {
+                        $videoIds = $videoIds2;
+                    }
+                }
+            }
             $videoId = $videoIds['video_id'] ?? '';
             $coverId = $videoIds['cover_id'] ?? '';
 
@@ -278,6 +307,18 @@ class DbOfficialReplaceManager {
             }
 
             $cleanTitle = $this->cleanTitle($videoTitle);
+            if (empty($cleanTitle) && !empty($videoTitle)) {
+                $cleanTitle = $videoTitle;
+            }
+            // 极端兜底：URL 路径里猜一个中文标题或ID
+            if (empty($cleanTitle) || mb_strlen($cleanTitle) < 2) {
+                $fromUrlGuess = $this->extractTitleFromUrl($url, $platform);
+                if (!empty($fromUrlGuess) && mb_strlen($fromUrlGuess) >= 2) {
+                    $cleanTitle = $fromUrlGuess;
+                    $videoTitle = $fromUrlGuess;
+                    $videoInfo['title'] = $fromUrlGuess;
+                }
+            }
             if (!empty($cleanTitle)) {
                 $videoTitle = $cleanTitle;
             }
@@ -861,33 +902,76 @@ class DbOfficialReplaceManager {
                 $videoId = $matches[1];
             } elseif (preg_match('/x\/page\/([a-zA-Z0-9]+)/i', $url, $matches)) {
                 $videoId = $matches[1];
+            } elseif (preg_match('/[?&](?:cid|coverid)=([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $coverId = $matches[1];
+            } elseif (preg_match('/[?&](?:vid|vid1|vids|tinyid)=([a-zA-Z0-9]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
             }
         } elseif ($domain === 'iqiyi.com') {
             if (preg_match('/\/([a-zA-Z0-9]{16,})\.html?$/i', $url, $matches)) {
                 $videoId = $matches[1];
             } elseif (preg_match('/v_([a-zA-Z0-9_]+)\.html/i', $url, $matches)) {
                 $videoId = $matches[1];
+            } elseif (preg_match('/a_([a-zA-Z0-9]{10,})/i', $url, $matches)) {
+                // 爱奇艺 show/album id
+                $coverId = 'a_' . $matches[1];
+            } elseif (preg_match('/[?&](?:tvid|albumId|aid|vid|qipuId)=([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                if (stripos($matches[1], 'a_') === 0 || strpos($url, 'album') !== false) {
+                    $coverId = $matches[1];
+                } else {
+                    $videoId = $matches[1];
+                }
             }
         } elseif ($domain === 'youku.com') {
             if (preg_match('/id_([a-zA-Z0-9=]+)\.html/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/\/show\/id_([a-zA-Z0-9=]+)/i', $url, $matches)) {
+                $coverId = $matches[1];
+            } elseif (preg_match('/\/v_playlist\/.*?[?&]vid=([a-zA-Z0-9=]+)/i', $url, $matches)) {
                 $videoId = $matches[1];
             }
         } elseif ($domain === 'mgtv.com') {
             if (preg_match('/\/([a-zA-Z0-9]+)\.html?$/i', $url, $matches)) {
                 $videoId = $matches[1];
+            } elseif (preg_match('/\/b\/([0-9]{4,})\.html/i', $url, $matches)) {
+                // 芒果TV新：/b/123456789.html
+                $videoId = $matches[1];
+                $coverId = $matches[1];
+            } elseif (preg_match('/(?:play|h5)\/[^\/?]+\/([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/[?&](?:vid|videoId|collectionId|fid|cid)=([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
             }
         } elseif ($domain === 'bilibili.com') {
-            if (preg_match('/(BV[a-zA-Z0-9]+)/i', $url, $matches)) {
+            if (preg_match('/(BV[a-zA-Z0-9]{8,12})/i', $url, $matches)) {
                 $videoId = $matches[1];
             } elseif (preg_match('/av(\d+)/i', $url, $matches)) {
                 $videoId = 'av' . $matches[1];
+            } elseif (preg_match('/[?&]p=(\d+)/i', $url, $matches)) {
+                // 分P号，作为 episode 回退
+                $coverId = 'p' . $matches[1];
             }
         } elseif ($domain === 'sohu.com') {
-            if (preg_match('/(\d+)\.shtml$/i', $url, $matches)) {
+            if (preg_match('/\/(\d{5,})\.shtml/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/(?:v|vod)\/([a-zA-Z0-9_-]+)\.html?/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/my\.tv\.sohu\.com\/.*?[?&]id=(\d+)/i', $url, $matches)) {
                 $videoId = $matches[1];
             }
         } elseif ($domain === 'pptv.com') {
             if (preg_match('/showpage\/([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/play\/([a-zA-Z0-9_-]+)\.html/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/[?&](?:id|vid|programId)=([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            }
+        } elseif ($domain === 'douju.tv') {
+            // 抖剧TV 平台链接
+            if (preg_match('/(?:vod|play|video|detail)\/(?:id\/)?([a-zA-Z0-9_-]+)/i', $url, $matches)) {
+                $videoId = $matches[1];
+            } elseif (preg_match('/[?&](?:id|vid|vod_id)=(\d+)/i', $url, $matches)) {
                 $videoId = $matches[1];
             }
         }
@@ -906,6 +990,161 @@ class DbOfficialReplaceManager {
             }
         }
         return null;
+    }
+
+    /**
+     * 模糊匹配平台：弥补 m.v.qq.com / m.iqiyi.com / m.mgtv.com / www.iqiyi.com / film.qq.com / v.kuaishou.com / 360kan.com 等域名未加入 official_platforms 表时的识别
+     */
+    private function detectPlatformFuzzy($url) {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (empty($host)) return null;
+        $host = strtolower($host);
+
+        // 移动站 / 子域 -> 主平台映射
+        $domainAliases = [
+            // 腾讯视频
+            'v.qq.com' => 'v.qq.com',
+            'm.v.qq.com' => 'v.qq.com',
+            'film.qq.com' => 'v.qq.com',
+            'v.qq.com,x' => 'v.qq.com',
+            '360kan.com' => 'douju.tv',   // 360kan 根源 -> 抖剧TV 官替优先平台
+            'www.360kan.com' => 'douju.tv',
+            'm.360kan.com' => 'douju.tv',
+            'douju.tv' => 'douju.tv',
+            'www.douju.tv' => 'douju.tv',
+            'm.douju.tv' => 'douju.tv',
+            // 爱奇艺
+            'iqiyi.com' => 'iqiyi.com',
+            'www.iqiyi.com' => 'iqiyi.com',
+            'm.iqiyi.com' => 'iqiyi.com',
+            'wap.iqiyi.com' => 'iqiyi.com',
+            'pcw.iqiyi.com' => 'iqiyi.com',
+            // 优酷
+            'youku.com' => 'youku.com',
+            'www.youku.com' => 'youku.com',
+            'm.youku.com' => 'youku.com',
+            'v.youku.com' => 'youku.com',
+            'player.youku.com' => 'youku.com',
+            // 芒果TV
+            'mgtv.com' => 'mgtv.com',
+            'www.mgtv.com' => 'mgtv.com',
+            'm.mgtv.com' => 'mgtv.com',
+            'wx.mgtv.com' => 'mgtv.com',
+            'hd.mgtv.com' => 'mgtv.com',
+            // B站
+            'bilibili.com' => 'bilibili.com',
+            'www.bilibili.com' => 'bilibili.com',
+            'm.bilibili.com' => 'bilibili.com',
+            'b23.tv' => 'bilibili.com',   // B站短链
+            // 搜狐
+            'sohu.com' => 'sohu.com',
+            'www.sohu.com' => 'sohu.com',
+            'tv.sohu.com' => 'sohu.com',
+            'm.tv.sohu.com' => 'sohu.com',
+            'my.tv.sohu.com' => 'sohu.com',
+            // PPTV/PP视频
+            'pptv.com' => 'pptv.com',
+            'www.pptv.com' => 'pptv.com',
+            'm.pptv.com' => 'pptv.com',
+            'v.pptv.com' => 'pptv.com',
+            'player.pptv.com' => 'pptv.com',
+        ];
+
+        $matchedDomain = null;
+        if (isset($domainAliases[$host])) {
+            $matchedDomain = $domainAliases[$host];
+        } else {
+            // 后缀匹配：例 m.v.qq.com -> v.qq.com / www.mgtv.com -> mgtv.com
+            foreach ($domainAliases as $alias => $canonical) {
+                if (str_ends_with($host, '.' . $alias)) {
+                    $matchedDomain = $canonical;
+                    break;
+                }
+            }
+        }
+        if (!$matchedDomain) return null;
+
+        // 按 canonical 域名从平台列表里找
+        $platforms = $this->getAllPlatforms(true);
+        foreach ($platforms as $platform) {
+            if ($platform['domain'] === $matchedDomain) {
+                return $platform;
+            }
+        }
+        // 兜底：还是域名匹配（canonical domain 正好能通过 stripos 命中）
+        foreach ($platforms as $platform) {
+            if (stripos($matchedDomain, $platform['domain']) !== false) {
+                return $platform;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 短链/跳转链接 解析：返回重定向后最终 URL
+     */
+    private function resolveRedirectChain($url, $maxHops = 4) {
+        if ($maxHops <= 0 || empty($url)) return $url;
+        $ch = @curl_init($url);
+        if (!$ch) return $url;
+        @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        @curl_setopt($ch, CURLOPT_HEADER, true);
+        @curl_setopt($ch, CURLOPT_NOBODY, true);
+        @curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        @curl_setopt($ch, CURLOPT_MAXREDIRS, $maxHops);
+        @curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+        @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        @curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1');
+        @curl_exec($ch);
+        $final = @curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        @curl_close($ch);
+        if (!empty($final) && is_string($final) && $final !== $url) {
+            return $final;
+        }
+        return $url;
+    }
+
+    /**
+     * URL 规范化：去锚点 + http 升级 https（纯 HTTP 站保留）+ 去多余 query
+     */
+    private function normalizeVideoUrl($url) {
+        if (empty($url)) return $url;
+        // 去锚点
+        if (strpos($url, '#') !== false) {
+            $url = explode('#', $url, 2)[0];
+        }
+        // 无前缀的情况
+        if (preg_match('#^//#', $url)) {
+            $url = 'https:' . $url;
+        } elseif (!preg_match('#^https?://#i', $url)) {
+            $url = 'https://' . ltrim($url, '/');
+        }
+        return $url;
+    }
+
+    /**
+     * 若 PC URL 提取失败，再试一次移动版
+     */
+    private function guessMobileUrl($url, $platform) {
+        $domain = $platform['domain'] ?? '';
+        if ($domain === 'v.qq.com') {
+            return preg_replace('#https?://(?:www\.)?v\.qq\.com/#i', 'https://m.v.qq.com/', $url);
+        }
+        if ($domain === 'iqiyi.com') {
+            return preg_replace('#https?://(?:www\.)?iqiyi\.com/#i', 'https://m.iqiyi.com/', $url);
+        }
+        if ($domain === 'youku.com') {
+            return preg_replace('#https?://(?:www\.)?youku\.com/#i', 'https://m.youku.com/', $url);
+        }
+        if ($domain === 'mgtv.com') {
+            return preg_replace('#https?://(?:www\.)?mgtv\.com/#i', 'https://m.mgtv.com/', $url);
+        }
+        if ($domain === 'bilibili.com') {
+            return preg_replace('#https?://(?:www\.)?bilibili\.com/#i', 'https://m.bilibili.com/', $url);
+        }
+        return $url;
     }
 
     private function fetchVideoInfo($url, $platform, $videoIds = null) {
@@ -1948,29 +2187,77 @@ class DbOfficialReplaceManager {
     }
 
     private function cleanTitle($title) {
-        $title = trim($title);
+        $title = trim($title ?? '');
         if (empty($title)) return null;
+
+        // 先做完整 HTML/实体/Unicode 解码（&#12298;《  &#12299;》  &#x300A;等，&amp;、&quot; 等）
+        if (strpos($title, '&') !== false || strpos($title, '\\u') !== false || strpos($title, '\\x') !== false) {
+            // 先处理 JSON 中的 \uXXXX \u00XX（UTF-16 LE/BE 转义序列）
+            if (strpos($title, '\\u') !== false || strpos($title, '\\x') !== false) {
+                $jsonWrapped = preg_replace_callback(
+                    '/\\\\u([0-9a-fA-F]{4})|\\\\x([0-9a-fA-F]{2})/',
+                    function($m) {
+                        if (isset($m[2]) && $m[2] !== '') {
+                            $c = chr(hexdec($m[2]));
+                            return $c;
+                        }
+                        $cp = hexdec($m[1]);
+                        if ($cp < 0x80) return chr($cp);
+                        if (function_exists('mb_chr')) {
+                            return mb_chr($cp, 'UTF-8');
+                        }
+                        // UTF-16 -> UTF-8 fallback
+                        $s = chr(0xD8 | ($cp >> 10)) . chr(0xDC | ($cp & 0x3FF)); // wrong surrogate but safe null
+                        return @iconv('UTF-16BE', 'UTF-8//IGNORE', pack('n', $cp)) ?: '';
+                    },
+                    $title
+                );
+                if ($jsonWrapped && $jsonWrapped !== '') {
+                    $title = $jsonWrapped;
+                }
+                // 再用 json_decode 兜底
+                $jsonSafe = '"' . addcslashes($title, "\\\"\n\r\t\v\f/") . '"';
+                $jsonDecode = json_decode($jsonSafe, true);
+                if (is_string($jsonDecode) && $jsonDecode !== '') {
+                    $title = $jsonDecode;
+                }
+            }
+            // HTML 实体解码（含中文实体）
+            $decoded = html_entity_decode($title, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if ($decoded && $decoded !== '') {
+                $title = $decoded;
+            }
+        }
 
         // 优先提取书名号、引号内的纯标题
         $title = $this->extractPureTitle($title);
 
-        // 清理常见后缀描述文字
+        // 清理常见后缀描述文字（现在用强规则，从平台名、限定词切分）
+        // 01. 平台名相关
+        $title = preg_replace('/\s*[-_|｜·•·—–]*\s*(?:腾讯视频|爱奇艺|优酷视频?|芒果TV|哔哩哔哩|bilibili|搜狐视频|PP视频|PP聚力|PPTV|西瓜视频|好看视频|土豆视频|快手视频|抖音|6间房|风行|暴风影音|乐视|CNTV|CCTV\d*)\b.*?$/i', '', $title);
+        // 02. 通用后缀
         $title = preg_replace('/[-_|【】《》\[\]（）()].*?$/u', '', $title);
         $title = preg_replace('/在线观看.*?$/u', '', $title);
-        $title = preg_replace('/高清.*?$/u', '', $title);
-        $title = preg_replace('/完整版.*?$/u', '', $title);
+        $title = preg_replace('/免费在线(?:播放|观看).*?$/u', '', $title);
+        $title = preg_replace('/全集(?:播放|观看|下载|完整版|高清)?.*?$/u', '', $title);
+        $title = preg_replace('/高清(?:未删减|正版|蓝光|原画|中字|国语|英语|完整版)?.*?$/u', '', $title);
+        $title = preg_replace('/完整版(?:未删减|超清|高清)?.*?$/u', '', $title);
+        $title = preg_replace('/4K(?:超清|高清)?.*?$/u', '', $title);
+        $title = preg_replace('/(?:蓝光|1080P|720P|480P|HDR|杜比).*?$/iu', '', $title);
         $title = preg_replace('/_腾讯视频/i', '', $title);
         $title = preg_replace('/- 腾讯视频/i', '', $title);
         $title = preg_replace('/最新一期.*?$/u', '', $title);
-        $title = preg_replace('/第.*?期.*?$/u', '', $title);
+        $title = preg_replace('/第\s*\d+\s*期.*?$/u', '', $title);
+        // 03. 预约、预告、广告、片花、宣传片、MV、演唱会、发布会、先导片、未播
+        $title = preg_replace('/(?:预约|即将上线|未播|敬请期待|首播|发布会|先导(?:片|预告)?|概念|定档预告|终极预告|电影原声带|MV|预告(?:片|版|曲)?|片花|宣传片|花絮|剪辑版?|混剪|剪辑|解说|速看|盘点|Reaction|主题曲|片头曲|片尾曲|推广曲|插曲|OST|特辑|cut|饭制|翻唱|直播回放|合集|合集版|二创|恶搞|P图|幕后记录|综艺|跑男|快乐大本营|脱口秀|春晚|元宵晚会|发布会|盛典|颁奖礼|完整版花絮|超长花絮|观影|彩蛋|纪录片|预告合集|活动|广告|代言|杂志|红毯|直播|先导).*?$/iu', '', $title);
         $title = preg_replace('/\s+/', ' ', $title);
-        $title = trim($title, " \t\n\r\0\x0B-_—|·");
+        $title = trim($title, " \t\n\r\0\x0B-_—|｜·•‧·–");
         $title = trim($title);
 
         $title = preg_replace('/\s+/', ' ', $title);
         $title = trim($title);
 
-        $invalidTitles = ['腾讯视频', '爱奇艺', '优酷', '芒果TV', '哔哩哔哩', 'bilibili', '搜狐视频', 'PP视频'];
+        $invalidTitles = ['腾讯视频', '爱奇艺', '优酷', '优酷视频', '芒果TV', '哔哩哔哩', 'bilibili', '搜狐视频', 'PP视频', 'PPTV', '西瓜视频', '预告', '片花', '花絮', '宣传片', 'MV', '合集', '正片', '高清', '完整版', '全集', '4K', '蓝光', '官方', '官方版', '电影', '电视剧', '综艺', '动漫'];
         foreach ($invalidTitles as $inv) {
             if (mb_strtolower($title) === mb_strtolower($inv)) {
                 return null;
@@ -2316,39 +2603,69 @@ class DbOfficialReplaceManager {
         $targetSeason = $videoInfo['season_num'] ?? null;
         $targetPart = $videoInfo['part'] ?? null;
         $targetVersion = $videoInfo['version'] ?? null;
+        $targetYear = $videoInfo['year'] ?? null;
+        $targetActors = $videoInfo['actors'] ?? ($videoInfo['actor'] ?? []);
+        if (is_string($targetActors)) {
+            $targetActors = preg_split('/[\/,，、\s]+/u', $targetActors, -1, PREG_SPLIT_NO_EMPTY);
+        }
+        $targetEpisode = $videoInfo['episode_num'] ?? null;
         $config = $this->getConfig();
-        $threshold = $config['match_threshold'] ?? 60;
+        $threshold = intval($config['match_threshold'] ?? 60);
+        // 极端兜底阈值：当高阈值无命中时自动降低门槛（避免用户设置过高）
+        $fallbackThreshold = max(38, min(55, $threshold - 18));
+        $hardFloorThreshold = 35; // 绝对下限，低于这个的匹配一定不返回
         $bestMatch = null;
         $bestScore = 0;
 
         $excludePatterns = [
-            '/电影解说/i',
-            '/预告片/i',
-            '/片花/i',
-            '/花絮/i',
-            '/剪辑/i',
-            '/解说/i',
-            '/速看/i',
-            '/混剪/i',
-            '/盘点/i',
-            '/reaction/i',
-            '/MV/i',
-            '/主题曲/i',
-            '/片尾曲/i',
-            '/片头曲/i',
-            '/OST/i',
+            '/电影解说/i', '/(?:剧情|电影|电视剧|综艺|动漫|番剧|国产剧|日剧|韩剧|欧美剧|泰剧|港剧|台剧)?(?:剧情|独家|深度|硬核)?解说/i',
+            '/预告片(?:片|版|曲)?/i', '/(?:终极|先导|定档|情感|剧情|角色|人物|人物关系)?预告(?:片|版|PV|MV)?/i',
+            '/片花/i', '/花絮/i', '/(?:删减|精彩|幕后|超长)?花絮(?:合集)?/i',
+            '/剪辑/i', '/(?:高能|精彩|情感|剧情|人物|影视)?剪辑(?:版|合集)?/i',
+            '/速看(?:视频)?/i', '/(?:X分钟|几分钟)?速(?:看|览|讲|说)/i',
+            '/混剪/i', '/盘点/i', '/reaction/i',
+            '/(?:官方|剧情|角色|饭制|自制|翻唱|钢琴版|吉他版|音乐)?MV\b/i',
+            '/主题曲/i', '/片尾曲/i', '/片头曲/i', '/插曲/i', '/推广(?:曲|曲MV)|宣传(?:曲|MV)|概念曲|定档曲/i',
+            '/OST\b/i', '/(?:bgm|BGM)\s*[：:]/',
+            '/先导(?:片|预告|版|曲)/i', '/(?:发布会|首映礼|路演|粉丝见面会|综艺|演唱会|生日会|生日特辑|生日直播)/i',
+            '/(?:饭制|二创|鬼畜|恶搞|搞笑|沙雕|reaction|REACTION|Reaction)/i',
+            '/(?:cut|CUT|Cut)\s*$/i', '/(?:合集|合辑|精选集|名场面合集|高光合集)/i',
+            '/(?:广告|赞助|代言|品牌日|冠名|合作视频|植入|VCR|ID视频|杂志|时装周|红毯|颁奖礼|盛典)/i',
+            '/(?:纪录片|记录片|专题片|幕后(?:纪录片|记录|花絮)?|超长(?:幕后|花絮)|观影指南|彩蛋|番外|番外篇)/i',
+            '/(?:直播回放|全程回放|直播录屏|直播cut|直播精选)/i',
+            '/(?:全集|全\d+集)?(?:抢先|超前|预约|即将(?:上线|播出|开播)|未播|定档|档期|开播(?:仪式|盛典)?|首播)(?:版)?/i',
         ];
+        $excludeNamesIfContainsKeyword = ['预告片', '片花', '花絮', '剪辑版', '解说', '速看', 'MV', 'OST', 'reaction', '混剪', '盘点', 'cut'];
+
+        $year = $targetYear;
+        $actorList = $targetActors;
 
         foreach ($videos as $video) {
             $videoName = $video['name'] ?? '';
             $videoRemarks = $video['remarks'] ?? '';
-            $fullName = $videoName . ' ' . $videoRemarks;
+            $videoNote = $video['note'] ?? '';
+            $videoActors = $video['actor'] ?? ($video['actors'] ?? '');
+            $videoYear = $video['year'] ?? null;
+            if (empty($videoYear)) {
+                if (preg_match('/(?:19|20)\d{2}/u', $videoName . ' ' . $videoRemarks, $ym)) {
+                    $videoYear = intval($ym[0]);
+                }
+            }
+            $fullName = trim($videoName . ' ' . $videoRemarks . ' ' . $videoNote);
 
             $isExcluded = false;
             foreach ($excludePatterns as $pattern) {
-                if (preg_match($pattern, $videoName)) {
+                if (@preg_match($pattern, $videoName)) {
                     $isExcluded = true;
                     break;
+                }
+            }
+            if (!$isExcluded) {
+                foreach ($excludeNamesIfContainsKeyword as $ex) {
+                    if (stripos($videoName, $ex) !== false) {
+                        $isExcluded = true;
+                        break;
+                    }
                 }
             }
             if ($isExcluded) {
@@ -2362,22 +2679,38 @@ class DbOfficialReplaceManager {
             $videoPart = $videoParsed['part'];
             $videoVersion = $videoParsed['version'];
 
-            $baseScore = $this->calculateBaseMatchScore($keyword, $videoBaseTitle);
+            // 计算基础分（最多种关键词变体尝试，取最大值）
+            $baseScore = 0;
+            $variants = [$keyword, $videoInfo['title'] ?? null];
+            if (!empty($videoInfo['parsed']['base_title'])) $variants[] = $videoInfo['parsed']['base_title'];
+            if (!empty($videoInfo['pure_title'] ?? null)) $variants[] = $videoInfo['pure_title'];
+            $variants = array_values(array_filter(array_unique($variants)));
+            foreach ($variants as $kw) {
+                if (empty($kw)) continue;
+                $s = $this->calculateBaseMatchScore($kw, $videoBaseTitle);
+                if ($s > $baseScore) $baseScore = $s;
+            }
+            // 完全包含时额外加分
+            $anyContains = false;
+            foreach ($variants as $kw) {
+                if (empty($kw)) continue;
+                if ($videoBaseTitle && (mb_strpos($videoBaseTitle, $kw) !== false || mb_strpos($kw, $videoBaseTitle) !== false)) {
+                    $anyContains = true;
+                    break;
+                }
+                if ($videoName && (mb_strpos($videoName, $kw) !== false || mb_strpos($kw, $videoName) !== false)) {
+                    $anyContains = true;
+                    break;
+                }
+            }
 
-            if ($baseScore < 50) {
+            // 硬门槛：基础分不能太低（变体试过后的最低门槛 32）
+            if ($baseScore < 32) {
                 continue;
             }
 
             $score = $baseScore;
-
-            if ($keyword && $videoBaseTitle) {
-                if (mb_strpos($videoBaseTitle, $keyword) !== false) {
-                    $score += 10;
-                }
-                if (mb_strpos($keyword, $videoBaseTitle) !== false) {
-                    $score += 5;
-                }
-            }
+            if ($anyContains) $score += 8;
 
             $seasonMatch = false;
             $episodeMatch = false;
@@ -2392,15 +2725,17 @@ class DbOfficialReplaceManager {
                 if ($targetSeason == 1) {
                     $score += 5;
                 } else {
-                    $score -= 10;
+                    $score -= 12;
                 }
             }
 
-            $targetEpisode = $videoInfo['episode_num'] ?? null;
             if ($targetEpisode !== null && $videoEpisode !== null) {
                 if ($targetEpisode == $videoEpisode) {
                     $score += 20;
                     $episodeMatch = true;
+                } else {
+                    // 剧集号错了，但同一部剧，仅扣分
+                    $score -= max(0, 15 - abs($targetEpisode - $videoEpisode));
                 }
             }
 
@@ -2420,13 +2755,41 @@ class DbOfficialReplaceManager {
                 }
             }
 
-            if (!empty($videoRemarks)) {
-                if (preg_match('/更新至|连载|全\d+集|共\d+集|已完结|HD|高清|正片/u', $videoRemarks)) {
-                    $score += 5;
+            // 年份交叉验证
+            if (!empty($year) && !empty($videoYear)) {
+                if (intval($year) === intval($videoYear)) {
+                    $score += 12;
+                } elseif (abs(intval($year) - intval($videoYear)) === 1) {
+                    $score += 4; // 跨年 ±1 合理
+                } else {
+                    $score -= 8;
+                }
+            }
+            // 演员交叉验证（演员名任意一个命中都加分）
+            if (!empty($actorList) && is_array($actorList)) {
+                $actorsText = $videoActors . ' ' . $videoName . ' ' . $videoRemarks;
+                $hitCount = 0;
+                foreach ($actorList as $act) {
+                    $act = trim($act);
+                    if (empty($act) || mb_strlen($act) < 2) continue;
+                    if (mb_strpos($actorsText, $act) !== false) $hitCount++;
+                }
+                if ($hitCount > 0) {
+                    $score += min(18, 6 * $hitCount);
                 }
             }
 
-            $score = min(100, max(0, $score));
+            if (!empty($videoRemarks)) {
+                if (preg_match('/更新至|连载|全\d+集|共\d+集|已完结|HD|高清|正片|蓝光|1080P|4K|未删减|完整版/u', $videoRemarks)) {
+                    $score += 5;
+                }
+                // 命中 remarks 中包含 keyword（精确部分名）
+                if (!empty($keyword) && mb_strpos($videoRemarks, $keyword) !== false) {
+                    $score += 6;
+                }
+            }
+
+            $score = min(110, max(0, $score));
 
             if ($score > $bestScore) {
                 $bestScore = $score;
@@ -2436,7 +2799,12 @@ class DbOfficialReplaceManager {
                     'base_score' => round($baseScore, 2),
                     'season_match' => $seasonMatch,
                     'episode_match' => $episodeMatch,
-                    'site' => $video['site'] ?? ''
+                    'site' => $video['site'] ?? '',
+                    'year_match' => (!empty($year) && !empty($videoYear) && intval($year) === intval($videoYear)),
+                    'actor_hit' => $actorList ? count(array_filter($actorList, function($a) use ($videoActors, $videoName, $videoRemarks) {
+                        $a = trim($a); if (empty($a) || mb_strlen($a) < 2) return false;
+                        return mb_strpos($videoActors . ' ' . $videoName . ' ' . $videoRemarks, $a) !== false;
+                    })) : 0,
                 ];
             }
         }
@@ -2445,8 +2813,15 @@ class DbOfficialReplaceManager {
             return $bestMatch;
         }
 
-        // 最佳努力匹配：只要有合理分数就返回，避免阈值过高导致漏配
-        if ($bestScore >= 50) {
+        // 门槛二：如果完全包含 / 集数匹配 / 年份匹配 都符合，则适当用 fallbackThreshold 52 放行
+        if ($bestMatch && $bestScore >= $fallbackThreshold) {
+            if (!empty($bestMatch['season_match']) || !empty($bestMatch['episode_match']) || !empty($bestMatch['year_match']) || ($bestMatch['actor_hit'] ?? 0) >= 1) {
+                return $bestMatch;
+            }
+        }
+
+        // 最佳努力匹配：基础分 + 基础匹配 不低于硬地板
+        if ($bestScore >= $hardFloorThreshold && ($bestMatch['base_score'] ?? 0) >= 50) {
             return $bestMatch;
         }
 
@@ -2698,13 +3073,24 @@ class DbOfficialReplaceManager {
         return null;
     }
 
-    private function httpGet($url, $timeout = 30, $retry = 3) {
+    private function httpGet($url, $timeout = 30, $retry = 3, $referer = null, $origin = null) {
         $lastError = '';
         $userAgents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         ];
+
+        // 自动伪造 Origin / Referer
+        if ($referer === null || $origin === null) {
+            $host = parse_url($url, PHP_URL_HOST);
+            if ($host) {
+                $scheme = parse_url($url, PHP_URL_SCHEME) ?: 'https';
+                if ($referer === null) $referer = $scheme . '://' . $host . '/';
+                if ($origin === null) $origin = $scheme . '://' . $host;
+            }
+        }
 
         $proxyMgr = $this->proxyManager;
         if ($proxyMgr === null) {
@@ -2729,16 +3115,28 @@ class DbOfficialReplaceManager {
             @curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
             @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
             @curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            @curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
             @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            @curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+            @curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate,br'); // 支持 br brotli
             @curl_setopt($ch, CURLOPT_USERAGENT, $userAgents[$attempt % count($userAgents)]);
-            @curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
-                'Accept-Encoding: gzip, deflate'
-            ]);
+
+            $headers = [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7',
+                'Accept-Encoding: gzip, deflate, br',
+                'Cache-Control: no-cache',
+                'Pragma: no-cache',
+                'sec-ch-ua: "Chromium";v="126", "Not)A;Brand";v="24", "Google Chrome";v="126"',
+                'sec-ch-ua-mobile: ?0',
+                'sec-ch-ua-platform: "Windows"',
+            ];
+            if (!empty($referer)) $headers[] = 'Referer: ' . $referer;
+            if (!empty($origin)) $headers[] = 'Origin: ' . $origin;
+            @curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
             @curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            // 支持从 HTTP 3xx 中取得 Location
+            @curl_setopt($ch, CURLOPT_AUTOREFERER, true);
 
             $cookieFile = @tempnam(sys_get_temp_dir(), 'curl_cookie_');
             if ($cookieFile) {
@@ -2778,6 +3176,10 @@ class DbOfficialReplaceManager {
             if ($httpCode >= 200 && $httpCode < 300 && $response !== false && is_string($response)) {
                 return $response;
             }
+            // 3xx 有 body 也返回
+            if ($httpCode >= 300 && $httpCode < 400 && $response !== false && is_string($response) && strlen($response) > 1000) {
+                return $response;
+            }
 
             $lastError = $error ? $error : ('HTTP ' . $httpCode);
 
@@ -2785,8 +3187,10 @@ class DbOfficialReplaceManager {
                 strpos($error, 'Could not resolve') !== false ||
                 strpos($error, 'Connection timed out') !== false ||
                 strpos($error, 'Failed to connect') !== false ||
-                strpos($error, 'Operation timed out') !== false
-            ) || ($httpCode >= 500 || $httpCode == 429);
+                strpos($error, 'Operation timed out') !== false ||
+                strpos($error, 'SSL read') !== false ||
+                strpos($error, 'stream reset') !== false
+            ) || ($httpCode >= 500 || $httpCode == 429 || $httpCode == 403);
 
             if ($attempt < $retry && $isRetryable) {
                 usleep(500000 + $attempt * 300000);
@@ -2798,43 +3202,54 @@ class DbOfficialReplaceManager {
     }
 
     private function httpGetMobile($url, $timeout = 20) {
-        $ch = @curl_init();
-        if (!$ch) {
-            return false;
-        }
-
+        // 复用 httpGet 但使用移动 UA + 超时短
         $mobileUserAgents = [
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-            'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
         ];
+        $host = parse_url($url, PHP_URL_HOST);
+        $scheme = parse_url($url, PHP_URL_SCHEME) ?: 'https';
+        $referer = $host ? $scheme . '://' . $host . '/' : null;
+        $origin = $host ? $scheme . '://' . $host : null;
 
-        @curl_setopt($ch, CURLOPT_URL, $url);
-        @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        @curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
-        @curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        @curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
-        @curl_setopt($ch, CURLOPT_USERAGENT, $mobileUserAgents[array_rand($mobileUserAgents)]);
-        @curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
-        ]);
-        @curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        for ($i = 0; $i < 2; $i++) {
+            $ch = @curl_init();
+            if (!$ch) return false;
 
-        $response = @curl_exec($ch);
-        $httpCode = 0;
-        if ($ch) {
-            $httpCode = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            @curl_close($ch);
+            @curl_setopt($ch, CURLOPT_URL, $url);
+            @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            @curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+            @curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            @curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+            @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            @curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate,br');
+            @curl_setopt($ch, CURLOPT_USERAGENT, $mobileUserAgents[array_rand($mobileUserAgents)]);
+            @curl_setopt($ch, CURLOPT_AUTOREFERER, true);
+            $headers = [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8',
+            ];
+            if ($referer) $headers[] = 'Referer: ' . $referer;
+            if ($origin) $headers[] = 'Origin: ' . $origin;
+            @curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            @curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+            $response = @curl_exec($ch);
+            $httpCode = 0;
+            if ($ch) {
+                $httpCode = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                @curl_close($ch);
+            }
+
+            if ($httpCode >= 200 && $httpCode < 300 && $response !== false && is_string($response)) {
+                return $response;
+            }
         }
-
-        if ($httpCode >= 200 && $httpCode < 300 && $response !== false && is_string($response)) {
-            return $response;
-        }
-
-        return false;
+        // 最后兜底：直接走增强版 httpGet
+        return $this->httpGet($url, $timeout, 1);
     }
 
     public function getReplaceUrl($url) {

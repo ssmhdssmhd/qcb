@@ -367,51 +367,84 @@ class DbResourceSiteManager {
 
     public function searchVideos($apiUrl, $keyword, $page = 1, $limit = 20) {
         $urlsToTry = $this->generateApiUrlVariants($apiUrl);
+        // 策略顺序（苹果CMS10 官方兼容顺序：ac=list 最通用，其次 detail/videolist；t=类型过滤也常出结果）
         $searchStrategies = [
-            ['ac' => 'detail', 'wd' => $keyword],
-            ['ac' => 'videolist', 'wd' => $keyword],
+            ['ac' => 'list', 'wd' => $keyword],                          // 最通用，苹果CMS10 100% 支持
+            ['ac' => 'videolist', 'wd' => $keyword],                     // 旧版本 / 兼容
+            ['ac' => 'detail', 'wd' => $keyword],                        // 部分小站
+            ['ac' => 'list', 'wd' => $keyword, 't' => '1,2,3,4'],       // t=类型过滤（部分站对 wd 单独返回空需 t）
+            ['ac' => 'list', 'wd' => $keyword, 'h' => '24'],            // h=24h 热片
         ];
+
+        // 如果 keyword 是纯数字ID（苹果CMS详情搜索），多试一个 ac=detail&ids=
+        if (preg_match('/^\d{1,8}$/', $keyword)) {
+            array_unshift($searchStrategies, ['ac' => 'detail', 'ids' => $keyword]);
+        }
+        // 如果 keyword 含 空格：也尝试把空格换成 下划线 / 或 去掉空格再查
+        $keywordVariants = [$keyword];
+        if (strpos($keyword, ' ') !== false) {
+            $keywordVariants[] = str_replace(' ', '', $keyword);
+            $keywordVariants[] = str_replace(' ', '_', $keyword);
+            $keywordVariants[] = preg_replace('/\s*第\s*\d+\s*[集季期部章回]\s*/u', '', $keyword);
+        }
+        $keywordVariants = array_values(array_unique(array_filter($keywordVariants)));
 
         $lastError = '';
         $isDomainFailure = false;
         $dnsHost = '';
-        foreach ($urlsToTry as $tryUrl) {
-            foreach ($searchStrategies as $strategy) {
-                $params = array_merge($strategy, [
-                    'pg' => intval($page),
-                    'limit' => intval($limit)
-                ]);
-                $url = $this->buildApiUrl($tryUrl, $params);
-
-                $response = $this->httpGet($url);
-                if ($response === false) {
-                    $lastError = $this->lastHttpError ?? '未知错误';
-                    if ($this->isDomainFailureError($lastError)) {
-                        $isDomainFailure = true;
-                        $parsed = parse_url($tryUrl);
-                        $dnsHost = $parsed['host'] ?? '';
+        foreach ($keywordVariants as $variantKeyword) {
+            foreach ($urlsToTry as $tryUrl) {
+                foreach ($searchStrategies as $strategy) {
+                    // 替换策略里的 wd 为当前 variant
+                    $curStrategy = $strategy;
+                    if (isset($curStrategy['wd'])) {
+                        $curStrategy['wd'] = $variantKeyword;
                     }
-                    continue;
-                }
+                    $params = array_merge($curStrategy, [
+                        'pg' => intval($page),
+                        'limit' => intval($limit)
+                    ]);
+                    $url = $this->buildApiUrl($tryUrl, $params);
 
-                $data = json_decode($response, true);
-                if (!$data) {
-                    $lastError = '解析JSON失败';
-                    continue;
-                }
+                    $response = $this->httpGet($url);
+                    if ($response === false) {
+                        $lastError = $this->lastHttpError ?? '未知错误';
+                        if ($this->isDomainFailureError($lastError)) {
+                            $isDomainFailure = true;
+                            $parsed = parse_url($tryUrl);
+                            $dnsHost = $parsed['host'] ?? '';
+                        }
+                        continue;
+                    }
 
-                $code = $data['code'] ?? $data['status'] ?? 0;
-                if ($code != 200 && $code != 1 && !empty($data['msg']) && empty($data['list']) && empty($data['data'])) {
-                    $lastError = $data['msg'] ?? '接口返回错误';
-                    continue;
-                }
+                    $data = json_decode($response, true);
+                    if (!$data) {
+                        // 尝试去 JSONP 包装再解码
+                        $cleaned = preg_replace('/^\w+\s*\(/', '', $response);
+                        $cleaned = preg_replace('/\)\s*;?\s*$/', '', $cleaned);
+                        $data = json_decode($cleaned, true);
+                        if (!$data) {
+                            $lastError = '解析JSON失败';
+                            continue;
+                        }
+                    }
 
-                $result = $this->parseVideoList($data);
-                if ($result['success']) {
-                    $result['page'] = $page;
-                    return $result;
+                    $code = $data['code'] ?? $data['status'] ?? 0;
+                    $hasList = !empty($data['list']) || !empty($data['data']);
+                    if ($code != 200 && $code != 1 && !empty($data['msg']) && !$hasList) {
+                        $lastError = $data['msg'] ?? '接口返回错误';
+                        continue;
+                    }
+
+                    $result = $this->parseVideoList($data);
+                    if ($result['success']) {
+                        $result['page'] = $page;
+                        $result['search_variant'] = $variantKeyword;
+                        $result['strategy'] = json_encode($curStrategy, JSON_UNESCAPED_UNICODE);
+                        return $result;
+                    }
+                    $lastError = $result['message'] ?? '搜索无结果';
                 }
-                $lastError = $result['message'] ?? '搜索无结果';
             }
         }
 
