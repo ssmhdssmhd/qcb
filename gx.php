@@ -57,6 +57,8 @@ define('GX_LOCK_FILE', GX_RUNTIME_DIR . '/.gx.lock');
 define('GX_SECRET_FILE', GX_RUNTIME_DIR . '/.gx_secret.php');
 define('GX_LAST_RUN_FILE', GX_RUNTIME_DIR . '/.gx_last_run.php');
 define('GX_LOG_FILE', GX_RUNTIME_DIR . '/gx_run.log');
+define('GX_PROGRESS_FILE', GX_RUNTIME_DIR . '/.gx_progress.json');
+define('GX_TASKS_STEP_WEIGHTS_FILE', GX_RUNTIME_DIR . '/.gx_step_weights.php');
 
 if (!is_dir(GX_RUNTIME_DIR)) {
     @mkdir(GX_RUNTIME_DIR, 0755, true);
@@ -141,6 +143,233 @@ function gx_log(string $msg, string $level = 'info'): void {
 function gx_saveLastRun(array $summary): void {
     $content = "<?php\n// gx.php 最后一次执行记录\nreturn " . var_export($summary + ['saved_at' => date('Y-m-d H:i:s')], true) . ";\n";
     @file_put_contents(GX_LAST_RUN_FILE, $content);
+}
+
+// --------- 进度条写盘机制（后台进度条 轮询读取） ---------
+class GxProgressTracker {
+    private string $taskId;
+    /** @var string 当前 action（all/check/migrate/...），输出到 JSON 方便前端展示 */
+    private string $action = '';
+    /** @var array<string, int> 每个任务名占百分之几权重 */
+    private array $stepWeights;
+    private int $totalStepsWeight;
+    private array $currentState;
+    private int $startTime;
+
+    public function __construct(array $stepWeights) {
+        $this->taskId = 'gx_' . date('YmdHis') . '_' . substr(bin2hex(random_bytes(6)), 0, 10);
+        $this->stepWeights = $stepWeights;
+        $this->totalStepsWeight = max(1, array_sum($stepWeights));
+        $this->startTime = time();
+
+        // 初始化 steps 数组（key=stepName，前端按顺序渲染）— 全部 pending 0%
+        $stepsInit = [];
+        foreach ($stepWeights as $name => $w) {
+            $stepsInit[$name] = [
+                'status'      => 'pending',    // pending | running | done
+                'success'     => null,         // done 后填 true/false
+                'percent'     => 0,
+                'weight'      => $w,
+                'message'     => '待执行',
+                'sub_message' => '',
+                'started_at'  => null,
+                'finished_at' => null,
+                'cost_s'      => 0,
+            ];
+        }
+
+        $this->currentState = [
+            'task_id'       => $this->taskId,
+            'action'        => '',
+            'started_at'    => date('Y-m-d H:i:s'),
+            'started_at_ts' => $this->startTime,
+            'finished_at'   => null,
+            'status'        => 'running',        // running | done | failed
+            'overall_status'=> 'running',        // pending | running | success | failed | partial  (前端识别)
+            'total_steps_weight' => $this->totalStepsWeight,
+            'step_weights'  => $this->stepWeights,
+            'steps_done_weight' => 0,
+            'percent'       => 0,
+            'current_step'  => null,
+            'current_message' => '初始化任务队列...',
+            'step_sub_percent' => 0,
+            'message'       => '初始化任务队列...',
+            'logs'          => [],
+            'steps'         => $stepsInit,       // 每个 step 的状态（前端直接渲染）
+            'steps_summary' => [],
+            'eta_seconds'   => null,
+            'duration_sec'  => 0,
+            'elapsed_seconds' => 0,
+            'success'       => false,
+            'failed_tasks'  => [],
+            'speed_avg_percent_per_sec' => null,
+            'last_refresh'  => microtime(true),
+        ];
+    }
+
+    public function getTaskId(): string { return $this->taskId; }
+
+    /** 顶部入口在创建 tracker 后会 setAction，方便前端展示 */
+    public function setAction(string $action): void {
+        $this->action = $action;
+        $this->currentState['action'] = $action;
+    }
+
+    public function save(): void {
+        $this->currentState['last_refresh'] = microtime(true);
+        $this->currentState['elapsed_seconds'] = time() - $this->startTime;
+        $this->currentState['duration_sec'] = $this->currentState['elapsed_seconds'];
+        // ETA 估算（单调 + 平滑）
+        $pct = $this->currentState['percent'];
+        if ($pct > 0.5 && $this->currentState['elapsed_seconds'] > 3) {
+            $spd = $pct / max(1, $this->currentState['elapsed_seconds']);
+            $this->currentState['speed_avg_percent_per_sec'] = round($spd, 3);
+            $remain = 100 - $pct;
+            $this->currentState['eta_seconds'] = max(1, intval(round($remain / $spd)));
+        }
+        // overall_status 推导
+        if ($this->currentState['status'] === 'done') {
+            if ($this->currentState['success']) $this->currentState['overall_status'] = 'success';
+            elseif (!empty($this->currentState['failed_tasks'])) $this->currentState['overall_status'] = 'partial';
+            else $this->currentState['overall_status'] = 'failed';
+        } elseif ($this->currentState['status'] === 'failed') {
+            $this->currentState['overall_status'] = 'failed';
+        } else {
+            $this->currentState['overall_status'] = 'running';
+        }
+        $json = json_encode($this->currentState, JSON_UNESCAPED_UNICODE);
+        if ($json !== false) {
+            @file_put_contents(GX_PROGRESS_FILE, $json, LOCK_EX);
+        }
+    }
+
+    public function startStep(string $stepName, string $message = ''): void {
+        $this->currentState['current_step'] = $stepName;
+        $this->currentState['step_sub_percent'] = 0;
+        $msg = $message ?: ("开始执行: " . $stepName);
+        $this->currentState['message'] = $msg;
+        $this->currentState['current_message'] = $msg;
+        if (isset($this->currentState['steps'][$stepName])) {
+            $this->currentState['steps'][$stepName]['status'] = 'running';
+            $this->currentState['steps'][$stepName]['percent'] = 0;
+            $this->currentState['steps'][$stepName]['message'] = $msg;
+            $this->currentState['steps'][$stepName]['sub_message'] = $msg;
+            $this->currentState['steps'][$stepName]['started_at'] = date('Y-m-d H:i:s');
+        }
+        $this->pushLog($stepName, 'START', $msg, 'info');
+        $this->save();
+    }
+
+    public function subStep(int $subPct0_100, string $message = ''): void {
+        $sub = max(0, min(100, $subPct0_100));
+        $this->currentState['step_sub_percent'] = $sub;
+        // 总百分比 = 已完成步骤权重 + 当前步骤权重 * sub%
+        $curStep = $this->currentState['current_step'];
+        $stepW = $this->stepWeights[$curStep] ?? 0;
+        $doneW = $this->currentState['steps_done_weight'];
+        $overall = 100 * ($doneW + ($stepW * $sub / 100)) / $this->totalStepsWeight;
+        $this->currentState['percent'] = max($this->currentState['percent'], min(100, round($overall, 2)));
+        if ($message) {
+            $this->currentState['message'] = $message;
+            $this->currentState['current_message'] = $message;
+        }
+        if ($curStep && isset($this->currentState['steps'][$curStep])) {
+            $this->currentState['steps'][$curStep]['percent'] = $sub;
+            if ($message) $this->currentState['steps'][$curStep]['sub_message'] = $message;
+        }
+        $this->save();
+    }
+
+    public function finishStep(string $stepName, bool $success, array $stepResult = [], string $message = ''): void {
+        $w = $this->stepWeights[$stepName] ?? 0;
+        $this->currentState['steps_done_weight'] += $w;
+        $this->currentState['step_sub_percent'] = 100;
+        // 重新计算 percent（用已完成权重，保证非倒退）
+        $overall = 100 * $this->currentState['steps_done_weight'] / $this->totalStepsWeight;
+        $this->currentState['percent'] = max($this->currentState['percent'], min(100, round($overall, 2)));
+        $this->currentState['steps_summary'][$stepName] = [
+            'success' => $success,
+            'weight' => $w,
+            'message' => $message ?: ($success ? '完成' : '失败'),
+            'cost_s' => round(microtime(true) - $GLOBALS['GX_START_TIME'], 2),
+        ];
+        if (!$success) {
+            $this->currentState['failed_tasks'][] = $stepName;
+        }
+        $msg = $message ?: ($success ? "✅ [{$stepName}] 成功" : "⚠️ [{$stepName}] 失败");
+        $this->currentState['message'] = $msg;
+        $this->currentState['current_message'] = $msg;
+        if (isset($this->currentState['steps'][$stepName])) {
+            $this->currentState['steps'][$stepName]['status'] = 'done';
+            $this->currentState['steps'][$stepName]['success'] = $success;
+            $this->currentState['steps'][$stepName]['percent'] = 100;
+            $this->currentState['steps'][$stepName]['message'] = $msg;
+            $this->currentState['steps'][$stepName]['finished_at'] = date('Y-m-d H:i:s');
+            $this->currentState['steps'][$stepName]['cost_s'] = round(microtime(true) - $GLOBALS['GX_START_TIME'], 2);
+        }
+        $this->pushLog($stepName, $success ? 'OK' : 'FAIL', $msg, $success ? 'success' : 'warn');
+        $this->save();
+    }
+
+    public function finishAll(bool $overallSuccess, string $message = ''): void {
+        $this->currentState['status'] = $overallSuccess ? 'done' : 'failed';
+        $this->currentState['success'] = $overallSuccess;
+        $this->currentState['percent'] = 100;
+        $this->currentState['step_sub_percent'] = 100;
+        $this->currentState['steps_done_weight'] = $this->totalStepsWeight;
+        $this->currentState['current_step'] = null;
+        $this->currentState['finished_at'] = date('Y-m-d H:i:s');
+        $this->currentState['duration_sec'] = time() - $this->startTime;
+        $finalMsg = $message ?: ($overallSuccess ? '🎉 全部任务执行完成！' : '部分任务失败，请查看下方日志');
+        $this->currentState['message'] = $finalMsg;
+        $this->currentState['current_message'] = $finalMsg;
+        // 还没 finish 的 step 标记为 done/fail（兜底）
+        foreach ($this->stepWeights as $name => $w) {
+            if (!isset($this->currentState['steps'][$name])) continue;
+            $s = &$this->currentState['steps'][$name];
+            if ($s['status'] !== 'done') {
+                $s['status'] = 'done';
+                $s['success'] = $overallSuccess;
+                $s['percent'] = 100;
+                $s['finished_at'] = date('Y-m-d H:i:s');
+                $s['message'] = $overallSuccess ? '执行完成' : '任务中断';
+            }
+        }
+        $this->pushLog('system', $overallSuccess ? 'DONE' : 'FAILED', $finalMsg, $overallSuccess ? 'success' : 'error');
+        $this->save();
+    }
+
+    private function pushLog(string $step, string $level, string $msg, string $color = 'info'): void {
+        // level 映射：START/OK/FAIL/DONE → info/success/warn/success，供前端 .gx-log .info/.ok/.warn/.error 着色
+        $lvlMap = ['START'=>'info','OK'=>'ok','SUCCESS'=>'ok','FAIL'=>'warn','WARNING'=>'warn','WARN'=>'warn','ERROR'=>'error','DONE'=>'ok','FAILED'=>'error','INFO'=>'info'];
+        $lvlNorm = $lvlMap[strtoupper($level)] ?? strtolower($color ?: 'info');
+        $this->currentState['logs'][] = [
+            'time'    => date('Y-m-d') . 'T' . date('H:i:s'),  // 前端会按 T 切分取出 H:i:s
+            'step'    => $step,
+            'level'   => $lvlNorm,
+            'message' => $msg,
+        ];
+        // 日志上限 500 条
+        if (count($this->currentState['logs']) > 500) {
+            $this->currentState['logs'] = array_slice($this->currentState['logs'], -500);
+        }
+    }
+}
+
+// 异步模式：立即返回 task_id，后台 exec 真正的 gx.php 跑
+function gx_launch_async(string $action, bool $force, ?int $max): string {
+    $phpBin = PHP_BINARY;
+    $script = GX_ROOT . '/gx.php';
+    $args = [$action];
+    if ($force) $args[] = 'force';
+    if ($max !== null) $args[] = '--max=' . $max;
+    // 异步启动：CLI 模式（不输出给当前 HTTP 响应）
+    // 先创建初始 progress（task_id 同步从新进程生成时，进程也会开始写盘）
+    // 这里采取：先调用同步无锁初始化 progress 文件 → 进程启动后接管并继续
+    $cmd = $phpBin . ' ' . escapeshellarg($script) . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' '
+         . '>> ' . escapeshellarg(GX_LOG_FILE) . ' 2>&1 & echo $!';
+    @exec($cmd, $out, $ret);
+    return (string)($out[0] ?? '');
 }
 
 function gx_includeSafe(string $path): bool {
@@ -555,7 +784,7 @@ class GxRunner {
     }
 
     /** 5. 资源站健康巡检 */
-    public function task_site_check(int $max = 10): array {
+    public function task_site_check(int $max = 10, ?callable $progressCallback = null): array {
         if (!class_exists('DbResourceSiteManager')) {
             return ['success'=>false,'message'=>'DbResourceSiteManager 未加载'];
         }
@@ -570,7 +799,12 @@ class GxRunner {
             $checks = [];
             $okCount = 0; $failCount = 0;
             $hotWords = ['狂飙','庆余年','三体','九门'];
+            $i = 0;
             foreach ($sites as $s) {
+                $i++;
+                if ($progressCallback) {
+                    @call_user_func($progressCallback, $i, count($sites), $s['name'] ?? 'site');
+                }
                 $kw = $hotWords[array_rand($hotWords)];
                 $t0 = microtime(true);
                 $res = $sm->searchVideos($s['api_url'], $kw, 1, 1);
@@ -727,6 +961,80 @@ function gx_status_last_run(): array {
 // --------- 入口 ---------
 gx_verifyKey();
 
+// ------- 进度查询 / progress 轮询接口 -------
+$progressQuery = ($_GET['progress'] ?? $_POST['progress'] ?? null);
+if ($progressQuery !== null) {
+    $out = ['success' => false, 'progress' => null, 'error' => null];
+    if (file_exists(GX_PROGRESS_FILE)) {
+        $raw = @file_get_contents(GX_PROGRESS_FILE);
+        if ($raw && strlen($raw) > 0) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $out['success'] = true;
+                $out['progress'] = $decoded;
+            } else {
+                $out['error'] = 'progress 文件 JSON 解析失败';
+            }
+        }
+    } else {
+        $out['error'] = '暂无进行中的任务';
+    }
+    // 同时附带 last_run
+    if (file_exists(GX_LAST_RUN_FILE)) {
+        $last = @include GX_LAST_RUN_FILE;
+        if (is_array($last)) {
+            $out['last_run'] = $last;
+        }
+    }
+    echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
+// ------- async=1 异步启动模式（Web页面按钮点击后 HTTP 快速返回）-------
+$asyncFlag = ($_GET['async'] ?? $_POST['async'] ?? null);
+if (!$GX_IS_CLI && ($asyncFlag === '1' || $asyncFlag === 'true' || $asyncFlag === 1)) {
+    // 支持 exec 时就后台启动；否则就 fallback 同步执行
+    $canAsync = function_exists('exec') && !@ini_get('safe_mode');
+    $lockNow = gx_lock();
+    $startingState = null;
+    if ($lockNow === false) {
+        http_response_code(429);
+        echo json_encode([
+            'success' => false, 'code' => 429, 'async' => false,
+            'message' => '已有任务正在执行，请等待或刷新查看进度',
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
+    list($act, $fl) = gx_web_args();
+    $f = !empty($fl['force']);
+    $mx = isset($fl['max']) ? intval($fl['max']) : null;
+
+    // 先创建一个初始 progress：告诉前端 task id 已创建
+    $weightMap = gx_resolve_step_weights($act, $mx ?? 10);
+    $tracker = new GxProgressTracker($weightMap);
+    $tracker->setAction($act);
+    $tracker->save();
+
+    gx_unlock($lockNow);
+
+    if ($canAsync) {
+        $pid = gx_launch_async($act, $f, $mx);
+        $resp = [
+            'success' => true,
+            'async'   => true,
+            'mode'    => 'background_php_cli',
+            'pid'     => $pid,
+            'task_id' => $tracker->getTaskId(),
+            'progress_file' => basename(GX_PROGRESS_FILE),
+            'message' => '任务已后台启动，pid=' . $pid . '，请通过 progress 轮询接口查看进度',
+        ];
+        echo json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
+    // exec 被禁用：fallback 到同步模式（HTTP 等它跑完，但仍写 progress 供下次刷新读取）
+    // → 直接 fall-through 执行后续 switch
+}
+
 $lockFp = gx_lock();
 if ($lockFp === false) {
     // 已有执行中
@@ -747,6 +1055,12 @@ list($action, $flags) = $GX_IS_CLI ? gx_cli_args() : gx_web_args();
 $force = !empty($flags['force']);
 $max = isset($flags['max']) ? intval($flags['max']) : null;
 
+// 全局进度 tracker（所有模式都会写 progress）
+$stepWeights = gx_resolve_step_weights($action, $max ?? 10);
+$tracker = new GxProgressTracker($stepWeights);
+$tracker->setAction($action);
+$tracker->save();
+
 $runner = new GxRunner();
 
 gx_log("▶ start action=$action force=".($force?'1':'0')." sapi=".PHP_SAPI);
@@ -758,60 +1072,146 @@ if ($GX_IS_CLI) {
     gx_cli_print("▶ 模式: CLI  |  动作: $action  |  强制: " . ($force?'YES':'NO') . "\n\n");
 }
 
+/**
+ * 根据 action 解析 step 权重（百分比总和不一定=100，内部归一化）
+ */
+function gx_resolve_step_weights(string $action, int $max): array {
+    switch ($action) {
+        case 'status':            return ['status' => 100];
+        case 'reset_key':         return ['reset_key' => 100];
+        case 'check':             return ['check' => 100];
+        case 'migrate':           return ['migrate' => 100];
+        case 'ai_learn':          return ['ai_learn' => 100];
+        case 'ai_cleanup':        return ['ai_cleanup' => 100];
+        case 'official_refresh':  return ['official_refresh' => 100];
+        case 'site_check':        $n = max(1, min($max, 20));
+                                  $w = []; for($i=0;$i<$n;$i++) $w["site_{$i}"] = 1;
+                                  return array_merge(['site_check_prepare'=>1], $w, ['site_check_summary'=>1]);
+        case 'rule_check':        return ['rule_check' => 100];
+        case 'all':
+        default:
+            return ['check'=>10,'migrate'=>10,'official_refresh'=>25,'ai_learn'=>30,'site_check'=>25];
+    }
+}
+
+/**
+ * 小工具：给单个任务挂 startStep/finishStep
+ */
+function gx_wrap_with_progress(GxProgressTracker $t, string $stepName, callable $fn): array {
+    $t->startStep($stepName);
+    try {
+        // 对于 site_check：内部还有子步骤 subStep 进度，这里也同步发 subStep 心跳
+        if ($stepName === 'site_check') {
+            // 简单定期 subStep 心跳通过 register_tick_function 不便实现；靠 task_site_check 内部回调
+            $result = $fn($t);  // 如果 fn 接受 $t，就可以 subStep
+        } else {
+            // 对慢步骤每隔几百毫秒推进 sub 进度（线性）— 实际成功后直接 finishStep(..., 100%)
+            $result = $fn();
+        }
+        $ok = !empty($result['success']);
+        $t->finishStep($stepName, $ok, $result, $result['message'] ?? '');
+        return $result;
+    } catch (Throwable $e) {
+        $t->finishStep($stepName, false, [], '异常：' . $e->getMessage());
+        throw $e;
+    }
+}
+
 try {
     switch ($action) {
         case 'reset_key':
+            $tracker->startStep('reset_key', '重置密钥');
             @unlink(GX_SECRET_FILE);
             $newKey = gx_ensureSecret();
             $r = ['success'=>true,'message'=>'密钥已重置','gx_key'=>$newKey,'tip'=>'Web 访问: /gx.php?key='.$newKey.'&action=all'];
             $runner->addResult('reset_key', $r);
+            $tracker->finishStep('reset_key', true, $r);
             break;
         case 'status':
+            $tracker->startStep('status', '读取状态');
             $r = gx_status_last_run();
             $runner->addResult('status', $r);
+            $tracker->finishStep('status', true, $r);
             break;
         case 'check':
-            $r = $runner->task_check();
+            $r = gx_wrap_with_progress($tracker, 'check', function() use ($runner){ return $runner->task_check(); });
             $runner->addResult('check', $r);
             break;
         case 'migrate':
-            $r = $runner->task_migrate();
+            $r = gx_wrap_with_progress($tracker, 'migrate', function() use ($runner){ return $runner->task_migrate(); });
             $runner->addResult('migrate', $r);
             break;
         case 'ai_learn':
+            $tracker->startStep('ai_learn');
             $r = $runner->task_ai_learn($force);
+            // AI 学习中途给点 subStep 提示：0/30/60/80（模拟子进度）
+            $tracker->subStep(30, '学习任务启动：站点选择');
+            $ok = !empty($r['success']);
+            $learned = intval($r['total_learned'] ?? 0);
+            $tracker->subStep(70, "学习完成，成功{$learned}条");
             $runner->addResult('ai_learn', $r);
+            $tracker->finishStep('ai_learn', $ok, $r, $r['message'] ?? '');
             break;
         case 'ai_cleanup':
-            $r = $runner->task_ai_cleanup($force);
+            $r = gx_wrap_with_progress($tracker, 'ai_cleanup', function() use ($runner, $force){ return $runner->task_ai_cleanup($force); });
             $runner->addResult('ai_cleanup', $r);
             break;
         case 'official_refresh':
+            $tracker->startStep('official_refresh', '官替配置刷新 + 抖剧TV纠偏 + 搜索抽检');
+            $tracker->subStep(20, '纠偏抖剧TV为默认官替（写入资源站/官替平台）');
             $r = $runner->task_official_refresh($max ?? 8);
+            $tracker->subStep(65, '官替缓存清理 + 搜索抽检');
+            $ok = !empty($r['success']);
+            $videos = intval($r['spot_check_video_count'] ?? 0);
             $runner->addResult('official_refresh', $r);
+            $tracker->finishStep('official_refresh', $ok, $r, "抽检命中 {$videos} 条视频；default_site=".($r['default_site'] ?? ''));
             break;
         case 'site_check':
-            $r = $runner->task_site_check($max ?? 10);
+            // 单任务（内含多站），通过传入 tracker 控制 subStep
+            $r = gx_wrap_with_progress($tracker, 'site_check', function(?GxProgressTracker $t=null) use ($runner, $max){
+                $maxN = $max ?? 10;
+                // 直接调用 task_site_check，改造成可传 progress_callback
+                return $runner->task_site_check($maxN, function(int $done, int $total, string $siteName) use ($t) {
+                    if (!$t) return;
+                    if ($total <= 0) return;
+                    $pct = intval(($done / $total) * 100);
+                    $t->subStep($pct, "巡检第 {$done}/{$total} 站：{$siteName}");
+                });
+            });
             $runner->addResult('site_check', $r);
             break;
         case 'rule_check':
-            $r = $runner->task_rule_check($max ?? 20);
+            $r = gx_wrap_with_progress($tracker, 'rule_check', function() use ($runner, $max){ return $runner->task_rule_check($max ?? 20); });
             $runner->addResult('rule_check', $r);
             break;
         case 'all':
         default:
-            // 全链路：异常隔离，一个失败不影响其它
+            // 全链路：异常隔离，一个失败不影响其它，挂 tracker
             $pipeline = [
                 ['name'=>'check','fn'=>function() use ($runner){ return $runner->task_check(); }],
                 ['name'=>'migrate','fn'=>function() use ($runner){ return $runner->task_migrate(); }],
                 ['name'=>'official_refresh','fn'=>function() use ($runner,$max){ return $runner->task_official_refresh($max ?? 8); }],
                 ['name'=>'ai_learn','fn'=>function() use ($runner,$force){ return $runner->task_ai_learn($force); }],
-                ['name'=>'site_check','fn'=>function() use ($runner,$max){ return $runner->task_site_check($max ?? 5); }],
+                ['name'=>'site_check','fn'=>function(?GxProgressTracker $t=null) use ($runner,$max){
+                    $maxN = $max ?? 5;
+                    return $runner->task_site_check($maxN, function(int $done, int $total, string $name) use ($t) {
+                        if (!$t || $total<=0) return;
+                        $t->subStep(intval(($done/$total)*100), "巡检 {$done}/{$total}：{$name}");
+                    });
+                }],
             ];
             foreach ($pipeline as $step) {
                 try {
                     gx_cli_print("  ┌ " . date('H:i:s') . " 执行 [{$step['name']}] ... ");
-                    $r = $step['fn']();
+                    $acceptsTracker = true;
+                    if ($step['name'] === 'site_check') {
+                        $r = gx_wrap_with_progress($tracker, $step['name'], function(?GxProgressTracker $t=null) use ($step) {
+                            $fn = $step['fn'];
+                            return $fn($t);
+                        });
+                    } else {
+                        $r = gx_wrap_with_progress($tracker, $step['name'], function() use ($step) { $fn = $step['fn']; return $fn(); });
+                    }
                     $ok = !empty($r['success']);
                     gx_cli_print(($ok ? "✅ OK" : "⚠️  WARN/FAIL") . "  (" . ($r['_cost_s'] ?? round(microtime(true)-$GX_START_TIME,3)) . "s)\n");
                     if ($GX_IS_CLI && !$ok) {
@@ -820,6 +1220,7 @@ try {
                     $runner->addResult($step['name'], $r);
                 } catch (Throwable $e) {
                     gx_cli_print("❌ EXCEPTION: {$e->getMessage()}\n");
+                    $tracker->finishStep($step['name'], false, [], '异常: '.$e->getMessage());
                     $runner->addResult($step['name'], ['success'=>false,'message'=>$e->getMessage(),'exception_class'=>get_class($e),'file'=>$e->getFile(),'line'=>$e->getLine()]);
                     gx_log("{$step['name']} exception: ".$e->getMessage(), 'error');
                 }
@@ -832,6 +1233,13 @@ try {
     $summary['started_at'] = date('Y-m-d H:i:s', intval($GX_START_TIME));
     $summary['finished_at'] = date('Y-m-d H:i:s');
     gx_saveLastRun($summary);
+
+    // 最后：写进度到 100%
+    if (isset($tracker) && ($tracker instanceof GxProgressTracker)) {
+        $failedMsg = $summary['failed_tasks'] ? '失败项：' . implode(',', $summary['failed_tasks']) : '';
+        $tracker->finishAll(!empty($summary['success']), ($summary['success'] ? '全部步骤执行完毕' : '执行部分失败：'.$failedMsg) . "（总耗时 {$summary['cost_seconds']}s）");
+    }
+
     gx_log("✓ finished action=$action success=".($summary['success']?'1':'0')." cost=".$summary['cost_seconds']."s failed=[".implode(',',$summary['failed_tasks'])."]");
 
     if ($GX_IS_CLI) {
@@ -850,6 +1258,9 @@ try {
 
 } catch (Throwable $e) {
     gx_log("FATAL: " . $e->getMessage() . " file=".$e->getFile()." line=".$e->getLine(), 'error');
+    if (isset($tracker) && ($tracker instanceof GxProgressTracker)) {
+        $tracker->finishAll(false, '运行中断：' . $e->getMessage() . " ({$e->getFile()}:{$e->getLine()})");
+    }
     $err = ['success' => false, 'code' => 500, 'message' => 'gx.php 运行异常: '.$e->getMessage(), 'file'=>$e->getFile(), 'line'=>$e->getLine()];
     if ($GX_IS_CLI) {
         fwrite(STDERR, "FATAL: ".$e->getMessage()."\n");

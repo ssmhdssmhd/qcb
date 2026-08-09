@@ -2,6 +2,24 @@
 header('Cache-Control: no-cache, no-store, must-revalidate');
 header('Pragma: no-cache');
 header('Expires: 0');
+// ---- 自动更新模块：输出 gx_secret 给前端（用于 HMAC 签名启动任务）----
+$_mxGXSecret = null;
+$_mxGXDir    = __DIR__ . '/gx';
+$_mxGXSecretFile = $_mxGXDir . '/.gx_secret.php';
+if (file_exists($_mxGXSecretFile)) {
+    $_cfg = @include $_mxGXSecretFile;
+    if (is_array($_cfg) && !empty($_cfg['gx_key']) && strlen($_cfg['gx_key']) >= 16) {
+        $_mxGXSecret = $_cfg['gx_key'];
+    }
+}
+if (!$_mxGXSecret) {
+    // 兼容旧版纯文本格式 .gx_secret
+    $_old = $_mxGXDir . '/.gx_secret';
+    if (file_exists($_old)) {
+        $_s = trim(file_get_contents($_old));
+        if (strlen($_s) >= 16) $_mxGXSecret = $_s;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -12,6 +30,15 @@ header('Expires: 0');
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/dplayer/1.27.1/DPlayer.min.css">
     <script src="https://cdn.bootcdn.net/ajax/libs/hls.js/1.5.15/hls.min.js"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/dplayer/1.27.1/DPlayer.min.js"></script>
+    <script>
+        // 自动更新（进度条）模块的前端常量
+        // 说明：签名 token 改为服务端 gx_token.php 生成（避免客户端 Web Crypto 需要安全上下文的问题），
+        // 所以不再把 gx_secret 明文暴露到前端，只输出一个 ready 标志用于前端提示。
+        window.__GX_SECRET_READY__ = <?php echo $_mxGXSecret ? 'true' : 'false'; ?>;
+        window.__GX_TOKEN_URL__    = 'gx_token.php';
+        window.__GX_EXEC_URL__     = 'gx_execute.php';
+        window.__GX_PROGRESS_URL__ = 'gx_progress.php';
+    </script>
     <style>
         :root {
             --primary: #667eea;
@@ -3745,6 +3772,95 @@ header('Expires: 0');
             </div>
         </div>
 
+        <!-- 自动更新 / 维护（显示进度条） -->
+        <div class="page" id="page-autoupdate">
+            <div class="card">
+                <div class="card-title">🔄 自动更新 / 维护（进度条可视化）</div>
+                <p style="font-size:13px;color:#606266;margin-bottom:16px">
+                    一键执行「语法检查 → 数据库迁移 → 官替纠偏/刷新 → AI 学习 → 资源站健康巡检」全流程，后台任务运行，页面实时显示进度条。
+                </p>
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px">
+                    <div style="font-size:13px;color:#606266">任务:</div>
+                    <select id="gxAction" class="gx-select" style="padding:8px 10px;border:1px solid var(--border-base);border-radius:6px;background:#fff;font-size:13px">
+                        <option value="all">全部 (check → migrate → official_refresh → ai_learn → site_check)</option>
+                        <option value="check">① 语法检查 check</option>
+                        <option value="migrate">② 数据库迁移 migrate</option>
+                        <option value="official_refresh">③ 官替纠偏/刷新 official_refresh</option>
+                        <option value="ai_learn">④ AI 学习 ai_learn</option>
+                        <option value="ai_cleanup">⑤ AI 旧样本清理 ai_cleanup</option>
+                        <option value="site_check">⑥ 资源站健康巡检 site_check</option>
+                        <option value="rule_check">⑦ 域名规则健康检查 rule_check</option>
+                        <option value="status">只看上次执行结果 status</option>
+                    </select>
+                    <div style="font-size:13px;color:#606266">最大数:</div>
+                    <input type="number" id="gxMax" value="5" min="1" max="30" style="width:90px;padding:8px 10px;border:1px solid var(--border-base);border-radius:6px;font-size:13px">
+                    <label style="font-size:13px;color:#606266;display:flex;align-items:center;gap:6px">
+                        <input type="checkbox" id="gxForce" style="width:15px;height:15px"> 强制 (force)
+                    </label>
+                    <button class="btn btn-primary" id="gxStartBtn" onclick="gxStartTask()">▶ 开始执行</button>
+                    <button class="btn btn-secondary" onclick="gxRefreshProgress()">🔃 刷新进度</button>
+                    <button class="btn btn-danger" id="gxStopBtn" style="display:none" onclick="gxStopTask()">⛔ 停止轮询</button>
+                </div>
+
+                <!-- 任务概览 -->
+                <div id="gxOverview" style="font-size:13px;color:#606266;padding:10px 14px;background:#f8fafc;border-radius:8px;border:1px solid #eef2f7;margin-bottom:16px">
+                    暂无运行任务，点击「开始执行」启动。
+                </div>
+
+                <!-- 总进度条 -->
+                <div style="margin-bottom:14px">
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+                        <span id="gxPctText" style="font-weight:600;color:var(--text-primary)">进度：0%</span>
+                        <span id="gxStepText" style="color:var(--text-secondary)">等待启动…</span>
+                    </div>
+                    <div style="width:100%;height:22px;background:#edf1f5;border-radius:12px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.05)">
+                        <div id="gxProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:12px;transition:width .35s ease;position:relative;">
+                            <div style="position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.25) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.25) 50%,rgba(255,255,255,.25) 75%,transparent 75%);background-size:22px 22px;animation:gx-bar-stripes 1s linear infinite;opacity:.7;"></div>
+                        </div>
+                    </div>
+                </div>
+                <style>
+                    @keyframes gx-bar-stripes { from{background-position:0 0} to{background-position:44px 0} }
+                    .gx-step-row { display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;margin-bottom:6px;background:#fafbfc;border:1px solid #eef1f5;font-size:13px; }
+                    .gx-step-row.done-ok    { background:#f0f9eb; border-color:#e1f3d8; color:#529b2e; }
+                    .gx-step-row.done-fail  { background:#fef0f0; border-color:#fbc4c4; color:#d9363e; }
+                    .gx-step-row.running    { background:#ecf5ff; border-color:#d9ecff; color:#2e5b9e; animation:gx-pulse 1.4s ease-in-out infinite; }
+                    @keyframes gx-pulse { 0%,100%{ box-shadow:0 0 0 rgba(102,126,234,.2)} 50%{ box-shadow:0 0 0 6px rgba(102,126,234,.0)} }
+                    .gx-step-name { width:150px;flex-shrink:0;font-weight:600 }
+                    .gx-step-sub  { flex:1;color:#606266;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+                    .gx-step-pct  { width:56px;text-align:right;color:#909399 }
+                    .gx-step-icon { width:20px;text-align:center }
+                    .gx-log { max-height:380px;overflow:auto;border:1px solid #e9ecef;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px 14px;font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:12.5px;line-height:1.55 }
+                    .gx-log .info   { color:#93c5fd }
+                    .gx-log .warn   { color:#fbbf24 }
+                    .gx-log .error  { color:#f87171;font-weight:600 }
+                    .gx-log .ok     { color:#34d399;font-weight:600 }
+                    .gx-log .time   { color:#64748b;margin-right:8px }
+                </style>
+
+                <!-- 步骤进度（每步卡片） -->
+                <div class="card" style="margin-top:0;box-shadow:none;border:1px solid var(--border-lighter)">
+                    <div class="card-title" style="font-size:14px">步骤详情</div>
+                    <div id="gxStepsList" style="margin-top:8px">
+                        <div style="color:var(--text-secondary);font-size:13px">等待启动…</div>
+                    </div>
+                </div>
+
+                <!-- 彩色日志 -->
+                <div class="card" style="margin-top:18px;box-shadow:none;border:1px solid var(--border-lighter)">
+                    <div class="card-title" style="font-size:14px;display:flex;align-items:center;justify-content:space-between">
+                        <span>📜 运行日志</span>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="document.getElementById('gxLog').innerHTML=''">清空</button>
+                            <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="gxToggleAutoScroll()" id="gxAutoScrollBtn">自动滚动: 开</button>
+                        </div>
+                    </div>
+                    <div id="gxLog" class="gx-log"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="page" id="page-announcement">
             <div class="card">
                 <div class="card-title">公告管理</div>
@@ -4208,6 +4324,10 @@ header('Expires: 0');
                 <div class="nav-icon">📜</div>
                 <div>历史</div>
             </div>
+            <div class="mobile-nav-item" data-page="autoupdate" onclick="mobileNavTo('autoupdate')">
+                <div class="nav-icon">🔄</div>
+                <div>自动更新</div>
+            </div>
         </div>
     </div>
 
@@ -4500,6 +4620,7 @@ header('Expires: 0');
                     { page: 'announcement', icon: '📢', text: '公告管理' },
                     { page: 'play', icon: '▶️', text: '在线播放' },
                     { page: 'update', icon: '🔧', text: '系统更新' },
+                    { page: 'autoupdate', icon: '🔄', text: '自动更新/维护', badge: '进度条' },
                     { page: 'auth', icon: '🔐', text: '授权管理' },
                 ]
             }
@@ -12118,7 +12239,340 @@ header('Expires: 0');
                 })
                 .catch(() => {});
             setTimeout(() => checkUpdate(true), 2000);
+            // 自动更新模块：一进后台立即拉一次进度（若此前有运行中的任务则可以继续显示进度）
+            if (document.getElementById('page-autoupdate')) {
+                setTimeout(() => gxRefreshProgress(true), 400);
+            }
         });
+
+        /* ============================================================
+         *   自动更新 / 维护 模块（进度条 + 彩色日志 + 启动接口）
+         * ============================================================ */
+        const GX_STATE = {
+            polling: false,
+            timer: null,
+            lastLogs: -1,            // 已输出的日志条数（防止重复渲染）
+            lastTaskId: null,
+            autoScroll: true,
+            intervalMs: 1200,
+        };
+
+        // ---------- HMAC-SHA256 工具（顶层函数，供 gxBuildSignedPayload 调用）----------
+        function _gx_utf8e(s){ return unescape(encodeURIComponent(String(s == null ? '' : s))); }
+        function _gx_hex2a(h){ var b=[]; for(var i=0;i<h.length;i+=2) b.push(parseInt(h.substr(i,2),16)); return b; }
+        function _gx_a2hex(b){ var h=''; for(var i=0;i<b.length;i++){ h += ('0'+b[i].toString(16)).slice(-2); } return h; }
+        function _gx_sha256(bytes){
+            var K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+                0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+                0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+                0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+                0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+                0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+                0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+                0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+            var h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+            var bytes2=bytes.slice();
+            var bitLen=bytes2.length*8;
+            bytes2.push(0x80);
+            while(bytes2.length%64!==56) bytes2.push(0);
+            for(var i=7;i>=0;i--) bytes2.push((bitLen>>>(8*i))&0xff);
+            var rotr=function(x,n){ return (x>>>n)|(x<<(32-n)); };
+            for(var z=0;z<bytes2.length;z+=64){
+                var w=[];
+                for(var i=0;i<16;i++) w.push((bytes2[z+i*4]<<24)|(bytes2[z+i*4+1]<<16)|(bytes2[z+i*4+2]<<8)|bytes2[z+i*4+3]);
+                for(var i=16;i<64;i++){
+                    var s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3);
+                    var s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10);
+                    w[i]=(w[i-16]+s0+w[i-7]+s1)|0;
+                }
+                var a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
+                for(var i=0;i<64;i++){
+                    var S1=rotr(e,6)^rotr(e,11)^rotr(e,25), ch=((e&f)^((~e)&g));
+                    var t1=(h+S1+ch+K[i]+w[i])|0;
+                    var S0=rotr(a,2)^rotr(a,13)^rotr(a,22), mj=((a&b)^(a&c)^(b&c));
+                    var t2=(S0+mj)|0;
+                    h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;
+                }
+                h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;h5=(h5+f)|0;h6=(h6+g)|0;h7=(h7+h)|0;
+            }
+            var pad=function(n){ return ('00000000'+(n>>>0).toString(16)).slice(-8); };
+            return pad(h0)+pad(h1)+pad(h2)+pad(h3)+pad(h4)+pad(h5)+pad(h6)+pad(h7);
+        }
+        function _gx_toBytes(s){
+            var out=[]; var u=_gx_utf8e(s);
+            for(var i=0;i<u.length;i++) out.push(u.charCodeAt(i)&0xff);
+            return out;
+        }
+
+        /** HMAC-SHA256：优先使用浏览器原生 Web Crypto（与 PHP hash_hmac 100% 对齐），不支持时 fallback 到纯 JS 实现 */
+        async function gxHmacSha256(key, msg) {
+            // 1) 原生 Web Crypto（现代浏览器都支持，结果与 PHP hash_hmac 完全一致）
+            if (window.crypto && crypto.subtle && typeof crypto.subtle.importKey === 'function') {
+                try {
+                    var keyBytes = new Uint8Array(_gx_toBytes(key));
+                    var msgBytes = new Uint8Array(_gx_toBytes(msg));
+                    var cryptoKey = await crypto.subtle.importKey(
+                        'raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+                    );
+                    var sig = await crypto.subtle.sign('HMAC', cryptoKey, msgBytes);
+                    return _gx_a2hex(Array.from(new Uint8Array(sig)));
+                } catch (_e) { /* fall-through */ }
+            }
+            // 2) fallback：纯 JS HMAC-SHA256
+            var blockSize = 64;
+            var ke = _gx_toBytes(key);
+            var k2 = ke.slice();
+            if (k2.length > blockSize) k2 = _gx_hex2a(_gx_sha256(k2));
+            while (k2.length < blockSize) k2.push(0);
+            var o = [], ipad = [];
+            for (var t = 0; t < blockSize; t++) { o.push(k2[t] ^ 0x5c); ipad.push(k2[t] ^ 0x36); }
+            var mBytes = _gx_toBytes(msg);
+            var inner = _gx_sha256(ipad.concat(mBytes));
+            var outer = _gx_sha256(o.concat(_gx_hex2a(inner)));
+            return outer;
+        }
+
+        function gxNowTs() { return Math.floor(Date.now() / 1000); }
+
+        /**
+         * 构建签名后的启动 payload —— 改为请求服务端 gx_token.php 生成，
+         * 彻底避免客户端 Web Crypto 安全上下文限制、以及手写 JS HMAC 与 PHP 不一致的问题。
+         * 返回格式与之前完全一致：{ token, ts, action, max, force }
+         */
+        async function gxBuildSignedPayload(action, max, force) {
+            if (!window.__GX_TOKEN_URL__) throw new Error('__GX_TOKEN_URL__ 未配置');
+            var body = {
+                action: action,
+                max:    (max === null || max === undefined) ? 'null' : max,
+                force:  force ? 1 : 0
+            };
+            var resp = await fetch(window.__GX_TOKEN_URL__, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            var j = await resp.json();
+            if (!j || !j.ok || !j.data) {
+                throw new Error((j && j.error) ? j.error : '获取签名 token 失败');
+            }
+            return j.data;
+        }
+
+        function gxLogLine(timeStr, level, text) {
+            const logEl = document.getElementById('gxLog');
+            if (!logEl) return;
+            const lvl = (level||'info').toLowerCase();
+            const map = { info:'info', warn:'warn', warning:'warn', error:'error', ok:'ok', success:'ok', success_:'ok' };
+            const cls = map[lvl] || 'info';
+            const div = document.createElement('div');
+            div.innerHTML = `<span class="time">${timeStr||''}</span><span class="${cls}">${gxEscapeHtml(text)}</span>`;
+            logEl.appendChild(div);
+            if (GX_STATE.autoScroll) logEl.scrollTop = logEl.scrollHeight;
+        }
+        function gxEscapeHtml(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+
+        function gxToggleAutoScroll() {
+            GX_STATE.autoScroll = !GX_STATE.autoScroll;
+            const btn = document.getElementById('gxAutoScrollBtn');
+            if (btn) btn.textContent = '自动滚动: ' + (GX_STATE.autoScroll ? '开' : '关');
+        }
+
+        function gxSetPct(pct, stepText) {
+            pct = Math.max(0, Math.min(100, Math.round(pct||0)));
+            const bar = document.getElementById('gxProgressBar');
+            const txt = document.getElementById('gxPctText');
+            const stp = document.getElementById('gxStepText');
+            if (bar) bar.style.width = pct + '%';
+            if (txt) txt.textContent = `进度：${pct}%`;
+            if (stp && stepText != null) stp.textContent = stepText;
+        }
+
+        function gxSetOverview(text) {
+            const el = document.getElementById('gxOverview');
+            if (el) el.innerHTML = text;
+        }
+
+        function gxRenderSteps(progress) {
+            const steps = progress?.steps || {};
+            const keys = Object.keys(steps);
+            const listEl = document.getElementById('gxStepsList');
+            if (!listEl) return;
+            if (keys.length === 0) { listEl.innerHTML = '<div style="color:var(--text-secondary);font-size:13px">等待启动…</div>'; return; }
+            let html = '';
+            const icon = st => {
+                if (st.status === 'done' && st.success) return '<span class="gx-step-icon">✅</span>';
+                if (st.status === 'done' && !st.success) return '<span class="gx-step-icon">❌</span>';
+                if (st.status === 'running') return '<span class="gx-step-icon">⏳</span>';
+                return '<span class="gx-step-icon" style="color:#c0c4cc">·</span>';
+            };
+            const rowClass = st => {
+                if (st.status === 'done') return st.success ? 'gx-step-row done-ok' : 'gx-step-row done-fail';
+                if (st.status === 'running') return 'gx-step-row running';
+                return 'gx-step-row';
+            };
+            keys.forEach(k=>{
+                const st = steps[k];
+                const pct = Math.round((st.percent || 0)*100)/100;
+                html += `<div class="${rowClass(st)}">
+                    ${icon(st)}
+                    <div class="gx-step-name">${gxEscapeHtml(k)}</div>
+                    <div class="gx-step-sub" title="${gxEscapeHtml(st.sub_message || st.message || '')}">${gxEscapeHtml(st.sub_message || st.message || (st.status==='pending'?'待执行':''))}</div>
+                    <div class="gx-step-pct">${pct.toFixed(0)}%</div>
+                </div>`;
+            });
+            listEl.innerHTML = html;
+        }
+
+        function gxAppendNewLogs(progress) {
+            const logs = progress?.logs || [];
+            if (logs.length <= GX_STATE.lastLogs) return;
+            for (let i = GX_STATE.lastLogs < 0 ? 0 : GX_STATE.lastLogs; i < logs.length; i++) {
+                const L = logs[i] || {};
+                const t = (L.time || '').replace(/^.*T/, '').replace(/\..*/, '');
+                gxLogLine(t, L.level || 'info', L.message || '');
+            }
+            GX_STATE.lastLogs = logs.length;
+        }
+
+        function gxResetLogs() {
+            GX_STATE.lastLogs = -1;
+            const el = document.getElementById('gxLog');
+            if (el) el.innerHTML = '';
+        }
+
+        function gxStopTask() {
+            GX_STATE.polling = false;
+            if (GX_STATE.timer) { clearTimeout(GX_STATE.timer); GX_STATE.timer = null; }
+            const sb = document.getElementById('gxStopBtn');
+            if (sb) sb.style.display = 'none';
+            showToast('已停止进度轮询（不影响后台任务）', 'warn');
+        }
+
+        function gxStartPolling() {
+            if (GX_STATE.polling) return;
+            GX_STATE.polling = true;
+            const sb = document.getElementById('gxStopBtn');
+            if (sb) sb.style.display = '';
+            const tick = () => {
+                if (!GX_STATE.polling) return;
+                gxRefreshProgress(false).then(()=>{
+                    GX_STATE.timer = setTimeout(tick, GX_STATE.intervalMs);
+                }).catch(()=>{
+                    GX_STATE.timer = setTimeout(tick, GX_STATE.intervalMs);
+                });
+            };
+            tick();
+        }
+
+        async function gxRefreshProgress(silent=false) {
+            try {
+                const r = await fetch(window.__GX_PROGRESS_URL__, { cache:'no-store' });
+                const data = await r.json();
+                const prog = data.progress;
+                if (!prog) {
+                    // 无进行中的任务：显示 last_run 摘要
+                    const lr = data.last_run;
+                    if (!silent) {
+                        gxSetPct(0, lr ? '上次执行：' + (lr.finished_at||'') : '等待启动…');
+                        gxRenderSteps({});
+                    }
+                    if (lr) {
+                        const ok = lr.success ? '✅ 成功' : (lr.failed_tasks&&lr.failed_tasks.length? '⚠️ 部分失败: '+lr.failed_tasks.join(',') : '❌ 失败');
+                        gxSetOverview(`📌 最近一次执行 @ ${lr.finished_at||''} — 动作: <b>${gxEscapeHtml(lr.action||'')}</b>，耗时 ${lr.cost_seconds||0}s，${ok}`);
+                    } else {
+                        gxSetOverview('暂无运行任务，点击「开始执行」启动。');
+                    }
+                    if (GX_STATE.polling && (!prog)) {
+                        // 连续若干次无 progress 后停止轮询（此处简单停一次）
+                        GX_STATE.polling = false;
+                        if (GX_STATE.timer) { clearTimeout(GX_STATE.timer); GX_STATE.timer=null; }
+                        const sb = document.getElementById('gxStopBtn');
+                        if (sb) sb.style.display = 'none';
+                    }
+                    return;
+                }
+                // 切换 task_id 时重置日志
+                if (GX_STATE.lastTaskId !== prog.task_id) {
+                    GX_STATE.lastTaskId = prog.task_id;
+                    gxResetLogs();
+                }
+                const pct = Math.round((prog.percent||0)*100)/100;
+                const cur = prog.current_step ? `当前步骤：${prog.current_step}${prog.current_message?` · ${prog.current_message}`:''}` : (prog.overall_status||'');
+                gxSetPct(pct, cur);
+                gxRenderSteps(prog);
+                gxAppendNewLogs(prog);
+                const status2text = {
+                    pending:'等待执行',
+                    running:'⏳ 执行中',
+                    success:'✅ 执行完成',
+                    failed: '❌ 执行失败',
+                    partial:'⚠️ 部分成功',
+                };
+                const dur = prog.duration_sec != null ? `，耗时 ${prog.duration_sec}s` : '';
+                gxSetOverview(`🆔 Task: <b>${gxEscapeHtml(prog.task_id||'')}</b> · 动作: <b>${gxEscapeHtml(prog.action||'')}</b> · 状态: <b>${status2text[prog.overall_status]||prog.overall_status}</b>${dur}`);
+                // 完成时停止轮询
+                if (['success','failed','partial'].indexOf(prog.overall_status) >= 0) {
+                    if (GX_STATE.polling) {
+                        GX_STATE.polling = false;
+                        if (GX_STATE.timer) { clearTimeout(GX_STATE.timer); GX_STATE.timer=null; }
+                        const sb = document.getElementById('gxStopBtn');
+                        if (sb) sb.style.display = 'none';
+                        showToast(prog.overall_status==='success' ? '更新任务执行完成！' : '任务执行结束（部分步骤失败）', prog.overall_status==='success'?'success':'warn');
+                    }
+                }
+            } catch (e) {
+                if (!silent) {
+                    gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'error', 'gx_progress.php 拉取失败: ' + e.message);
+                }
+            }
+        }
+
+        async function gxStartTask() {
+            const action = document.getElementById('gxAction').value;
+            const maxVal = parseInt(document.getElementById('gxMax').value, 10);
+            const max = isNaN(maxVal) ? null : maxVal;
+            const force = document.getElementById('gxForce').checked;
+
+            if (!window.__GX_SECRET_READY__) {
+                showToast('gx_secret 未初始化：请先访问一次 /gx.php?action=reset_key 自动生成密钥后再刷新后台', 'error');
+                return;
+            }
+            const btn = document.getElementById('gxStartBtn');
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = '🔄 提交中...'; }
+                const body = await gxBuildSignedPayload(action, max, force);
+                gxResetLogs();
+                gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'info', `请求启动：action=${action}, max=${max==null?'默认':max}, force=${force?'是':'否'}`);
+                const r = await fetch(window.__GX_EXEC_URL__, {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify(body),
+                });
+                let data;
+                try { data = await r.json(); } catch(e){ data = {success:false, message:await r.text()}; }
+                if (!r.ok || !data.success) {
+                    gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'error', `启动失败(${data.code||r.status}): ${data.message||'未知错误'}`);
+                    showToast('启动失败: ' + (data.message||r.status), 'error');
+                    return;
+                }
+                gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'ok', (data.message || '任务已启动') + (data.pid?` (pid=${data.pid})`:'') + (data.task_id?` (task_id=${data.task_id})`:''));
+                if (data.progress) {
+                    // 立即展示初始进度
+                    const pct = Math.round((data.progress.percent||0)*100)/100;
+                    gxSetPct(pct, data.progress.current_step || '任务启动中…');
+                    gxRenderSteps(data.progress);
+                    gxAppendNewLogs(data.progress);
+                }
+                showToast('任务已启动，进度条实时更新中…', 'success');
+                // 开始轮询
+                gxStartPolling();
+            } catch (e) {
+                gxLogLine(new Date().toLocaleTimeString('zh-CN',{hour12:false}), 'error', '请求异常: ' + e.message);
+                showToast('请求异常: ' + e.message, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '▶ 开始执行'; }
+            }
+        }
     </script>
 </body>
 </html>

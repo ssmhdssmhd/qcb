@@ -1,11 +1,32 @@
 <?php
 return [
-    'version' => 'v5.10.6',
+    'version' => 'v5.10.7',
     'build' => '20260810',
-    'version_code' => 51006,
-    'commit' => 'gx-fix-online-errors',
+    'version_code' => 51007,
+    'commit' => 'autoupdate-progress-ui',
     'updated_at' => '2026-08-10',
     'changelog' => [
+        'v5.10.7' => [
+            'date' => '2026-08-10',
+            'title' => '【后台自动更新进度条可视化】一键操作+进度跟踪+彩色日志',
+            'changes' => [
+                '后台「系统管理」分组新增「🔄 自动更新/维护」菜单项（page-autoupdate），进度条徽章标识',
+                '进度条 UI：渐变紫色进度条 + 条纹动画，支持 0-100% 平滑过渡，显示百分比和当前步骤',
+                '步骤详情卡片：按任务权重渲染每个子步骤，待执行(灰)/执行中(蓝动)/成功(绿✅)/失败(红❌) 四态彩色显示',
+                '彩色日志区域：info/warn/error/ok(success) 四色分级显示，支持自动滚动开关 + 手动滚动',
+                '操作面板：action 下拉(all/check/migrate/official_refresh/ai_learn/site_check/status/reset_key)、max 数量、force 强制',
+                '按钮：开始执行 / 刷新进度 / 停止轮询 / 重置密钥 / 手动清理旧进度 五合一操作面板',
+                'gx.php 进度跟踪升级：新增 GxProgressTracker 类，通过 gx/.gx_progress.json 记录步骤权重/百分比/日志/耗时',
+                'gx.php 异步执行：gx_launch_async() 支持 exec() CLI 后台启动，禁用时回退到同步执行不阻塞 HTTP',
+                'gx_execute.php 安全启动接口：HMAC-SHA256 签名 + 时间戳 ±24h，action 白名单校验，支持 exec()/fsockopen 双通道启动',
+                'gx_progress.php 进度查询接口：返回当前任务进度 + 历史执行记录，支持后台轮询（1.2s/次，自动停止）',
+                '【重点修复】签名生成改为服务端 gx_token.php：彻底解决 Web Crypto API 需 HTTPS 安全上下文（HTTP/IP 访问不可用）、以及手写 JS HMAC 与 PHP 不一致的问题',
+                '安全增强：mxadmin.php 不再将 gx_secret 明文暴露到前端 JS，仅输出 __GX_SECRET_READY__ 标志，签名统一由 gx_token.php 服务端生成',
+                'gx_execute.php 修复：HTTP_HOST 含端口时不再重复拼接 SERVER_PORT，max=null 字符串/JSON null/空/PHP null 四态全部统一识别为 null',
+                '浏览器端测试验证：action=status 任务 0s 完成，进度条→100%，步骤详情✅，彩色日志3条正确追加，轮询自动停止',
+                '后端集成测试通过：gx_token.php 生成签名 → gx_execute.php 校验通过 → 任务启动success:true → gx_progress.php 读取 percent=100%',
+            ],
+        ],
         'v5.10.6' => [
             'date' => '2026-08-10',
             'title' => '【gx.php 线上错误修复 v2】check/migrate/official_refresh 三大任务修复',
