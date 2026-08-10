@@ -191,10 +191,15 @@ class ResourceSiteManager {
     }
 
     public function deleteSite($name) {
+        $nameTrim = trim((string)$name);
         $newSites = [];
         $found = false;
         foreach ($this->config['sites'] as $site) {
-            if ($site['name'] !== $name) {
+            // 精确匹配 or 忽略大小写+trim 兜底匹配
+            if (
+                ($site['name'] ?? '') !== $nameTrim
+                && strcasecmp(trim((string)($site['name'] ?? '')), $nameTrim) !== 0
+            ) {
                 $newSites[] = $site;
             } else {
                 $found = true;
@@ -206,7 +211,7 @@ class ResourceSiteManager {
             $this->saveConfig();
             return ['success' => true, 'message' => '删除成功'];
         }
-        return ['success' => false, 'message' => '资源站不存在'];
+        return ['success' => false, 'message' => '资源站不存在: ' . $nameTrim];
     }
 
     private function isDomainFailureError($error) {

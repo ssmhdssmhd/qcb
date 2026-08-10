@@ -86,8 +86,14 @@ class DbResourceSiteManager {
     }
 
     public function getSiteByName($name) {
-        $row = $this->db->queryOne('SELECT * FROM resource_sites WHERE name = ?', [$name]);
-        return $this->parseSiteRow($row);
+        $nameTrim = trim((string)$name);
+        // 1. 精确匹配
+        $row = $this->db->queryOne('SELECT * FROM resource_sites WHERE name = ?', [$nameTrim]);
+        if ($row) return $this->parseSiteRow($row);
+        // 2. 忽略大小写匹配（兜底：名字前后空格/大小写不一致）
+        $row = $this->db->queryOne('SELECT * FROM resource_sites WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1', [$nameTrim]);
+        if ($row) return $this->parseSiteRow($row);
+        return null;
     }
 
     public function getSiteById($id) {
@@ -173,13 +179,26 @@ class DbResourceSiteManager {
     }
 
     public function deleteSite($name) {
-        $exists = $this->getSiteByName($name);
+        $nameTrim = trim((string)$name);
+        $exists = $this->getSiteByName($nameTrim);
         if (!$exists) {
-            return ['success' => false, 'message' => '资源站不存在'];
+            return ['success' => false, 'message' => '资源站不存在: ' . $nameTrim];
         }
-
-        $this->db->delete('resource_sites', 'name = ?', [$name]);
-        return ['success' => true, 'message' => '删除成功'];
+        // 按主键 id 删除最可靠（不会因为 name 的大小写/空格差异删错或删不到）
+        $id = intval($exists['id'] ?? 0);
+        if ($id <= 0) {
+            // 回退：按名字删（TRIM+LOWER 条件兜底）
+            $sql = sprintf('DELETE FROM %s WHERE LOWER(TRIM(name)) = LOWER(?)', 'resource_sites');
+            $ok = $this->db->execute($sql, [$nameTrim]);
+            // 再次查询确认是否已消失
+            $still = $this->getSiteByName($nameTrim);
+            if ($still) return ['success' => false, 'message' => '删除失败（回退按名删除未生效）'];
+            return ['success' => true, 'message' => '删除成功'];
+        }
+        $this->db->delete('resource_sites', 'id = ?', [$id]);
+        $still = $this->getSiteById($id);
+        if ($still) return ['success' => false, 'message' => '删除失败（数据库删除未生效）'];
+        return ['success' => true, 'message' => '删除成功（ID=' . $id . '）'];
     }
 
     public function deleteSiteById($id) {
@@ -187,8 +206,10 @@ class DbResourceSiteManager {
         if (!$exists) {
             return ['success' => false, 'message' => '资源站不存在'];
         }
-
-        $this->db->delete('resource_sites', 'id = ?', [$id]);
+        $idInt = intval($id);
+        $this->db->delete('resource_sites', 'id = ?', [$idInt]);
+        $still = $this->getSiteById($idInt);
+        if ($still) return ['success' => false, 'message' => '删除失败（数据库删除未生效）'];
         return ['success' => true, 'message' => '删除成功'];
     }
 

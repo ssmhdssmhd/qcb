@@ -8625,6 +8625,7 @@ if (!$_mxGXSecret) {
                             <button class="btn btn-sm btn-secondary" ${videoBtnOnclick}${videoBtnDisabled} title="${isPaused ? '站点已暂停，无法获取视频' : '获取视频列表'}">视频</button>
                             <button class="btn btn-sm btn-secondary" onclick="toggleSiteStatus('${escapeHtml(site.name)}', '${site.status}')">${isPaused ? '启用' : '暂停'}</button>
                             <button class="btn btn-sm btn-secondary" onclick="editSite('${escapeHtml(site.name)}')">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteSite('${escapeHtml(site.name)}')">删除</button>
                         </td>
                     </tr>
                 `;
