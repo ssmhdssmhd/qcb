@@ -812,6 +812,303 @@ if (!$_mxGXSecret) {
             background: linear-gradient(90deg, var(--success), #95d475);
             border-radius: 10px 10px 0 0;
         }
+
+        /* ===============================================================
+         * v5.12 后台全局统一美化组件（与嗅探设置同风格，冻结逻辑只改UI）
+         *   1. step-badge       ①②③ 编号圆形徽章（配合 card-title 使用）
+         *   2. overview-*       概览双栅格信息卡（首屏介绍）
+         *   3. form-grid        通用三列表单栅格（别名 sniffer-form-grid）
+         *   4. inline-form-grid 单行自适应栅格（200px/列，响应式 auto-fit）
+         *   5. status-pill      状态胶囊徽章（未启用 / 当前主路由 / 有修改未保存 …）
+         *   6. sub-card         子卡（接口配置/小节独立包装，嗅探 snifferOfficialCard 同款）
+         *   7. sub-card-header  子卡头部（标题+徽章左右布局）
+         *   8. section-caption  小节小字辅助说明（★必填/新增xxx等，与 card-title 同行右侧）
+         *   9. mode-card        模式选择卡（radio/checkbox 卡片式，嗅探 data-sniffer-mode-card 同款）
+         *   10. action-bar      操作按钮栏（按钮+灰字提示并排）
+         * =============================================================== */
+
+        /* 1. step-badge ①②③ 编号徽章（通用数字/圆点徽章） */
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 6px;
+            border-radius: 50%;
+            background: var(--primary-bg);
+            color: var(--primary-text);
+            font-size: 13px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .step-badge.success { background: var(--success-light); color: var(--success); }
+        .step-badge.warning { background: var(--warning-light); color: var(--warning); }
+        .step-badge.danger  { background: var(--danger-light);  color: var(--danger);  }
+        .step-badge.info    { background: var(--primary-bg);    color: var(--primary-text); }
+        .step-badge.plain   { background: var(--fill-lighter);  color: var(--text-regular); }
+        .step-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* 2. overview-grid / overview-item 概览双栅格信息卡 */
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-bottom: 0;
+        }
+        .overview-item {
+            border-radius: 10px;
+            padding: 14px 16px;
+            border: 1px solid var(--border-lighter);
+            background: var(--bg-card);
+        }
+        .overview-item.primary {
+            border-color: #dbe5fb;
+            background: #f5f9ff;
+        }
+        .overview-item.success {
+            border-color: var(--success-border);
+            background: var(--success-light);
+        }
+        .overview-item.warning {
+            border-color: #faecd8;
+            background: var(--warning-light);
+        }
+        .overview-item.danger {
+            border-color: #fde2e2;
+            background: #fff7f7;
+        }
+        .overview-item.info {
+            border-color: #d9ecff;
+            background: #ecf5ff;
+        }
+        .overview-item .overview-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 6px;
+            line-height: 1.5;
+        }
+        .overview-item.primary .overview-title { color: #2b4b9a; }
+        .overview-item.success .overview-title { color: #3d8c26; }
+        .overview-item.warning .overview-title { color: #9e7b1f; }
+        .overview-item.danger  .overview-title { color: #9e2d2d; }
+        .overview-item.info    .overview-title { color: #2e5b9e; }
+        .overview-item .overview-desc {
+            font-size: 13px;
+            color: var(--text-regular);
+            line-height: 1.8;
+        }
+        .overview-item .overview-desc code {
+            background: var(--bg-card);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        /* 3. form-grid 通用三列表单栅格（与嗅探设置 sniffer-form-grid 完全一致） */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px 20px;
+        }
+        @media (max-width: 900px) {
+            .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 560px) {
+            .form-grid { grid-template-columns: 1fr; }
+        }
+        .form-grid .form-group { margin-bottom: 0; }
+        /* sniffer-form-grid 保持别名兼容 */
+        .sniffer-form-grid { }
+
+        /* 4. inline-form-grid 单行自适应栅格 */
+        .inline-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .inline-form-grid .form-group { margin-bottom: 0; }
+        .inline-form-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        @media (max-width: 700px) {
+            .inline-form-grid.cols-2 { grid-template-columns: 1fr; }
+        }
+
+        /* 5. status-pill 状态胶囊徽章（嗅探：未启用/当前主路由/有修改未保存） */
+        .status-pill {
+            display: inline-block;
+            font-size: 12px;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-weight: 500;
+            line-height: 1.8;
+            white-space: nowrap;
+        }
+        .status-pill.gray    { background: #f0f0f0;    color: #909399; }
+        .status-pill.green   { background: #e1f3d8;   color: #67c23a; }
+        .status-pill.blue    { background: #d9ecff;   color: #409eff; }
+        .status-pill.orange  { background: #faecd8;   color: #e6a23c; }
+        .status-pill.red     { background: #fde2e2;   color: #f56c6c; }
+        .status-pill.dirty   { background: #fef6e7;   color: #e6a23c; }
+        .status-pill.purple  { background: #efe5ff;   color: #722ed1; }
+        .status-pill.dark    { background: #303133;   color: #ffffff; }
+
+        /* 6. sub-card 子卡 */
+        .sub-card {
+            border: 1px solid var(--border-lighter);
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+            background: var(--bg-card);
+        }
+        .sub-card:last-child { margin-bottom: 0; }
+        .sub-card:hover {
+            border-color: var(--border-light);
+        }
+        .sub-card.is-current {
+            border-color: var(--success) !important;
+            box-shadow: 0 2px 10px rgba(103, 194, 58, 0.1);
+        }
+        .sub-card.is-current::before {
+            content: "";
+            display: block;
+            height: 3px;
+            margin: -16px -18px 12px -18px;
+            background: linear-gradient(90deg, var(--success), #95d475);
+            border-radius: 10px 10px 0 0;
+        }
+        .sub-card.is-disabled {
+            background: #fafafa;
+            opacity: 0.85;
+        }
+
+        /* 7. sub-card-header 子卡头部（左右两栏） */
+        .sub-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .sub-card-header .left,
+        .sub-card-header .right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .sub-card-header .title {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 15px;
+        }
+        .sub-card-header .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: normal;
+            margin: 0;
+            user-select: none;
+            font-size: 13px;
+        }
+        .sub-card-header .toggle-label input { transform: scale(1.05); }
+
+        /* 8. section-caption 小节小字辅助说明 */
+        .section-caption {
+            font-size: 12px;
+            font-weight: normal;
+            color: var(--text-secondary);
+            margin-left: 8px;
+        }
+        .section-caption.required { color: var(--warning); }
+        .card-title .section-caption {
+            font-weight: normal;
+            line-height: 1.6;
+        }
+
+        /* 9. mode-card 模式选择卡 */
+        .mode-card {
+            position: relative;
+            display: block;
+            border: 2px solid var(--border-base);
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: 0.15s all ease;
+        }
+        .mode-card:hover {
+            border-color: var(--primary);
+        }
+        .mode-card.is-active {
+            border-color: var(--primary) !important;
+            background: var(--primary-bg) !important;
+            box-shadow: 0 2px 10px rgba(64, 158, 255, 0.12);
+        }
+        .mode-card .mode-card-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .mode-card .mode-card-head input { transform: scale(1.1); }
+        .mode-card .mode-card-title {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .mode-card .mode-card-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-left: 26px;
+            line-height: 1.6;
+        }
+
+        /* 10. action-bar 操作按钮栏 */
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .action-bar.tight    { margin-top: 0; }
+        .action-bar.with-top { margin-top: 18px; }
+        .action-bar .action-tip {
+            font-size: 12px;
+            color: var(--text-secondary);
+            align-self: center;
+        }
+        .action-bar input[type="file"] { display: none; }
+
+        /* ----- v5.12 输入焦点&下拉选框与嗅探同款（统一 input-group 内的 select 样式） ----- */
+        .inline-form-grid select,
+        .form-grid select,
+        .sub-card select,
+        select.form-control-inline {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border-base);
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+        .inline-form-grid select:focus,
+        .form-grid select:focus,
+        .sub-card select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-bg);
+        }
+
         .rule-section {
             border: 1px solid var(--border-lighter);
             border-radius: 6px;
@@ -2652,78 +2949,121 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-history">
-            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
-                <div>
-                    <h2 class="page-title">📜 分析历史</h2>
-                    <p class="page-subtitle">查看所有分析记录，可搜索和重新分析</p>
+            <!-- ① 概览卡（信息架构） -->
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">📜 分析历史</span>
+                        <span class="status-pill blue">localStorage</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">全部记录保存在浏览器本地，不占用服务器空间</span>
                 </div>
-                <div class="page-actions">
-                    <input type="text" id="historySearch" placeholder="搜索URL或域名..." style="width:200px" oninput="filterHistory()">
-                    <button class="btn btn-secondary" onclick="clearHistory()">🗑️ 清空历史</button>
+                <div class="overview-grid">
+                    <div class="overview-item info">
+                        <div class="overview-title">🔍 快速查询</div>
+                        <div class="overview-desc">
+                            · 支持按 URL / 域名关键字<strong>实时过滤</strong>，无需刷新。<br>
+                            · 支持按类型切换：<strong>全部/视频分析/AI去广告/MD5分析</strong>。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">🗑️ 清理注意</div>
+                        <div class="overview-desc">
+                            · 清空为<strong>不可逆操作</strong>，仅建议浏览器占用过高时执行。<br>
+                            · 若需保留关键记录，请勿点击清空按钮；可按URL单独删除对应条目。
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <!-- ② 记录列表 -->
             <div class="card">
-                <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-                    <div style="font-size:13px;color:var(--v3-text-muted)">
-                        共 <span id="historyCount">0</span> 条记录
-                    </div>
-                    <div style="display:flex;gap:8px">
-                        <select id="historyFilter" onchange="filterHistory()" style="width:140px">
-                            <option value="all">全部类型</option>
-                            <option value="analyze">视频分析</option>
-                            <option value="ai_skip">AI去广告</option>
-                            <option value="md5">MD5分析</option>
-                        </select>
-                    </div>
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>检索与记录列表</span></span>
+                    <span class="section-caption">支持模糊搜索 + 类型下拉双条件筛选</span>
+                </div>
+                <div class="action-bar" style="margin-bottom:16px">
+                    <input type="text" id="historySearch" placeholder="搜索URL或域名..." style="min-width:220px;flex:1;max-width:360px;padding:10px 14px;border:1px solid var(--border-base);border-radius:8px;font-size:13px;outline:none;transition:.3s" oninput="filterHistory()">
+                    <select id="historyFilter" onchange="filterHistory()" style="width:160px;padding:10px 14px;border:1px solid var(--border-base);border-radius:8px;font-size:13px;outline:none">
+                        <option value="all">全部类型</option>
+                        <option value="analyze">视频分析</option>
+                        <option value="ai_skip">AI去广告</option>
+                        <option value="md5">MD5分析</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="clearHistory()">🗑️ 清空历史</button>
+                    <span class="action-tip">共 <strong id="historyCount" style="color:var(--primary-text)">0</strong> 条记录</span>
                 </div>
                 <div id="historyList">
-                    <div style="text-align:center;color:var(--v3-text-muted);padding:40px">
+                    <div style="text-align:center;color:var(--text-secondary);padding:40px">
                         <div style="font-size:40px;margin-bottom:12px">📭</div>
-                        <div>暂无分析记录</div>
-                        <div style="font-size:12px;margin-top:4px">分析视频后，记录将显示在这里</div>
+                        <div style="font-weight:500">暂无分析记录</div>
+                        <div style="font-size:12px;margin-top:4px;color:var(--text-secondary)">分析视频后，记录将自动保存在这里</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-batch">
-            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
-                <div>
-                    <h2 class="page-title">📦 批量分析</h2>
-                    <p class="page-subtitle">批量导入视频链接，一键批量分析去广告</p>
-                </div>
-                <div class="page-actions">
-                    <button class="btn btn-secondary" onclick="loadBatchDemo()">📋 示例数据</button>
-                    <button class="btn btn-primary" onclick="startBatchAnalyze()">🚀 开始批量分析</button>
-                </div>
-            </div>
-
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">📝 输入视频链接</div>
-                <div style="margin-bottom:12px;font-size:12px;color:var(--v3-text-muted)">
-                    每行一个链接，支持批量粘贴，最多支持 20 个链接同时分析
-                </div>
-                <textarea id="batchUrls" placeholder="每行一个M3U8链接，例如：&#10;https://example.com/video1/index.m3u8&#10;https://example.com/video2/index.m3u8" style="min-height:160px;font-family:monospace;font-size:12px"></textarea>
-                <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-                    <div style="font-size:12px;color:var(--v3-text-muted)">
-                        已输入 <span id="batchUrlCount">0</span> 个链接
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">📦 批量分析</span>
+                        <span class="status-pill purple">一键批量</span>
                     </div>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--v3-text-secondary)">
-                            <input type="checkbox" id="batchFastMode" checked>
-                            极速模式
-                        </label>
-                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--v3-text-secondary)">
-                            <input type="checkbox" id="batchAiMode" checked>
-                            AI去广告
-                        </label>
+                    <div class="action-bar tight">
+                        <button class="btn btn-secondary" onclick="loadBatchDemo()">📋 示例数据</button>
+                        <button class="btn btn-primary" onclick="startBatchAnalyze()">🚀 开始批量分析</button>
+                    </div>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item primary">
+                        <div class="overview-title">⚡ 极速模式（默认开启）</div>
+                        <div class="overview-desc">
+                            · 使用 <code>md5-fingerprint + 快速时长规则</code>，速度提升 <strong>2~3 倍</strong>。<br>
+                            · 适合大批量视频统一清洗，<strong>单视频耗时约 1~2s</strong>。
+                        </div>
+                    </div>
+                    <div class="overview-item success">
+                        <div class="overview-title">🤖 AI 去广告模式（建议开启）</div>
+                        <div class="overview-desc">
+                            · 开启后自动走 <strong>AI+MD5 非正片占位</strong>，不中断播放。<br>
+                            · 关闭时只分析不输出：用于对比纯时长与 AI 的差异。
+                        </div>
                     </div>
                 </div>
             </div>
 
+            <!-- ② 输入链接 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>输入视频链接</span></span>
+                    <span class="section-caption required">★ 必填；每行 1 条链接</span>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label>待分析链接 <span class="req-flag">★</span></label>
+                    <textarea id="batchUrls" placeholder="每行一个M3U8链接，例如：&#10;https://example.com/video1/index.m3u8&#10;https://example.com/video2/index.m3u8" style="min-height:160px;font-family:monospace;font-size:12px"></textarea>
+                    <div class="form-tip">
+                        支持批量粘贴，<strong>最多 20 条</strong>同时分析；超过 20 条自动按前 20 条处理。
+                        可点右上角 <code style="background:var(--fill-lighter);padding:1px 5px;border-radius:3px">📋 示例数据</code> 一键填入试试。
+                    </div>
+                </div>
+                <div class="action-bar with-top">
+                    <span class="action-tip">已输入 <strong id="batchUrlCount" style="color:var(--primary-text)">0</strong> 个链接</span>
+                    <label class="toggle-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-regular);user-select:none">
+                        <input type="checkbox" id="batchFastMode" checked> <strong>极速模式</strong>
+                        <span class="status-pill green">提速 2~3×</span>
+                    </label>
+                    <label class="toggle-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-regular);user-select:none">
+                        <input type="checkbox" id="batchAiMode" checked> <strong>AI 去广告</strong>
+                        <span class="status-pill blue">v5.11 引擎</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- ③ 结果展示 -->
             <div class="card" id="batchResultCard" style="display:none">
-                <div class="card-title">📊 分析结果</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>批量分析结果</span></span>
+                    <span class="section-caption">实时进度 + 成功/失败/进度 4 项概览 + 单条明细</span>
+                </div>
                 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
                     <div class="stat-card">
                         <div class="stat-value" id="batchTotal">0</div>
@@ -2747,30 +3087,76 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-analyze">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">视频广告分析</div>
-                <div class="input-group">
-                    <input type="text" id="analyzeUrl" placeholder="输入 M3U8 视频链接，例如：https://example.com/video/index.m3u8"
-                        value="https://v.lfthirtytwo.com/20260623/7885_1d9dba16/index.m3u8">
-                    <button class="btn btn-primary" onclick="analyzeVideo()">开始分析</button>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🎯 视频广告分析</span>
+                        <span class="status-pill green">v5.11 AI+MD5</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">单视频深度解析，定位广告段 + 生成无广告播放地址</span>
                 </div>
-                <div style="font-size:12px;color:#909399">
-                    提示：系统将自动检测 Master Playlist 并追踪到实际视频进行分析
+                <div class="overview-grid">
+                    <div class="overview-item info">
+                        <div class="overview-title">🔗 输入类型</div>
+                        <div class="overview-desc">
+                            · 支持 <strong>标准 M3U8 直链</strong>、<strong>Master Playlist（含多码率/多分辨率）</strong>。<br>
+                            · 系统自动追踪 #EXT-X-STREAM-INF 下最合适的子流再分析。
+                        </div>
+                    </div>
+                    <div class="overview-item success">
+                        <div class="overview-title">🚫 去非正片内容输出</div>
+                        <div class="overview-desc">
+                            · 自动识别广告/插播/水印并生成"等时长黑屏静音占位版"地址。<br>
+                            · <strong>确保无广告无插播，进度条不回跳、解码器不中断</strong>。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">⚠️ 不雅内容自动屏蔽</div>
+                        <div class="overview-desc">
+                            · 时长异常（远低于/远高于正片）段自动识别为广告/插播。<br>
+                            · 关键词（广告/预告/花絮/速看）段自动标记并走占位输出。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 输入链接 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>输入视频链接</span></span>
+                    <span class="section-caption required">★ 必填</span>
+                </div>
+                <div class="form-group">
+                    <label>M3U8 视频链接 <span class="req-flag">★</span></label>
+                    <div class="input-group" style="margin-bottom:0">
+                        <input type="text" id="analyzeUrl" placeholder="输入 M3U8 视频链接，例如：https://example.com/video/index.m3u8"
+                            value="https://v.lfthirtytwo.com/20260623/7885_1d9dba16/index.m3u8">
+                        <button class="btn btn-primary" onclick="analyzeVideo()">开始分析</button>
+                    </div>
+                    <div class="form-tip">
+                        系统将自动检测 Master Playlist 并追踪到实际视频进行分析；若已知具体子流可直接填子流地址以跳过解析步骤。
+                    </div>
                 </div>
             </div>
 
             <div id="analyzeResult" style="display:none">
                 <div id="fastModeBanner" style="display:none"></div>
 
-                <div class="stats-grid" id="statsGrid"></div>
+                <!-- ③ 核心指标 -->
+                <div class="card">
+                    <div class="card-title"><span class="step-title"><span class="step-badge info">②</span><span>核心指标</span></span>
+                        <span class="section-caption">总时长 / 片段数 / 广告占比 / 检测到的特征</span>
+                    </div>
+                    <div class="stats-grid" id="statsGrid"></div>
+                </div>
 
                 <div class="detail-grid" id="detailGrid">
                     <div class="card">
-                        <div class="card-title">序列号跳跃检测</div>
+                        <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>序列号跳跃检测</span></span></div>
                         <div id="jumpList"></div>
                     </div>
                     <div class="card">
-                        <div class="card-title">时长分布</div>
+                        <div class="card-title"><span class="step-title"><span class="step-badge info">④</span><span>时长分布</span></span></div>
                         <div class="bar-chart" id="durationChart"></div>
                         <div class="legend">
                             <div class="legend-item"><div class="legend-color" style="background:linear-gradient(to top,#667eea,#764ba2)"></div>片段数量</div>
@@ -2780,7 +3166,9 @@ if (!$_mxGXSecret) {
                 </div>
 
                 <div class="card">
-                    <div class="card-title">广告片段详情</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge danger">⑤</span><span>广告片段详情</span></span>
+                        <span class="section-caption">广告段高亮/标记 红色左竖条+浅红底</span>
+                    </div>
                     <div class="tab-bar">
                         <div class="tab-item active" onclick="switchSegmentTab(this, 'ad')">广告片段</div>
                         <div class="tab-item" onclick="switchSegmentTab(this, 'all')">全部片段</div>
@@ -2790,24 +3178,26 @@ if (!$_mxGXSecret) {
                 </div>
 
                 <div class="card">
-                    <div class="card-title">无广告播放链接</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge success">⑥</span><span>无广告播放链接</span></span>
+                        <span class="section-caption">AI+MD5 黑屏静音占位版，无广告/无插播/无不雅内容</span>
+                    </div>
                     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">
-                        <code id="analyzeMxjxUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;flex:1;min-width:200px;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                        <code id="analyzeMxjxUrl" style="background:var(--fill-lighter);padding:8px 12px;border-radius:4px;word-break:break-all;flex:1;min-width:200px;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
                         <button class="btn btn-sm btn-secondary" onclick="copyText(document.getElementById('analyzeMxjxUrl').textContent)">复制链接</button>
                         <button class="btn btn-sm btn-primary" onclick="window.open(document.getElementById('analyzeMxjxUrl').textContent, '_blank')">新窗口播放</button>
                         <button class="btn btn-sm btn-success" onclick="playAnalyzeVideo()">内置播放器播放</button>
                     </div>
-                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                    <div class="inline-form-grid" style="margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-regular);padding:0">
                             <input type="checkbox" id="analyzeUseProxy" onchange="updateAnalyzeMxjxUrl()"> 使用代理播放
                         </label>
-                        <label id="analyzeAutoProxyLabel" style="display:none;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <label id="analyzeAutoProxyLabel" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-regular);padding:0">
                             <input type="checkbox" id="analyzeAutoProxy" checked onchange="toggleAutoProxy()"> 自动选最快
                         </label>
-                        <select id="analyzeProxyServer" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;display:none;min-width:200px" onchange="onProxySelectChange()">
+                        <select id="analyzeProxyServer" class="form-control-inline" style="display:none" onchange="onProxySelectChange()">
                             <option value="">选择代理服务器（按延迟排序）</option>
                         </select>
-                        <button class="btn btn-sm btn-secondary" id="checkProxyBtn" onclick="checkAllProxies()" style="display:none">🔄 测速</button>
+                        <button class="btn btn-sm btn-secondary" id="checkProxyBtn" onclick="checkAllProxies()" style="display:none;justify-self:start">🔄 测速</button>
                     </div>
                     <div id="analyzePlayerContainer" style="display:none;margin-top:16px">
                         <div id="analyzeVideoPlayer" style="width:100%;height:360px;border-radius:8px;overflow:hidden;background:#000"></div>
@@ -2816,8 +3206,8 @@ if (!$_mxGXSecret) {
                 </div>
 
                 <div class="card">
-                    <div class="card-title">操作</div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div class="card-title"><span class="step-title"><span class="step-badge plain">⑦</span><span>后续操作</span></span></div>
+                    <div class="action-bar tight">
                         <button class="btn btn-secondary" onclick="generateRules()">自动生成规则</button>
                         <button class="btn btn-success" onclick="goToRules()">查看规则管理</button>
                         <button class="btn btn-secondary" id="learnBtn" onclick="learnRules()">学习并更新规则</button>
@@ -2828,71 +3218,180 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-rules">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">域名规则列表</div>
-                <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">📐 域名规则管理</span>
+                        <span class="status-pill blue">智能去广告引擎</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">按域名精准匹配，支持导入/导出/批量管理</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item primary">
+                        <div class="overview-title">🎯 规则触发链路</div>
+                        <div class="overview-desc">
+                            解析 m3u8 时按域名命中规则 → 依次走 <strong>时长→DISCONTINUITY→序列号跳跃→文件名模式</strong>四重检测 → 广告段自动标记占位。
+                        </div>
+                    </div>
+                    <div class="overview-item success">
+                        <div class="overview-title">📤 可导入导出 JSON</div>
+                        <div class="overview-desc">
+                            便于多台机器同步、备份分享。推荐先<strong>导出备份</strong>再做批量清理，<strong>一键清理为不可逆操作</strong>。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 规则列表 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>域名规则列表</span></span>
+                    <span class="section-caption">表格视图 + 行内编辑 / 删除</span>
+                </div>
+                <div class="action-bar" style="margin-bottom:16px">
                     <button class="btn btn-primary" onclick="showAddRule()">+ 新增规则</button>
-                    <button class="btn btn-secondary" onclick="refreshRules()">刷新列表</button>
-                    <button class="btn btn-secondary" onclick="exportAllRules()">导出全部规则</button>
-                    <button class="btn btn-secondary" onclick="document.getElementById('importFileInput').click()">导入规则</button>
-                    <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importRulesFromFile(event)">
+                    <button class="btn btn-secondary" onclick="refreshRules()">🔄 刷新列表</button>
+                    <button class="btn btn-secondary" onclick="exportAllRules()">📤 导出全部规则</button>
+                    <label class="btn btn-secondary" style="cursor:pointer;margin:0">
+                        📥 导入规则
+                        <input type="file" id="importFileInput" accept=".json" onchange="importRulesFromFile(event)">
+                    </label>
                     <button class="btn btn-danger" onclick="clearAllRules()">🗑️ 一键清理所有规则</button>
                 </div>
                 <div id="rulesTable"></div>
             </div>
 
+            <!-- ③ 规则编辑器（默认隐藏） -->
             <div class="card" id="ruleEditor" style="display:none">
-                <div class="card-title" id="ruleEditorTitle">编辑规则</div>
-                <div class="form-group">
-                    <label>资源名称</label>
-                    <input type="text" id="ruleName" placeholder="例如：芒果TV">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">②</span><span id="ruleEditorTitle">编辑规则</span></span>
+                    <span class="section-caption required">★ 必填项标红；修改后立即生效无需重启</span>
                 </div>
-                <div class="form-group">
-                    <label>域名</label>
-                    <input type="text" id="ruleDomain" placeholder="例如：v.lfthirtytwo.com">
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge info">A</span>
+                            <span class="title">基础信息</span>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>资源名称 <span class="req-flag">★</span></label>
+                            <input type="text" id="ruleName" placeholder="例如：芒果TV">
+                            <div class="form-tip">仅用于后台区分，不参与匹配</div>
+                        </div>
+                        <div class="form-group">
+                            <label>域名 <span class="req-flag">★</span></label>
+                            <input type="text" id="ruleDomain" placeholder="例如：v.lfthirtytwo.com">
+                            <div class="form-tip">支持子域名，<code>a.b.com</code> 自动包含 <code>*.a.b.com</code></div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="rule-section">
-                    <div class="rule-section-title">时长规则</div>
-                    <div id="durationRules"></div>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge success">B</span>
+                            <span class="title">时长规则</span>
+                            <span class="status-pill green">建议至少 1 条</span>
+                        </div>
+                    </div>
+                    <div id="durationRules" style="margin-bottom:10px"></div>
                     <button class="btn btn-sm btn-secondary" onclick="addDurationRule()">+ 添加时长规则</button>
+                    <div class="form-tip" style="margin-top:8px">用法示例：<code>min 2.0 max 6.0 → ad</code> 表示 2~6 秒区间视为广告段。</div>
                 </div>
 
-                <div class="rule-section">
-                    <div class="rule-section-title">DISCONTINUITY 规则</div>
-                    <label style="display:flex;align-items:center;gap:8px">
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">C</span>
+                            <span class="title">DISCONTINUITY 规则</span>
+                        </div>
+                    </div>
+                    <label class="toggle-label" style="display:flex;align-items:center;gap:8px">
                         <input type="checkbox" id="discontinuityEnabled"> 启用 DISCONTINUITY 检测
                     </label>
-                    <p style="font-size:12px;color:#909399;margin-top:6px">检测到 #EXT-X-DISCONTINUITY 标记时，标记该片段为广告插播点</p>
+                    <div class="form-tip">
+                        检测到 <code>#EXT-X-DISCONTINUITY</code> 标记时，标记该片段为广告插播点；<strong>适合腾讯/爱奇艺等官方切片分隔符非常明显的站点</strong>。
+                    </div>
                 </div>
 
-                <div class="rule-section">
-                    <div class="rule-section-title">序列号跳跃规则</div>
-                    <div id="sequenceJumpRules"></div>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge danger">D</span>
+                            <span class="title">序列号跳跃规则</span>
+                        </div>
+                    </div>
+                    <div id="sequenceJumpRules" style="margin-bottom:10px"></div>
                     <button class="btn btn-sm btn-secondary" onclick="addSeqJumpRule()">+ 添加序列号跳跃规则</button>
+                    <div class="form-tip" style="margin-top:8px">用于检测广告段结束后 ts 序号<strong>突然跳变</strong>（如 23→999）。</div>
                 </div>
 
-                <div class="rule-section">
-                    <div class="rule-section-title">文件名模式</div>
-                    <div id="filenamePatterns"></div>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge info">E</span>
+                            <span class="title">文件名模式</span>
+                        </div>
+                    </div>
+                    <div id="filenamePatterns" style="margin-bottom:10px"></div>
                     <button class="btn btn-sm btn-secondary" onclick="addFilenamePattern()">+ 添加文件名模式</button>
+                    <div class="form-tip" style="margin-top:8px">支持正则 / 字符串包含，命中 <code>ad/adv/prelude/promotion</code> 等常见广告路径关键字。</div>
                 </div>
 
-                <div class="form-group">
-                    <label>备注</label>
-                    <textarea id="ruleNote" placeholder="规则说明备注"></textarea>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge plain">F</span>
+                            <span class="title">备注</span>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <textarea id="ruleNote" placeholder="例如：芒果TV 剧集正片时长 ~8.05s/片，片头片尾广告 2.5s"></textarea>
+                        <div class="form-tip">备注仅供后台记录，不参与实际匹配；推荐把来源/维护日期/关键发现写在这里便于团队协作。</div>
+                    </div>
                 </div>
 
-                <div style="display:flex;gap:12px">
-                    <button class="btn btn-primary" onclick="saveRule()">保存规则</button>
+                <div class="action-bar with-top">
+                    <button class="btn btn-primary" onclick="saveRule()">💾 保存规则</button>
                     <button class="btn btn-secondary" onclick="cancelRuleEdit()">取消</button>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-sites">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">自动学习配置</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🔎 搜索学习 &amp; 自动学习配置</span>
+                        <span class="status-pill green">推荐启用</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">从资源站持续获得最新样本，自动更新规则</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">⚙️ 自动学习（定时任务）</div>
+                        <div class="overview-desc">
+                            每隔 N 天从<strong>如意/暴风/量子</strong>等资源站拉热门视频样本 → 深度广告分析 → 自动写入域名规则。<br>
+                            启用后无需人工维护，<strong>规则长期保持最新</strong>。
+                        </div>
+                    </div>
+                    <div class="overview-item primary">
+                        <div class="overview-title">🔍 搜索影视学习（手动）</div>
+                        <div class="overview-desc">
+                            搜<strong>流浪地球 / 庆余年</strong>等指定剧名 → 批量分析 → 一键学习。<br>
+                            适合<strong>立刻对某部热门剧</strong>生效，配合自动学习双管齐下。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 自动学习配置 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>自动学习配置</span></span>
+                    <span class="section-caption">后台定时任务的参数设置</span>
+                </div>
                 <div class="stats-grid" id="autoLearnStats">
                     <div class="stat-card">
                         <div class="stat-value" id="totalSites">-</div>
@@ -2911,44 +3410,53 @@ if (!$_mxGXSecret) {
                         <div class="stat-label">自动学习状态</div>
                     </div>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>启用自动学习</label>
+
+                <div class="inline-form-grid">
+                    <div class="form-group">
+                        <label>启用自动学习 <span class="req-flag">★</span></label>
                         <select id="autoLearnEnabled">
                             <option value="true">启用</option>
                             <option value="false">禁用</option>
                         </select>
+                        <div class="form-tip">禁用后不再执行任何定时学习任务。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>更新间隔 (天)</label>
                         <input type="number" id="intervalDays" min="1" max="30" value="3">
+                        <div class="form-tip">两次自动学习的最小间隔，默认 3 天。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>每站视频数</label>
                         <input type="number" id="videosPerSite" min="1" max="20" value="5">
+                        <div class="form-tip">每站取多少条样本，越多越全但更耗时。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>每次最大站点数</label>
                         <input type="number" id="maxSitesPerRun" min="1" max="20" value="5">
+                        <div class="form-tip">单次任务最多处理多少个资源站。</div>
                     </div>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
+
+                <div class="inline-form-grid">
+                    <div class="form-group">
                         <label>最小片段数</label>
                         <input type="number" id="minSegments" min="10" max="500" value="50">
+                        <div class="form-tip">低于此数的视频视为样本不足，跳过。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>最大广告占比 (%)</label>
                         <input type="number" id="maxAdPercentage" min="10" max="100" value="90">
+                        <div class="form-tip">超过阈值的样本视为异常，不进入学习。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>多线程加速</label>
                         <select id="autoLearnMultiThread">
                             <option value="true">启用</option>
                             <option value="false">禁用</option>
                         </select>
+                        <div class="form-tip">建议服务器 CPU ≥ 4 核时启用。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>并发数</label>
                         <select id="autoLearnConcurrency">
                             <option value="2">2</option>
@@ -2957,40 +3465,47 @@ if (!$_mxGXSecret) {
                             <option value="8">8</option>
                             <option value="10">10</option>
                         </select>
+                        <div class="form-tip">并发数越高越快，网络带宽占用越高。</div>
                     </div>
                 </div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-primary" onclick="saveAutoLearnConfig()">保存配置</button>
-                    <button class="btn btn-success" onclick="runAutoLearn()">立即执行学习</button>
-                    <button class="btn btn-secondary" onclick="refreshSites()">刷新</button>
+
+                <div class="action-bar tight">
+                    <button class="btn btn-primary" onclick="saveAutoLearnConfig()">💾 保存配置</button>
+                    <button class="btn btn-success" onclick="runAutoLearn()">▶ 立即执行学习</button>
+                    <button class="btn btn-secondary" onclick="refreshSites()">🔄 刷新</button>
                 </div>
                 <div id="autoLearnResult" style="margin-top:16px;display:none"></div>
             </div>
 
+            <!-- ③ 搜索影视学习 -->
             <div class="card">
-                <div class="card-title">搜索影视学习</div>
-                <p style="color:#606266;font-size:13px;margin-bottom:12px">搜索指定或热门影视名称，查看返回的M3U8视频链接，用对应的视频链接进行学习，用M3U8的域名进行学习更新规则。</p>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-                    <input type="text" id="searchKeyword" placeholder="输入影视名称，如：流浪地球、庆余年..." style="flex:1;min-width:250px;padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px">
-                    <select id="searchSiteSelect" style="padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px;min-width:150px">
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>搜索影视学习</span></span>
+                    <span class="section-caption">手动指定剧名，精准学习特定剧集的广告模式</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">
+                    搜索指定或热门影视名称，查看返回的 M3U8 视频链接，用对应的视频链接进行学习，用 M3U8 的域名进行学习更新规则。
+                </div>
+                <div class="action-bar" style="margin-bottom:16px">
+                    <input type="text" id="searchKeyword" placeholder="输入影视名称，如：流浪地球、庆余年..." style="flex:1;min-width:250px;padding:10px 14px;border:1px solid var(--border-base);border-radius:8px;font-size:14px;outline:none">
+                    <select id="searchSiteSelect" class="form-control-inline" style="width:auto;min-width:160px">
                         <option value="all">全部资源站</option>
                     </select>
-                    <input type="number" id="searchMaxSites" value="5" min="1" max="20" placeholder="最大站点数" style="width:120px;padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px">
+                    <input type="number" id="searchMaxSites" value="5" min="1" max="20" placeholder="最大站点数" style="width:140px;padding:10px 14px;border:1px solid var(--border-base);border-radius:8px;font-size:14px;outline:none">
                     <button class="btn btn-primary" onclick="searchVideos()">🔍 搜索</button>
-                    <button class="btn btn-secondary" onclick="clearSearchResults()">清空</button>
+                    <button class="btn btn-secondary" onclick="clearSearchResults()">🧹 清空</button>
                 </div>
                 <div id="searchResults" style="display:none">
-                    <div id="searchSummary" style="padding:10px 12px;background:#ecf5ff;border:1px solid #d9ecff;border-radius:6px;margin-bottom:12px;font-size:13px;color:#409eff"></div>
-                    <div id="searchActions" style="display:none;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <div id="searchSummary" style="padding:12px 14px;background:var(--primary-bg);border:1px solid #d9ecff;border-radius:8px;margin-bottom:14px;font-size:13px;color:var(--primary-text)"></div>
+                    <div id="searchActions" style="display:none;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
                         <button class="btn btn-success" onclick="batchLearnAll()">📚 一键学习全部</button>
                         <button class="btn btn-primary" onclick="batchAnalyzeAll()">🔍 一键分析全部</button>
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-regular);user-select:none">
                             <input type="checkbox" id="enableMultiThread" checked onchange="onMultiThreadToggle()">
-                            <span>⚡ 多线程加速</span>
+                            <strong>⚡ 多线程加速</strong>
                         </label>
-                        <div id="concurrencyWrap" style="display:flex;align-items:center;gap:6px;font-size:13px;color:#606266">
+                        <div id="concurrencyWrap" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-regular)">
                             <span>并发数:</span>
-                            <select id="concurrencyNum" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px">
+                            <select id="concurrencyNum" class="form-control-inline" style="width:auto">
                                 <option value="2">2</option>
                                 <option value="3">3</option>
                                 <option value="5" selected>5</option>
@@ -2998,10 +3513,10 @@ if (!$_mxGXSecret) {
                                 <option value="10">10</option>
                             </select>
                         </div>
-                        <span id="multiThreadBadge" style="font-size:11px;padding:2px 6px;background:#f0f9eb;color:#67c23a;border-radius:4px;display:none">后端加速</span>
+                        <span class="status-pill green" id="multiThreadBadge" style="display:none">后端加速</span>
                         <span style="font-size:12px;color:#909399;margin-left:auto" id="searchStats">准备就绪</span>
                     </div>
-                    <div id="batchResult" style="display:none;margin-bottom:12px;padding:12px;border-radius:6px"></div>
+                    <div id="batchResult" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:8px"></div>
                     <div id="searchVideoList"></div>
                 </div>
                 <div id="searchLoading" style="display:none;text-align:center;padding:20px;color:#909399">
@@ -3079,12 +3594,36 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-ai_autolearn">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">AI 自动学习配置（频繁更新规则专用）</div>
-                <p style="color:var(--text-regular);font-size:13px;margin-bottom:16px">
-                    每隔几小时自动从指定资源站（默认<b>如意</b>）获取热门/更新视频，提取 <code style="background:var(--fill-lighter);padding:2px 6px;border-radius:4px">rym3u8</code> 等指定播放源地址，
-                    进行深度广告分析（EnhancedAdRuleEngine + ProfessionalAdDetector）并自动更新域名规则。支持视频去重、热门排序、按资源站单独配置。
-                </p>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🤖 AI 自动学习配置</span>
+                        <span class="status-pill purple">频繁更新规则专用</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">每隔几小时自动从指定资源站获取视频样本，深度分析并更新规则</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item info">
+                        <div class="overview-title">⏰ 执行间隔</div>
+                        <div class="overview-desc">
+                            默认每 4 小时执行一次，可根据资源站更新频率调整；建议设置为 2-6 小时。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">🎯 目标资源站</div>
+                        <div class="overview-desc">
+                            默认从「如意」获取，可填写多个（逗号分隔）；推荐同时配置 2-3 个以提高稳定性。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 运行状态统计 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>运行状态总览</span></span>
+                    <span class="section-caption">实时查看学习任务运行情况</span>
+                </div>
                 <div class="stats-grid" id="aiAutoLearnStats">
                     <div class="stat-card">
                         <div class="stat-value" id="aiAlStatus">-</div>
@@ -3103,73 +3642,129 @@ if (!$_mxGXSecret) {
                         <div class="stat-label">目标资源站</div>
                     </div>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>启用 AI 自动学习</label>
-                        <select id="aiAlEnabled">
-                            <option value="false">禁用</option>
-                            <option value="true">启用</option>
-                        </select>
+            </div>
+
+            <!-- ③ 配置表单 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>AI 自动学习参数</span></span>
+                    <span class="section-caption">控制学习频率、样本数量和质量过滤</span>
+                </div>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge info">A</span>
+                            <span class="title">基础开关 & 频率</span>
+                            <span class="status-pill blue">必选</span>
+                        </div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>执行间隔 (小时)</label>
-                        <input type="number" id="aiAlIntervalHours" min="1" max="24" value="4">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>每站视频数 (建议50-100)</label>
-                        <input type="number" id="aiAlVideosPerSite" min="1" max="100" value="50">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>每次最大站点数</label>
-                        <input type="number" id="aiAlMaxSites" min="1" max="10" value="3">
+                    <div class="inline-form-grid">
+                        <div class="form-group">
+                            <label>启用 AI 自动学习 <span class="req-flag">★</span></label>
+                            <select id="aiAlEnabled">
+                                <option value="false">禁用</option>
+                                <option value="true">启用</option>
+                            </select>
+                            <div class="form-tip">禁用后将停止所有自动学习任务。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>执行间隔 (小时)</label>
+                            <input type="number" id="aiAlIntervalHours" min="1" max="24" value="4">
+                            <div class="form-tip">资源站更新快可调小，否则建议 4-6 小时。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>每站视频数 (建议 50-100)</label>
+                            <input type="number" id="aiAlVideosPerSite" min="1" max="100" value="50">
+                            <div class="form-tip">每站样本数，越多规则越精准但耗时越长。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>每次最大站点数</label>
+                            <input type="number" id="aiAlMaxSites" min="1" max="10" value="3">
+                            <div class="form-tip">单次任务最多处理多少个资源站。</div>
+                        </div>
                     </div>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>最小片段数</label>
-                        <input type="number" id="aiAlMinSegments" min="10" max="500" value="50">
+
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge success">B</span>
+                            <span class="title">样本质量过滤</span>
+                        </div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>最大广告占比 (%)</label>
-                        <input type="number" id="aiAlMaxAdPct" min="10" max="100" value="90">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>单视频超时 (秒)</label>
-                        <input type="number" id="aiAlMaxExecTime" min="10" max="120" value="30">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>去重保留天数</label>
-                        <input type="number" id="aiAlDedupDays" min="1" max="30" value="7">
-                    </div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>目标资源站（逗号分隔，对应资源站名称）</label>
-                        <input type="text" id="aiAlTargetSites" value="如意" placeholder="如：如意,暴风,量子">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>播放源标识（逗号分隔，匹配 play_from）</label>
-                        <input type="text" id="aiAlPlayFromPatterns" value="rym3u8" placeholder="如：rym3u8,lzm3u8">
-                    </div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>优先热门/更新视频</label>
-                        <select id="aiAlPreferHot">
-                            <option value="true">启用</option>
-                            <option value="false">禁用</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>访问密钥（定时任务保护，留空不校验）</label>
-                        <input type="text" id="aiAlAccessKey" value="" placeholder="留空则不校验">
+                    <div class="inline-form-grid">
+                        <div class="form-group">
+                            <label>最小片段数</label>
+                            <input type="number" id="aiAlMinSegments" min="10" max="500" value="50">
+                            <div class="form-tip">低于此数的视频视为样本不足，跳过。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>最大广告占比 (%)</label>
+                            <input type="number" id="aiAlMaxAdPct" min="10" max="100" value="90">
+                            <div class="form-tip">超过阈值的样本视为异常，不进入学习。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>单视频超时 (秒)</label>
+                            <input type="number" id="aiAlMaxExecTime" min="10" max="120" value="30">
+                            <div class="form-tip">单个视频分析最长等待时间，超时跳过。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>去重保留天数</label>
+                            <input type="number" id="aiAlDedupDays" min="1" max="30" value="7">
+                            <div class="form-tip">N 天内同一视频不重复学习，节省算力。</div>
+                        </div>
                     </div>
                 </div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-primary" onclick="saveAiAutoLearnConfig()">保存配置</button>
-                    <button class="btn btn-success" onclick="runAiAutoLearn()">立即执行学习</button>
-                    <button class="btn btn-secondary" onclick="refreshAiAutoLearn()">刷新</button>
-                    <button class="btn btn-secondary" onclick="loadAiAutoLearnLogs()">查看日志</button>
+
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">C</span>
+                            <span class="title">资源站 & 播放源</span>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>目标资源站（逗号分隔，对应资源站名称）</label>
+                            <input type="text" id="aiAlTargetSites" value="如意" placeholder="如：如意,暴风,量子">
+                            <div class="form-tip">填写资源站列表中的名称，对应不上的会自动跳过。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>播放源标识（逗号分隔，匹配 play_from）</label>
+                            <input type="text" id="aiAlPlayFromPatterns" value="rym3u8" placeholder="如：rym3u8,lzm3u8">
+                            <div class="form-tip"><code>rym3u8</code>=如意、<code>lzm3u8</code>=量子，可填多个。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge plain">D</span>
+                            <span class="title">附加选项</span>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>优先热门/更新视频</label>
+                            <select id="aiAlPreferHot">
+                                <option value="true">启用</option>
+                                <option value="false">禁用</option>
+                            </select>
+                            <div class="form-tip">启用后优先抓取资源站「最近更新」和「热门榜单」。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>访问密钥（定时任务保护，留空不校验）</label>
+                            <input type="text" id="aiAlAccessKey" value="" placeholder="留空则不校验">
+                            <div class="form-tip">部署在公网时建议填一个随机字符串，定时任务 URL 需带上 <code>?k=密钥</code>。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-bar with-top">
+                    <button class="btn btn-primary" onclick="saveAiAutoLearnConfig()">💾 保存配置</button>
+                    <button class="btn btn-success" onclick="runAiAutoLearn()">▶ 立即执行学习</button>
+                    <button class="btn btn-secondary" onclick="refreshAiAutoLearn()">🔄 刷新</button>
+                    <button class="btn btn-secondary" onclick="loadAiAutoLearnLogs()">📋 查看日志</button>
                 </div>
                 <div id="aiAutoLearnResult" style="margin-top:16px;display:none"></div>
                 <div id="aiAutoLearnLogs" style="margin-top:16px;display:none"></div>
@@ -3177,63 +3772,128 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-official_sites">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>推荐采集资源站列表</span>
-                    <div style="display:flex;gap:10px">
-                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-regular)">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">⭐ 官方推荐资源站</span>
+                        <span class="status-pill green">经过验证的稳定源</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">收录常见采集站，开箱即用，支持一键导入到资源站列表</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">✅ 稳定可用</div>
+                        <div class="overview-desc">
+                            推荐资源站均经过<strong>可用性和响应速度</strong>双重验证，按优先级排序；启用后自动出现在「资源站 / 搜索学习」页。
+                        </div>
+                    </div>
+                    <div class="overview-item primary">
+                        <div class="overview-title">🔄 自动故障转移</div>
+                        <div class="overview-desc">
+                            某站失败时可<strong>自动切换到备用域名</strong>，支持重试次数、超时时间、每页条数等细粒度调优。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 推荐站列表 -->
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <span class="step-title"><span class="step-badge info">①</span><span>推荐采集资源站列表</span></span>
+                    <div style="display:flex;gap:10px;align-items:center">
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:8px;margin:0">
                             <input type="checkbox" id="officialSitesEnabled" onchange="toggleOfficialSites()">
                             启用推荐采集
                         </label>
                         <button class="btn btn-sm btn-primary" onclick="showAddOfficialSite()">+ 添加推荐站</button>
                     </div>
                 </div>
+                <div class="section-caption" style="margin-bottom:14px">勾选「启用推荐采集」后，这些站点会自动参与官替搜索与 AI 学习任务</div>
                 <div id="officialSitesList"></div>
             </div>
 
+            <!-- ③ 推荐采集参数 -->
             <div class="card">
-                <div class="card-title">推荐采集设置</div>
-                <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>推荐采集参数</span></span>
+                    <span class="section-caption">域名切换、重试、超时等调优项</span>
+                </div>
+                <div class="inline-form-grid">
                     <div class="form-group">
                         <label>自动切换域名</label>
                         <select id="osAutoSwitch">
                             <option value="1">启用</option>
                             <option value="0">禁用</option>
                         </select>
+                        <div class="form-tip">主域名失败时自动尝试备用域名，推荐启用。</div>
                     </div>
                     <div class="form-group">
                         <label>每域名最大重试次数</label>
                         <input type="number" id="osMaxRetry" value="2" min="0" max="10">
+                        <div class="form-tip">0 = 不重试，建议 1-3 次。</div>
                     </div>
                     <div class="form-group">
                         <label>请求超时（秒）</label>
                         <input type="number" id="osTimeout" value="10" min="5" max="60">
+                        <div class="form-tip">超过此时长判定为失败，网络较差时可适当调大。</div>
                     </div>
                     <div class="form-group">
                         <label>默认每页条数</label>
                         <input type="number" id="osDefaultLimit" value="20" min="5" max="100">
+                        <div class="form-tip">列表接口默认返回条数。</div>
                     </div>
                 </div>
-                <button class="btn btn-primary" onclick="saveOfficialSettings()">保存设置</button>
+                <div class="action-bar tight">
+                    <button class="btn btn-primary" onclick="saveOfficialSettings()">💾 保存设置</button>
+                </div>
             </div>
 
+            <!-- ④ 视频浏览（默认隐藏） -->
             <div class="card" id="officialSiteVideos" style="display:none">
-                <div class="card-title">
-                    <span id="officialSiteVideoTitle">视频列表</span>
-                    <button class="btn btn-sm btn-secondary" style="float:right" onclick="closeOfficialSiteVideos()">关闭</button>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <span class="step-title"><span class="step-badge warning">③</span><span id="officialSiteVideoTitle">视频列表</span></span>
+                    <button class="btn btn-sm btn-secondary" onclick="closeOfficialSiteVideos()">关闭</button>
                 </div>
-                <div style="margin-bottom:12px;display:flex;gap:10px">
-                    <input type="text" id="officialVideoSearch" placeholder="搜索关键词..." style="flex:1;padding:10px 14px;border:1px solid var(--border-base);border-radius:6px;outline:none">
-                    <button class="btn btn-primary" onclick="searchOfficialVideos()">搜索</button>
-                    <button class="btn btn-secondary" onclick="refreshOfficialVideos()">刷新</button>
+                <div class="action-bar" style="margin-bottom:14px">
+                    <input type="text" id="officialVideoSearch" placeholder="搜索关键词（剧名/演员/类型）..." style="flex:1;min-width:240px;padding:10px 14px;border:1px solid var(--border-base);border-radius:8px;font-size:14px;outline:none">
+                    <button class="btn btn-primary" onclick="searchOfficialVideos()">🔍 搜索</button>
+                    <button class="btn btn-secondary" onclick="refreshOfficialVideos()">🔄 刷新</button>
                 </div>
                 <div id="officialSiteVideosList"></div>
             </div>
         </div>
 
         <div class="page" id="page-official_replace">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">官替 API 配置</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🔁 官方替换（官替）引擎</span>
+                        <span class="status-pill green">v5.11 推荐主链路</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">官方页面链接 → 资源站精准搜索 → AI 去广告占位</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">🎬 四步主链路</div>
+                        <div class="overview-desc">
+                            官方 URL → <strong>平台识别抽剧名</strong> → 资源站搜索（按 priority 升序）→ <strong>AI+MD5 匹配正片</strong> → 返回去广告播放链接，成功率最高。
+                        </div>
+                    </div>
+                    <div class="overview-item primary">
+                        <div class="overview-title">⭐ 优先度排序</div>
+                        <div class="overview-desc">
+                            priority 数值<strong>越小越优先</strong>（抖剧TV 默认 = 1，最高优先）。推荐把最稳定的 1-2 个资源站放前面，其余做兜底。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 状态统计 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>运行状态概览</span></span>
+                    <span class="section-caption">官替引擎当前关键指标</span>
+                </div>
                 <div class="stats-grid" id="officialReplaceStats">
                     <div class="stat-card">
                         <div class="stat-value" id="orTotalPlatforms">-</div>
@@ -3256,105 +3916,143 @@ if (!$_mxGXSecret) {
                         <div class="stat-label">匹配阈值</div>
                     </div>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
-                    <div class="form-group" style="margin-bottom:0">
-                        <label>启用官替功能</label>
+            </div>
+
+            <!-- ③ 参数配置 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>官替核心参数</span></span>
+                    <span class="section-caption">开关、阈值、搜索范围配置</span>
+                </div>
+                <div class="inline-form-grid">
+                    <div class="form-group">
+                        <label>启用官替功能 <span class="req-flag">★</span></label>
                         <select id="orEnabled">
                             <option value="true">启用</option>
                             <option value="false">禁用</option>
                         </select>
+                        <div class="form-tip">关闭后官替解析接口将不再可用（嗅探设置中仍可保留为备用通道）。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>默认官替资源站 (default_site)</label>
                         <input type="text" id="orDefaultSite" placeholder="默认站：抖剧TV">
+                        <div class="form-tip">优先从这个资源站做匹配，找不到再遍历其它。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>匹配阈值 (0-100)</label>
                         <input type="number" id="orThresholdInput" min="0" max="100" value="60">
+                        <div class="form-tip">剧名/MD5 相似度 ≥ 阈值才算命中；越高越严格，建议 55-75。</div>
                     </div>
-                    <div class="form-group" style="margin-bottom:0">
+                    <div class="form-group">
                         <label>最大搜索站点数</label>
                         <input type="number" id="orMaxSites" min="1" max="100" value="5">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
-                        <label>搜索资源站 (逗号分隔，按顺序优先搜索，建议第1个：抖剧TV)</label>
-                        <input type="text" id="orSearchSitesInput" placeholder="留空表示搜索全部（按 priority ASC 自动排序，1=最优先）">
+                        <div class="form-tip">一次请求最多搜索 N 个资源站，超过即停止，避免太慢。</div>
                     </div>
                 </div>
-                <div style="background:linear-gradient(135deg,#fff7ed,#eef2ff);border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#4b5563;margin-bottom:14px;line-height:1.7">
-                    <strong style="color:#1f2937">⭐ 官替优先度规则：</strong>数字越小越优先（范围：1 ~ 2000+），<span style="color:#dc2626;font-weight:600">priority=1 为最高优先</span>。
-                    <br>抖剧TV 已默认 <code>priority=1</code>，作为官替第一优先资源站（根源来源 www.360kan.com，采集：<code>https://www.douju.tv/api.php/provide/vod/</code>）。
-                    <br>资源站 / 官替平台 列表均已按 priority ASC 升序排列（即越靠前匹配越优先）。
+                <div class="form-group">
+                    <label>搜索资源站（逗号分隔，按顺序优先搜索，建议第 1 个：抖剧TV）</label>
+                    <input type="text" id="orSearchSitesInput" placeholder="留空表示搜索全部（按 priority ASC 自动排序，1 = 最优先）">
+                    <div class="form-tip">留空 = 使用全部资源站（推荐）；也可手动指定 <code>抖剧TV,量子,如意</code> 只搜这几个。</div>
                 </div>
-                <button class="btn btn-primary" onclick="saveOfficialReplaceConfig()">保存配置</button>
+
+                <div class="sub-card" style="margin-top:16px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">!</span>
+                            <span class="title">优先度说明（priority 越小越靠前）</span>
+                        </div>
+                    </div>
+                    <div class="form-tip" style="margin:0;line-height:1.8">
+                        priority 范围 <strong>1 ~ 2000+</strong>，<span style="color:#dc2626;font-weight:600">priority=1 为最高优先</span>。<br>
+                        抖剧TV 已默认 <code>priority=1</code>，作为官替第一优先资源站（根源来源 360kan，采集 <code>https://www.douju.tv/api.php/provide/vod/</code>）。<br>
+                        「资源站列表」和「支持平台列表」均已按 <strong>priority ASC 升序</strong> 展示，越靠前匹配越优先。
+                    </div>
+                </div>
+
+                <div class="action-bar with-top">
+                    <button class="btn btn-primary" onclick="saveOfficialReplaceConfig()">💾 保存配置</button>
+                </div>
             </div>
 
+            <!-- ④ 支持平台 -->
             <div class="card">
-                <div class="card-title">
-                    <span>支持平台列表</span>
-                    <button class="btn btn-sm btn-primary" style="float:right" onclick="addOfficialPlatform()">+ 添加平台</button>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <span class="step-title"><span class="step-badge info">③</span><span>支持平台列表</span></span>
+                    <button class="btn btn-sm btn-primary" onclick="addOfficialPlatform()">+ 添加平台</button>
                 </div>
+                <div class="section-caption" style="margin-bottom:14px">能识别哪些官方视频平台，正则与解析优先级配置</div>
                 <div id="officialPlatformsList"></div>
             </div>
 
+            <!-- ⑤ API 测试 -->
             <div class="card">
-                <div class="card-title">官替 API 测试</div>
-                <div class="input-group">
+                <div class="card-title"><span class="step-title"><span class="step-badge warning">④</span><span>官替 API 测试</span></span>
+                    <span class="section-caption">用一条真实链接验证整个链路</span>
+                </div>
+                <div class="input-group" style="margin-bottom:12px">
                     <input type="text" id="officialTestUrl" placeholder="输入官方视频链接，如：https://v.qq.com/x/cover/xxx.html">
-                    <button class="btn btn-primary" onclick="testOfficialReplace()">测试解析</button>
+                    <button class="btn btn-primary" onclick="testOfficialReplace()">▶ 测试解析</button>
                 </div>
-                <div style="font-size:12px;color:#909399;margin-bottom:16px">
-                    支持：腾讯视频、爱奇艺、优酷、芒果TV、哔哩哔哩 等平台
-                </div>
+                <div class="form-tip" style="margin-bottom:14px">支持：腾讯视频、爱奇艺、优酷、芒果TV、哔哩哔哩 等主流平台</div>
                 <div id="officialTestResult" style="display:none">
                     <div id="officialTestInfo"></div>
                 </div>
             </div>
 
+            <!-- ⑥ 在线播放 -->
             <div class="card">
-                <div class="card-title">官替在线播放</div>
-                <div style="font-size:12px;color:#909399;margin-bottom:12px">
-                    输入官方链接 → 自动匹配资源 → AI 去广告/插播 → 正片播放
+                <div class="card-title"><span class="step-title"><span class="step-badge danger">⑤</span><span>官替在线播放</span></span>
+                    <span class="section-caption">完整链路：解析 → 匹配 → AI 去广告 → 播放</span>
                 </div>
-                <div class="input-group">
+                <div class="form-tip" style="margin-bottom:14px">输入官方链接 → 自动匹配资源 → AI 去广告/插播 → 正片播放</div>
+                <div class="input-group" style="margin-bottom:12px">
                     <input type="text" id="orPlayUrl" placeholder="输入官方视频链接，如：https://v.qq.com/x/cover/xxx.html" style="flex:1">
-                    <button class="btn btn-primary" onclick="orPlayStart()">解析播放</button>
+                    <button class="btn btn-primary" onclick="orPlayStart()">▶ 解析播放</button>
                 </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-                    <a href="javascript:void(0)" onclick="document.getElementById('orPlayUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';orPlayStart()" style="color:#409eff;text-decoration:none;font-size:12px">腾讯视频示例</a>
+                <div class="action-bar tight" style="margin-bottom:12px">
+                    <div style="font-size:12px;color:#909399">快捷示例：</div>
+                    <a href="javascript:void(0)" onclick="document.getElementById('orPlayUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';orPlayStart()" style="color:#409eff;text-decoration:none;font-size:12px">腾讯视频</a>
                     <span style="color:#ddd;font-size:12px">|</span>
-                    <a href="javascript:void(0)" onclick="document.getElementById('orPlayUrl').value='https://www.iqiyi.com/v_1f0q2q3q3q8.html';orPlayStart()" style="color:#409eff;text-decoration:none;font-size:12px">爱奇艺示例</a>
+                    <a href="javascript:void(0)" onclick="document.getElementById('orPlayUrl').value='https://www.iqiyi.com/v_1f0q2q3q3q8.html';orPlayStart()" style="color:#409eff;text-decoration:none;font-size:12px">爱奇艺</a>
                 </div>
                 <div id="orPlayStatus" style="display:none;margin-bottom:12px"></div>
                 <div id="orPlayInfo" style="display:none;margin-bottom:12px"></div>
                 <div id="orPlayerContainer" style="display:none">
-                    <div style="position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden">
+                    <div style="position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden">
                         <video id="orPlayVideo" style="width:100%;height:100%;object-fit:contain" controls autoplay playsinline></video>
                     </div>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-                        <button class="btn btn-sm btn-secondary" onclick="orPlayCopyUrl()">复制播放地址</button>
-                        <button class="btn btn-sm btn-secondary" onclick="orPlayOpenNew()">新窗口打开</button>
+                    <div class="action-bar tight" style="margin-top:12px">
+                        <button class="btn btn-sm btn-secondary" onclick="orPlayCopyUrl()">📋 复制播放地址</button>
+                        <button class="btn btn-sm btn-secondary" onclick="orPlayOpenNew()">🔗 新窗口打开</button>
                     </div>
                 </div>
             </div>
 
+            <!-- ⑦ 接口文档 -->
             <div class="card">
-                <div class="card-title">API 接口说明</div>
-                <div style="font-size:13px;line-height:1.8;color:#606266">
-                    <p><strong>完整解析接口：</strong></p>
-                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
-                        <code id="api-resolve-url"></code>
+                <div class="card-title"><span class="step-title"><span class="step-badge plain">⑥</span><span>开发者 · API 接口说明</span></span>
+                    <span class="section-caption">对接前端/二开时使用</span>
+                </div>
+                <div style="font-size:13px;line-height:1.8;color:var(--text-regular)">
+                    <div class="overview-grid" style="margin-bottom:16px">
+                        <div class="overview-item info">
+                            <div class="overview-title">完整解析接口</div>
+                            <div class="overview-desc" style="margin:0">
+                                <code id="api-resolve-url" style="background:rgba(255,255,255,0.6);padding:4px 8px;border-radius:6px"></code>
+                            </div>
+                        </div>
+                        <div class="overview-item success">
+                            <div class="overview-title">精简信息接口 (JSON)</div>
+                            <div class="overview-desc" style="margin:0">
+                                <code id="api-info-url" style="background:rgba(255,255,255,0.6);padding:4px 8px;border-radius:6px"></code>
+                            </div>
+                        </div>
                     </div>
-                    <p><strong>精简信息接口 (JSON)：</strong></p>
-                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
-                        <code id="api-info-url"></code>
-                    </div>
-                    <p><strong>参数说明：</strong></p>
-                    <ul style="margin-left:20px">
+                    <p><strong>参数：</strong></p>
+                    <ul style="margin-left:20px;margin-bottom:12px">
                         <li><code>url</code> - 官方视频播放页面链接</li>
                     </ul>
                     <p><strong>返回示例：</strong></p>
-                    <pre style="background:#f5f7fa;padding:12px;border-radius:6px;overflow:auto;font-size:12px">{
+                    <pre style="background:var(--fill-lighter);padding:14px;border-radius:8px;overflow:auto;font-size:12px;line-height:1.7">{
   "success": true,
   "platform": "腾讯视频",
   "video_title": "庆余年",
@@ -3595,33 +4293,60 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-moxi_api">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>沫兮API 接口说明</span>
-                    <button class="btn btn-secondary" onclick="window.open('api_doc.php', '_blank')">📚 查看完整 API 文档</button>
-                </div>
-                <div style="font-size:13px;line-height:1.8;color:#606266">
-                    <p><strong>沫兮API 解析接口：</strong></p>
-                    <div style="background:#f5f7fa;padding:12px;border-radius:6px;margin:8px 0">
-                        <code id="moxi-api-url"></code>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🧩 沫兮 API · 总览</span>
+                        <span class="status-pill blue">对外统一入口</span>
                     </div>
-                    <p><strong>参数说明：</strong></p>
-                    <ul style="margin-left:20px">
-                        <li><code>url</code> - 视频播放链接（支持官方视频链接或直接M3U8链接）</li>
-                        <li><code>type</code> - （可选）播放类型</li>
+                    <button class="btn btn-sm btn-secondary" onclick="window.open('api_doc.php', '_blank')">📚 查看完整 API 文档</button>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item info">
+                        <div class="overview-title">🎯 统一解析入口</div>
+                        <div class="overview-desc">
+                            对外只暴露 <code>mx.php?action=mxjx</code>，自动根据 URL 类型选择「M3U8 去广告 / 官方替换 / 上游官解」链路，前端无需关心细节。
+                        </div>
+                    </div>
+                    <div class="overview-item success">
+                        <div class="overview-title">📡 全平台覆盖</div>
+                        <div class="overview-desc">
+                            支持腾讯/爱奇艺/优酷/芒果TV/B站/搜狐/PP 及直接 M3U8；返回 <strong>code / msg / url / jm / js / time / kfz</strong> 标准字段，对接零成本。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 接口说明 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>接口 & 返回字段说明</span></span>
+                    <span class="section-caption">给对接/二开开发者看</span>
+                </div>
+                <div style="font-size:13px;line-height:1.8;color:var(--text-regular)">
+                    <div class="overview-grid" style="margin-bottom:16px">
+                        <div class="overview-item primary">
+                            <div class="overview-title">🧭 解析接口</div>
+                            <div class="overview-desc" style="margin:0">
+                                <code id="moxi-api-url" style="background:rgba(255,255,255,0.6);padding:4px 8px;border-radius:6px"></code>
+                            </div>
+                        </div>
+                    </div>
+                    <p><strong>请求参数：</strong></p>
+                    <ul style="margin-left:20px;margin-bottom:12px">
+                        <li><code>url</code> - 视频播放链接（官方视频页 或 直接 M3U8）</li>
+                        <li><code>type</code> - （可选）播放类型，一般留空自动判断</li>
                     </ul>
-                    <p><strong>返回字段说明：</strong></p>
-                    <ul style="margin-left:20px">
-                        <li><code>code</code> - 状态码，200表示成功，400表示参数错误，404表示解析失败</li>
-                        <li><code>url</code> - 解析后的播放地址</li>
+                    <p><strong>返回字段：</strong></p>
+                    <ul style="margin-left:20px;margin-bottom:12px">
+                        <li><code>code</code> - 200 成功 / 400 参数错误 / 404 解析失败</li>
+                        <li><code>url</code> - 解析后播放地址（一般已去广告占位）</li>
                         <li><code>msg</code> - 返回消息</li>
-                        <li><code>jm</code> - 剧名</li>
-                        <li><code>js</code> - 集数</li>
-                        <li><code>time</code> - 响应时间</li>
-                        <li><code>kfz</code> - 开发者/接口标识</li>
+                        <li><code>jm / js</code> - 剧名 / 集数</li>
+                        <li><code>time / kfz</code> - 响应时间 / 开发者标识</li>
                     </ul>
                     <p><strong>返回示例：</strong></p>
-                    <pre style="background:#f5f7fa;padding:12px;border-radius:6px;overflow:auto;font-size:12px">{
+                    <pre style="background:var(--fill-lighter);padding:14px;border-radius:8px;overflow:auto;font-size:12px;line-height:1.7">{
   "code": 200,
   "url": "https://你的域名/mx.php?action=mxjx&url=...",
   "msg": "解析成功",
@@ -3630,35 +4355,44 @@ if (!$_mxGXSecret) {
   "time": "2024-01-01 12:00:00",
   "kfz": "沫兮API - 在线视频解析"
 }</pre>
-                    <p><strong>支持平台：</strong></p>
-                    <ul style="margin-left:20px">
-                        <li>腾讯视频 (v.qq.com)</li>
-                        <li>爱奇艺 (iqiyi.com)</li>
-                        <li>优酷 (youku.com)</li>
-                        <li>芒果TV (mgtv.com)</li>
-                        <li>哔哩哔哩 (bilibili.com)</li>
-                        <li>搜狐视频 (sohu.com)</li>
-                        <li>PP视频 (pptv.com)</li>
-                        <li>直接M3U8链接</li>
-                    </ul>
+                    <div class="sub-card" style="margin-top:16px">
+                        <div class="sub-card-header">
+                            <div class="left">
+                                <span class="step-badge success">✓</span>
+                                <span class="title">已支持平台</span>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;font-size:13px;color:var(--text-regular)">
+                            <div>• 腾讯视频 (v.qq.com)</div>
+                            <div>• 爱奇艺 (iqiyi.com)</div>
+                            <div>• 优酷 (youku.com)</div>
+                            <div>• 芒果TV (mgtv.com)</div>
+                            <div>• 哔哩哔哩 (bilibili.com)</div>
+                            <div>• 搜狐视频 (sohu.com)</div>
+                            <div>• PP视频 (pptv.com)</div>
+                            <div>• 直接 M3U8 链接</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <!-- ③ 接口测试 -->
             <div class="card">
-                <div class="card-title">沫兮API 接口测试</div>
-                <div class="input-group">
-                    <input type="text" id="moxiTestUrl" placeholder="输入视频链接，如：https://v.qq.com/x/cover/xxx.html 或 M3U8链接">
-                    <button class="btn btn-primary" onclick="testMoxiApi()">测试解析</button>
-                    <button class="btn btn-secondary" onclick="testMxjxApi()">测试去广告</button>
-                    <button class="btn btn-secondary" onclick="testAnalyzeApi()">测试分析</button>
-                    <button class="btn btn-secondary" onclick="testOfficialInfoApi()">测试官替</button>
+                <div class="card-title"><span class="step-title"><span class="step-badge warning">②</span><span>多模式接口测试</span></span>
+                    <span class="section-caption">一键试跑解析 / 去广告 / 分析 / 官替 4 条链路</span>
                 </div>
-                <div style="font-size:12px;color:#909399;margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <span>支持官方视频链接和直接M3U8链接</span>
-                    <span style="color:#ddd">|</span>
-                    <span>快捷测试URL：</span>
-                    <a href="javascript:void(0)" onclick="document.getElementById('moxiTestUrl').value='https://s3.bfllvip.com/video/qingyuniandiyiji/737c2ec959ce/index.m3u8';testMxjxApi()" style="color:#409eff;text-decoration:none" title="测试去广告">庆余年第1季 M3U8</a>
-                    <a href="javascript:void(0)" onclick="document.getElementById('moxiTestUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';testOfficialInfoApi()" style="color:#409eff;text-decoration:none" title="测试官替解析">腾讯视频示例</a>
+                <div class="input-group" style="margin-bottom:12px">
+                    <input type="text" id="moxiTestUrl" placeholder="输入视频链接，如：https://v.qq.com/x/cover/xxx.html 或 M3U8链接">
+                    <button class="btn btn-primary" onclick="testMoxiApi()">🧭 测试解析</button>
+                    <button class="btn btn-success" onclick="testMxjxApi()">🚀 测试去广告</button>
+                    <button class="btn btn-secondary" onclick="testAnalyzeApi()">🔍 测试分析</button>
+                    <button class="btn btn-warning" onclick="testOfficialInfoApi()">🔁 测试官替</button>
+                </div>
+                <div class="action-bar tight" style="margin-bottom:14px">
+                    <div style="font-size:12px;color:#909399">快捷测试：</div>
+                    <a href="javascript:void(0)" onclick="document.getElementById('moxiTestUrl').value='https://s3.bfllvip.com/video/qingyuniandiyiji/737c2ec959ce/index.m3u8';testMxjxApi()" style="color:#409eff;text-decoration:none;font-size:12px">庆余年 M3U8（去广告）</a>
+                    <span style="color:#ddd;font-size:12px">|</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('moxiTestUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';testOfficialInfoApi()" style="color:#409eff;text-decoration:none;font-size:12px">腾讯视频（官替解析）</a>
                 </div>
                 <div id="moxiTestResult" style="display:none">
                     <div id="moxiTestInfo"></div>
@@ -3667,65 +4401,125 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-play">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">播放器设置</div>
-                <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🎬 播放器 & 播放测试</span>
+                        <span class="status-pill blue">DPlayer 默认</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">选择前端播放器内核，测试无广告播放效果</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item primary">
+                        <div class="overview-title">🧩 多内核支持</div>
+                        <div class="overview-desc">
+                            内置 <strong>DPlayer / Video.js / MuiPlayer / ArtPlayer / NPlayer</strong> 五套内核；默认推荐 DPlayer（弹幕 + 截图 + 移动端体验最佳）。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">🎛️ 自动播放 & 预加载</div>
+                        <div class="overview-desc">
+                            浏览器会拦截自动播放，建议<strong>移动端保持关闭</strong>；预加载选「自动」可快速起播，流量有限环境可改「仅元数据」。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 播放器设置 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>播放器参数</span></span>
+                    <span class="section-caption">内核、自动播放、预加载、API 地址</span>
+                </div>
+                <div class="inline-form-grid">
                     <div class="form-group">
-                        <label>选择播放器</label>
+                        <label>选择播放器内核 <span class="req-flag">★</span></label>
                         <select id="playerSelect" onchange="changePlayerPreview()">
-                            <option value="dplayer">DPlayer（推荐）</option>
-                            <option value="videojs">Video.js</option>
-                            <option value="muiplayer">MuiPlayer</option>
-                            <option value="artplayer">ArtPlayer</option>
-                            <option value="nplayer">NPlayer</option>
+                            <option value="dplayer">DPlayer（推荐，弹幕+截图）</option>
+                            <option value="videojs">Video.js（兼容性好）</option>
+                            <option value="muiplayer">MuiPlayer（移动端优化）</option>
+                            <option value="artplayer">ArtPlayer（功能丰富）</option>
+                            <option value="nplayer">NPlayer（轻量高效）</option>
                         </select>
+                        <div class="form-tip">切到不同内核，下方测试区会即时生效。</div>
                     </div>
                     <div class="form-group">
                         <label>自动播放</label>
                         <select id="playerAutoplay">
-                            <option value="false">关闭</option>
+                            <option value="false">关闭（推荐）</option>
                             <option value="true">开启</option>
                         </select>
+                        <div class="form-tip">移动端浏览器通常拦截自动播放，不强求。</div>
                     </div>
                     <div class="form-group">
-                        <label>预加载</label>
+                        <label>预加载策略</label>
                         <select id="playerPreload">
                             <option value="auto">自动（推荐）</option>
                             <option value="metadata">仅元数据</option>
                             <option value="none">不预加载</option>
                         </select>
+                        <div class="form-tip">自动 = 有流量即预缓冲；省流量选「仅元数据」。</div>
                     </div>
-                    <div class="form-group" style="grid-column:1/-1">
-                        <label>API 地址（留空则自动获取当前域名）</label>
-                        <input type="text" id="playerApiBaseUrl" placeholder="例如：https://your-domain.com" style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px">
-                        <div style="margin-top:6px;font-size:12px;color:#909399">
-                            💡 留空为动态获取当前域名；如使用授权IP，填写授权服务器地址，格式：http(s)://IP:端口
-                        </div>
+                    <div class="form-group">
+                        <label>API 地址（留空自动取当前域名）</label>
+                        <input type="text" id="playerApiBaseUrl" placeholder="例如：https://your-domain.com">
+                        <div class="form-tip">部署在授权 IP 服务器时可填：<code>http(s)://IP:端口</code>，否则留空。</div>
                     </div>
                 </div>
-                <div style="margin-top:12px;font-size:13px;color:#606266">
-                    💡 不同播放器特点：DPlayer（弹幕+截图）、Video.js（兼容性好）、MuiPlayer（移动端优化）、ArtPlayer（功能丰富）、NPlayer（轻量高效）
+                <div class="action-bar with-top">
+                    <button class="btn btn-primary" onclick="savePlayerConfig()">💾 保存播放器设置</button>
                 </div>
-                <button class="btn btn-primary" style="margin-top:12px" onclick="savePlayerConfig()">保存播放器设置</button>
             </div>
 
+            <!-- ③ 播放测试 -->
             <div class="card">
-                <div class="card-title">无广告播放测试</div>
-                <div class="input-group">
-                    <input type="text" id="playUrl" placeholder="输入 M3U8 视频链接">
-                    <button class="btn btn-primary" onclick="playVideo()">播放</button>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>无广告播放测试</span></span>
+                    <span class="section-caption">粘贴一条 M3U8 直接看效果</span>
                 </div>
-                <div id="playerContainer" style="display:none;margin-top:20px">
-                    <div id="videoPlayer" style="width:100%;border-radius:8px;overflow:hidden"></div>
-                    <div style="margin-top:12px;font-size:13px;color:#606266" id="playInfo"></div>
+                <div class="form-tip" style="margin-bottom:14px">播放链接会先经过域名规则去广告占位后再交给播放器，用于验证「规则是否真的生效」。</div>
+                <div class="input-group" style="margin-bottom:14px">
+                    <input type="text" id="playUrl" placeholder="输入 M3U8 视频链接（例如 https://.../index.m3u8）">
+                    <button class="btn btn-primary" onclick="playVideo()">▶ 立即播放</button>
+                </div>
+                <div id="playerContainer" style="display:none;margin-top:4px">
+                    <div id="videoPlayer" style="width:100%;border-radius:10px;overflow:hidden"></div>
+                    <div class="form-tip" style="margin-top:12px" id="playInfo"></div>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-database">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">数据库状态</div>
-                <div class="stats-grid" id="dbStats">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🗄️ 数据库中心</span>
+                        <span class="status-pill green">SQLite 默认开箱即用</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">状态 / 表结构 / 配置 / 文件迁移 一站式管理</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">📁 SQLite 默认</div>
+                        <div class="overview-desc">
+                            开箱即用，无需安装服务，数据库文件 <code>db/data.db</code>；单文件可直接备份带走，小流量站点性能完全够用。
+                        </div>
+                    </div>
+                    <div class="overview-item primary">
+                        <div class="overview-title">🔀 可切 MySQL</div>
+                        <div class="overview-desc">
+                            大流量场景切换到 MySQL 更稳，编辑 <code>db/db_config.php</code> 即可；迁移工具支持一键「文件 → 数据库」导入。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 状态 + 快捷操作 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>数据库状态 & 快捷操作</span></span>
+                    <span class="section-caption">看 4 个指标 + 一键完成常用动作</span>
+                </div>
+                <div class="stats-grid" id="dbStats" style="margin-bottom:16px">
                     <div class="stat-card">
                         <div class="stat-value" id="dbType">-</div>
                         <div class="stat-label">数据库类型</div>
@@ -3743,92 +4537,139 @@ if (!$_mxGXSecret) {
                         <div class="stat-label">资源站数量</div>
                     </div>
                 </div>
-                <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-primary" onclick="checkDbStatus()">刷新状态</button>
-                    <button class="btn btn-success" onclick="showDbConfig()">数据库配置</button>
-                    <button class="btn btn-warning" onclick="migrateData()">迁移数据</button>
-                    <button class="btn btn-secondary" onclick="initDbTables()">初始化表结构</button>
+                <div class="action-bar tight">
+                    <button class="btn btn-primary" onclick="checkDbStatus()">🔄 刷新状态</button>
+                    <button class="btn btn-success" onclick="showDbConfig()">⚙️ 数据库配置</button>
+                    <button class="btn btn-warning" onclick="migrateData()">📤 迁移数据</button>
+                    <button class="btn btn-secondary" onclick="initDbTables()">🧱 初始化表结构</button>
                 </div>
             </div>
 
+            <!-- ③ 表结构检查 -->
             <div class="card">
-                <div class="card-title">表结构检查</div>
-                <div id="dbTables" style="font-size:13px;color:#606266">加载中...</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>表结构检查</span></span>
+                    <span class="section-caption">自动检查是否缺少必要表/字段</span>
+                </div>
+                <div id="dbTables" style="font-size:13px;color:var(--text-regular)">加载中...</div>
             </div>
 
+            <!-- ④ 数据库配置 -->
             <div class="card">
-                <div class="card-title">数据库配置</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>数据库配置</span></span>
+                    <span class="section-caption">SQLite / MySQL 二选一，只读展示</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">支持 SQLite（文件型，无需安装服务）和 MySQL（需要独立 MySQL 服务）两种模式。</div>
                 <div id="dbConfigPanel">
-                    <p style="color:#606266;font-size:13px;margin-bottom:12px">
-                        配置数据库连接信息。支持 SQLite（文件型，无需安装服务）和 MySQL（需 MySQL 服务）。
-                    </p>
-                    <div style="display:flex;gap:12px;margin-bottom:12px">
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                            <input type="radio" name="dbType" value="sqlite" checked onchange="toggleDbType('sqlite')"> SQLite
+                    <div class="action-bar tight" style="margin-bottom:16px">
+                        <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px">
+                            <input type="radio" name="dbType" value="sqlite" checked onchange="toggleDbType('sqlite')"> SQLite（默认）
                         </label>
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px">
                             <input type="radio" name="dbType" value="mysql" onchange="toggleDbType('mysql')"> MySQL
                         </label>
                     </div>
-                    <div style="padding:12px;background:#f5f7fa;border-radius:4px;font-size:13px;color:#909399;margin-bottom:12px">
-                        ⚠️ 数据库配置从 <code>db/db_config.php</code> 文件读取，如需修改请直接编辑该文件。
-                    </div>
-                    <div id="sqliteConfig" style="margin-bottom:12px">
-                        <div style="margin-bottom:8px;font-size:13px;color:#606266">数据库文件路径:</div>
-                        <input type="text" id="sqlitePath" value="db/data.db" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
-                    </div>
-                    <div id="mysqlConfig" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                        <div>
-                            <div style="margin-bottom:4px;font-size:13px;color:#606266">主机</div>
-                            <input type="text" id="mysqlHost" value="127.0.0.1" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
+                    <div class="sub-card">
+                        <div class="sub-card-header">
+                            <div class="left">
+                                <span class="step-badge warning">!</span>
+                                <span class="title">配置来源说明</span>
+                            </div>
                         </div>
-                        <div>
-                            <div style="margin-bottom:4px;font-size:13px;color:#606266">端口</div>
-                            <input type="number" id="mysqlPort" value="3306" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
-                        </div>
-                        <div>
-                            <div style="margin-bottom:4px;font-size:13px;color:#606266">数据库名</div>
-                            <input type="text" id="mysqlDbname" value="m3u8_ad" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
-                        </div>
-                        <div>
-                            <div style="margin-bottom:4px;font-size:13px;color:#606266">用户名</div>
-                            <input type="text" id="mysqlUsername" value="root" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
-                        </div>
-                        <div>
-                            <div style="margin-bottom:4px;font-size:13px;color:#606266">密码</div>
-                            <input type="password" id="mysqlPassword" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
-                        </div>
-                        <div>
-                            <div style="margin-bottom:4px;font-size:13px;color:#606266">字符集</div>
-                            <input type="text" id="mysqlCharset" value="utf8mb4" readonly style="width:100%;padding:8px 12px;border:1px solid #dcdfe6;border-radius:4px;background:#f5f7fa;color:#909399">
+                        <div class="form-tip" style="margin:0">
+                            数据库配置从 <code>db/db_config.php</code> 文件读取，后台页面<strong>只读展示</strong>；如需实际切换请直接编辑该 PHP 文件后刷新。
                         </div>
                     </div>
-                    <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
-                        <button class="btn btn-secondary" onclick="testDbConnection()">测试连接</button>
-                        <span id="testConnResult" style="font-size:13px;color:#909399"></span>
+                    <div id="sqliteConfig" style="margin-top:14px">
+                        <div class="form-group" style="margin:0">
+                            <label>SQLite · 数据库文件路径</label>
+                            <input type="text" id="sqlitePath" value="db/data.db" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                        </div>
+                    </div>
+                    <div id="mysqlConfig" style="display:none;margin-top:14px">
+                        <div class="inline-form-grid">
+                            <div class="form-group">
+                                <label>主机</label>
+                                <input type="text" id="mysqlHost" value="127.0.0.1" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                            </div>
+                            <div class="form-group">
+                                <label>端口</label>
+                                <input type="number" id="mysqlPort" value="3306" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                            </div>
+                            <div class="form-group">
+                                <label>数据库名</label>
+                                <input type="text" id="mysqlDbname" value="m3u8_ad" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                            </div>
+                            <div class="form-group">
+                                <label>用户名</label>
+                                <input type="text" id="mysqlUsername" value="root" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                            </div>
+                            <div class="form-group">
+                                <label>密码</label>
+                                <input type="password" id="mysqlPassword" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                            </div>
+                            <div class="form-group">
+                                <label>字符集</label>
+                                <input type="text" id="mysqlCharset" value="utf8mb4" readonly style="background:var(--fill-lighter);color:var(--text-secondary)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="action-bar with-top">
+                        <button class="btn btn-secondary" onclick="testDbConnection()">🔍 测试连接</button>
+                        <span id="testConnResult" style="font-size:13px;color:var(--text-secondary);align-self:center"></span>
                     </div>
                 </div>
             </div>
 
+            <!-- ⑤ 数据迁移 -->
             <div class="card">
-                <div class="card-title">数据迁移</div>
-                <p style="color:#606266;font-size:13px;margin-bottom:12px">
-                    将原有文件存储的数据（规则、资源站、代理等）迁移到数据库中。迁移不会删除原有文件数据。
-                </p>
-                <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-                    <button class="btn btn-warning" onclick="migrateData()">开始迁移</button>
-                    <span id="migrateStatus" style="font-size:13px;color:#909399"></span>
+                <div class="card-title"><span class="step-title"><span class="step-badge danger">④</span><span>数据迁移（文件 → 数据库）</span></span>
+                    <span class="section-caption">非破坏性，原文件保留</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">
+                    将原有<strong>文件存储</strong>的规则、资源站、代理等数据迁移到数据库中。迁移<strong>不会删除</strong>原有文件数据，可随时回滚。
+                </div>
+                <div class="action-bar tight">
+                    <button class="btn btn-warning" onclick="migrateData()">▶ 开始迁移</button>
+                    <span id="migrateStatus" style="font-size:13px;color:var(--text-secondary);align-self:center"></span>
                 </div>
                 <div id="migrateResult" style="margin-top:16px;display:none">
-                    <pre style="background:#f5f7fa;padding:12px;border-radius:4px;font-size:12px;white-space:pre-wrap;word-wrap:break-word"></pre>
+                    <pre style="background:var(--fill-lighter);padding:14px;border-radius:8px;font-size:12px;white-space:pre-wrap;word-wrap:break-word"></pre>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-update">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">系统版本信息</div>
-                <div class="stats-grid" id="versionStats">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🧭 系统更新 & 维护</span>
+                        <span class="status-pill info">版本/备份/缓存一站搞定</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">日常运维操作面板：版本对比、备份、缓存清理</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item info">
+                        <div class="overview-title">📦 一键在线更新</div>
+                        <div class="overview-desc">
+                            自动对比当前与 GitHub 最新 Release 版本号，有更新时「立即更新」按钮会亮起；<strong>更新前请先做完整备份</strong>。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">🧹 缓存 & 完整性</div>
+                        <div class="overview-desc">
+                            更新后页面没变化？先清浏览器 / Service Worker 缓存；再跑<strong>完整性检查</strong>看授权/核心文件是否损坏。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 版本信息 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>系统版本 & 在线更新</span></span>
+                    <span class="section-caption">首次进入会自动检查一次</span>
+                </div>
+                <div class="stats-grid" id="versionStats" style="margin-bottom:16px">
                     <div class="stat-card">
                         <div class="stat-value" id="currentVersion">-</div>
                         <div class="stat-label">当前版本</div>
@@ -3843,67 +4684,114 @@ if (!$_mxGXSecret) {
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="githubStatus">检查中...</div>
-                        <div class="stat-label">GitHub连接</div>
+                        <div class="stat-label">GitHub 连接</div>
                     </div>
                 </div>
-                <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-primary" onclick="checkUpdate()">检查更新</button>
-                    <button class="btn btn-success" id="updateBtn" onclick="doUpdate()" disabled>立即更新</button>
-                    <button class="btn btn-secondary" onclick="createBackup()">创建备份</button>
+                <div class="action-bar tight">
+                    <button class="btn btn-primary" onclick="checkUpdate()">🔍 检查更新</button>
+                    <button class="btn btn-success" id="updateBtn" onclick="doUpdate()" disabled>⬇️ 立即更新</button>
+                    <button class="btn btn-secondary" onclick="createBackup()">📦 创建备份</button>
                 </div>
             </div>
 
+            <!-- ③ 服务器信息 -->
             <div class="card">
-                <div class="card-title">服务器信息</div>
-                <div id="serverInfo" style="font-size:13px;color:#606266">加载中...</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>服务器信息</span></span>
+                    <span class="section-caption">PHP/操作系统/磁盘 环境信息</span>
+                </div>
+                <div id="serverInfo" style="font-size:13px;color:var(--text-regular)">加载中...</div>
             </div>
 
+            <!-- ④ 文件夹权限 -->
             <div class="card">
-                <div class="card-title">文件夹权限</div>
-                <div id="permissionInfo" style="font-size:13px;color:#606266">加载中...</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>文件夹权限检查</span></span>
+                    <span class="section-caption">红 = 需修复；绿 = 正常</span>
+                </div>
+                <div id="permissionInfo" style="font-size:13px;color:var(--text-regular)">加载中...</div>
             </div>
 
+            <!-- ⑤ 缓存清理 -->
             <div class="card">
-                <div class="card-title">缓存清理</div>
-                <p style="color:#606266;font-size:13px;margin-bottom:12px">清理浏览器缓存、Service Worker、localStorage 等，解决更新后页面不生效问题。</p>
-                <div style="display:flex;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-warning" onclick="clearAllCaches()">立即清理缓存</button>
+                <div class="card-title"><span class="step-title"><span class="step-badge info">④</span><span>缓存清理</span></span>
+                    <span class="section-caption">更新后页面不生效先点这里</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">清理浏览器缓存、Service Worker、localStorage 等，解决「明明后台代码已经更新但浏览器还是旧页面」的常见问题。</div>
+                <div class="action-bar tight">
+                    <button class="btn btn-warning" onclick="clearAllCaches()">🧹 立即清理全部缓存</button>
                     <button class="btn btn-secondary" onclick="clearBrowserCache()">清理浏览器缓存</button>
                     <button class="btn btn-secondary" onclick="clearServiceWorker()">清理 Service Worker</button>
                 </div>
-                <div id="cacheClearResult" style="margin-top:12px;font-size:12px;color:#606266"></div>
+                <div id="cacheClearResult" style="margin-top:14px;font-size:12px;color:var(--text-regular)"></div>
             </div>
 
+            <!-- ⑥ 完整性检查 -->
             <div class="card">
-                <div class="card-title">完整性检查</div>
-                <p style="color:#606266;font-size:13px;margin-bottom:12px">检查授权文件、核心文件完整性和系统状态。</p>
-                <button class="btn btn-primary" onclick="checkIntegrity()">检查系统完整性</button>
-                <div id="integrityResult" style="margin-top:12px;font-size:12px;color:#606266"></div>
+                <div class="card-title"><span class="step-title"><span class="step-badge danger">⑤</span><span>系统完整性检查</span></span>
+                    <span class="section-caption">授权 / 核心文件 / 运行状态</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">检查授权文件、核心文件完整性和系统状态，出问题时先来这里跑一遍做初诊。</div>
+                <div class="action-bar tight">
+                    <button class="btn btn-primary" onclick="checkIntegrity()">🔎 检查系统完整性</button>
+                </div>
+                <div id="integrityResult" style="margin-top:14px;font-size:12px;color:var(--text-regular)"></div>
             </div>
 
+            <!-- ⑦ 更新结果 -->
             <div class="card">
-                <div class="card-title">更新结果</div>
-                <div id="updateResult" style="font-size:12px;color:#606266"></div>
+                <div class="card-title"><span class="step-title"><span class="step-badge plain">⑥</span><span>更新结果输出</span></span>
+                    <span class="section-caption">点了「立即更新」后看这里</span>
+                </div>
+                <div id="updateResult" style="font-size:12px;color:var(--text-regular)"></div>
             </div>
 
+            <!-- ⑧ 备份管理 -->
             <div class="card">
-                <div class="card-title">备份管理</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">⑦</span><span>备份管理</span></span>
+                    <span class="section-caption">更新前强烈建议先备份一份</span>
+                </div>
                 <div id="backupList"></div>
             </div>
         </div>
 
         <!-- 自动更新 / 维护（显示进度条） -->
         <div class="page" id="page-autoupdate">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">🔄 自动更新 / 维护（进度条可视化）</div>
-                <p style="font-size:13px;color:#606266;margin-bottom:16px">
-                    一键执行「语法检查 → 数据库迁移 → 官替纠偏/刷新 → AI 学习 → 资源站健康巡检」全流程，后台任务运行，页面实时显示进度条。
-                </p>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🛠️ 自动维护中心</span>
+                        <span class="status-pill purple">进度条可视化</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">8 步日常维护流程一键跑完，后台队列 + 前端进度</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item primary">
+                        <div class="overview-title">🧱 8 步维护流水线</div>
+                        <div class="overview-desc">
+                            语法检查 → 数据库迁移 → 官替纠偏/刷新 → AI 学习 → AI 旧样本清理 → 资源站巡检 → 规则健康检查，<strong>顺序执行可单步也可全跑</strong>。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">📊 进度可视化</div>
+                        <div class="overview-desc">
+                            顶部总进度条 + 每步状态行（成功=绿 / 失败=红 / 运行中=蓝呼吸灯）+ 终端风格彩色日志，每一步跑到哪了一目了然。
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px">
-                    <div style="font-size:13px;color:#606266">任务:</div>
-                    <select id="gxAction" class="gx-select" style="padding:8px 10px;border:1px solid var(--border-base);border-radius:6px;background:#fff;font-size:13px">
-                        <option value="all">全部 (check → migrate → official_refresh → ai_learn → site_check)</option>
+            <!-- ② 任务参数 + 进度 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>选择任务 & 启动</span></span>
+                    <span class="section-caption">可单步跑，也可一键全流程</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">
+                    推荐每周跑一次「全部」：数据库会补齐迁移、官替站域名会自动纠错、AI 学习最新热门剧、资源站自动标记不可用源。
+                </div>
+                <div class="action-bar" style="margin-bottom:16px;flex-wrap:wrap;align-items:center">
+                    <div style="font-size:13px;color:var(--text-regular);font-weight:600">任务类型:</div>
+                    <select id="gxAction" class="gx-select" style="padding:10px 12px;border:1px solid var(--border-base);border-radius:8px;background:#fff;font-size:13px;min-width:260px">
+                        <option value="all">全部 (7 步一条龙)</option>
                         <option value="check">① 语法检查 check</option>
                         <option value="migrate">② 数据库迁移 migrate</option>
                         <option value="official_refresh">③ 官替纠偏/刷新 official_refresh</option>
@@ -3913,110 +4801,174 @@ if (!$_mxGXSecret) {
                         <option value="rule_check">⑦ 域名规则健康检查 rule_check</option>
                         <option value="status">只看上次执行结果 status</option>
                     </select>
-                    <div style="font-size:13px;color:#606266">最大数:</div>
-                    <input type="number" id="gxMax" value="5" min="1" max="30" style="width:90px;padding:8px 10px;border:1px solid var(--border-base);border-radius:6px;font-size:13px">
-                    <label style="font-size:13px;color:#606266;display:flex;align-items:center;gap:6px">
-                        <input type="checkbox" id="gxForce" style="width:15px;height:15px"> 强制 (force)
+                    <div style="font-size:13px;color:var(--text-regular)">最大处理数:</div>
+                    <input type="number" id="gxMax" value="5" min="1" max="30" style="width:100px;padding:10px 12px;border:1px solid var(--border-base);border-radius:8px;font-size:13px">
+                    <label class="toggle-label" style="display:flex;align-items:center;gap:8px;margin:0">
+                        <input type="checkbox" id="gxForce"> 强制重跑 (force)
                     </label>
-                    <button class="btn btn-primary" id="gxStartBtn" onclick="gxStartTask()">▶ 开始执行</button>
-                    <button class="btn btn-secondary" onclick="gxRefreshProgress()">🔃 刷新进度</button>
-                    <button class="btn btn-danger" id="gxStopBtn" style="display:none" onclick="gxStopTask()">⛔ 停止轮询</button>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-left:auto">
+                        <button class="btn btn-primary" id="gxStartBtn" onclick="gxStartTask()">▶ 开始执行</button>
+                        <button class="btn btn-secondary" onclick="gxRefreshProgress()">🔃 刷新进度</button>
+                        <button class="btn btn-danger" id="gxStopBtn" style="display:none" onclick="gxStopTask()">⛔ 停止轮询</button>
+                    </div>
                 </div>
 
                 <!-- 任务概览 -->
-                <div id="gxOverview" style="font-size:13px;color:#606266;padding:10px 14px;background:#f8fafc;border-radius:8px;border:1px solid #eef2f7;margin-bottom:16px">
-                    暂无运行任务，点击「开始执行」启动。
+                <div id="gxOverview" class="sub-card" style="margin-bottom:18px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge info">ℹ</span>
+                            <span class="title">当前任务信息</span>
+                        </div>
+                    </div>
+                    <div class="form-tip" style="margin:0">暂无运行任务，点击「开始执行」启动。</div>
                 </div>
 
                 <!-- 总进度条 -->
-                <div style="margin-bottom:14px">
-                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
-                        <span id="gxPctText" style="font-weight:600;color:var(--text-primary)">进度：0%</span>
+                <div style="margin-bottom:18px">
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+                        <span id="gxPctText" style="font-weight:600;color:var(--text-primary)">总进度：0%</span>
                         <span id="gxStepText" style="color:var(--text-secondary)">等待启动…</span>
                     </div>
-                    <div style="width:100%;height:22px;background:#edf1f5;border-radius:12px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.05)">
+                    <div style="width:100%;height:24px;background:var(--fill-lighter);border-radius:12px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.05)">
                         <div id="gxProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:12px;transition:width .35s ease;position:relative;">
-                            <div style="position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.25) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.25) 50%,rgba(255,255,255,.25) 75%,transparent 75%);background-size:22px 22px;animation:gx-bar-stripes 1s linear infinite;opacity:.7;"></div>
+                            <div style="position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.25) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.25) 50%,rgba(255,255,255,.25) 75%,transparent 75%);background-size:24px 24px;animation:gx-bar-stripes 1s linear infinite;opacity:.7;"></div>
                         </div>
                     </div>
                 </div>
-                <style>
-                    @keyframes gx-bar-stripes { from{background-position:0 0} to{background-position:44px 0} }
-                    .gx-step-row { display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;margin-bottom:6px;background:#fafbfc;border:1px solid #eef1f5;font-size:13px; }
-                    .gx-step-row.done-ok    { background:#f0f9eb; border-color:#e1f3d8; color:#529b2e; }
-                    .gx-step-row.done-fail  { background:#fef0f0; border-color:#fbc4c4; color:#d9363e; }
-                    .gx-step-row.running    { background:#ecf5ff; border-color:#d9ecff; color:#2e5b9e; animation:gx-pulse 1.4s ease-in-out infinite; }
-                    @keyframes gx-pulse { 0%,100%{ box-shadow:0 0 0 rgba(102,126,234,.2)} 50%{ box-shadow:0 0 0 6px rgba(102,126,234,.0)} }
-                    .gx-step-name { width:150px;flex-shrink:0;font-weight:600 }
-                    .gx-step-sub  { flex:1;color:#606266;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-                    .gx-step-pct  { width:56px;text-align:right;color:#909399 }
-                    .gx-step-icon { width:20px;text-align:center }
-                    .gx-log { max-height:380px;overflow:auto;border:1px solid #e9ecef;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px 14px;font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:12.5px;line-height:1.55 }
-                    .gx-log .info   { color:#93c5fd }
-                    .gx-log .warn   { color:#fbbf24 }
-                    .gx-log .error  { color:#f87171;font-weight:600 }
-                    .gx-log .ok     { color:#34d399;font-weight:600 }
-                    .gx-log .time   { color:#64748b;margin-right:8px }
-                </style>
 
                 <!-- 步骤进度（每步卡片） -->
-                <div class="card" style="margin-top:0;box-shadow:none;border:1px solid var(--border-lighter)">
-                    <div class="card-title" style="font-size:14px">步骤详情</div>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge success">②</span>
+                            <span class="title">步骤详情</span>
+                        </div>
+                    </div>
                     <div id="gxStepsList" style="margin-top:8px">
-                        <div style="color:var(--text-secondary);font-size:13px">等待启动…</div>
+                        <div style="color:var(--text-secondary);font-size:13px;padding:8px 4px">等待启动…</div>
                     </div>
                 </div>
 
                 <!-- 彩色日志 -->
-                <div class="card" style="margin-top:18px;box-shadow:none;border:1px solid var(--border-lighter)">
-                    <div class="card-title" style="font-size:14px;display:flex;align-items:center;justify-content:space-between">
-                        <span>📜 运行日志</span>
-                        <div style="display:flex;gap:8px">
-                            <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="document.getElementById('gxLog').innerHTML=''">清空</button>
-                            <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="gxToggleAutoScroll()" id="gxAutoScrollBtn">自动滚动: 开</button>
+                <div class="sub-card" style="margin-top:14px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge plain">③</span>
+                            <span class="title">📜 运行日志</span>
+                        </div>
+                        <div class="right" style="display:flex;gap:8px">
+                            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('gxLog').innerHTML=''">清空</button>
+                            <button class="btn btn-sm btn-secondary" onclick="gxToggleAutoScroll()" id="gxAutoScrollBtn">自动滚动: 开</button>
                         </div>
                     </div>
                     <div id="gxLog" class="gx-log"></div>
                 </div>
             </div>
+            <style>
+                @keyframes gx-bar-stripes { from{background-position:0 0} to{background-position:48px 0} }
+            </style>
         </div>
 
         <div class="page" id="page-announcement">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">公告管理</div>
-                <p style="color:#606266;font-size:13px;margin-bottom:16px">管理系统公告内容，支持从远程同步最新公告。</p>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-                    <button class="btn btn-primary" onclick="loadAnnouncementList()">📄 刷新公告</button>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">📢 公告管理中心</span>
+                        <span class="status-pill info">本地优先 + 远程兜底</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">从远程自动同步 + 手动新增，双向维护</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">🤝 本地 + 远程双源</div>
+                        <div class="overview-desc">
+                            先读本地 <code>gg.txt</code>，空或异常再依次走 <strong>GitHub → jsDelivr → fastly → 备用</strong> 4 条远程链路，一条命中就停止。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">✏️ 可手动新增/编辑</div>
+                        <div class="overview-desc">
+                            想写自己的专属公告？点「添加公告」后保存，<strong>本地文件会覆盖远程结果</strong>，让自己站点的公告优先级最高。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 操作区 + 统计 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>操作面板 & 统计</span></span>
+                    <span class="section-caption">同步 / 新增 / 保存，一气呵成</span>
+                </div>
+                <div class="action-bar tight" style="margin-bottom:14px">
+                    <button class="btn btn-primary" onclick="loadAnnouncementList()">📄 刷新公告列表</button>
                     <button class="btn btn-success" onclick="refreshRemoteAnnouncement()">🔄 从远程同步</button>
                     <button class="btn btn-warning" onclick="showAddAnnouncementModal()">➕ 添加公告</button>
-                    <button class="btn btn-primary" onclick="saveAnnouncements()">💾 保存修改</button>
+                    <button class="btn btn-primary" onclick="saveAnnouncements()">💾 保存全部修改</button>
                 </div>
-                <div id="announcementStats" style="font-size:13px;color:#606266;margin-bottom:12px">加载中...</div>
+                <div id="announcementStats" style="font-size:13px;color:var(--text-regular)">加载中...</div>
             </div>
 
+            <!-- ③ 公告列表 -->
             <div class="card">
-                <div class="card-title">公告列表</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>公告列表</span></span>
+                    <span class="section-caption">可行内编辑，右上角置顶/删除按钮</span>
+                </div>
                 <div id="announcementList" style="max-height:500px;overflow-y:auto">
-                    <div style="text-align:center;padding:40px;color:#909399">加载中...</div>
+                    <div style="text-align:center;padding:40px;color:var(--text-secondary)">加载中...</div>
                 </div>
             </div>
 
+            <!-- ④ 公告源说明 -->
             <div class="card">
-                <div class="card-title">公告源设置</div>
-                <p style="color:#606266;font-size:13px;margin-bottom:12px">公告优先从本地读取，本地无数据时自动从远程源获取。多个远程源按顺序尝试。</p>
-                <div style="font-size:12px;color:#909399;line-height:1.8">
-                    <div>📌 本地文件：gg.txt（优先读取）</div>
-                    <div>🌐 远程源1：GitHub Raw</div>
-                    <div>🌐 远程源2：jsDelivr CDN</div>
-                    <div>🌐 远程源3：fastly CDN</div>
-                    <div>🌐 远程源4：备用服务器</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>公告源与优先级</span></span>
+                    <span class="section-caption">读取顺序：本地 → 远程 1→2→3→4</span>
+                </div>
+                <div class="form-tip" style="margin-bottom:14px">公告优先从本地读取，本地无数据时自动从远程源获取。多个远程源<strong>按顺序依次尝试</strong>，只要一条成功就停止。</div>
+                <div class="sub-card">
+                    <div style="font-size:13px;line-height:2;color:var(--text-regular)">
+                        <div>📌 <strong>第 1 优先（本地）：</strong> <code>gg.txt</code>（存在即直接返回）</div>
+                        <div>🌐 <strong>第 2 优先：</strong> GitHub Raw</div>
+                        <div>🌐 <strong>第 3 优先：</strong> jsDelivr CDN（国内访问稳定）</div>
+                        <div>🌐 <strong>第 4 优先：</strong> fastly CDN</div>
+                        <div>🌐 <strong>第 5 优先：</strong> 备用服务器</div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-auth">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">授权状态概览</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🔑 授权中心</span>
+                        <span class="status-pill warning">本地校验 + 可选远程校</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">文件存在性 → 本地签名 → 远程服务器，三层校验链路</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">✅ 默认本地校验</div>
+                        <div class="overview-desc">
+                            默认只做<strong>授权文件存在 + 签名比对</strong>两层校验，不联网不依赖外部服务；离线 / 内网环境也能正常用。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">🌐 可选远程验证</div>
+                        <div class="overview-desc">
+                            勾上「启用远程验证」后会额外连授权服务器核对时间戳 / 域名绑定；<strong>正式上线建议开启</strong>，避免授权文件被四处传播。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 状态概览 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>授权状态概览</span></span>
+                    <span class="section-caption">4 个指标一眼判断是否正常</span>
+                </div>
                 <div class="stats-grid" id="authStats">
                     <div class="stat-card">
                         <div class="stat-value" id="sqFileStatus">检查中...</div>
@@ -4035,74 +4987,140 @@ if (!$_mxGXSecret) {
                         <div class="stat-label">当前版本</div>
                     </div>
                 </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">本地授权信息</div>
-                <div id="localAuthInfo" style="font-size:13px;color:#606266">加载中...</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">远程服务器信息</div>
-                <div id="remoteAuthInfo" style="font-size:13px;color:#606266">加载中...</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">授权配置</div>
-                <div class="form-group">
-                    <label>授权服务器 IP</label>
-                    <input type="text" id="authServerIp" placeholder="例如：114.134.184.91">
-                </div>
-                <div class="form-group">
-                    <label>授权服务器端口</label>
-                    <input type="text" id="authServerPort" placeholder="例如：9001">
-                </div>
-                <div class="form-group">
-                    <label>授权文件名</label>
-                    <input type="text" id="authFile" placeholder="例如：sq.txt">
-                </div>
-                <div class="form-group">
-                    <label>对比文件名</label>
-                    <input type="text" id="authFileCompare" placeholder="例如：sq.txt">
-                </div>
-                <div class="form-group">
-                    <label style="display:flex;align-items:center;gap:8px">
-                        <input type="checkbox" id="enableRemoteVerify"> 启用远程验证
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label style="display:flex;align-items:center;gap:8px">
-                        <input type="checkbox" id="enableTimestampCheck"> 启用时间戳检查
-                    </label>
-                </div>
-                <div style="display:flex;gap:12px">
-                    <button class="btn btn-primary" onclick="saveAuthConfig()">保存配置</button>
-                    <button class="btn btn-secondary" onclick="refreshAuthInfo()">刷新状态</button>
+                <div class="action-bar tight" style="margin-top:14px">
+                    <button class="btn btn-secondary" onclick="refreshAuthInfo()">🔄 刷新全部状态</button>
                 </div>
             </div>
 
+            <!-- ③ 本地/远程信息 -->
             <div class="card">
-                <div class="card-title">设置授权码</div>
+                <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>本地 & 远程授权详情</span></span>
+                    <span class="section-caption">展开看授权主体/到期/校验项</span>
+                </div>
+                <div class="sub-card">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge info">A</span>
+                            <span class="title">本地授权信息（存在 sq.txt 就会读到）</span>
+                        </div>
+                    </div>
+                    <div id="localAuthInfo" style="font-size:13px;color:var(--text-regular);margin:0">加载中...</div>
+                </div>
+                <div class="sub-card" style="margin-top:14px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">B</span>
+                            <span class="title">远程服务器信息（需启用远程验证才有效）</span>
+                        </div>
+                    </div>
+                    <div id="remoteAuthInfo" style="font-size:13px;color:var(--text-regular);margin:0">加载中...</div>
+                </div>
+            </div>
+
+            <!-- ④ 授权配置 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>授权配置</span></span>
+                    <span class="section-caption">服务器地址 + 校验开关</span>
+                </div>
+                <div class="inline-form-grid">
+                    <div class="form-group">
+                        <label>授权服务器 IP</label>
+                        <input type="text" id="authServerIp" placeholder="例如：114.134.184.91">
+                        <div class="form-tip">远程验证要连接的服务器地址。</div>
+                    </div>
+                    <div class="form-group">
+                        <label>授权服务器端口</label>
+                        <input type="text" id="authServerPort" placeholder="例如：9001">
+                        <div class="form-tip">一般由授权方提供。</div>
+                    </div>
+                    <div class="form-group">
+                        <label>授权文件名</label>
+                        <input type="text" id="authFile" placeholder="例如：sq.txt">
+                        <div class="form-tip">项目根目录下的授权文件。</div>
+                    </div>
+                    <div class="form-group">
+                        <label>对比文件名</label>
+                        <input type="text" id="authFileCompare" placeholder="例如：sq.txt">
+                        <div class="form-tip">用于一致性校验的比对文件。</div>
+                    </div>
+                </div>
+                <div class="sub-card" style="margin-top:4px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge info">C</span>
+                            <span class="title">校验开关</span>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:4px">
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:8px;margin:0">
+                            <input type="checkbox" id="enableRemoteVerify">
+                            <span>启用远程验证（联网到授权服务器二次核对）</span>
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:8px;margin:0">
+                            <input type="checkbox" id="enableTimestampCheck">
+                            <span>启用时间戳检查（防止重放旧授权包）</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="action-bar with-top">
+                    <button class="btn btn-primary" onclick="saveAuthConfig()">💾 保存配置</button>
+                    <button class="btn btn-secondary" onclick="refreshAuthInfo()">🔄 刷新状态</button>
+                </div>
+            </div>
+
+            <!-- ⑤ 授权码录入 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge danger">④</span><span>设置 / 生成授权码</span></span>
+                    <span class="section-caption">拿到授权码后贴这里保存</span>
+                </div>
                 <div class="form-group">
                     <label>输入授权码</label>
-                    <textarea id="authCodeInput" placeholder="请输入授权码..."></textarea>
+                    <textarea id="authCodeInput" placeholder="请输入授权码...（拿到的授权字符串整段粘贴）" rows="5"></textarea>
                 </div>
-                <div style="display:flex;gap:12px">
-                    <button class="btn btn-success" onclick="setAuthCode()">设置授权码</button>
-                    <button class="btn btn-secondary" onclick="generateAuthCode()">生成测试授权码</button>
+                <div class="action-bar tight">
+                    <button class="btn btn-success" onclick="setAuthCode()">✅ 设置授权码</button>
+                    <button class="btn btn-secondary" onclick="generateAuthCode()">🧪 生成测试授权码</button>
                 </div>
-                <div style="margin-top:12px;font-size:12px;color:#909399">
-                    授权异常或需要授权请联系 QQ: 2094332348
+                <div class="form-tip" style="margin-top:14px">
+                    授权异常 / 需要授权 / 商务合作请联系 QQ：<strong>2094332348</strong>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-ai_skip">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">🤖 AI 智能处理中心</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🤖 AI 智能去广告（核心入口）</span>
+                        <span class="status-pill purple">5 步流水线一键</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">分析 → 识簇 → 出规则 → 过滤 → 学习</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item primary">
+                        <div class="overview-title">🧠 5 种处理模式</div>
+                        <div class="overview-desc">
+                            <strong>一键智能处理 = 4 个子动作串跑</strong>；也可单独点「AI 去广告 / 智能分析 / 专业检测」，支持<strong>安全守护</strong>（不误删正片）与<strong>自动学习</strong>（下次更快）。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">📋 结果 → 规则 → 沉淀</div>
+                        <div class="overview-desc">
+                            处理完直接出<strong>纯净播放链接</strong>，同时生成 4 类规则（DISCONTINUITY 正则 / 时长 / 序列号 / 文件名），点「智能生成规则」即可写入规则库长期复用。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 操作卡（保留渐变主题色） -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>输入视频 & 选择处理模式</span></span>
+                    <span class="section-caption">紫色主题 = AI 智能去广告主入口</span>
+                </div>
                 <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
                     <div style="font-size:18px;font-weight:600;margin-bottom:8px">🧠 AI 智能处理引擎</div>
-                    <div style="font-size:13px;opacity:0.9">一站式智能去广告解决方案：自动分析 → 识别广告簇 → 自动生成规则 → 智能过滤 → 自动学习，全流程自动化处理</div>
+                    <div style="font-size:13px;opacity:0.9">一站式：自动<strong>分析 → 识别广告簇 → 生成规则 → 过滤 → 自动学习</strong>，全流程可视化进度。</div>
                 </div>
                 <div class="input-group">
                     <input type="text" id="aiSkipUrl" placeholder="输入 M3U8 视频链接，例如：https://example.com/video/index.m3u8">
@@ -4111,19 +5129,27 @@ if (!$_mxGXSecret) {
                     <button class="btn btn-secondary" onclick="aiSmartAnalyze()">🔍 智能分析</button>
                     <button class="btn btn-warning" onclick="aiProDetect()">🔬 专业检测</button>
                 </div>
-                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipSafeguard" checked> 启用安全守护
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipAutoLearn" checked> 自动学习规则
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipAutoSave"> 自动保存规则
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiSkipDeepAnalysis"> 深度分析模式
-                    </label>
+                <div class="sub-card" style="margin-top:14px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">A</span>
+                            <span class="title">处理开关（建议默认全勾）</span>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:4px">
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiSkipSafeguard" checked> 启用安全守护（不删正片）
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiSkipAutoLearn" checked> 自动学习规则（下次更快）
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiSkipAutoSave"> 自动保存规则（入库）
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiSkipDeepAnalysis"> 深度分析模式（更慢更准）
+                        </label>
+                    </div>
                 </div>
                 <div id="smartProcessSteps" style="display:none;margin-top:16px;padding:14px;background:#f5f7fa;border-radius:8px">
                     <div style="font-weight:600;color:#303133;margin-bottom:10px">⚡ 智能处理进度</div>
@@ -4136,46 +5162,58 @@ if (!$_mxGXSecret) {
             <div id="aiSkipResult" style="display:none">
                 <div class="stats-grid" id="aiSkipStats"></div>
 
+                <!-- ③ 结果 -->
                 <div class="card">
-                    <div class="card-title">处理结果</div>
-                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-                        <div style="flex:1;min-width:200px">
-                            <div style="font-size:13px;color:#909399;margin-bottom:4px">无广告播放链接</div>
-                            <code id="aiSkipOutputUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>处理结果（可直接播放）</span></span>
+                        <span class="section-caption">复制 / 新窗口 / 内置播放 / 下载 4 种入口</span>
+                    </div>
+                    <div class="sub-card">
+                        <div class="sub-card-header">
+                            <div class="left">
+                                <span class="step-badge success">B</span>
+                                <span class="title">无广告播放链接（点一下可复制）</span>
+                            </div>
+                        </div>
+                        <div style="margin:0">
+                            <code id="aiSkipOutputUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:6px;word-break:break-all;display:block;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
                         </div>
                     </div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div class="action-bar with-top">
                         <button class="btn btn-secondary" onclick="copyText(document.getElementById('aiSkipOutputUrl').textContent)">📋 复制链接</button>
                         <button class="btn btn-primary" onclick="window.open(document.getElementById('aiSkipOutputUrl').textContent, '_blank')">🔗 新窗口播放</button>
                         <button class="btn btn-success" onclick="playAiSkipVideo()">▶️ 内置播放</button>
                         <button class="btn btn-secondary" onclick="downloadAiSkipM3u8()">💾 下载M3U8</button>
                     </div>
                     <div id="aiSkipPlayerContainer" style="display:none;margin-top:16px">
-                        <div id="aiSkipVideoPlayer" style="width:100%;height:360px;border-radius:8px;overflow:hidden;background:#000"></div>
-                        <div style="margin-top:8px;font-size:12px;color:#909399" id="aiSkipPlayStatus"></div>
+                        <div id="aiSkipVideoPlayer" style="width:100%;height:360px;border-radius:10px;overflow:hidden;background:#000"></div>
+                        <div style="margin-top:8px;font-size:12px;color:var(--text-secondary)" id="aiSkipPlayStatus"></div>
                     </div>
                 </div>
 
                 <div class="card" id="proDetectCard" style="display:none">
-                    <div class="card-title">🔬 专业广告检测报告</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge danger">③</span><span>🔬 专业广告检测报告</span></span>
+                        <span class="section-caption">仅「专业检测」模式会生成</span>
+                    </div>
                     <div id="proDetectResult" style="margin-bottom:16px"></div>
                 </div>
 
                 <div class="card">
-                    <div class="card-title">🎯 广告簇分析</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge warning">④</span><span>🎯 广告簇分析</span></span>
+                        <span class="section-caption">把结构相似的广告段归成一簇，便于批量去</span>
+                    </div>
                     <div id="aiSkipAdClusters" style="margin-bottom:16px">
-                        <div style="text-align:center;color:#909399;padding:20px">加载中...</div>
+                        <div style="text-align:center;color:var(--text-secondary);padding:20px">加载中...</div>
                     </div>
                 </div>
 
                 <div class="card">
-                    <div class="card-title">⚙️ 自动生成规则</div>
-                    <div style="margin-bottom:16px">
-                        <div style="font-size:13px;color:#606266;margin-bottom:12px">基于视频内容智能分析，自动生成多种去广告规则（包括 DISCONTINUITY 正则规则、时长规则、序列号规则等）</div>
-                        <div style="display:flex;gap:10px;flex-wrap:wrap">
-                            <button class="btn btn-primary" onclick="aiSkipGenerateRules()">🤖 智能生成规则</button>
-                            <button class="btn btn-success" onclick="goToRules()">🔧 规则管理</button>
-                        </div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge primary">⑤</span><span>⚙️ 自动生成去广告规则</span></span>
+                        <span class="section-caption">出 4 类规则，写进规则库就能长期生效</span>
+                    </div>
+                    <div class="form-tip" style="margin-bottom:14px">基于视频内容智能分析，自动生成：<strong>DISCONTINUITY 正则 / 时长 / 序列号 / 文件名</strong> 4 类规则，命中后同类视频秒级去广告。</div>
+                    <div class="action-bar tight" style="margin-bottom:14px">
+                        <button class="btn btn-primary" onclick="aiSkipGenerateRules()">🤖 智能生成规则</button>
+                        <button class="btn btn-success" onclick="goToRules()">🔧 跳转规则管理</button>
                     </div>
                     <div id="aiSkipGeneratedRules" style="display:none">
                         <div class="tab-bar">
@@ -4189,7 +5227,9 @@ if (!$_mxGXSecret) {
                 </div>
 
                 <div class="card">
-                    <div class="card-title">AI 识别详情</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge info">⑥</span><span>AI 识别详情（4 个视角）</span></span>
+                        <span class="section-caption">Tab 切换看广告段 / 正片段 / MD5 / 明细</span>
+                    </div>
                     <div class="tab-bar">
                         <div class="tab-item active" onclick="switchAiSkipTab(this, 'ad')">广告片段</div>
                         <div class="tab-item" onclick="switchAiSkipTab(this, 'content')">内容片段</div>
@@ -4200,8 +5240,10 @@ if (!$_mxGXSecret) {
                 </div>
 
                 <div class="card">
-                    <div class="card-title">快捷操作</div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div class="card-title"><span class="step-title"><span class="step-badge purple">⑦</span><span>快捷操作</span></span>
+                        <span class="section-caption">一键跳转到其他 AI 模块</span>
+                    </div>
+                    <div class="action-bar tight">
                         <button class="btn btn-secondary" onclick="aiSkipGenerateRules()">📋 生成规则</button>
                         <button class="btn btn-success" onclick="goToRules()">🔧 规则管理</button>
                         <button class="btn btn-secondary" onclick="aiSkipToInsert()">📺 检测插播</button>
@@ -4212,33 +5254,69 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-ai_insert">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">📺 AI 插播识别</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">📺 AI 插播识别（片头/片尾/中间广告）</span>
+                        <span class="status-pill danger">精准定位插播位置</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">粉紫渐变主题，MD5 + 极速双模式</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item danger">
+                        <div class="overview-title">🏷️ 识别 3 类插播</div>
+                        <div class="overview-desc">
+                            <strong>片头 / 片尾 / 中间插播</strong>三种位置独立开关，外加 <strong>MD5 特征识别</strong>（常见资源站同款广告秒中）和 <strong>⚡ 极速模式</strong>（采样更少更快）。
+                        </div>
+                    </div>
+                    <div class="overview-item warning">
+                        <div class="overview-title">🚀 一键跳过插播</div>
+                        <div class="overview-desc">
+                            识别完直接点「一键跳过插播」生成<strong>纯净版 M3U8 链接</strong>；还可以一键跳到去广告 / 水印处理做二次净化。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 操作卡 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>输入视频 & 勾选要识别的插播类型</span></span>
+                    <span class="section-caption">粉色渐变 = 插播识别主题</span>
+                </div>
                 <div style="background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
                     <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能插播检测引擎</div>
-                    <div style="font-size:13px;opacity:0.9">自动识别视频中的插播内容，包括片头片尾广告、中间插播广告、跑马灯等，精准定位插播位置和时长</div>
+                    <div style="font-size:13px;opacity:0.9">自动识别：<strong>片头片尾广告 / 中间插播 / 跑马灯</strong>，精准定位插播位置和时长，一键生成纯净版播放链接。</div>
                 </div>
                 <div class="input-group">
                     <input type="text" id="aiInsertUrl" placeholder="输入 M3U8 视频链接，检测插播内容">
                     <button class="btn btn-primary" onclick="aiInsertDetect()">🔍 检测插播</button>
                     <button class="btn btn-success" onclick="aiInsertMd5Analyze()">🔬 MD5分析</button>
                 </div>
-                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiInsertOpening" checked> 检测片头
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiInsertEnding" checked> 检测片尾
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiInsertMiddle" checked> 检测中间插播
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiInsertMd5Mode" checked> MD5特征识别
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiInsertFastMode" checked> ⚡ 极速模式
-                    </label>
+                <div class="sub-card" style="margin-top:14px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">A</span>
+                            <span class="title">检测开关（默认全开，按需关掉不想识别的类型）</span>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:4px">
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiInsertOpening" checked> 检测片头广告
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiInsertEnding" checked> 检测片尾广告
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiInsertMiddle" checked> 检测中间插播
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiInsertMd5Mode" checked> MD5 特征识别（推荐开）
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiInsertFastMode" checked> ⚡ 极速模式（采样更少更快）
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -4246,120 +5324,180 @@ if (!$_mxGXSecret) {
                 <div class="stats-grid" id="aiInsertStats"></div>
 
                 <div class="card">
-                    <div class="card-title">插播检测结果</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>插播检测结果</span></span>
+                        <span class="section-caption">会列出每一段插播：位置 / 时长 / 类型</span>
+                    </div>
                     <div id="aiInsertList"></div>
                 </div>
 
                 <div class="card" id="aiInsertMd5Card" style="display:none">
-                    <div class="card-title">🔬 MD5 特征码分析</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>🔬 MD5 特征码分析</span></span>
+                        <span class="section-caption">只在「MD5分析」按钮点了才出现</span>
+                    </div>
                     <div id="aiInsertMd5Content"></div>
                 </div>
 
                 <div class="card">
-                    <div class="card-title">操作</div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div class="card-title"><span class="step-title"><span class="step-badge primary">④</span><span>一键净化 & 跨模块跳转</span></span>
+                        <span class="section-caption">跳过插播 → 去广告 → 水印处理，串成流水线</span>
+                    </div>
+                    <div class="action-bar tight">
                         <button class="btn btn-primary" onclick="aiInsertSkip()">🚀 一键跳过插播</button>
                         <button class="btn btn-secondary" onclick="aiInsertToSkip()">🤖 去广告处理</button>
                         <button class="btn btn-secondary" onclick="aiInsertToWatermark()">💧 水印处理</button>
                     </div>
                     <div id="aiInsertOutput" style="margin-top:16px;display:none">
-                        <div style="font-size:13px;color:#909399;margin-bottom:4px">纯净版播放链接</div>
-                        <code id="aiInsertOutputUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                        <div class="sub-card">
+                            <div class="sub-card-header">
+                                <div class="left">
+                                    <span class="step-badge success">B</span>
+                                    <span class="title">纯净版播放链接（点击复制）</span>
+                                </div>
+                            </div>
+                            <div style="margin:0">
+                                <code id="aiInsertOutputUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:6px;word-break:break-all;display:block;cursor:pointer" onclick="copyText(this.textContent)" title="点击复制"></code>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="page" id="page-ai_subtitle">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">📝 AI 滚动字幕分析</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">📝 AI 滚动字幕广告分析</span>
+                        <span class="status-pill success">顶部/底部/中间全覆盖</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">青绿渐变主题，采样数可调，附置信度</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item success">
+                        <div class="overview-title">📊 2 档检测 + 6 档采样</div>
+                        <div class="overview-desc">
+                            <strong>快速模式（10段）/ 深度模式（20段）</strong>两档，采样段数可在 5~30 段自定义；段数越多越准但越慢，一般 10 段是甜点。
+                        </div>
+                    </div>
+                    <div class="overview-item info">
+                        <div class="overview-title">🎯 4 类输出</div>
+                        <div class="overview-desc">
+                            给出<strong>是否有字幕广告 / 滚动检测 / 置信度 / 耗时</strong> 6 项指标，并展示「广告区域分布」「广告文字样本」「采样片段详情」三重证据链。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 操作卡 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>输入视频 & 选择检测强度</span></span>
+                    <span class="section-caption">青绿渐变 = 字幕广告分析主题</span>
+                </div>
                 <div style="background:linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);color:#333;padding:20px;border-radius:12px;margin-bottom:20px">
                     <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能滚动字幕广告检测</div>
-                    <div style="font-size:13px;opacity:0.85">快速分析视频中的滚动字幕广告，识别顶部/底部滚动文字、插播字幕等非正片内容，支持多模式检测和置信度评估</div>
+                    <div style="font-size:13px;opacity:0.85">识别<strong>顶部 / 底部滚动文字 / 插播字幕</strong>等非正片内容，支持多模式检测和<strong>置信度评估</strong>，分析结果可一键复制。</div>
                 </div>
                 <div class="input-group">
                     <input type="text" id="aiSubtitleUrl" placeholder="输入视频链接或 M3U8 地址，分析滚动字幕广告">
                     <button class="btn btn-primary" onclick="aiSubtitleAnalyze()">⚡ 快速分析</button>
                 </div>
-                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <span style="font-size:13px;color:#606266">检测模式:</span>
-                    </label>
-                    <select id="aiSubtitleMode" style="padding:6px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:13px;background:white">
-                        <option value="fast">快速模式（采样10段）</option>
-                        <option value="deep">深度模式（采样20段）</option>
-                    </select>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <span style="font-size:13px;color:#606266">采样数:</span>
-                    </label>
-                    <select id="aiSubtitleSamples" style="padding:6px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:13px;background:white">
-                        <option value="5">5 段</option>
-                        <option value="10" selected>10 段</option>
-                        <option value="20">20 段</option>
-                        <option value="30">30 段</option>
-                    </select>
+                <div class="sub-card" style="margin-top:14px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">A</span>
+                            <span class="title">检测参数（2 个下拉）</span>
+                        </div>
+                    </div>
+                    <div class="inline-form-grid" style="margin-top:4px">
+                        <div class="form-group">
+                            <label>检测模式</label>
+                            <select id="aiSubtitleMode" style="padding:8px 12px;border:1px solid var(--border-base);border-radius:6px;font-size:13px;background:white">
+                                <option value="fast">快速模式（采样10段，快）</option>
+                                <option value="deep">深度模式（采样20段，准）</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>采样片段数</label>
+                            <select id="aiSubtitleSamples" style="padding:8px 12px;border:1px solid var(--border-base);border-radius:6px;font-size:13px;background:white">
+                                <option value="5">5 段（超快粗检）</option>
+                                <option value="10" selected>10 段（推荐）</option>
+                                <option value="20">20 段（深度）</option>
+                                <option value="30">30 段（极致慢检）</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
-                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-                    <span style="color:#909399;font-size:12px">示例：</span>
-                    <a href="javascript:void(0)" onclick="document.getElementById('aiSubtitleUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';aiSubtitleAnalyze()" style="color:#409eff;text-decoration:none;font-size:12px">腾讯视频</a>
-                    <span style="color:#ddd;font-size:12px">|</span>
-                    <a href="javascript:void(0)" onclick="document.getElementById('aiSubtitleUrl').value='https://www.iqiyi.com/v_1f0q2q3q3q8.html';aiSubtitleAnalyze()" style="color:#409eff;text-decoration:none;font-size:12px">爱奇艺</a>
+                <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <span style="color:var(--text-secondary);font-size:12px">📌 一键示例：</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('aiSubtitleUrl').value='https://v.qq.com/x/cover/mzc00200m2v9p9i.html';aiSubtitleAnalyze()" style="color:var(--primary);text-decoration:none;font-size:12px;padding:4px 10px;border:1px solid var(--primary-lighter, #d9ecff);border-radius:6px">腾讯视频</a>
+                    <span style="color:var(--border-base);font-size:12px">|</span>
+                    <a href="javascript:void(0)" onclick="document.getElementById('aiSubtitleUrl').value='https://www.iqiyi.com/v_1f0q2q3q3q8.html';aiSubtitleAnalyze()" style="color:var(--primary);text-decoration:none;font-size:12px;padding:4px 10px;border:1px solid var(--primary-lighter, #d9ecff);border-radius:6px">爱奇艺</a>
                 </div>
             </div>
 
             <div id="aiSubtitleResult" style="display:none">
                 <div class="card">
-                    <div class="card-title">分析结果</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>分析结果（6 项关键指标）</span></span>
+                        <span class="section-caption">指标卡以灰底方块展示，一眼看清有无广告</span>
+                    </div>
                     <div id="aiSubtitleStatus"></div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:16px">
-                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
-                            <div style="font-size:12px;color:#909399;margin-bottom:4px">是否有字幕广告</div>
+                        <div class="overview-item info" style="padding:14px;margin:0;min-height:auto">
+                            <div class="overview-title" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">是否有字幕广告</div>
                             <div id="aiSubtitleHasAd" style="font-size:18px;font-weight:600">-</div>
                         </div>
-                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
-                            <div style="font-size:12px;color:#909399;margin-bottom:4px">检测模式</div>
+                        <div class="overview-item primary" style="padding:14px;margin:0;min-height:auto">
+                            <div class="overview-title" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">检测模式</div>
                             <div id="aiSubtitleModeResult" style="font-size:18px;font-weight:600">-</div>
                         </div>
-                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
-                            <div style="font-size:12px;color:#909399;margin-bottom:4px">滚动检测</div>
+                        <div class="overview-item warning" style="padding:14px;margin:0;min-height:auto">
+                            <div class="overview-title" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">滚动检测</div>
                             <div id="aiSubtitleScroll" style="font-size:18px;font-weight:600">-</div>
                         </div>
-                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
-                            <div style="font-size:12px;color:#909399;margin-bottom:4px">置信度</div>
+                        <div class="overview-item success" style="padding:14px;margin:0;min-height:auto">
+                            <div class="overview-title" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">置信度</div>
                             <div id="aiSubtitleConfidence" style="font-size:18px;font-weight:600">-</div>
                         </div>
-                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
-                            <div style="font-size:12px;color:#909399;margin-bottom:4px">处理耗时</div>
+                        <div class="overview-item danger" style="padding:14px;margin:0;min-height:auto">
+                            <div class="overview-title" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">处理耗时</div>
                             <div id="aiSubtitleTime" style="font-size:18px;font-weight:600">-</div>
                         </div>
-                        <div style="background:#f5f7fa;padding:14px;border-radius:8px">
-                            <div style="font-size:12px;color:#909399;margin-bottom:4px">采样片段</div>
+                        <div class="overview-item purple" style="padding:14px;margin:0;min-height:auto">
+                            <div class="overview-title" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">采样片段</div>
                             <div id="aiSubtitleSamplesResult" style="font-size:18px;font-weight:600">-</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="card" id="aiSubtitleRegionsCard" style="display:none">
-                    <div class="card-title">广告区域分布</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>广告区域分布</span></span>
+                        <span class="section-caption">看广告集中在屏幕顶部 / 底部 / 中间？</span>
+                    </div>
                     <div id="aiSubtitleRegions"></div>
                 </div>
 
                 <div class="card" id="aiSubtitleAdTextsCard" style="display:none">
-                    <div class="card-title">检测到的广告文字样本</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge danger">④</span><span>检测到的广告文字样本</span></span>
+                        <span class="section-caption">把 OCR 抓到的广告文本一条条列出来</span>
+                    </div>
                     <div id="aiSubtitleAdTexts" style="display:flex;flex-direction:column;gap:8px"></div>
                 </div>
 
                 <div class="card">
-                    <div class="card-title">采样片段详情</div>
-                    <div style="font-size:13px;color:#909399;margin-bottom:12px">共 <span id="aiSubtitleSampleCount">0</span> 个采样片段</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge info">⑤</span><span>采样片段详情</span></span>
+                        <span class="section-caption">共 <span id="aiSubtitleSampleCount">0</span> 个采样片段，可滚动查看</span>
+                    </div>
                     <div id="aiSubtitleSampleList" style="max-height:400px;overflow-y:auto"></div>
                 </div>
 
                 <div class="card">
-                    <div class="card-title">快捷操作</div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div class="card-title"><span class="step-title"><span class="step-badge purple">⑥</span><span>快捷操作</span></span>
+                        <span class="section-caption">复制结果 / 去广告 / 重跑 三入口</span>
+                    </div>
+                    <div class="action-bar tight">
                         <button class="btn btn-secondary" onclick="aiSubtitleCopyResult()">📋 复制结果</button>
-                        <button class="btn btn-primary" onclick="aiSubtitleGoSkip()">🤖 AI去广告</button>
+                        <button class="btn btn-primary" onclick="aiSubtitleGoSkip()">🤖 跳 AI 去广告</button>
                         <button class="btn btn-success" onclick="aiSubtitleReAnalyze()">🔄 重新分析</button>
                     </div>
                 </div>
@@ -4367,51 +5505,104 @@ if (!$_mxGXSecret) {
         </div>
 
         <div class="page" id="page-ai_watermark">
+            <!-- ① 概览卡 -->
             <div class="card">
-                <div class="card-title">💧 AI 水印处理</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">💧 AI 水印净化（链接/文件名/Referer）</span>
+                        <span class="status-pill info">常见参数库自动命中</span>
+                    </div>
+                    <span style="font-size:12px;color:#909399;font-weight:normal">蓝青渐变主题，处理前后链接并排对比</span>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item info">
+                        <div class="overview-title">🧼 3 类净化可独立开关</div>
+                        <div class="overview-desc">
+                            <strong>① URL 水印参数（wmark/from/...）</strong>去除；<strong>② TS 文件名里的水印</strong>处理；<strong>③ Referer 自动修正</strong>，默认全开。
+                        </div>
+                    </div>
+                    <div class="overview-item success">
+                        <div class="overview-title">📚 内置水印参数库</div>
+                        <div class="overview-desc">
+                            已收录<strong>主流资源站常见水印参数</strong>，命中后直接自动去除；结果卡片里会展示参数库列表，可对照确认是否识别到位。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 操作卡 -->
+            <div class="card">
+                <div class="card-title"><span class="step-title"><span class="step-badge info">①</span><span>输入待净化的视频链接</span></span>
+                    <span class="section-caption">蓝青渐变 = 水印处理主题</span>
+                </div>
                 <div style="background:linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px">
                     <div style="font-size:18px;font-weight:600;margin-bottom:8px">智能水印处理引擎</div>
-                    <div style="font-size:13px;opacity:0.9">自动识别和处理视频中的水印参数，支持 URL 水印参数去除、TS 文件名水印处理、播放链接净化等功能</div>
+                    <div style="font-size:13px;opacity:0.9">三种净化同时作用：<strong>① URL 水印参数去除 ② TS 文件名水印处理 ③ 播放链接 + Referer 净化</strong>，已收录常见水印参数库自动命中。</div>
                 </div>
                 <div class="input-group">
                     <input type="text" id="aiWatermarkUrl" placeholder="输入视频链接或播放地址，进行水印处理">
                     <button class="btn btn-primary" onclick="aiWatermarkProcess()">✨ 处理水印</button>
                 </div>
-                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiWatermarkUrlParams" checked> 去除URL水印参数
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiWatermarkFilename" checked> 文件名水印处理
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#606266">
-                        <input type="checkbox" id="aiWatermarkReferer" checked> 自动处理Referer
-                    </label>
+                <div class="sub-card" style="margin-top:14px">
+                    <div class="sub-card-header">
+                        <div class="left">
+                            <span class="step-badge warning">A</span>
+                            <span class="title">净化项（建议默认全开）</span>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:4px">
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiWatermarkUrlParams" checked> 去除 URL 水印参数（?wmark/...）
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiWatermarkFilename" checked> 文件名水印处理（TS 名称清洗）
+                        </label>
+                        <label class="toggle-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:13px;color:var(--text-regular)">
+                            <input type="checkbox" id="aiWatermarkReferer" checked> 自动处理 Referer（防盗链修复）
+                        </label>
+                    </div>
                 </div>
             </div>
 
             <div id="aiWatermarkResult" style="display:none">
                 <div class="card">
-                    <div class="card-title">处理结果</div>
-                    <div style="margin-bottom:16px">
-                        <div style="font-size:13px;color:#909399;margin-bottom:8px">原始链接</div>
-                        <code id="aiWatermarkOriginalUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;font-size:12px"></code>
+                    <div class="card-title"><span class="step-title"><span class="step-badge success">②</span><span>处理前后对比（一目了然）</span></span>
+                        <span class="section-caption">灰色 = 原始，绿色 = 净化后（点一下可复制）</span>
                     </div>
-                    <div style="margin-bottom:16px">
-                        <div style="font-size:13px;color:#909399;margin-bottom:8px">处理后链接</div>
-                        <code id="aiWatermarkOutputUrl" style="background:#ecfdf5;padding:8px 12px;border-radius:4px;word-break:break-all;display:block;cursor:pointer;color:#059669" onclick="copyText(this.textContent)" title="点击复制"></code>
+                    <div class="sub-card">
+                        <div class="sub-card-header">
+                            <div class="left">
+                                <span class="step-badge info">B</span>
+                                <span class="title">原始链接（净化前）</span>
+                            </div>
+                        </div>
+                        <div style="margin:0">
+                            <code id="aiWatermarkOriginalUrl" style="background:#f5f7fa;padding:8px 12px;border-radius:6px;word-break:break-all;display:block;font-size:12px"></code>
+                        </div>
                     </div>
-                    <div id="aiWatermarkDetails"></div>
-                    <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
+                    <div class="sub-card" style="margin-top:14px">
+                        <div class="sub-card-header">
+                            <div class="left">
+                                <span class="step-badge success">C</span>
+                                <span class="title">处理后链接（点击复制）</span>
+                            </div>
+                        </div>
+                        <div style="margin:0">
+                            <code id="aiWatermarkOutputUrl" style="background:#ecfdf5;padding:8px 12px;border-radius:6px;word-break:break-all;display:block;cursor:pointer;color:#059669" onclick="copyText(this.textContent)" title="点击复制"></code>
+                        </div>
+                    </div>
+                    <div style="margin-top:14px" id="aiWatermarkDetails"></div>
+                    <div class="action-bar with-top">
                         <button class="btn btn-secondary" onclick="copyText(document.getElementById('aiWatermarkOutputUrl').textContent)">📋 复制链接</button>
-                        <button class="btn btn-primary" onclick="window.open(document.getElementById('aiWatermarkOutputUrl').textContent, '_blank')">🔗 打开链接</button>
-                        <button class="btn btn-success" onclick="aiWatermarkToSkip()">🤖 去广告处理</button>
+                        <button class="btn btn-primary" onclick="window.open(document.getElementById('aiWatermarkOutputUrl').textContent, '_blank')">🔗 新窗口打开</button>
+                        <button class="btn btn-success" onclick="aiWatermarkToSkip()">🤖 继续做去广告</button>
                     </div>
                 </div>
 
                 <div class="card">
-                    <div class="card-title">水印参数库</div>
-                    <div style="font-size:13px;color:#606266;margin-bottom:12px">已收录常见水印参数，可自动识别并去除</div>
+                    <div class="card-title"><span class="step-title"><span class="step-badge warning">③</span><span>水印参数库（命中对照）</span></span>
+                        <span class="section-caption">已收录常见水印参数，自动识别并去除</span>
+                    </div>
                     <div id="aiWatermarkLibList"></div>
                 </div>
             </div>

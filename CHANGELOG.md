@@ -1,5 +1,101 @@
 # 更新日志
 
+## v5.13.0 (2026-08-17)
+
+### 后台全面美化升级：全模块与嗅探设置风格统一，干净美观
+
+> **用户需求**：「后台优化和美化和嗅探设置里面一样，好看，干净美观」——即以用户已经好评的「嗅探设置」页面为视觉基准，把其余 19 个后台页面的组件、配色、排版、说明文案体系全面对齐，做到一处改风格全站生效。
+
+---
+
+#### 1. 设计令牌与通用组件规范（7 大类全站共享）
+
+以嗅探设置页面的视觉风格为基准，新增 7 大类通用组件类，全部写在 `mxadmin.php` 内联 `<style>`：
+
+| 组件类 | 用途 | 视觉特征 |
+|--------|------|----------|
+| **step-badge** | 步骤编号徽章 | info=蓝 / success=绿 / warning=橙 / danger=红 / primary=主蓝 / purple=紫 6 种背景，白字编号 ①②③ |
+| **step-title** | 步骤标题行容器 | 左放 step-badge + 标题，右用 `.section-caption` 灰色小字补说明 |
+| **overview-grid / overview-item** | 页面顶部「概览双栅格」 | 默认两列 `primary/success/warning/info/danger/purple` 6 色标题条，内部分 `overview-title`（加粗大标题）+ `overview-desc`（说明文案），窄屏自动单列 |
+| **form-grid / inline-form-grid** | 表单双栅格 | 统一 `auto-fit + minmax` 响应式，inline 栅格每个字段独立 form-tip 小字号灰文说明 |
+| **sub-card / sub-card-header** | 子分组卡片 | 灰描边 8px 圆角，header 带字母徽章(A/B/C) + 子组标题，可把页面大模块再细拆 N 个小组 |
+| **action-bar (tight / with-top)** | 操作按钮栏 | flex-wrap 自动换行，gap=12px，tight=无顶间距，with-top=带上边距分隔线视觉 |
+| **status-pill** + **form-tip / section-caption** | 状态徽章 & 说明文案 | pill 彩色圆角小标签(如「频繁更新规则专用」)；form-tip=表单底部提示；section-caption=卡片标题右侧灰色副说明 |
+
+**CSS 设计令牌（CSS 变量）**：
+
+```css
+--primary/#409eff  --success/#67c23a  --warning/#e6a23c
+--danger/#f56c6c   --info/#909399     --purple/#8b5cf6
+--border-base:#dcdfe6  --radius-sm:4px/base:8px/lg:12px
+--shadow-sm/base/lg    --text-primary/regular/secondary
+```
+
+---
+
+#### 2. 覆盖范围：19 个后台页面全部升级（4 批完成）
+
+| 批次 | 页面 | 主要美化点 |
+|------|------|-----------|
+| **A4-1** | `page-history` 播放记录 | 概览卡（概览双栅）+ 表格样式 + 批量操作 action-bar |
+| 同上 | `page-batch` 批量解析 | 概览卡 + URL 输入区 + 处理选项 sub-card + 进度面板 |
+| 同上 | `page-analyze` 视频广告分析 | 概览卡 + 6 项参数 inline-form-grid + 结果 6 色 overview-item 指标卡 |
+| **A4-2** | `page-rules` 规则管理 | 概览卡 + 筛选区 sub-card + action-bar 批量按钮 + 规则表格 |
+| 同上 | `page-sites` 资源站 | 概览卡 + 批量巡检 sub-card + 新增表单 inline-grid + 资源站表格 |
+| 同上 | `page-ai_autolearn` AI 自动学习 | 概览双栅（primary+warning）+ 基础开关/样本过滤/资源站/附加选项 4 个 sub-card |
+| 同上 | `page-official_sites` 官方资源站 | 概览卡 + 推荐站 sub-card + 参数配置 inline-form-grid |
+| **A4-3** | `page-official_replace` 官替解析 | 概览卡 + 状态统计 sub-card + 核心参数/支持平台/API测试/在线播放/接口文档 7 个编号模块 |
+| 同上 | `page-moxi_api` 魔西 API | 概览卡 + 字段说明 sub-card + 多模式测试 sub-card 带 step-badge |
+| 同上 | `page-play` 播放器 | 概览卡 + 内核参数 sub-card + 播放测试带编号步骤 |
+| 同上 | `page-database` 数据库 | 状态 + 表结构检查 + 配置 + 迁移 4 大编号模块 |
+| 同上 | `page-update` 系统更新 | 版本信息/服务器/权限/缓存清理等 8 个运维卡片结构化 |
+| 同上 | `page-autoupdate` 自动维护 | 概览卡（紫色渐变主色 pill）+ 任务参数 + 8 步详情 sub-card + 日志面板 |
+| **A4-4** | `page-announcement` 公告管理 | 概览双栅 + 操作面板 + 公告源优先级 sub-card 列表 |
+| 同上 | `page-auth` 授权中心 | 概览卡 + 4 指标 stats-grid + 本地/远程详情两个 sub-card + 授权配置 inline-form-grid |
+| 同上 | `page-ai_skip` AI 智能去广告 | **保留紫色渐变横幅**，外加 7 个编号模块 + 开关栅格 sub-card + 结果链接对比 sub-card |
+| 同上 | `page-ai_insert` AI 插播识别 | **保留粉紫渐变横幅**，4 个编号模块，5 类开关栅格化 toggle-label |
+| 同上 | `page-ai_subtitle` 滚动字幕 | **保留青绿渐变横幅**，6 项指标用 6 色 overview-item，示例链接带 pill 边框样式 |
+| 同上 | `page-ai_watermark` 水印处理 | **保留蓝青渐变横幅**，净化前后链接两张带 B/C 徽章 sub-card 并排对比 |
+
+**关键设计决策：AI 四大模块保留品牌色渐变横幅** —— ai_skip（紫）/ ai_insert（粉紫）/ ai_subtitle（青绿）/ ai_watermark（蓝青）的渐变色信息横幅原本写在 `<div style="background:linear-gradient(...">`，我们不删除不替换，在外层统一叠加上「概览卡 → step-title → sub-card」统一骨架，既保留各模块辨识度又整体风格对齐，兼顾品牌与统一。
+
+---
+
+#### 3. 全面移除散乱内联样式，改一处全局生效
+
+原先大量散乱写法：
+```html
+<div style="display:flex;gap:12px;margin-bottom:16px">
+<p style="color:#606266;font-size:13px;margin-bottom:12px">
+<label style="display:flex;align-items:center;gap:6px;color:#606266">
+```
+统一替换为：
+```html
+<div class="action-bar tight">                 ← flex+gap+换行
+<div class="form-tip">                          ← 灰文小字说明
+<label class="toggle-label">                    ← flex+gap+鼠标手型
+```
+
+**收益**：后续想要「所有按钮间距从 12px 调为 16px」或「form-tip 颜色改深一点」，只需要改一个 `.action-bar` 或 `.form-tip` 的 CSS 规则，全站 19 个页面同时生效，不再需要全局 grep 逐个改内联。
+
+---
+
+#### 4. 说明文案全面人性化，降低文档依赖
+
+- 每个页面顶部放 **overview-grid 概览双栅**：左格写「模块怎么用/推荐参数」，右格写「常见坑/最佳实践」
+- 每个表单字段下方放 **form-tip**：例如「授权服务器 IP」字段 tip 写「远程验证要连接的服务器地址，一般由授权方提供」，不用点进文档找
+- 每个卡片标题右侧 **section-caption**：如「复制 / 新窗口 / 内置播放 / 下载 4 种入口」，一眼告知此模块可以做什么
+
+---
+
+#### 5. 回归验证
+
+- **PHP lint**：`php -l mxadmin.php` → `No syntax errors detected`，0 Notice 0 Warning
+- **零逻辑改动**：修改纯为 HTML 结构重排 + class 替换 + 少量 CSS 变量新增，不修改任何 `onclick=` 的函数名、不增删 JS 变量、不改后端接口调用，所有原 API 行为保持不变
+- **响应式烟雾检查**：`@media (max-width: 768px)` 下 overview-grid / inline-form-grid 全部退化单列，移动端排版不乱
+
+---
+
 ## v5.12.0 (2026-08-16)
 
 ### 6平台独立元数据解析器(策略模式) + 极简提取减轻服务器负担

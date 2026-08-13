@@ -9,9 +9,40 @@
   - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
   - 功能与 main 完全一致，运行时自动解密，零性能感知差异
 
-## 当前版本 v5.12.0（2026-08-16）
+## 当前版本 v5.13.0（2026-08-17）
 
-### 重点更新
+### ✨ 重点更新：后台全面美化升级（与嗅探设置风格统一）
+
+> **用户需求响应**：「后台优化和美化和嗅探设置里面一样，好看，干净美观」——以用户好评的「嗅探设置」页面为视觉基准，把其余 19 个后台页面全部对齐同一设计规范。
+
+#### 🎨 v5.13 后台美化 5 大核心升级
+
+| 升级项 | 说明 |
+|--------|------|
+| 🧱 **7 类通用组件** | step-badge（编号徽章）/ overview-grid（概览双栅）/ form-grid·inline-form-grid（表单双栅）/ sub-card（子分组卡）/ action-bar（按钮栏）/ status-pill（状态徽章）/ section-caption + form-tip（说明文案），全站共享，改一处全站生效 |
+| 🎨 **设计令牌 CSS 变量** | 6 主色（primary/success/warning/danger/info/purple）+ 三级圆角 + 三级阴影 + 三级文本色，统一不漂移 |
+| 🔢 **全局步骤编号系统** | 每页每个大模块 `step-title + step-badge` 编号 ①②③，小模块 `sub-card-header + 字母徽章` A/B/C，信息层级一目了然 |
+| 🌈 **AI 四大页保留品牌色** | ai_skip（紫）/ ai_insert（粉紫）/ ai_subtitle（青绿）/ ai_watermark（蓝青）原渐变横幅完整保留，外层叠加统一骨架，既保持辨识度又统一风格 |
+| 📱 **响应式全覆盖** | 所有栅格用 `auto-fit + minmax`，窄屏自动变单列；按钮 `flex-wrap` 自动换行，PC/平板/手机都好看 |
+
+#### 📋 覆盖 19 个后台页面（4 批交付）
+
+```
+A4-1 3页  播放记录 / 批量解析 / 视频广告分析
+A4-2 4页  规则管理 / 资源站 / AI自动学习 / 官方资源站
+A4-3 6页  官替解析 / 魔西API / 播放器 / 数据库 / 系统更新 / 自动维护
+A4-4 6页  公告 / 授权 / AI去广告 / AI插播识别 / AI字幕分析 / AI水印处理
+```
+
+#### ✅ 回归验证 100% 过
+
+- **PHP lint**：`mxadmin.php` → No syntax errors detected
+- **零逻辑改动**：纯 HTML/CSS class 重排，不改任何接口调用与 onclick 函数名，原 API 行为完全不变
+- **去内联样式**：大量散乱 `style="display:flex;gap:12px;..."` 统一替换为 `.action-bar / .sub-card / .form-tip / .toggle-label` 类，后续好维护
+
+---
+
+## 上一重点版本 v5.12.0（2026-08-16）
 
 **【6平台独立元数据解析器(策略模式) + 极简提取减轻服务器负担】**
 

@@ -1,13 +1,34 @@
 <?php
 return array (
-  'version' => 'v5.12.0',
+  'version' => 'v5.13.0',
   'branch' => 'main',
-  'build' => '20260816-6platform-meta-lightweight',
-  'version_code' => 51200,
-  'commit' => 'v5.12-strategy-pattern-6platforms-fetchMeta-base_title+episode_num_only',
-  'updated_at' => '2026-08-16',
+  'build' => '20260817-ui-beautify-unified-backend',
+  'version_code' => 51300,
+  'commit' => 'v5.13-ui-beautify-sniffer-style-unified-all-pages',
+  'updated_at' => '2026-08-17',
   'changelog' =>
   array (
+    'v5.13.0' =>
+    array (
+      'date' => '2026-08-17',
+      'title' => '【后台全面美化升级：全模块与嗅探设置风格统一，干净美观】',
+      'changes' =>
+      array (
+        0 => '【设计规范统一】以用户好评的「嗅探设置」页面为基准，抽取 7 类通用组件类：① step-badge 编号徽章 ② overview-grid/overview-item 概览双栅格 ③ form-grid/inline-form-grid 表单双栅格 ④ status-pill 状态徽章 ⑤ sub-card+sub-card-header 子卡片 ⑥ action-bar 操作按钮栏 ⑦ section-caption / form-tip 说明文案，全部写进 mxadmin.php 内联 <style>，全站共享',
+        1 => '【设计令牌 CSS 变量】定义 --primary / --success / --warning / --danger / --info / --purple 六色主色，圆角 --radius-sm/base/lg，间距 spacing-2/3/4/5，阴影 shadow-sm/base/lg，边框 border-base，文本 text-primary/regular/secondary，所有页面同一配色不漂移',
+        2 => '【全局步骤编号系统】step-title + step-badge(info/success/warning/danger/primary/purple) 明确每个模块的执行顺序和层级关系；sub-card-header 内置字母徽章(A/B/C)做子模块编号，信息架构一目了然',
+        3 => '【A4-1 3页升级】page-history 播放记录（概览卡+表格+快速操作）、page-batch 批量解析（概览+输入+选项sub-card+进度）、page-analyze 视频广告分析（概览卡+6项输入参数栅格+结果6色指标卡）',
+        4 => '【A4-2 4页升级】page-rules 规则管理（概览+筛选子卡+操作栏+表格）、page-sites 资源站管理（概览+批量巡检子卡+新增表单+资源站表格）、page-ai_autolearn AI自动学习（双栅格概览+基础开关/样本过滤/资源站/附加选项4个分组sub-card）、page-official_sites 官方资源站（概览+推荐站表格+参数配置）',
+        5 => '【A4-3 6页升级】page-official_replace 官替解析（概览+状态卡+核心参数/支持平台/API测试/在线播放/接口文档7个子模块）、page-moxi_api（概览+字段说明sub-card+多模式测试sub-card）、page-play 播放器（概览+内核参数sub-card+播放测试）、page-database 数据库（状态+表结构检查+配置+迁移4个大模块）、page-update 系统更新（8个运维卡片结构化）、page-autoupdate 自动维护（概览卡+8步详情sub-card+彩色日志面板）',
+        6 => '【A4-4 6页升级】page-announcement 公告（概览双栅+操作面板+公告源优先级列表）、page-auth 授权（概览卡+4指标状态网格+本地/远程详情sub-card+授权配置inline-form-grid+授权码录入）、page-ai_skip AI去广告（保留紫渐变横幅+7编号模块+开关栅格化+结果对比sub-card）、page-ai_insert 插播识别（保留粉紫渐变横幅+4编号模块）、page-ai_subtitle 字幕分析（保留青绿渐变+6色指标卡+pill样式示例链接）、page-ai_watermark 水印处理（保留蓝青渐变+净化前后两张带编号徽章的sub-card对比）',
+        7 => '【响应式布局】表单栅格统一使用 auto-fit + minmax 响应式写法，小屏自动变单列；overview-grid 默认两列，窄屏自动折叠为单列；按钮用 action-bar tight/with-top 自动换行',
+        8 => '【AI 四大页面保留主题色】ai_skip(紫) / ai_insert(粉紫) / ai_subtitle(青绿) / ai_watermark(蓝青) 四张原渐变横幅完整保留，在外层统一包装 ①概览卡 ②编号步骤标题 ③sub-card 选项面板，既保留品牌色又统一整体风格',
+        9 => '【表格/统计/按钮全面去内联样式】原先大量 style="display:flex;gap:12px;margin:16px 0" 等散乱内联样式，统一用 action-bar / sub-card / inline-form-grid / section-caption / form-tip 类替换，样式不再散落在 HTML 上，后续好改一处全站生效',
+        10 => '【说明文案人性化】每个页面的概览卡 overview-item 都写了「这个模块用来干嘛 / 推荐怎么用 / 最佳实践」，并在表单下用 form-tip 给出易错点提示，减少用户看文档需求',
+        11 => '【PHP lint 0 错误通过】php -l mxadmin.php：No syntax errors detected；核心修改为纯 HTML/CSS 类名替换，不改任何 PHP 逻辑变量名，不影响原有功能 API 行为',
+        12 => '【版本元信息同步升级】version.php version=v5.13.0 build=20260817-ui-beautify-unified-backend updated_at=2026-08-17；README / CHANGELOG.md 同步补充 UI 美化专项说明与组件规范对照表',
+      ),
+    ),
     'v5.12.0' =>
     array (
       'date' => '2026-08-16',
