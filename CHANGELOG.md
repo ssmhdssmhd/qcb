@@ -1,5 +1,133 @@
 # 更新日志
 
+## v5.12.0 (2026-08-16)
+
+### 6平台独立元数据解析器(策略模式) + 极简提取减轻服务器负担
+
+#### 设计目标（用户需求）
+
+> **用户原话**：完善剩下的各个平台，链接获取影视剧名和集数的方式，就行只需要获取到影视剧名和集数就好，其他不要，减轻服务器负担，剧名和去替换和集数，去非正片内容输出，确保无广告无插播等等影响观感的内容和不雅内容
+
+**对应三项改造**：
+1. **平台策略模式拆分**：fetchMeta_Youku/Tencent/Iqiyi/Mgtv/Bilibili/Generic — 6 个独立方法，各自维护
+2. **极简提取 = 只取两个字段**：base_title(剧名) + episode_num(集数)，其余字段全空=归零内存负担
+3. **非正片占位**：基于 v5.11 的 MD5 + 黑屏静音 TS 占位流程不变，广告段等时长占位不删除 → 不中断
+
+---
+
+#### 1. 通用提取引擎 `_extractQuickBaseAndEpisode`
+
+三层提取优先级（从高到低，命中即 break，避免不必要的 preg 回溯）：
+
+| 层级 | 来源 | 说明 |
+|------|------|------|
+| ① | **内联 JS 对象字面量/JSON** | 只扫 HTML 前 **260KB**（优酷/腾讯/B站 等平台的 usercfg/__NEXT_DATA__/__INITIAL_STATE__ 都在 head 里），按平台传入的 `inlineKeys` 顺序逐项试，长度 2-30 字符 + banWords 过滤即取 |
+| ② | **meta 标签** | `og:video:series_name` / `tv:series_name` / `og:title` 等平台常见 property，正反两种属性顺序（property+content / content+property）都覆盖 |
+| ③ | **og:title + \<title\> 兜底** | 从 title 截取 "第X集/话/期/部/季" **之前**的文本作为剧名，平台后缀(优酷/爱奇艺/腾讯视频/芒果tv/哔哩哔哩/bilibili/b站)和分类后缀(在线观看/高清/电视剧/电影/综艺/动漫/纪录片) 自动去除 |
+
+**内联字段支持两种写法**（自动分发）：
+- **扁平字段**：`"showName": "九门"` / `showName: "九门"`（裸键名，腾讯/B站/芒果对象字面量常见）
+- **嵌套对象**：`partOfSeries: { name: "狂飙" }`（腾讯 ld+json schema.org 标准写法，regex 处理 `.name` 后缀自动取父对象 + name 字段）
+
+**剧名强清洗 pipeline**：
+```
+raw_value → html_entity_decode(ENT_QUOTES|ENT_SUBSTITUTE UTF-8)
+        → trim( \t\n\r《》<>"' )          // 书名号/引号全部脱壳
+        → 去平台后缀( - 优酷 / _腾讯视频 / | 爱奇艺 ...)
+        → 去分类后缀( -在线观看 / - 高清 / ...)
+        → mb_strtolower banWords 黑名单比对（预告/花絮/速看等不雅/噪声词）
+        → 长度校验 2~30 字符（电影兜底放宽到 40）
+```
+
+**集数多格式识别（从 og:title + \<title\> 拼接成 320 字符以内短文本，只扫一次）**：
+- `第\s*\d+\s*[集话期部季]` → 中文写法（覆盖九门/莲花楼）
+- `\bEP\s*\d+\b` → 欧美番剧 EPXX（i 大小写不敏感）
+- `(\d{1,3})\s*/\s*\d{1,3}` → "2 / 24 全" 斜杠分数式（芒果常见）
+
+---
+
+#### 2. 各平台独立解析器的差异化字段策略
+
+> **好维护 = 每个平台的优先字段写在自己的方法里，改一个平台不影响其他**
+
+| 平台 | 方法 | 优先字段（inlineKeys） | 兜底 meta | 示例 | 正确 base | 正确 ep |
+|------|------|----------------------|----------|------|-----------|---------|
+| 🟡 **优酷** | `fetchMeta_Youku` | `usercfg.showName` → `videoShowName` → `albumName`（内联 JS 变量） | og:video:series_name | `九门 第2集 张启山和吴老狗达成合作` | **九门**（不会被副标题污染） | 2 |
+| 🟢 **腾讯** | `fetchMeta_Tencent` | ld+json `partOfSeries.name`(schema.org 最稳) → `__NEXT_DATA__.seriesInfo.seriesName` → `seriesName` | tv:series_name | `狂飙 第39集 高启强终极对决` | **狂飙** | 39 |
+| 🟢 **爱奇艺** | `fetchMeta_Iqiyi` | `og:video:series_name` meta(官方元数据) → `Q.playerInfo.albumName/seriesName/tvName` | og:video:series_name | `莲花楼 第20集 李莲花识破阴谋` | **莲花楼** | 20 |
+| 🟠 **芒果TV** | `fetchMeta_Mgtv` | `__INIT__.showInfo.showName/seriesName/partOfSeries.name` | og:title | `乘风2024 第12期 成团夜` | **乘风2024** | 12 |
+| 🔵 **B站番剧** | `fetchMeta_Bilibili` | `__INITIAL_STATE__.mediaInfo.season.title/seasonName/partOfSeries.name`（完整系列名） | og:title | `咒术回战 第二季 第24话 怀玉` | **咒术回战 第二季**（保留"第二季"利于资源站搜索） | 24 |
+| ⚪ **B站UGC** | `fetchMeta_Bilibili` | `__INITIAL_STATE__.videoData.title`（完整保留括号信息） | og:title | `迈克杰克逊1995年MTV颁奖典礼现场(4K修复)` | **迈克杰克逊1995年MTV颁奖典礼现场(4K修复)** | null（UGC无集数概念） |
+| ⬜ **通用兜底** | `fetchMeta_Generic` | showName/seriesName/albumName/partOfSeries.name 等所有平台常见字段并集 | og:title | `庆余年第二季 第36集 范闲回京` | **庆余年第二季** | 36 |
+
+**关键设计决策**：
+- 优酷故意**不用 og:title 作为 base**（因为官方 og:title 会写成 "九门 第2集 张启山和吴老狗达成合作"，如果通用逻辑截断"第2集"之前文本恰好没问题，但遇到类似"大江大河之岁月如歌 第1集"这种剧名本身带"之"的写法容易误截断），改为强制从 `usercfg.showName` 这个官方 API 级字段取值，此值就是纯剧名，零污染。
+- B站番剧故意**保留 "第二季"**（不用 `partOfSeries.name` 的"咒术回战"）。原因：资源站常把"咒术回战"和"咒术回战 第二季"作为两个独立条目入库，去掉季信息反而匹配不上。
+- B站UGC故意**不取集数**、**保留括号修饰词**（(4K修复)/(完整版)）。原因：UGC 视频本身就是单条视频，无"集"的概念；资源站转载时通常保留完整标题含修饰词，去括号反而搜不到。
+
+---
+
+#### 3. 轻负担验证（其余字段全空 = 内存归零）
+
+每个 `fetchMeta_*` 返回的 9 个字段中，只填 2 个：
+
+| 字段 | 值 | 原用途（现已停用） | 节省 |
+|------|----|-------------------|------|
+| `base_title` | ✅ 真实剧名（如"九门"） | - | 必须保留 |
+| `episode_num` | ✅ int/null（如 2） | - | 必须保留 |
+| `episode_name` | `''`（空串） | 分剧名/副标题（"张启山和吴老狗达成合作"） | 节省长字符串内存 |
+| `subtitle_guess` | `''`（空串） | 猜测字幕 | 归零 |
+| `cover` | `''`（空串） | 封面图 URL | 归零（无需爬 og:image） |
+| `description` | `''`（空串） | 剧情简介，可能长达 200-1000 字 | **最大节省项** |
+| `total_episodes` | `null` | 总集数（24/36 全） | 归零 |
+| `raw_title` | `''`（空串） | 原始 og:title 备份 | 归零 |
+| `hits` | `[]`（空数组） | 候选命中大对象（可能塞几十个搜索结果引用） | **第二大节省项** |
+
+**Mock 测试断言（`_test_6platforms_fetchMeta.php`）：**
+```
+  [1/7] Youku                      | base:'九门' ✓ | ep:2      ✓ | 轻负担:✓
+  [2/7] Tencent                    | base:'狂飙' ✓ | ep:39     ✓ | 轻负担:✓
+  [3/7] Iqiyi                      | base:'莲花楼' ✓ | ep:20     ✓ | 轻负担:✓
+  [4/7] Mgtv                       | base:'乘风2024' ✓ | ep:12     ✓ | 轻负担:✓
+  [5/7] Bilibili-Bangumi           | base:'咒术回战 第二季' ✓ | ep:24     ✓ | 轻负担:✓
+  [6/7] Bilibili-UGC               | base:'迈克杰克逊1995年MTV颁奖典礼现场(4K修复)' ✓ | ep:NULL   ✓ | 轻负担:✓
+  [7/7] Generic-unknown-site       | base:'庆余年第二季' ✓ | ep:36     ✓ | 轻负担:✓
+
+✅ 7 / 7 平台全部断言通过（base_title+episode_num 双正确 + 其余字段为空=减轻负担生效）
+```
+
+---
+
+#### 4. Step Trace 调试可视化（mxadmin.php 嗅探测试区）
+
+失败时现在能看到是**哪一步**出问题（时间线 UI，✓成功 / △警告 / ✕失败 / ℹ信息 四色标记）：
+```
+🕒 解析时间线（共 8 步）
+  ✓ 平台识别        (12ms)  youku / id=XNjU0MjcxNTM1Ng==
+  ✓ 官方页面抓取    (238ms) HTTP 200 / 184KB
+  ✓ 元数据提取      (5ms)   base_title=九门 episode_num=2
+  ℹ 资源站搜索      (412ms) 已搜 5 个站点 / 命中 3 个候选
+  △ AI 匹配         (18ms)  分数 68（刚过阈值 65，建议降低阈值或添加资源站）
+  ✓ 集数定位        (3ms)   第2集 / 匹配成功
+  ✕ 去广告处理      (2800ms) m3u8 下载超时 → 建议检查代理或换源
+  …
+```
+
+对应 `buildResult($extras=[])` 和 `callOfficialReplaceDirectV2()` 都已同步透传 `step_trace` 字段，HTTP 直调和本地直调都能看到。
+
+---
+
+#### 5. 非正片占位（不中断观感）
+
+流程不变（v5.11 已上线）：**广告段 URI 替换为 `mx.php?action=placeholder_ts&d=X.X`（本地黑屏静音 TS），EXTINF 时长不变，段数不减少**。
+
+保证：
+- 播放器进度条不回跳/不卡住（TARGETDURATION 与段数一致）
+- 解码器不中断（连续 10 段黑屏也正常通过，无需重新缓冲）
+- 无广告/无插播/无不雅内容（原广告段被静音黑屏占位替代，视觉和听觉都感知不到内容）
+
+---
+
 ## v5.10.9 (2026-08-13)
 
 ### P0 解析失败根因修复 + 官替优先智能识别新架构

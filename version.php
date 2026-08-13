@@ -1,13 +1,37 @@
 <?php
 return array (
-  'version' => 'v5.11.0',
+  'version' => 'v5.12.0',
   'branch' => 'main',
-  'build' => '20260815-md5-placeholder',
-  'version_code' => 51100,
-  'commit' => 'v5.11-new-core-link->page_meta->res_search->ai+md5_placeholder->non_interrupt',
-  'updated_at' => '2026-08-15',
+  'build' => '20260816-6platform-meta-lightweight',
+  'version_code' => 51200,
+  'commit' => 'v5.12-strategy-pattern-6platforms-fetchMeta-base_title+episode_num_only',
+  'updated_at' => '2026-08-16',
   'changelog' =>
   array (
+    'v5.12.0' =>
+    array (
+      'date' => '2026-08-16',
+      'title' => '【6平台独立元数据解析器(策略模式) + 极简提取减轻服务器负担】',
+      'changes' =>
+      array (
+        0 => '【策略模式重构】OfficialReplaceManager 平台独立解析器彻底分开：fetchMeta_Youku / fetchMeta_Tencent / fetchMeta_Iqiyi / fetchMeta_Mgtv / fetchMeta_Bilibili / fetchMeta_Generic 六个独立方法，各自维护，互不干扰，好维护',
+        1 => '【极简提取 = 减轻服务器负担】只保留 base_title(剧名) + episode_num(集数) 两个字段，description/cover/subtitle_guess/total_episodes/raw_title/hits 全部固定为空/空数组，减少内存占用和字符串处理开销',
+        2 => '【通用提取引擎 _extractQuickBaseAndEpisode 全新上线】三层提取优先级：①内联JS(usercfg/__NEXT_DATA__/__INIT__/__INITIAL_STATE__ 等对象字面量/JSON)扫前260KB即break ②og:video:series_name / tv:series_name 等 meta 标签兜底 ③og:title/<title> 截取"第X集"前文本做最终兜底',
+        3 => '【剧名清洗】自动去除《》<>""\'\'引号、去在线观看/高清/电视剧/电影/综艺/动漫/纪录片 等平台分类后缀、去优酷/爱奇艺/腾讯视频/芒果tv/哔哩哔哩 等站名后缀、banWords 黑名单过滤，长度严格 2~30 字符(电影40)',
+        4 => '【集数提取多格式支持】第X集/话/期/部/季 中文写法、EPXX 英文写法、X/总集数(如 2/24全) 斜杠写法，统一从 og:title + <title> 拼接短文本(限320字)一次扫描，避免全HTML回溯',
+        5 => '【优酷 fetchMeta_Youku】优先 usercfg.showName / videoShowName（避免 og:title 带副标题"张启山和吴老狗达成合作"污染 base_title），正确样例：九门 第2集 → base=九门 ep=2',
+        6 => '【腾讯 fetchMeta_Tencent】优先 ld+json partOfSeries.name + episodeNumber（schema.org TVEpisode/TVSeries 标准字段，最稳定），兜底 __NEXT_DATA__ props.pageProps.seriesInfo.partOfSeries.name/seriesName',
+        7 => '【爱奇艺 fetchMeta_Iqiyi】优先 og:video:series_name meta 标签（iqiyi 官方页面标准元数据），兜底 window.Q.playerInfo.albumName/seriesName/tvName',
+        8 => '【芒果TV fetchMeta_Mgtv】优先 __INIT__.showInfo.showName/seriesName/partOfSeries.name（芒果内嵌初始化对象），meta 兜底',
+        9 => '【B站番剧 fetchMeta_Bilibili Bangumi】优先 __INITIAL_STATE__.mediaInfo.season.title/seasonName/partOfSeries.name（使用完整系列名如"咒术回战 第二季"，利于资源站搜索匹配）',
+        10 => '【B站UGC fetchMeta_Bilibili UGC】从 __INITIAL_STATE__.videoData.title 直接取完整标题(含4K修复等括号信息)作为剧名，无集数(ep=null)，处理全角括号和UTF-8编码异常',
+        11 => '【通用 Generic】未知站点统一扫 showName/seriesName/albumName/partOfSeries.name 等常见字段，兼容任意影视站，og:title/<title> 兜底',
+        12 => '【Step Trace 调试机制】resolve/fetchVideoInfo 每一步记录 name/title/status/summary/detail/elapsed_ms/ts，前端 mxadmin.php 嗅探测试区可视化时间线展示 ✓成功 △警告 ✕失败 ℹ信息，失败时一眼定位哪环节出问题',
+        13 => '【服务器负担验证】7平台 mock 单元测试全部断言"其余字段为空"，description/cover/subtitle_guess/hits 等字段内存占用归零，单请求处理更快',
+        14 => '【非正片占位流程保持不变】MD5 AdPlaceholderEngine + PlaceholderTsGenerator (黑屏静音TS)，广告段等时长占位不删除，保证进度条/解码器不中断，确保无广告无插播无不雅内容输出',
+        15 => '【回归测试通过】7/7 平台 mock 断言 100%：Youku/Tencent/Iqiyi/Mgtv/Bilibili-Bangumi/Bilibili-UGC/Generic 的 base_title + episode_num 双正确 + 轻负担字段全空；PHP lint 核心 3 文件 0 语法错误',
+      ),
+    ),
     'v5.11.0' =>
     array (
       'date' => '2026-08-15',

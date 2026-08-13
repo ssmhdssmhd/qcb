@@ -9,40 +9,62 @@
   - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
   - 功能与 main 完全一致，运行时自动解密，零性能感知差异
 
-## 当前版本 v5.10.9（2026-08-13）
+## 当前版本 v5.12.0（2026-08-16）
 
 ### 重点更新
 
-**【P0 解析失败根因修复 + 官替优先智能识别新架构】**
+**【6平台独立元数据解析器(策略模式) + 极简提取减轻服务器负担】**
 
-> **失败原因分析（本次修复核心）**
->
-> 用户发现 `http://114.134.184.91:9002/jiexi.php?url=https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html` 返回结果为：
-> ```json
-> {"code":200,"ZT":"解析成功","url":"https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html", ...}
-> ```
-> 看似成功（code=200），但返回的 `url` 竟然是**原始输入的优酷视频页面地址**，根本无法播放！
->
-> **根本原因：**
-> 虾米官解接口 (`mx.php?action=api/v2&type=parse`) 内部返回：
-> ```json
-> {"success":false,"code":500,"message":"验证失败!","original_url":"https://v.youku.com/...","play_url":"",...}
-> ```
-> 由于签名/加密失效（`parse_internal_xiami` 返回验证失败），接口返回错误。但 `findUrlInArray` 递归扫描 JSON 所有字段，**误将 `original_url`（原始页面URL，合法URL格式）当作视频流地址返回**！
->
-> 然后 `parseVideo` 把这个错误地址传给 `parseVideoByOfficialChannel`，因它不是 `.m3u8`，直接进入 `mp4 直链` 分支写入缓存并 `buildResult(200, 解析成功, 原始URL...)` → **假成功，实际是原始页面，播放器无法播放**。
->
-> **修复链路（共 6 处同步加固）：**
-> 1. `findUrlInArray()`：跳过 `original_url` 等 20+ 非视频字段 + 仅接受含 `.m3u8/.mp4` 等视频扩展名的 URL + 支持排除原始域名
-> 2. `getVideoLinkFromApiEntry()`：新增 `isSafeVideoUrl` 三层守卫，严格不等于原始URL，同域名必须含视频扩展名
-> 3. `PerformanceOptimizer::extractVideoUrl()`：同样逻辑加固，并传入 `$videoUrl` 做比对
-> 4. `callApiSingle` / `concurrentRace`：均通过加固后的提取函数
->
-> **架构升级（官替优先，绕开虾米加密失效）：**
-> 1. 默认通道改为 `mode=replace`（官替优先），`replace_api.enabled=true`
-> 2. 新增 `callOfficialReplaceDirect()`：本地官替直调 OfficialResolveManager，比 HTTP 回环快 30-70%
-> 3. 流程：**识别平台/提取ID → 爬官方页面获剧名 → 资源站搜索(抖剧TV优先) → AI+规则智能匹配 → mxjx/deep AI 去广告/去插播/去水印 → 输出无广告地址**
-> 4. 官方解析失败不再导致"假成功"，而是自动 fallback 到官替通道
+> **用户需求响应**：完善剩下的各个平台，链接获取影视剧名和集数的方式，只需要获取到影视剧名和集数就好，其他不要，减轻服务器负担，剧名和去替换和集数，去非正片内容输出，确保无广告无插播等影响观感的内容和不雅内容。
+
+#### ✨ v5.12 核心三项改造
+
+| 改造项 | 说明 |
+|--------|------|
+| 🏗️ **策略模式拆分** | `fetchMeta_Youku / fetchMeta_Tencent / fetchMeta_Iqiyi / fetchMeta_Mgtv / fetchMeta_Bilibili / fetchMeta_Generic` — 6 个独立方法，各自维护互不干扰，改一个平台不影响其他，好维护 |
+| ⚡ **极简提取 = 减轻负担** | **只提取 `base_title(剧名)` + `episode_num(集数)` 两个字段**，`description/cover/subtitle_guess/total_episodes/raw_title/hits` 其余 7 个字段全部固定为空/空数组，内存占用归零，单请求处理更快 |
+| 🚫 **非正片占位不中断** | 基于 v5.11 的 MD5 + 黑屏静音 TS 占位流程保持不变：广告段 URI 替换为本地黑屏静音 TS，EXTINF 时长不变，段数不删除 → 进度条不回跳、解码器不缓冲中断、无广告/插播/不雅内容输出 |
+
+#### 🧠 通用提取引擎 `_extractQuickBaseAndEpisode`（三层优先级）
+
+```
+① 内联 JS（前260KB即break）→ ② meta标签 → ③ og:title/<title>兜底
+```
+
+- **内联 JS 双写法自动分发**：扁平字段（`showName: "九门"`）+ 嵌套对象（`partOfSeries: { name: "狂飙" }`）
+- **剧名强清洗**：脱壳《》<>引号 → 去平台/分类后缀（-优酷/-腾讯视频/-在线观看/-高清/-纪录片…）→ banWords 黑名单过滤 → 长度 2~30 校验
+- **集数多格式识别**（一次扫描 320 字符短文本）：第X集/话/期/部/季、EPXX、2/24（分数斜杠式）
+
+#### 📺 各平台差异化优先字段
+
+| 平台 | 优先取 | 结果样例 |
+|------|--------|---------|
+| 🟡 优酷 | `usercfg.showName / videoShowName`（API级纯剧名，避免副标题污染） | 九门 / 第2集 |
+| 🟢 腾讯 | `ld+json partOfSeries.name + episodeNumber`（schema.org 标准字段最稳） | 狂飙 / 第39集 |
+| 🟢 爱奇艺 | `og:video:series_name` meta（官方元数据）→ `Q.playerInfo.albumName` | 莲花楼 / 第20集 |
+| 🟠 芒果TV | `__INIT__.showInfo.showName/seriesName`（芒果内嵌对象） | 乘风2024 / 第12期 |
+| 🔵 B站番剧 | `mediaInfo.season.title/seasonName`（**保留"第二季"**，利于资源站匹配） | 咒术回战 第二季 / 第24话 |
+| ⚪ B站UGC | `videoData.title`（保留括号修饰词，UGC无集数概念） | 迈克杰克逊1995年MTV颁奖典礼现场(4K修复) / null |
+| ⬜ 通用兜底 | `showName/seriesName/albumName/partOfSeries.name` 常见字段并集 | 庆余年第二季 / 第36集 |
+
+#### 🔬 Step Trace 调试可视化（mxadmin.php 嗅探测试区）
+
+失败时一眼定位是**哪一步**出问题：时间线 UI 按 `✓成功 △警告 ✕失败 ℹ信息` 四色标记展示「平台识别 → 官方页面抓取 → 元数据提取 → 资源站搜索 → AI匹配 → 集数定位 → 去广告处理」每一步的状态 / 耗时 / 详情，`buildResult` 和 `callOfficialReplaceDirectV2` 全链路透传 `step_trace`。
+
+#### ✅ 回归测试 100% 通过
+
+- **Mock 测试（7/7 全过）**：Youku / Tencent / Iqiyi / Mgtv / Bilibili-Bangumi / Bilibili-UGC / Generic，`base_title + episode_num` 双正确，且"轻负担"断言（其余字段全空）通过
+- **PHP lint**：`gz/OfficialReplaceManager.php / xt/server.php / mx.php` 核心 3 文件 0 语法错误
+
+---
+
+### 上一版本重点（v5.11 → v5.10.9）
+
+**【P0 解析失败根因修复 + 官替优先智能识别新架构 + AI+MD5非正片占位不中断】**
+
+- `isSafeVideoUrl` 三层守卫：original_url 陷阱彻底修复（虾米官解验证失败不再把原始页面URL误当视频流地址返回假成功）
+- 默认 `mode=replace`（官替优先），本地直调 `callOfficialReplaceDirect(V2)` 比 HTTP 回环快 30-70%
+- v5.11 新增 **MD5+黑屏静音TS占位**：广告段不删除（避免进度条回跳/解码器中断），URL 替换为本地生成的黑屏静音 TS，观感 100% 干净（无广告/插播/水印/不雅内容）
 
 ## 功能特性
 
