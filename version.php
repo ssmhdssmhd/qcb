@@ -1,9 +1,10 @@
 <?php
 return [
     'version' => 'v5.10.9',
-    'build' => '20260813',
+    'branch'  => 'jiami',       // main=明文源码版 / jiami=核心代码加密版
+    'build' => '20260813-jiami',
     'version_code' => 51009,
-    'commit' => 'official-replace-first-original-url-trap-fix',
+    'commit' => 'official-replace-first-original-url-trap-fix-core-encrypted',
     'updated_at' => '2026-08-13',
     'changelog' => [
         'v5.10.9' => [

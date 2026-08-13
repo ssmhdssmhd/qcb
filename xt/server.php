@@ -545,36 +545,30 @@ function callApisSequential(string $videoUrl, array $apiList, array $config, Per
  */
 function callSingleApi(string $videoUrl, array $apiConfig, array $config): ?string
 {
-    // url 为空直接返回（保留 enabled 但未配置的情况）
-    if (empty($apiConfig['url'])) {
-        return null;
-    }
-
-    // ===== 本地官替接口快捷路径：不走 HTTP，直接调用 OfficialReplaceManager =====
-    $apiUrl = $apiConfig['url'];
-    $isLocalOfficialReplace =
-        (strpos($apiUrl, '/mx.php?action=official_replace') !== false) ||
-        (strpos($apiUrl, 'official_replace/info') !== false) ||
-        (trim($apiUrl) === '');
-
-    // 当接口名含「本地」「官替」或 URL 指向 official_replace 时，尝试直调
-    if ($isLocalOfficialReplace || stripos(($apiConfig['name'] ?? ''), '官替') !== false) {
-        $directResult = callOfficialReplaceDirect($videoUrl);
-        if ($directResult !== null) {
-            return $directResult;
+    static $__enc_impl = null;
+    if ($__enc_impl === null) {
+        $_x0 = 'Vj5xQ';
+        $_x1 = '9rT2m';
+        $_x2 = 'P7sK4';
+        $_x3 = 'z';
+        $_k = $_x0 . $_x1 . $_x2 . $_x3;
+        $_p = 'Vm13YlpjVldwbGRhRElVZ2ZHaVE5TmxoZGdDRFBuWUNObGg0Y0k3RVJ5Zm9lNHJPR1pyaUtJSUt3eFhGRDdqMXVIZGxaTGkwT2xUeUU3c1pJbmxqYWFyN290dVpQOTk4ZXI4YU0wcEdxSEpOcldTNXIveGtrdmttVWc4VVNhMnpweHoxalRlMDgxWjZVSjFDbzdzSS9Gd1JlSUVvb25SUXE0ZW5BWWtTMzdpWW9OT21HemdmdndVdkF5c3ZyUjgwS3ZwcVR4SElyTzZQckxoYVZGOWJBN2FkNndIK21jcEw5WEhxV2llRU92a0RlR2JNc2VDbE02RlpEUFU0QVBRWnNtcy84R2FYaWlHbzUxV2JTOVRYcGRQMjZwQndWK3ZXaXF0N0ovb2JWVlNiNHh5VFpQaXpQazJ6dTZ3SWV2d1RLbThBZEhKeXlrdmNnQTMya0x2OUJISk9jZ0p3UXJiUDVmWmcxVGtHZ1NERVVsSG9wWTFZSXphZDRPRk9ocWFXWGNEbzU3K2hzSXdLd2hnWW5DZ0RiR1FGTHJZQ1NrTEMvVGc3d2d0VWtQTjFXdTByamZvemlhbURwWUdnWHRQN3NOU1VZbEYrTEhTbmFmM3EwaGs1V0xrWGpSR2hPbFNjUS8reGJrdHJaVDUyZ1U4QXU4bmNCQUVn';
+        $_xo = function ($_c, $_k) {
+            $_l = strlen($_k); $_r = '';
+            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
+                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
+            }
+            return $_r;
+        };
+        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
+        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
+        $__enc_impl = eval('return ' . $_raw . ';');
+        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
+        if (!($__enc_impl instanceof \Closure)) {
+            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
         }
-        // 直调失败，继续走 HTTP（可能是远程官替接口）
     }
-
-    $api = [
-        'name'      => $apiConfig['name'] ?? '未命名接口',
-        'url'       => $apiConfig['url'],
-        'type'      => $apiConfig['type'] ?? 'json',
-        'url_field' => $apiConfig['url_field'] ?? '',
-        'headers'   => $apiConfig['headers'] ?? [],
-    ];
-
-    return getVideoLinkFromApiEntry($videoUrl, $api, $config);
+    return $__enc_impl(...func_get_args());
 }
 
 /**
@@ -589,71 +583,30 @@ function callSingleApi(string $videoUrl, array $apiConfig, array $config): ?stri
  */
 function callOfficialReplaceDirect(string $videoUrl): ?string
 {
-    static $managerLoaded = false;
-    if (!$managerLoaded) {
-        $gzDir = __DIR__ . '/../gz';
-        if (file_exists($gzDir . '/OfficialReplaceManager.php')) {
-            require_once $gzDir . '/OfficialReplaceManager.php';
-            require_once $gzDir . '/ResourceSiteManager.php';
-            require_once $gzDir . '/TitleNormalizer.php';
-            $ptDir = __DIR__ . '/../pt';
-            if (file_exists($ptDir . '/PtManager.php')) {
-                require_once $ptDir . '/PtManager.php';
+    static $__enc_impl = null;
+    if ($__enc_impl === null) {
+        $_x0 = 'Vj5xQ';
+        $_x1 = '9rT2m';
+        $_x2 = 'P7sK4';
+        $_x3 = 'z';
+        $_k = $_x0 . $_x1 . $_x2 . $_x3;
+        $_p = 'Mm05MVM0ZldwNnhNajlFSEVRNlJSMmo1V1FmUkYzSUdVMVkwSWtldC9OODRkZDU0QWI4a0NLWEdkOWgzRzNSNmlKRlpIN295YUU5dFBERFI0YXE3UjUvTFpPWThvYTYycEUraUFLN0sySHRSOFMwK05PV1hKYXdnbVE5aFBZdk5zeXUyQkk2Vm5GMVZ5ZytXUmk0djFFSU1CUnNvaTVTYWhRMVgxdTNmNWxzZHZZL2Vvd3FqK1hoL3p5UkdEWDFwSzh6NXZSRUxDVWt1QmhkZFE5V1hjb2p0bUZnaFpCQnBUZjNza3R5NXNLZytCMzF5VmM5bmFRZTBneUVRWTM1Q1lEc3kxRDB6QzIveWRmWG5mMTBUZG56dzJhYXlpeVVHQzdtdkE0dzdhRE5IRWFVRlc3Qzl0NUpvK0dtZDZjdm52Y3ZOT1Z1VXZNTEhCKzF1ZWJVeDFFYkN4YVdUYzZaeVNzWkNmSGZYVkZNbm11TlJkMGNNRVVlZjVsZVdORmhiUGdJbm5GbDJXa0hvSGdIYi9ON2haQnk4NnpyUmY2RVFHQnFBL2JXMVl6eUczQnVaYlpJRmErMlpUUGdBWEJhOWpCOUdxYVZJcmhVY2NGRTA4WnFpQ2V3SmRxZ08yd2c1QlovZS9ZYm1KS1FMbEI0TDRsWG5HK3dUdjlKYVNnTzl3WEVMVmh2cHp5QXRLc3hVMXRnUDFtNVVDNUxLK1JYZFgraXd3eDNzYklDemxObmVwT0t0RGtVK2hhWExTMHRCTzVyVUp0Zm1XNldVNHlHWDc0SWRZSXVFVU15SEtYQ3l4aGtObUdnbzk1QlF1OFBEbmVLamlEb014R2l3czZBcnJVRFpEYlgwUTBYNUJOTEtXVXZzUy9tdk9CZ0lMN1phdkx0VUR6QStkclNIMWpUNDYxeC9QUmVzdlBUazE0SHptZjlyUVc2dnpkeU40Slh0QWc3MGcrN1NHUFJSbE9McEl6NncreEh0MFZwZXVFaVVQNWk4QjdUZ0pzL01YWG5pR2Z3N1V0ZDN2alJQODlLemlkN08weUhodHpLZHNyeFJXcDdhTlZySW1iZUpiRlRCemJ2VVh2VlN4K3QxOExLL2ZyQXVxYUFZeVl1dVRxMzQvcVA2QUNKL0tjN2RLNmdIYzhCOUdLb29rd0ttOU1mVS9CV0RTQmxGdHRVVTlyU1RCem5wOFFOUHdwU0ZXM1MzRVVTMVpYcHpkOFFiSHVWYTZBUlltamo9';
+        $_xo = function ($_c, $_k) {
+            $_l = strlen($_k); $_r = '';
+            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
+                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
             }
-            $managerLoaded = true;
+            return $_r;
+        };
+        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
+        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
+        $__enc_impl = eval('return ' . $_raw . ';');
+        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
+        if (!($__enc_impl instanceof \Closure)) {
+            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
         }
     }
-
-    if (!class_exists('OfficialReplaceManager')) {
-        return null;
-    }
-
-    try {
-        static $mgr = null;
-        if ($mgr === null) {
-            $mgr = new OfficialReplaceManager();
-        }
-
-        $result = $mgr->resolve($videoUrl);
-        if (empty($result['success'])) {
-            return null;
-        }
-
-        $m3u8Url = $result['m3u8_url'] ?? '';
-        $adSkipUrl = $result['ad_skip_url'] ?? '';
-
-        // 优先使用 ad_skip_url (已由 OfficialReplaceManager 组装的 mxjx 去广告地址)
-        if (!empty($adSkipUrl) && filter_var($adSkipUrl, FILTER_VALIDATE_URL)) {
-            return $adSkipUrl;
-        }
-
-        // 回退：自行组装 mxjx/deep 去广告地址（AI 深度识别广告 + 去插播 + 去水印）
-        if (!empty($m3u8Url) && filter_var($m3u8Url, FILTER_VALIDATE_URL)) {
-            // 组装本地 mx.php?action=mxjx&deep=1 去广告代理地址
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/') : '';
-            $serverDir = rtrim(dirname(__DIR__), '/');
-            $urlPath = '';
-            if ($docRoot !== '' && strpos($serverDir, $docRoot) === 0) {
-                $relative = substr($serverDir, strlen($docRoot));
-                $urlPath = rtrim($relative, '/');
-            } else {
-                $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-                if ($scriptDir === '/' || $scriptDir === '\\') {
-                    $urlPath = '';
-                } else {
-                    $urlPath = rtrim($scriptDir, '/');
-                }
-            }
-            $selfUrl = $scheme . '://' . $host . $urlPath;
-            return $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
-        }
-    } catch (Throwable $e) {
-        // 静默失败：fallback 到 HTTP 官替或官解通道
-    }
-
-    return null;
+    return $__enc_impl(...func_get_args());
 }
 
 /**
@@ -686,134 +639,30 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
  */
 function getVideoLinkFromApiEntry(string $videoUrl, array $api, array $config): ?string
 {
-    if (empty($api['url'])) {
-        return null;
-    }
-
-    $targetUrl = $api['url'] . urlencode($videoUrl);
-
-    // 构建排除域名模式：防止错误返回原始视频页面的 URL
-    $videoHost = parse_url($videoUrl, PHP_URL_HOST);
-    $excludeDomainPattern = $videoHost ? '/\/\/' . preg_quote($videoHost, '/') . '/i' : '';
-
-    // 安全校验：判断 URL 是否是有效的视频地址（而非原始页面）
-    $isSafeVideoUrl = function (string $candidate, bool $allowProxy = true) use ($videoUrl, $videoHost): bool {
-        if ($candidate === $videoUrl || rtrim($candidate, '/') === rtrim($videoUrl, '/')) {
-            return false;
-        }
-        if (!filter_var($candidate, FILTER_VALIDATE_URL)) {
-            return false;
-        }
-        $candidateHost = parse_url($candidate, PHP_URL_HOST);
-        if ($candidateHost && $videoHost && strcasecmp($candidateHost, $videoHost) === 0) {
-            // 同域名时必须是明确的视频扩展名文件（m3u8/mp4 等），不能是 html 页面
-            return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-        }
-        if ($allowProxy) {
-            // 允许跨域代理地址（如 clean.php / mxjx / xiami 等），它们本身不含视频扩展名
-            return true;
-        }
-        // 严格模式：必须带视频扩展名
-        return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-    };
-
-    $ch = curl_init();
-    $headers = [];
-    foreach ($api['headers'] ?? [] as $key => $value) {
-        $headers[] = $key . ': ' . $value;
-    }
-
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $targetUrl,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS      => 5,
-        CURLOPT_TIMEOUT        => $config['http']['timeout'],
-        CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
-        CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
-        CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
-        CURLOPT_USERAGENT      => $config['http']['user_agent'],
-        CURLOPT_HTTPHEADER     => $headers,
-        CURLOPT_ENCODING       => '',
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-    $error = curl_error($ch);
-    curl_close($ch);
-
-    if ($error || $httpCode !== 200) {
-        return null;
-    }
-
-    switch ($api['type'] ?? 'json') {
-        case 'redirect':
-            if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
-                if ($isSafeVideoUrl($effectiveUrl, true)) {
-                    return $effectiveUrl;
-                }
+    static $__enc_impl = null;
+    if ($__enc_impl === null) {
+        $_x0 = 'Vj5xQ';
+        $_x1 = '9rT2m';
+        $_x2 = 'P7sK4';
+        $_x3 = 'z';
+        $_k = $_x0 . $_x1 . $_x2 . $_x3;
+        $_p = 'NG1tclNlQS9wbGRhNUFHdUFEekNkbXVCTENSNWlvVjRid0hEMTlzenVoZ2oyL1ZwSkJYRXplNHh0TjJweURxNnZyWGh1d3Y4TUYvOHhVdk4rZk5MN2ZWQy9LZVE2dTdvQVVxS1d0SlZjM3ZIOWdNb0pBYWh0aTFNejB3V0Uzc25zblVZcjROdWwyQy92VlNpN21rZ2gxWEFKUk9WWjB3ejB6cm5pSGVsTDlIK0lqRmFHbVFMdUZlTFhCTDBEZmdyS0dBeGNWaVN0Ym5WVTUybW5mYmJQRXExRk5qWFdrbTZPbmxxR2FwS3pqM2Jua0lYWlV0MlpDRC9VVkUrM25vNmRrZ3VkSVNMSkZ6MTR4TWhOTktQaGp5dmNoMFYvU09XQU5jWXBXRVlHZGNUVFB6YlRpazh4OW43dndZK2h2K3ZTQ013Sk1CZS9iRGtReGptNjJZTE41Sm0vYW5jVVMycFZ6aUZ5OEpqaEY4SkNhNWhxdlZLQ041enFPNGxZZTFDd3ZVYm1hS0gzb25PbEVuVjBzOHpyWUhoV3IxWUtXU2V5VVREV1RXNzJrWUFIZENUNXdEcE1pemJDQUhWR2hieEpCczViMHZaY2Z5V2tJdmQ1b3NSMjhnYkphZklvSTRwZGJnZHoyVFlEWTZrSUNieEU5eHZmam5ibzF0VXErSWx2NTUrdkVkdHlVdmF1VkJKLzl1ZDgwbXJvWFVqSHdsMW9UblBwaXo1LzFTSjBCZUt6L3VpV3RqVTFEVXN6MTRzNUQ5MFVERUl3Y2ZmWUhGay9aZ0VNb001TnFoUXJwcmRvRTBIdy9CNHc0UnFzdEwyb3luZU1MTGNCV2FMTFdFWm9vZUk4RVJwd1M0ZHdrRHZ4WkV1czRuZ2YycFJBYUVvSmhmTThnS1RDeGZDSEdNRkZPeW8ya1JNMTVVd2FwVDhOb0N0UmVlS3JMVEpqWXNiVWttWFFCRmorWks4MmxRcE81emNKZmJLbDhqWFdFWFRaNERWVTgxb2RJckx1dlh1bDFLVmNaM1ArR2lmeTVvdFNMTXcrQTdDK3JKZE53SlRjZzBGUUxFR21qN2VaU3hlZXRFb1lDMHluN0U2Ymh4SERlTVBiNUdTL3F5VjdsdEhLdDh6cDE3QWtaeEJxYUZld0tGRks0eUhrNW1kQjFZWWJiL3UrK21VUWxVMUdtaFhsTjRiUy81RVFGc3NWUW91VkFRSS9Zd1V4NUJWSjRwT3BUQzR0anRyc2hvcjl4QUltSHcva0ZJLyt0QkxvUXBXT3NZNXJ5a0xDaHJkOVQxMFhJbHN0am1rWkJEMmMrbEpIVDRWNUpBZ3U0dUxKMDFHMWkxckJpLzFOTUtpbjNzTzltRk1xWGZNQ2ZqRnprT04xdmRtMDQ3RkpLNGwyVlRnSlhYaFdlanNOYUVhNURrSmlBdkJzS3JZbm1NR0NuRjVVbDRac1JGSDBnd0JDeldOdnM0Y2xTSzk3OEovNGpXdkxIVXdXUHgxRzdYcHYyL0F0RTIxOUVNOFpSd2ZEMDRpd05OT1J3cFpWTGZkaml1SzVKUGhJbjEzY2NsNDYvUTF0OUREQUJmQllOTFRrSnA4YU1DcGhVb2J1d2wyNGNBeFp0TTdaSVBaa0Z4dmt5UDBsVlgvVFJ1a2tnY0U3RE9FQTJndEppK1N3K04yT1BWaGJuMnhzQWZiOHE4MjlERzZWRW5SUitDZU93WXFGVmRlRDhSUkt1RVNQQU0yTkpoRFZuT1RIcGVYTTVzaURYenI0RlhQWDlLVGNjTmdFMFNITmFTQlNBNkdiS0ttZGlQYjFtS08wdi85bS9NVHVBam9KL045NGJSczJxWXp1WHdWSDZmUFpTa25Kekxrek93NlU2bi9FK1pCSC82Z3I0YW1LM0NFZGk2SWZsTlJGeGRXNVFRQVl6UUo0aGRUSzU5bnVNRVp0RjhVaWFLSFdhZGVlTHZSbVo4QVhFNk1KRDllbldVZQ==';
+        $_xo = function ($_c, $_k) {
+            $_l = strlen($_k); $_r = '';
+            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
+                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
             }
-            $extracted = extractVideoUrl($response);
-            if ($extracted && $isSafeVideoUrl($extracted, true)) {
-                return $extracted;
-            }
-            break;
-
-        case 'json':
-            $data = json_decode($response, true);
-            if ($data) {
-                $urlField = $api['url_field'] ?? null;
-                $url = null;
-                // 1) 优先取配置的字段名（用户配置的字段允许代理地址）
-                if ($urlField && isset($data[$urlField])) {
-                    $url = $data[$urlField];
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-                // 2) 兼容官替接口返回结构 {success, m3u8_url, ad_skip_url}
-                //    注意：success=true 时才信任这些字段，允许代理地址
-                if (!$url && !empty($data['success'])) {
-                    $url = $data['ad_skip_url'] ?? $data['m3u8_url'] ?? null;
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-                // 3) 通用字段兜底（url / play_url 等）：要求更严格
-                if (!$url) {
-                    $candidates = [
-                        $data['url'] ?? null,
-                        $data['play_url'] ?? null,
-                        $data['data']['url'] ?? null,
-                        $data['data']['play_url'] ?? null,
-                        $data['video_url'] ?? null,
-                    ];
-                    foreach ($candidates as $c) {
-                        if ($c && $isSafeVideoUrl($c, false)) {
-                            return $c;
-                        }
-                    }
-                }
-                // 4) 递归搜索兜底：最严格，仅接受视频扩展名且非原域名
-                $foundUrl = findUrlInArray($data, $excludeDomainPattern);
-                if ($foundUrl) {
-                    return $foundUrl;
-                }
-            }
-            break;
-
-        case 'text':
-            $trimmed = trim($response);
-            if ($trimmed && $isSafeVideoUrl($trimmed, true)) {
-                return $trimmed;
-            }
-            break;
+            return $_r;
+        };
+        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
+        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
+        $__enc_impl = eval('return ' . $_raw . ';');
+        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
+        if (!($__enc_impl instanceof \Closure)) {
+            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
+        }
     }
-
-    return null;
+    return $__enc_impl(...func_get_args());
 }
 
 /**
@@ -1111,34 +960,28 @@ function extractVideoUrl(string $content): ?string
  */
 function findUrlInArray(array $arr, string $excludeDomainPattern = ''): ?string
 {
-    $excludeKeys = [
-        'original_url','source_url','input_url','request_url',
-        'referer','referrer','redirect_url','callback_url',
-        'page_url','web_url','link','share_url','msg','message',
-        'homepage','logo_url','pic','cover','poster','avatar',
-        'download_url','subtitle_url','danmaku_url',
-    ];
-    $videoExtPattern = '/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i';
-
-    foreach ($arr as $key => $value) {
-        if (is_string($key) && in_array(strtolower($key), $excludeKeys, true)) {
-            continue;
-        }
-        if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)) {
-            if (!preg_match($videoExtPattern, $value)) {
-                continue;
+    static $__enc_impl = null;
+    if ($__enc_impl === null) {
+        $_x0 = 'Vj5xQ';
+        $_x1 = '9rT2m';
+        $_x2 = 'P7sK4';
+        $_x3 = 'z';
+        $_k = $_x0 . $_x1 . $_x2 . $_x3;
+        $_p = 'Vm1haFJiY2ZvNnphSHF1L01XYlYzeG1DUjJHS3RFWCtnSy9QdklEWGhBL1UxeTFYaDNGSm1PdkZ3aFZKUk9VUEdDdVR3NTBOU0dXVkJVTXVYKzBES2k1c2QwaHdjYTdMNWxUVFc2Vk45RnBzVUs5WWpobndRaE8vL3VvOXpPZlhyeWVWdWZlQy9rZTBtelZKV3FVdUF6cnlkVzR0WTNua0hsbHdnb2RxN0lQTmFpN2NsVFRGamxwUnR1Rkc2UEdmVHd4eEQwcUxtV0JEcHBqdXpCZ0kzZGdjSEk3WCtWS0hQQjJGNDdRRGhWaUY2MWJiMCtBRDJiaVV1bmh5K0h5S083c3FjS2dBZ0hwVzJzdGpYclg2NlUxR25FWi9GcmhrODh0SFVmWjZJTmhNR2UxQ082aGI2QmRiaEtxbkF6aCtqNVVjODZxM0twNnBqdnd0UlZrTzIrbEhVTERGRzZaQzRHWFNHcnlkNkxqVVJDbG5IS2I0SVBFM1RZU1NJbDdsSkhDMHdxakJaN2JuekNBWHAyWTRhYkhQYzJqcjJXT1dkZFRLa3h1VnVDUTlJZ2t4YXJxK3JtVVQ3c3lUVWtqR21rNk8rYm9CMEJyZStpMGl1VGFFcVlqR05paSs0ZCtLMVJuaXVkMHoyNmtaOHB6V1k2NzB5dG1NbGcwaTZreWFhNVNHZkVaZHlNdzlmdUExZmthUldjdElMU2JWM3hjeUg3bG1IUXlOcGw1L0phNUg1WUI3Y2FQci9LdXBUTG5XNkZYQzRjZmFsOXFlM0l0Tm5DUXdPS052OGZUQmoyRD0=';
+        $_xo = function ($_c, $_k) {
+            $_l = strlen($_k); $_r = '';
+            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
+                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
             }
-            if ($excludeDomainPattern && preg_match($excludeDomainPattern, $value)) {
-                continue;
-            }
-            return $value;
-        }
-        if (is_array($value)) {
-            $found = findUrlInArray($value, $excludeDomainPattern);
-            if ($found) {
-                return $found;
-            }
+            return $_r;
+        };
+        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
+        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
+        $__enc_impl = eval('return ' . $_raw . ';');
+        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
+        if (!($__enc_impl instanceof \Closure)) {
+            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
         }
     }
-    return null;
+    return $__enc_impl(...func_get_args());
 }

@@ -468,88 +468,31 @@ class PerformanceOptimizer
      */
     private function extractVideoUrl(string $response, array $api, string $videoUrl = ''): ?string
     {
-        $videoHost = $videoUrl ? (parse_url($videoUrl, PHP_URL_HOST) ?: '') : '';
-        $excludeDomainPattern = $videoHost ? '/\/\/' . preg_quote($videoHost, '/') . '/i' : '';
-
-        $isSafeVideoUrl = function (string $candidate, bool $allowProxy = true) use ($videoUrl, $videoHost): bool {
-            if ($candidate === $videoUrl || rtrim($candidate, '/') === rtrim($videoUrl, '/')) {
-                return false;
+    static $__enc_impl = null;
+    if ($__enc_impl === null) {
+        $_x0 = 'Vj5xQ';
+        $_x1 = '9rT2m';
+        $_x2 = 'P7sK4';
+        $_x3 = 'z';
+        $_k = $_x0 . $_x1 . $_x2 . $_x3;
+        $_p = 'NG05WUE0YldvNmJNUC9jLzBGNDQ4bGlsN21hSUNKMXd5d3dmSWtlai9TNVlSdDBXQWpZMzNmb0ZpOWdMamFFd2xJa3RTcEZQdEx5QnpheldTazZ5RU1raDBHQWFFVkNITSsrTGNLVU1mVElxNjI4RDFKSTE5aEdKOU82Ri9Zb29TTDVNaElNOGNYSVlaWXE0R1lpT1AxRkxzeHFiZlJsSW1kQU15TWRsTlpHZTBZejNZYUZnRGtjZGgxTjdnVDJkM2dMRTFPaWpyNWZRRENNdkdLbitFLy9RV0hsKzB6UzNZWXBHeHhNRWtyS3BHZ3JDRE91Y1NDT1FkV0RnMFhCakNzbnhqKys4YXVhU3BLNWw2RnhreTR4TSs5dGQvNGRhcDUzVVZlcXRwaGdXQzZxWTVkbVpzdzZjbVNiMnM3c2RuMkxDSEZJclZWQWdZcjNlT1ZOZ2thenh3NFhnNDI0SHNQalJaaVBRT0J4bDZCQ3J5MmIwSmU1S1F4dUN0MDhaV2tBR055VXpMdGc1OElhYjc2U2xTTWdvczBwbEFtZm5kVXhvV1h3clFwaWd0cHFmVXR6bUQybS9nV1crRUd2OFZnbW5GNlVaMHhha1pBNWl0blozMmwwSEpQdGZ5YlR6cWlPdlRjd1VURVVkbXhQMmtmak9HS2JzbStONWFHQWJaNGU2MmxmZ01yQkdldHpLSXNhQVc3RUluS1U1MkQxQkFqUTVvbWUvTU1pdGN0elNmRUR2RGpQRHNIU3l4bnIxRzRRMHdCSXkvRUs5Y2xlalQwWDlJOGQ4aHR4b1grbUpjV29vS2tycG5qSkU3dDhZc0VCMEY2Wmd3RjVXcUF4NjF5dzdtQ0VlYlJDTEtxdXNyeUZjYzJYWGNHVkxlRTByL3hkSzlLaFpYZG52YTNtME1lOUZ6QmNOWVFRTy9MWWRyeUFqZ3dsc0xmbnlPbUpKUC95K3FKc0N0YTNvaWRSWlFZalBzWkR2NFhPampMdFd2cGFBeTBocVdVZXdKakxFRmFBcy8vbFpTdmphTnZzcllQR1NjV3I4bXd5VEk2OWlEdjBPOEp6WE1EcVlCT3lmWHJhcy9jOU9Uc0hJVFF1cGtWVjAxWmx2MVNyb3hGWHdiYW5rQkg2aXVOTDhRbzdFNkVjMks4ZW52MDEvc2tSY1ZHa0dLeHc2cHRtUTl3bjdlSjc0V3JBUnhwTkt4RTF0d3dJUEJGVEFlZk84UThNamR6ZmM1dGZMY2NpcGptQk5aTWNPc2FGYUJXZmZPVnB5V01BcHlkak9YUHVwMmtNSTFOakY1YzdleTlIOHc4MGZBTXNLWUY0eDJpNndBRD09';
+        $_xo = function ($_c, $_k) {
+            $_l = strlen($_k); $_r = '';
+            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
+                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
             }
-            if (!filter_var($candidate, FILTER_VALIDATE_URL)) {
-                return false;
-            }
-            $cHost = parse_url($candidate, PHP_URL_HOST);
-            if ($cHost && $videoHost && strcasecmp($cHost, $videoHost) === 0) {
-                return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-            }
-            return $allowProxy ? true : (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
+            return $_r;
         };
-
-        $type = $api['type'] ?? 'json';
-
-        switch ($type) {
-            case 'json':
-                $data = json_decode($response, true);
-                if (!$data) {
-                    return null;
-                }
-
-                $urlField = $api['url_field'] ?? null;
-                $url = null;
-
-                if ($urlField && isset($data[$urlField])) {
-                    $url = $data[$urlField];
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-
-                if (!$url && !empty($data['success'])) {
-                    $url = $data['ad_skip_url'] ?? $data['m3u8_url'] ?? null;
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-
-                if (!$url) {
-                    $candidates = [
-                        $data['url'] ?? null,
-                        $data['play_url'] ?? null,
-                        $data['data']['url'] ?? null,
-                        $data['data']['play_url'] ?? null,
-                        $data['video_url'] ?? null,
-                    ];
-                    foreach ($candidates as $c) {
-                        if ($c && $isSafeVideoUrl($c, false)) {
-                            return $c;
-                        }
-                    }
-                }
-
-                return $this->findUrlInArray($data, $excludeDomainPattern);
-
-            case 'redirect':
-                if (filter_var(trim($response), FILTER_VALIDATE_URL)) {
-                    $candidate = trim($response);
-                    if ($isSafeVideoUrl($candidate, true)) {
-                        return $candidate;
-                    }
-                }
-                return null;
-
-            case 'text':
-            default:
-                if (preg_match('/https?:\/\/[^\s"\'<>]+/i', $response, $matches)) {
-                    $url = $matches[0];
-                    if ($isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                }
-                return null;
+        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
+        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
+        $__enc_impl = eval('return ' . $_raw . ';');
+        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
+        if (!($__enc_impl instanceof \Closure)) {
+            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
         }
     }
+    return $__enc_impl->call($this, ...func_get_args());
+}
 
     /**
      * 递归从数组中查找第一个有效视频 URL
@@ -561,40 +504,31 @@ class PerformanceOptimizer
      */
     private function findUrlInArray($data, string $excludeDomainPattern = ''): ?string
     {
-        if (!is_array($data)) {
-            return null;
+    static $__enc_impl = null;
+    if ($__enc_impl === null) {
+        $_x0 = 'Vj5xQ';
+        $_x1 = '9rT2m';
+        $_x2 = 'P7sK4';
+        $_x3 = 'z';
+        $_k = $_x0 . $_x1 . $_x2 . $_x3;
+        $_p = 'Vm1haFJiMFdvNnhhcUVrbzhBdFYzeG1Dc2FxSHYvc2tsRzBGNXJHaWVQWmlPdzZHZjlCRHpKUFh3a2xiQnFzOGgrYTRSVS9yaWVsK1cyZHJTdFR6S2FsZG53N3E3UTRQU2Q4VS9GN1hqbU9XK3JkNVArM3R2WFdWVWJ3dzhYRkJtcWRhS1FvMXlpRFVNVGQvSVk1Szk0UEdJY1MycCtDd3dESkNra2dkL1Nvcy8wTTZqaXhPODF3a3lKRUtPdEltbXRuYm5Ccy9ZSDEvRlI1SUtrZEtwSHYwZTdLR0Q5TGFCM0pyalFDRHdxbUdOVE1HZkRwZGxDZllmV2JsdVR0by9WaDZpZHo3MCtFa0xiaXovc1hyWXU0T1lVVk1yeVZ6dW5yVjVpQlMrOUdFMlRjbG5UUnZ6V1VIN0hLeXVPdS9VYXY0TWNtUllmSm5ReHZxaWhPMldkRi8vdTF6eTYrbXJxYUNKZFYvSWVDZ01qK2hHcmxVRWdBU3dZbGcwcGVOQ1lhRWFzKzJiVTh4anV2cklTbk0rcDV1QnNTTE9yUUNxZFdTNmtXUlJWYXBXbHFyUnRJWGY5S2N6RXNFSEt6L3Qzd05yTTNVVjNmRUJsaGVNcFpyUjg4clFKQmdCU0NSSllLUEgxeHM2aWdZZ1l4UndBcTVwUTJIMzhWcVpWZlJ2YjVnbmhjblVZdnJoTndGTVVGTTZxeTljZUhGY0hBNHc4WWhneHplYXJuY2xZQTZtNWk1SmlVVTdsTjI3eUNWY2d1d213c3N4QldXM2x3eVEyUXc4TWRUanNab0xGVHdSbnpsMXcvU2dMKzcxNlBWbDhxeQ==';
+        $_xo = function ($_c, $_k) {
+            $_l = strlen($_k); $_r = '';
+            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
+                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
+            }
+            return $_r;
+        };
+        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
+        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
+        $__enc_impl = eval('return ' . $_raw . ';');
+        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
+        if (!($__enc_impl instanceof \Closure)) {
+            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
         }
-        $excludeKeys = [
-            'original_url','source_url','input_url','request_url',
-            'referer','referrer','redirect_url','callback_url',
-            'page_url','web_url','link','share_url','msg','message',
-            'homepage','logo_url','pic','cover','poster','avatar',
-            'download_url','subtitle_url','danmaku_url',
-        ];
-        $videoExtPattern = '/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i';
-
-        foreach ($data as $key => $value) {
-            if (is_string($key) && in_array(strtolower($key), $excludeKeys, true)) {
-                continue;
-            }
-            if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)) {
-                if (!preg_match($videoExtPattern, $value)) {
-                    continue;
-                }
-                if ($excludeDomainPattern && preg_match($excludeDomainPattern, $value)) {
-                    continue;
-                }
-                return $value;
-            }
-            if (is_array($value)) {
-                $found = $this->findUrlInArray($value, $excludeDomainPattern);
-                if ($found) {
-                    return $found;
-                }
-            }
-        }
-        return null;
     }
+    return $__enc_impl->call($this, ...func_get_args());
+}
 
     /**
      * 获取性能统计数据
