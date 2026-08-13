@@ -30,5 +30,5 @@ return array (
   'stale_rule_days' => 30,
   'cleanup_health_timeout' => 6,
   'cleanup_interval_hours' => 24,
-  'last_cleanup_time' => '2026-08-09 23:04:04',
+  'last_cleanup_time' => '2026-08-13 22:05:20',
 );

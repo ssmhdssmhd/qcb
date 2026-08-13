@@ -12,8 +12,11 @@ class OfficialReplaceManager {
     private $configFile;
     private $config;
     private $lastHttpError = '';
+    private $lastHttpCode = 0;
     private $proxyManager = null;
     private $useProxyOnFirstTry = true;
+    /** @var array step_trace: 每一步解析过程，用于前后端排错 */
+    private $stepTrace = [];
 
     public function __construct() {
         $this->configFile = __DIR__ . '/official_replace_config.php';
@@ -137,37 +140,79 @@ class OfficialReplaceManager {
     }
 
     public function resolve($url) {
+        $this->resetStepTrace();
+        $tStart = microtime(true);
+        $this->pushStep('start', '启动官替解析', 'info', "URL: {$url}", ['url' => $url]);
+
         try {
             if (empty($url)) {
-                return ['success' => false, 'message' => 'URL不能为空'];
+                $this->pushStep('validate', '入参校验', 'fail', 'URL 为空');
+                return ['success' => false, 'message' => 'URL不能为空', 'step_trace' => $this->getStepTrace()];
             }
 
             if (!$this->config['enabled']) {
-                return ['success' => false, 'message' => '官替功能已禁用'];
+                $this->pushStep('validate', '入参校验', 'fail', '官替功能已被后台禁用', ['config_enabled' => false]);
+                return ['success' => false, 'message' => '官替功能已禁用', 'step_trace' => $this->getStepTrace()];
             }
 
+            $t = microtime(true);
             $platform = $this->detectPlatform($url);
             if (!$platform) {
-                return ['success' => false, 'message' => '不支持的视频平台'];
+                $this->pushStep('detect_platform', '① 识别视频平台', 'fail', '域名未匹配到支持的平台', [
+                    'host' => parse_url($url, PHP_URL_HOST) ?: '',
+                ], (microtime(true) - $t) * 1000);
+                return ['success' => false, 'message' => '不支持的视频平台', 'step_trace' => $this->getStepTrace()];
             }
+            $this->pushStep('detect_platform', '① 识别视频平台', 'ok',
+                "识别为 {$platform['name']}（{$platform['domain']}）",
+                ['platform' => $platform],
+                (microtime(true) - $t) * 1000);
 
+            $t = microtime(true);
             $videoIds = $this->extractVideoId($url, $platform);
             $videoId = $videoIds['video_id'] ?? '';
             $coverId = $videoIds['cover_id'] ?? '';
+            $this->pushStep('extract_id', '② 提取视频ID',
+                ($videoId ? 'ok' : 'warn'),
+                $videoId ? "video_id={$videoId}" . ($coverId ? " cover_id={$coverId}" : '') : '未能从 URL 中提取到 video_id，后续只能依赖页面抽取',
+                ['video_ids' => $videoIds],
+                (microtime(true) - $t) * 1000);
 
+            $t = microtime(true);
             $videoInfo = $this->fetchVideoInfo($url, $platform, $videoIds);
             $videoTitle = '';
 
             if ($videoInfo && !empty($videoInfo['is_expired'])) {
-                return ['success' => false, 'message' => '链接已失效', 'platform' => $platform['name']];
+                $this->pushStep('fetch_meta', '③ 获取官方页面信息', 'fail', '链接已失效（title命中过期词）',
+                    ['video_title' => $videoInfo['title'] ?? ''],
+                    (microtime(true) - $t) * 1000);
+                return [
+                    'success' => false,
+                    'message' => '链接已失效',
+                    'platform' => $platform['name'],
+                    'step_trace' => $this->getStepTrace(),
+                ];
             }
 
             if ($videoInfo && !empty($videoInfo['title'])) {
                 $videoTitle = $videoInfo['title'];
             } elseif ($videoId) {
                 $videoTitle = $videoId;
+                $this->pushStep('fetch_meta', '③ 获取官方页面信息', 'warn',
+                    "未从页面拿到正式 title，回退用 video_id={$videoId} 作为搜索标题",
+                    ['video_info' => $videoInfo],
+                    (microtime(true) - $t) * 1000);
             } else {
-                return ['success' => false, 'message' => '无法获取视频信息', 'platform' => $platform['name']];
+                $this->pushStep('fetch_meta', '③ 获取官方页面信息', 'fail',
+                    'API / 页面HTML / 移动页 / URL 兜底四个来源都未能提取到标题',
+                    ['video_info' => $videoInfo],
+                    (microtime(true) - $t) * 1000);
+                return [
+                    'success' => false,
+                    'message' => '无法获取视频信息',
+                    'platform' => $platform['name'],
+                    'step_trace' => $this->getStepTrace(),
+                ];
             }
 
             $parsedInfo = $this->parseVideoTitle($videoTitle);
@@ -209,13 +254,45 @@ class OfficialReplaceManager {
                 // noop (兼容字段)
             }
 
+            $this->pushStep('fetch_meta', '③ 获取官方页面信息', 'ok',
+                "title={$videoTitle} · base_title=" . ($videoInfo['base_title'] ?? '') . ' · 第' . ((string)($videoInfo['episode_num'] ?? '?')) . '集',
+                [
+                    'video_title'   => $videoTitle,
+                    'base_title'    => $videoInfo['base_title'] ?? '',
+                    'season_num'    => $videoInfo['season_num'] ?? null,
+                    'episode_num'   => $videoInfo['episode_num'] ?? null,
+                    'episode_name'  => $videoInfo['episode'] ?? '',
+                    'description'   => mb_substr($videoInfo['description'] ?? '', 0, 200),
+                    'rich_meta_ok'  => !empty($videoInfo['episode_info']['base_title_guess']) || !empty($videoInfo['episode_info']['subtitle_guess']),
+                ],
+                (microtime(true) - $t) * 1000);
+
             $searchKeywords = $this->buildSearchKeywords($videoInfo, $platform);
+            $this->pushStep('build_keywords', '④ 生成搜索关键词', 'ok',
+                '共 ' . count($searchKeywords) . ' 个搜索词，优先使用分剧名/第X集组合',
+                ['keywords' => $searchKeywords]);
+
             $searchResult = null;
             $usedKeyword = '';
 
-            foreach ($searchKeywords as $keyword) {
+            $tSearch = microtime(true);
+            foreach ($searchKeywords as $ki => $keyword) {
                 if (empty($keyword)) continue;
+                $t1 = microtime(true);
                 $result = $this->searchInSites($keyword);
+                $videoCount = empty($result['videos']) ? 0 : count($result['videos']);
+                $this->pushStep('search_site',
+                    "⑤ 资源站搜索 关键词" . ($ki + 1) . "/" . count($searchKeywords),
+                    $videoCount > 0 ? 'ok' : 'warn',
+                    ($videoCount > 0 ? "命中 {$videoCount} 条，停止继续搜索" : "无结果") . " · 搜索词：{$keyword}",
+                    [
+                        'keyword'          => $keyword,
+                        'videos_count'     => $videoCount,
+                        'searched_sites'   => $result['searched_sites'] ?? 0,
+                        'successful_sites' => $result['successful_sites'] ?? [],
+                        'failed_sites'     => array_slice($result['failed_sites'] ?? [], 0, 10),
+                    ],
+                    (microtime(true) - $t1) * 1000);
                 if ($result['success'] && !empty($result['videos'])) {
                     $searchResult = $result;
                     $usedKeyword = $keyword;
@@ -224,6 +301,15 @@ class OfficialReplaceManager {
             }
 
             if (!$searchResult || empty($searchResult['videos'])) {
+                $this->pushStep('search_site_final', '⑤ 资源站搜索（汇总）', 'fail',
+                    "所有 " . count($searchKeywords) . " 个搜索词都没有命中资源站视频",
+                    [
+                        'search_keywords'  => $searchKeywords,
+                        'successful_sites' => $searchResult['successful_sites'] ?? [],
+                        'failed_sites'     => $searchResult['failed_sites'] ?? [],
+                        'searched_sites'   => $searchResult['searched_sites'] ?? 0,
+                    ],
+                    (microtime(true) - $tSearch) * 1000);
                 $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
                 return [
                     'success' => false,
@@ -240,9 +326,11 @@ class OfficialReplaceManager {
                     'successful_sites' => $searchResult['successful_sites'] ?? [],
                     'failed_sites' => $searchResult['failed_sites'] ?? [],
                     'searched_sites' => $searchResult['searched_sites'] ?? 0,
+                    'step_trace' => $this->getStepTrace(),
                 ];
             }
 
+            $t = microtime(true);
             $aiMatchResult = $this->aiSmartMatch($videoInfo, $searchResult['videos']);
             $bestMatch = $aiMatchResult['best_match'] ?? null;
             $allMatches = $aiMatchResult['all_matches'] ?? [];
@@ -282,15 +370,37 @@ class OfficialReplaceManager {
                         }
                     }
                 } catch (Throwable $e) {
-                    // pt 引擎异常时静默降级
+                    $this->pushStep('pt_engine', 'Pt 引擎增强匹配', 'warn', '异常，已降级回规则匹配',
+                        ['error' => $e->getMessage(), 'file' => basename($e->getFile()), 'line' => $e->getLine()]);
                 }
             }
 
             $siteMatches = $this->groupMatchesBySite($allMatches);
 
+            $this->pushStep('match', '⑥ AI+规则智能匹配最优候选',
+                $bestMatch ? 'ok' : 'fail',
+                $bestMatch
+                    ? ("命中站点：" . ($bestMatch['site'] ?? '?') . " · score=" . round((float)($bestMatch['score'] ?? 0), 1) . " · method={$matchMethod} · 候选数=" . count($allMatches))
+                    : ("匹配失败，所有候选分数均低于阈值 " . ($this->config['match_threshold'] ?? 60)),
+                [
+                    'match_method'        => $matchMethod,
+                    'used_keyword'        => $usedKeyword,
+                    'total_candidates'    => count($allMatches),
+                    'top5'                => array_values(array_map(function($m) {
+                        return [
+                            'name'  => $m['video']['name'] ?? '',
+                            'site'  => $m['site'] ?? ($m['video']['site_name'] ?? $m['video']['site'] ?? ''),
+                            'score' => $m['score'] ?? null,
+                            'id'    => $m['video']['id'] ?? null,
+                        ];
+                    }, array_slice($allMatches, 0, 5))),
+                    'sites'               => array_keys($siteMatches),
+                ],
+                (microtime(true) - $t) * 1000);
+
             if (!$bestMatch) {
                 $this->logResolve($url, $platform['name'], $videoTitle, 0, '', '', false);
-                return [
+                $fail = [
                     'success' => false,
                     'message' => '未找到匹配度足够的资源',
                     'platform' => $platform['name'],
@@ -306,7 +416,9 @@ class OfficialReplaceManager {
                     'successful_sites' => $searchResult['successful_sites'] ?? [],
                     'failed_sites' => $searchResult['failed_sites'] ?? [],
                     'searched_sites' => $searchResult['searched_sites'] ?? 0,
+                    'step_trace' => $this->getStepTrace(),
                 ];
+                return $fail;
             }
 
             $targetEpisodeUrl = $bestMatch['video']['first_url'] ?? $bestMatch['video']['url'] ?? '';
@@ -314,6 +426,7 @@ class OfficialReplaceManager {
             $allUrls = $bestMatch['video']['urls'] ?? [];
             $episodeFromPlaylist = false;
 
+            $t = microtime(true);
             if (!empty($videoInfo['episode_num']) && !empty($allUrls)) {
                 $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num'], $videoInfo);
                 if ($epResult) {
@@ -344,10 +457,43 @@ class OfficialReplaceManager {
             }
             unset($urlItem);
 
+            $this->pushStep('episode', '⑦ 按集数匹配单集链接',
+                ($episodeFromPlaylist ? 'ok' : (empty($targetEpisodeUrl) ? 'fail' : 'warn')),
+                $episodeFromPlaylist
+                    ? ("按第{$videoInfo['episode_num']}集精准匹配：" . ($targetEpisodeName ?: $targetEpisodeUrl))
+                    : (empty($targetEpisodeUrl)
+                        ? '播放列表为空/未能匹配，无法生成最终 m3u8'
+                        : ("未能按集数匹配，回退使用列表首项：" . ($targetEpisodeName ?: basename((string)parse_url($targetEpisodeUrl, PHP_URL_PATH))))),
+                [
+                    'target_ep_num'    => $videoInfo['episode_num'] ?? null,
+                    'playlist_count'   => is_countable($allUrls) ? count($allUrls) : 0,
+                    'episode_name'     => $targetEpisodeName,
+                    'episode_from_playlist' => $episodeFromPlaylist,
+                    'target_url_preview' => $targetEpisodeUrl ? substr($targetEpisodeUrl, 0, 150) : '',
+                ],
+                (microtime(true) - $t) * 1000);
+
+            if (empty($targetEpisodeUrl)) {
+                $this->logResolve($url, $platform['name'], $videoTitle, 0, $bestMatch['site'] ?? '', '', false);
+                return [
+                    'success' => false,
+                    'message' => '匹配到的视频没有可用播放地址',
+                    'step_trace' => $this->getStepTrace(),
+                ];
+            }
+
             $adSkipUrl = '';
             if (!empty($targetEpisodeUrl)) {
                 $adSkipUrl = $this->buildAdSkipUrl($targetEpisodeUrl);
             }
+
+            $this->pushStep('output', '⑧ 组装输出（ad_skip_url 已含 AI+MD5 占位链路）', 'ok',
+                "m3u8_url=已生成 · ad_skip_url=已生成 · 广告占位在 mxjx/deep 子步骤执行",
+                [
+                    'm3u8_url_preview'     => substr($targetEpisodeUrl, 0, 150),
+                    'ad_skip_url_preview'  => substr($adSkipUrl, 0, 150),
+                ],
+                (microtime(true) - $tStart) * 1000);
 
             $this->logResolve($url, $platform['name'], $videoTitle, $bestMatch['score'] ?? 0, $bestMatch['site'] ?? '', $targetEpisodeUrl, !empty($targetEpisodeUrl));
 
@@ -390,9 +536,20 @@ class OfficialReplaceManager {
                 'successful_sites' => $searchResult['successful_sites'] ?? [],
                 'failed_sites' => $searchResult['failed_sites'] ?? [],
                 'searched_sites' => $searchResult['searched_sites'] ?? 0,
-                'request_time' => time()
+                'request_time' => time(),
+                'total_ms' => round((microtime(true) - $tStart) * 1000, 1),
+                'step_trace' => $this->getStepTrace(),
             ];
         } catch (Throwable $e) {
+            $this->pushStep('exception', '解析异常', 'fail',
+                get_class($e) . ': ' . $e->getMessage(),
+                [
+                    'class' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file'  => $e->getFile(),
+                    'line'  => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
             $this->logResolve($url, '', '', 0, '', '', false);
             return [
                 'success' => false,
@@ -400,8 +557,9 @@ class OfficialReplaceManager {
                 'error_code' => 'INTERNAL_ERROR',
                 'debug_info' => [
                     'file' => basename($e->getFile()),
-                    'line' => $e->getLine()
-                ]
+                    'line' => $e->getLine(),
+                ],
+                'step_trace' => $this->getStepTrace(),
             ];
         }
     }
@@ -447,6 +605,38 @@ class OfficialReplaceManager {
             @file_put_contents($logFile, $logLine, FILE_APPEND);
         } catch (Throwable $e) {
         }
+    }
+
+    /**
+     * 追加 step trace 记录（给 mxadmin 测试区时间线展示）
+     *
+     * @param string $name   步骤英文 key（稳定）
+     * @param string $title  步骤标题（展示用中文）
+     * @param string $status ok | warn | fail | info
+     * @param string|array $summary 一句话摘要（展示用字符串，也支持结构化数组）
+     * @param array  $detail 展开可见的详情（可长）
+     * @param float  $elapsedMs 可选：本步耗时（ms）
+     */
+    private function pushStep($name, $title, $status, $summary = '', $detail = [], $elapsedMs = null) {
+        $this->stepTrace[] = [
+            'name'      => (string)$name,
+            'title'     => (string)$title,
+            'status'    => in_array($status, ['ok','warn','fail','info'], true) ? $status : 'info',
+            'summary'   => is_array($summary) ? json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string)$summary,
+            'detail'    => is_array($detail) ? $detail : ['raw' => (string)$detail],
+            'elapsed_ms'=> $elapsedMs === null ? null : round((float)$elapsedMs, 2),
+            'ts'        => microtime(true),
+        ];
+    }
+
+    /** 重置 step trace（一般在 resolve 开头调用） */
+    private function resetStepTrace() {
+        $this->stepTrace = [];
+    }
+
+    /** 取出 step_trace 数组快照 */
+    public function getStepTrace() {
+        return $this->stepTrace;
     }
 
     private function buildSearchKeywords($videoInfo, $platform) {
@@ -905,30 +1095,52 @@ class OfficialReplaceManager {
         $category = '';
         $releaseDate = '';
 
+        $t = microtime(true);
         $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform, $coverId, $url);
+        $apiUsed = false;
         if ($apiInfo) {
             if (!empty($apiInfo['title'])) {
                 $title = $apiInfo['title'];
+                $apiUsed = true;
             }
             if (!empty($apiInfo['cover'])) {
                 $cover = $apiInfo['cover'];
+                $apiUsed = true;
             }
         }
+        $this->pushStep('fetch_meta_api', '  └ 来源1：平台API接口',
+            $apiUsed ? 'ok' : 'warn',
+            $apiUsed ? "API返回了可用 title=" . ($title ?? '') : 'API未能返回有效 title/cover，将尝试页面HTML下载',
+            [
+                'platform' => $platform['name'],
+                'video_id' => $videoId,
+                'cover_id' => $coverId,
+                'api_title_len' => strlen($apiInfo['title'] ?? ''),
+                'api_cover_len' => strlen($apiInfo['cover'] ?? ''),
+            ],
+            (microtime(true) - $t) * 1000);
 
+        $htmlUsed = false;
         if (empty($title) || mb_strlen($title) < 3) {
+            $t = microtime(true);
             $html = $this->httpGet($url);
+            $httpCode = (int)($this->lastHttpCode ?: 0);
+            $htmlLen = strlen($html ?: '');
             if ($html) {
                 $htmlTitle = $this->extractTitle($html, $platform);
                 if (!empty($htmlTitle) && mb_strlen($htmlTitle) >= 3) {
                     $title = $htmlTitle;
+                    $htmlUsed = true;
                 }
                 $htmlCover = $this->extractCover($html);
                 if (!empty($htmlCover) && empty($cover)) {
                     $cover = $htmlCover;
+                    $htmlUsed = true;
                 }
                 $htmlEpisodeInfo = $this->extractEpisodeFromHtml($html, $platform);
                 if (!empty($htmlEpisodeInfo['episode_num'])) {
                     $episodeInfo = $htmlEpisodeInfo;
+                    $htmlUsed = true;
                 }
                 // ===== v5.11 新增：官方页面元数据深度解析 =====
                 $meta = $this->extractRichMetaFromHtml($html, $title ?: $htmlTitle);
@@ -941,6 +1153,7 @@ class OfficialReplaceManager {
                         $episodeInfo['episode_name'] = $meta['episode_name'];
                     }
                     if (!empty($meta['total_episodes'])) $episodeInfo['total_episodes'] = $meta['total_episodes'];
+                    $htmlUsed = true;
                 }
                 if (!empty($meta['og_type'])) $ogType = $meta['og_type'];
                 if (!empty($meta['category'])) $category = $meta['category'];
@@ -951,38 +1164,71 @@ class OfficialReplaceManager {
                     if (!empty($tEpi['episode_num'])) {
                         $episodeInfo['episode_num'] = $tEpi['episode_num'];
                         $episodeInfo['episode_name'] = $tEpi['episode'] ?? $episodeInfo['episode_name'];
+                        $htmlUsed = true;
                     }
                 }
             }
+            $this->pushStep('fetch_meta_html', '  └ 来源2：PC页面HTML',
+                $htmlUsed ? 'ok' : 'warn',
+                $htmlUsed
+                    ? "成功提取 · title={$title}"
+                    : ($htmlLen > 0
+                        ? "已下载 {$htmlLen} 字节（HTTP {$httpCode}）但没有提取到 title"
+                        : "页面HTML下载失败（HTTP {$httpCode}），下一步走移动页兜底"),
+                [
+                    'http_code' => $httpCode,
+                    'html_bytes' => $htmlLen,
+                    'title_source' => $htmlUsed ? 'HTML/og:title' : null,
+                    'rich_meta_ok' => !empty($meta),
+                ],
+                (microtime(true) - $t) * 1000);
 
+            $mUsed = false;
             if ((empty($title) || mb_strlen($title) < 3) && in_array($platform['domain'], ['iqiyi.com', 'youku.com', 'mgtv.com', 'sohu.com', 'pptv.com', 'v.qq.com'])) {
+                $t = microtime(true);
                 $mobileHtml = $this->httpGetMobile($url);
+                $mLen = strlen($mobileHtml ?: '');
                 if ($mobileHtml) {
                     $mobileTitle = $this->extractTitle($mobileHtml, $platform);
                     if (!empty($mobileTitle) && mb_strlen($mobileTitle) >= 3) {
                         $title = $mobileTitle;
+                        $mUsed = true;
                     }
                     if (empty($cover)) {
                         $mobileCover = $this->extractCover($mobileHtml);
                         if (!empty($mobileCover)) {
                             $cover = $mobileCover;
+                            $mUsed = true;
                         }
                     }
                     if (empty($episodeInfo['episode_num'])) {
                         $mobileEpisodeInfo = $this->extractEpisodeFromHtml($mobileHtml, $platform);
                         if (!empty($mobileEpisodeInfo['episode_num'])) {
                             $episodeInfo = $mobileEpisodeInfo;
+                            $mUsed = true;
                         }
                     }
                 }
+                $this->pushStep('fetch_meta_mobile', '  └ 来源3：移动页HTML（兜底）',
+                    $mUsed ? 'ok' : 'warn',
+                    $mUsed ? "从移动页成功提取 · title={$title}"
+                          : ($mLen > 0 ? "已下载 {$mLen} 字节但没有提取到可用标题" : "移动页下载失败或为空"),
+                    ['mobile_html_bytes' => $mLen],
+                    (microtime(true) - $t) * 1000);
             }
         }
 
+        $urlTitleUsed = false;
         if (empty($title) || mb_strlen($title) < 3) {
             $urlTitle = $this->extractTitleFromUrl($url, $platform);
-            if (!empty($urlTitle) && mb_strlen($urlTitle) >= 3) {
+            if (!empty($urlTitle) && mb_strlen($urlTitle) >= 2) {
                 $title = $urlTitle;
+                $urlTitleUsed = true;
             }
+            $this->pushStep('fetch_meta_url', '  └ 来源4：URL路径兜底',
+                $urlTitleUsed ? 'ok' : 'fail',
+                $urlTitleUsed ? "从URL路径提取到 title={$title}" : "URL里也没有可识别的中文标题，fetchVideoInfo 将返回空title",
+                ['guessed_title' => $urlTitle]);
         }
 
         if ($title && $this->isExpiredVideoTitle($title)) {
@@ -1011,6 +1257,12 @@ class OfficialReplaceManager {
             'og_type' => $ogType,
             'category' => $category,
             'release_date' => $releaseDate,
+            'sources_used' => [
+                'api'    => $apiUsed,
+                'html'   => $htmlUsed,
+                'mobile' => $mUsed ?? false,
+                'url'    => $urlTitleUsed,
+            ],
         ];
     }
 
