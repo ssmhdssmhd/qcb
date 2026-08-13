@@ -77,6 +77,32 @@ function FUNC_NAME($param1, $param2 = 'def'): ?T {
 - **类方法 `$this` 可用**：用 `Closure::call($this, ...)` 动态绑定，加密后的闭包体内可直接访问 `$this->config / $this->stats` 等成员
 - **无特征字符串**：密钥拆分、变量名乱码 (`$_x0/$_k/$_xo/$_p`)、无 `base64_decode(gzinflate(eval(` 的直写连续模式
 - **失败安全**：解密失败抛 `RuntimeException('核心解析代码损坏')`，不会静默输出错误地址
+- **单仓协作**：jiami 与 main 两分支共享同一套核心实现 (jiami_core 加密前源码来自 main 明文)，杜绝分叉漂移
+
+---
+
+### 四.二、2026-08-13 架构升级：核心代码单独抽取为 `xt/jiami_core.php`
+
+为了实现「jiami 分支改动尽量小 / main 分支能热插拔加密实现」，v5.10.9 起重新组织代码布局：
+
+```
+xt/jiami_core.php   ← jiami 分支新增. 6 个加密核心函数 (4 普通函数 + 2 PO 工厂)
+                    + 顶部 HMAC-SHA256 完整性校验 (篡改/损坏 → RuntimeException 阻断)
+                    + 文件末尾 return ['core_version'=>'v5.10.9-jiami', 'provides'=>[6个函数名]]
+                    (main 分支用它判版本/完整性)
+
+xt/server.php       ← jiami 分支: require_once jiami_core + 缺失提示 (不再内联 4 个 stub)
+                    ← main  分支: 顶部 @include_once jiami_core(若存在), 4 个明文函数外包裹 if-guard
+                                   允许缺省回退, 也允许单文件覆盖到 main 直接享受加密版
+
+xt/PerformanceOptimizer.php
+                    ← jiami 分支: 两个 private 方法 body 改为 _jm_po_* 工厂 → Closure::call($this)
+                    ← main  分支: body 开头注入转发判断, 失败时执行原明文 body (零侵入)
+```
+
+由此获得两个好处：
+1. **jiami 分支更难被修改/破解**：所有核心代码在独立的 HMAC 签名文件里，server.php/PO 只剩几十行包装代码；改任何 1 字节都会触发完整性校验失败。
+2. **main/jiami 分支单仓协作**：生产部署只需要从 jiami 分支拷贝 `xt/jiami_core.php` 覆盖到 main，无需整仓 `git checkout jiami`。
 
 ---
 

@@ -19,6 +19,22 @@ $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 require_once __DIR__ . '/PerformanceOptimizer.php';
 
+// ====== jiami 分支：核心解析逻辑（findUrlInArray/callOfficialReplaceDirect/...）从加密 jiami_core.php 载入
+//        若文件损坏或被篡改，HMAC 签名校验直接抛 RuntimeException 阻断调用。
+//        修改业务逻辑 → main 分支改 xt/server.php / PerformanceOptimizer.php 对应明文函数，
+//        再通过构建脚本重新生成 jiami_core.php 切到本分支提交。
+$_jiami_core_file = __DIR__ . '/jiami_core.php';
+if (!file_exists($_jiami_core_file)) {
+    throw new \RuntimeException(
+        '[jiami] 缺少 xt/jiami_core.php（加密核心文件）。请确保在 jiami 分支部署完整代码，或切换到 main 分支明文版。'
+    );
+}
+$_jiami_meta = require_once $_jiami_core_file;
+if (!is_array($_jiami_meta) || !isset($_jiami_meta['core_version'])) {
+    throw new \RuntimeException('[jiami] xt/jiami_core.php 加载失败：格式不正确。请重新从 jiami 分支获取该文件。');
+}
+unset($_jiami_core_file, $_jiami_meta);
+
 // 合并后台「嗅探设置」覆盖配置（sniffer_config.php 由后台写入）
 $snifferConfigFile = __DIR__ . '/sniffer_config.php';
 if (file_exists($snifferConfigFile)) {
@@ -521,93 +537,11 @@ function callApisSequential(string $videoUrl, array $apiList, array $config, Per
     return null;
 }
 
-/**
- * 调用单个接口（官解或官替）获取视频直链
- *
- * 接口配置结构：
- *   [
- *     'enabled'   => bool,
- *     'name'      => string,
- *     'url'       => string,  // 接口地址，会拼接 urlencode($videoUrl)
- *     'type'      => string,  // redirect / json / text
- *     'url_field' => string,  // json 类型时视频地址字段名
- *     'headers'   => array,
- *   ]
- *
- * 【v5.10.9 优化】如果 replace_api.url 为空或指向本地 mx.php official_replace/info，
- *   直接在 PHP 内调用 OfficialReplaceManager，避免自 HTTP 请求浪费开销，
- *   同时不会触发 original_url 误提取陷阱。
- *
- * @param string $videoUrl  视频页面 URL
- * @param array  $apiConfig 单个接口配置
- * @param array  $config    全局配置（用于读取 http 超时等参数）
- * @return string|null
- */
-function callSingleApi(string $videoUrl, array $apiConfig, array $config): ?string
-{
-    static $__enc_impl = null;
-    if ($__enc_impl === null) {
-        $_x0 = 'Vj5xQ';
-        $_x1 = '9rT2m';
-        $_x2 = 'P7sK4';
-        $_x3 = 'z';
-        $_k = $_x0 . $_x1 . $_x2 . $_x3;
-        $_p = 'Vm13YlpjVldwbGRhRElVZ2ZHaVE5TmxoZGdDRFBuWUNObGg0Y0k3RVJ5Zm9lNHJPR1pyaUtJSUt3eFhGRDdqMXVIZGxaTGkwT2xUeUU3c1pJbmxqYWFyN290dVpQOTk4ZXI4YU0wcEdxSEpOcldTNXIveGtrdmttVWc4VVNhMnpweHoxalRlMDgxWjZVSjFDbzdzSS9Gd1JlSUVvb25SUXE0ZW5BWWtTMzdpWW9OT21HemdmdndVdkF5c3ZyUjgwS3ZwcVR4SElyTzZQckxoYVZGOWJBN2FkNndIK21jcEw5WEhxV2llRU92a0RlR2JNc2VDbE02RlpEUFU0QVBRWnNtcy84R2FYaWlHbzUxV2JTOVRYcGRQMjZwQndWK3ZXaXF0N0ovb2JWVlNiNHh5VFpQaXpQazJ6dTZ3SWV2d1RLbThBZEhKeXlrdmNnQTMya0x2OUJISk9jZ0p3UXJiUDVmWmcxVGtHZ1NERVVsSG9wWTFZSXphZDRPRk9ocWFXWGNEbzU3K2hzSXdLd2hnWW5DZ0RiR1FGTHJZQ1NrTEMvVGc3d2d0VWtQTjFXdTByamZvemlhbURwWUdnWHRQN3NOU1VZbEYrTEhTbmFmM3EwaGs1V0xrWGpSR2hPbFNjUS8reGJrdHJaVDUyZ1U4QXU4bmNCQUVn';
-        $_xo = function ($_c, $_k) {
-            $_l = strlen($_k); $_r = '';
-            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
-                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
-            }
-            return $_r;
-        };
-        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
-        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
-        $__enc_impl = eval('return ' . $_raw . ';');
-        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
-        if (!($__enc_impl instanceof \Closure)) {
-            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
-        }
-    }
-    return $__enc_impl(...func_get_args());
-}
 
-/**
- * 直接调用本地 OfficialReplaceManager 解析（官替通道）
- * 流程：识别平台/标题 → 资源站搜索 → AI/规则智能匹配 → 构建 mxjx 去广告代理地址
- *
- * 优势：比 HTTP 回环调用快 30-70%，不受 curl/$_SERVER 环境影响，
- *       完全规避 original_url 误提取陷阱
- *
- * @param string $videoUrl 原始视频页面 URL
- * @return string|null 返回 ad_skip_url（mxjx 去广告代理地址）或 m3u8_url，失败返回 null
- */
-function callOfficialReplaceDirect(string $videoUrl): ?string
-{
-    static $__enc_impl = null;
-    if ($__enc_impl === null) {
-        $_x0 = 'Vj5xQ';
-        $_x1 = '9rT2m';
-        $_x2 = 'P7sK4';
-        $_x3 = 'z';
-        $_k = $_x0 . $_x1 . $_x2 . $_x3;
-        $_p = 'Mm05MVM0ZldwNnhNajlFSEVRNlJSMmo1V1FmUkYzSUdVMVkwSWtldC9OODRkZDU0QWI4a0NLWEdkOWgzRzNSNmlKRlpIN295YUU5dFBERFI0YXE3UjUvTFpPWThvYTYycEUraUFLN0sySHRSOFMwK05PV1hKYXdnbVE5aFBZdk5zeXUyQkk2Vm5GMVZ5ZytXUmk0djFFSU1CUnNvaTVTYWhRMVgxdTNmNWxzZHZZL2Vvd3FqK1hoL3p5UkdEWDFwSzh6NXZSRUxDVWt1QmhkZFE5V1hjb2p0bUZnaFpCQnBUZjNza3R5NXNLZytCMzF5VmM5bmFRZTBneUVRWTM1Q1lEc3kxRDB6QzIveWRmWG5mMTBUZG56dzJhYXlpeVVHQzdtdkE0dzdhRE5IRWFVRlc3Qzl0NUpvK0dtZDZjdm52Y3ZOT1Z1VXZNTEhCKzF1ZWJVeDFFYkN4YVdUYzZaeVNzWkNmSGZYVkZNbm11TlJkMGNNRVVlZjVsZVdORmhiUGdJbm5GbDJXa0hvSGdIYi9ON2haQnk4NnpyUmY2RVFHQnFBL2JXMVl6eUczQnVaYlpJRmErMlpUUGdBWEJhOWpCOUdxYVZJcmhVY2NGRTA4WnFpQ2V3SmRxZ08yd2c1QlovZS9ZYm1KS1FMbEI0TDRsWG5HK3dUdjlKYVNnTzl3WEVMVmh2cHp5QXRLc3hVMXRnUDFtNVVDNUxLK1JYZFgraXd3eDNzYklDemxObmVwT0t0RGtVK2hhWExTMHRCTzVyVUp0Zm1XNldVNHlHWDc0SWRZSXVFVU15SEtYQ3l4aGtObUdnbzk1QlF1OFBEbmVLamlEb014R2l3czZBcnJVRFpEYlgwUTBYNUJOTEtXVXZzUy9tdk9CZ0lMN1phdkx0VUR6QStkclNIMWpUNDYxeC9QUmVzdlBUazE0SHptZjlyUVc2dnpkeU40Slh0QWc3MGcrN1NHUFJSbE9McEl6NncreEh0MFZwZXVFaVVQNWk4QjdUZ0pzL01YWG5pR2Z3N1V0ZDN2alJQODlLemlkN08weUhodHpLZHNyeFJXcDdhTlZySW1iZUpiRlRCemJ2VVh2VlN4K3QxOExLL2ZyQXVxYUFZeVl1dVRxMzQvcVA2QUNKL0tjN2RLNmdIYzhCOUdLb29rd0ttOU1mVS9CV0RTQmxGdHRVVTlyU1RCem5wOFFOUHdwU0ZXM1MzRVVTMVpYcHpkOFFiSHVWYTZBUlltamo9';
-        $_xo = function ($_c, $_k) {
-            $_l = strlen($_k); $_r = '';
-            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
-                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
-            }
-            return $_r;
-        };
-        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
-        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
-        $__enc_impl = eval('return ' . $_raw . ';');
-        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
-        if (!($__enc_impl instanceof \Closure)) {
-            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
-        }
-    }
-    return $__enc_impl(...func_get_args());
-}
+
+
+
+
 
 /**
  * 调用官解接口获取视频直链（旧逻辑，保留作为 fallback）
@@ -625,45 +559,8 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
     return null;
 }
 
-/**
- * 调用单个 API 接口获取视频直链（核心请求 + 解析逻辑）
- *
- * 支持 redirect / json / text 三种接口类型，被以下两个函数复用：
- *   - getVideoLinkFromOfficialApi（遍历 official_apis 数组）
- *   - callSingleApi（嗅探设置中的官解/官替单接口）
- *
- * @param string $videoUrl 视频页面 URL
- * @param array  $api      单个接口配置（name/url/type/url_field/headers）
- * @param array  $config   全局配置（读取 http 超时等参数）
- * @return string|null
- */
-function getVideoLinkFromApiEntry(string $videoUrl, array $api, array $config): ?string
-{
-    static $__enc_impl = null;
-    if ($__enc_impl === null) {
-        $_x0 = 'Vj5xQ';
-        $_x1 = '9rT2m';
-        $_x2 = 'P7sK4';
-        $_x3 = 'z';
-        $_k = $_x0 . $_x1 . $_x2 . $_x3;
-        $_p = 'NG1tclNlQS9wbGRhNUFHdUFEekNkbXVCTENSNWlvVjRid0hEMTlzenVoZ2oyL1ZwSkJYRXplNHh0TjJweURxNnZyWGh1d3Y4TUYvOHhVdk4rZk5MN2ZWQy9LZVE2dTdvQVVxS1d0SlZjM3ZIOWdNb0pBYWh0aTFNejB3V0Uzc25zblVZcjROdWwyQy92VlNpN21rZ2gxWEFKUk9WWjB3ejB6cm5pSGVsTDlIK0lqRmFHbVFMdUZlTFhCTDBEZmdyS0dBeGNWaVN0Ym5WVTUybW5mYmJQRXExRk5qWFdrbTZPbmxxR2FwS3pqM2Jua0lYWlV0MlpDRC9VVkUrM25vNmRrZ3VkSVNMSkZ6MTR4TWhOTktQaGp5dmNoMFYvU09XQU5jWXBXRVlHZGNUVFB6YlRpazh4OW43dndZK2h2K3ZTQ013Sk1CZS9iRGtReGptNjJZTE41Sm0vYW5jVVMycFZ6aUZ5OEpqaEY4SkNhNWhxdlZLQ041enFPNGxZZTFDd3ZVYm1hS0gzb25PbEVuVjBzOHpyWUhoV3IxWUtXU2V5VVREV1RXNzJrWUFIZENUNXdEcE1pemJDQUhWR2hieEpCczViMHZaY2Z5V2tJdmQ1b3NSMjhnYkphZklvSTRwZGJnZHoyVFlEWTZrSUNieEU5eHZmam5ibzF0VXErSWx2NTUrdkVkdHlVdmF1VkJKLzl1ZDgwbXJvWFVqSHdsMW9UblBwaXo1LzFTSjBCZUt6L3VpV3RqVTFEVXN6MTRzNUQ5MFVERUl3Y2ZmWUhGay9aZ0VNb001TnFoUXJwcmRvRTBIdy9CNHc0UnFzdEwyb3luZU1MTGNCV2FMTFdFWm9vZUk4RVJwd1M0ZHdrRHZ4WkV1czRuZ2YycFJBYUVvSmhmTThnS1RDeGZDSEdNRkZPeW8ya1JNMTVVd2FwVDhOb0N0UmVlS3JMVEpqWXNiVWttWFFCRmorWks4MmxRcE81emNKZmJLbDhqWFdFWFRaNERWVTgxb2RJckx1dlh1bDFLVmNaM1ArR2lmeTVvdFNMTXcrQTdDK3JKZE53SlRjZzBGUUxFR21qN2VaU3hlZXRFb1lDMHluN0U2Ymh4SERlTVBiNUdTL3F5VjdsdEhLdDh6cDE3QWtaeEJxYUZld0tGRks0eUhrNW1kQjFZWWJiL3UrK21VUWxVMUdtaFhsTjRiUy81RVFGc3NWUW91VkFRSS9Zd1V4NUJWSjRwT3BUQzR0anRyc2hvcjl4QUltSHcva0ZJLyt0QkxvUXBXT3NZNXJ5a0xDaHJkOVQxMFhJbHN0am1rWkJEMmMrbEpIVDRWNUpBZ3U0dUxKMDFHMWkxckJpLzFOTUtpbjNzTzltRk1xWGZNQ2ZqRnprT04xdmRtMDQ3RkpLNGwyVlRnSlhYaFdlanNOYUVhNURrSmlBdkJzS3JZbm1NR0NuRjVVbDRac1JGSDBnd0JDeldOdnM0Y2xTSzk3OEovNGpXdkxIVXdXUHgxRzdYcHYyL0F0RTIxOUVNOFpSd2ZEMDRpd05OT1J3cFpWTGZkaml1SzVKUGhJbjEzY2NsNDYvUTF0OUREQUJmQllOTFRrSnA4YU1DcGhVb2J1d2wyNGNBeFp0TTdaSVBaa0Z4dmt5UDBsVlgvVFJ1a2tnY0U3RE9FQTJndEppK1N3K04yT1BWaGJuMnhzQWZiOHE4MjlERzZWRW5SUitDZU93WXFGVmRlRDhSUkt1RVNQQU0yTkpoRFZuT1RIcGVYTTVzaURYenI0RlhQWDlLVGNjTmdFMFNITmFTQlNBNkdiS0ttZGlQYjFtS08wdi85bS9NVHVBam9KL045NGJSczJxWXp1WHdWSDZmUFpTa25Kekxrek93NlU2bi9FK1pCSC82Z3I0YW1LM0NFZGk2SWZsTlJGeGRXNVFRQVl6UUo0aGRUSzU5bnVNRVp0RjhVaWFLSFdhZGVlTHZSbVo4QVhFNk1KRDllbldVZQ==';
-        $_xo = function ($_c, $_k) {
-            $_l = strlen($_k); $_r = '';
-            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
-                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
-            }
-            return $_r;
-        };
-        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
-        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
-        $__enc_impl = eval('return ' . $_raw . ';');
-        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
-        if (!($__enc_impl instanceof \Closure)) {
-            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
-        }
-    }
-    return $__enc_impl(...func_get_args());
-}
+
+
 
 /**
  * 下载 m3u8 文件内容
@@ -951,37 +848,5 @@ function extractVideoUrl(string $content): ?string
     return null;
 }
 
-/**
- * 递归在数组中查找视频 URL
- * 过滤规则：
- *   - 跳过 original_url / url / msg / referer / redirect_url 等非视频字段
- *   - 仅接受以 .m3u8 / .mp4 / .mkv / .flv / .avi 等视频扩展名结尾的 URL
- *   - 不接受与输入视频页面域名相同的原始 URL（防止错误返回 original_url）
- */
-function findUrlInArray(array $arr, string $excludeDomainPattern = ''): ?string
-{
-    static $__enc_impl = null;
-    if ($__enc_impl === null) {
-        $_x0 = 'Vj5xQ';
-        $_x1 = '9rT2m';
-        $_x2 = 'P7sK4';
-        $_x3 = 'z';
-        $_k = $_x0 . $_x1 . $_x2 . $_x3;
-        $_p = 'Vm1haFJiY2ZvNnphSHF1L01XYlYzeG1DUjJHS3RFWCtnSy9QdklEWGhBL1UxeTFYaDNGSm1PdkZ3aFZKUk9VUEdDdVR3NTBOU0dXVkJVTXVYKzBES2k1c2QwaHdjYTdMNWxUVFc2Vk45RnBzVUs5WWpobndRaE8vL3VvOXpPZlhyeWVWdWZlQy9rZTBtelZKV3FVdUF6cnlkVzR0WTNua0hsbHdnb2RxN0lQTmFpN2NsVFRGamxwUnR1Rkc2UEdmVHd4eEQwcUxtV0JEcHBqdXpCZ0kzZGdjSEk3WCtWS0hQQjJGNDdRRGhWaUY2MWJiMCtBRDJiaVV1bmh5K0h5S083c3FjS2dBZ0hwVzJzdGpYclg2NlUxR25FWi9GcmhrODh0SFVmWjZJTmhNR2UxQ082aGI2QmRiaEtxbkF6aCtqNVVjODZxM0twNnBqdnd0UlZrTzIrbEhVTERGRzZaQzRHWFNHcnlkNkxqVVJDbG5IS2I0SVBFM1RZU1NJbDdsSkhDMHdxakJaN2JuekNBWHAyWTRhYkhQYzJqcjJXT1dkZFRLa3h1VnVDUTlJZ2t4YXJxK3JtVVQ3c3lUVWtqR21rNk8rYm9CMEJyZStpMGl1VGFFcVlqR05paSs0ZCtLMVJuaXVkMHoyNmtaOHB6V1k2NzB5dG1NbGcwaTZreWFhNVNHZkVaZHlNdzlmdUExZmthUldjdElMU2JWM3hjeUg3bG1IUXlOcGw1L0phNUg1WUI3Y2FQci9LdXBUTG5XNkZYQzRjZmFsOXFlM0l0Tm5DUXdPS052OGZUQmoyRD0=';
-        $_xo = function ($_c, $_k) {
-            $_l = strlen($_k); $_r = '';
-            for ($_i = 0, $_L = strlen($_c); $_i < $_L; $_i++) {
-                $_r .= chr(ord($_c[$_i]) ^ ord($_k[$_i % $_l]));
-            }
-            return $_r;
-        };
-        $_raw = @gzinflate($_xo(str_rot13(base64_decode(str_rot13(base64_decode($_p)))), $_k));
-        if ($_raw === false) { throw new \RuntimeException('核心解析代码损坏'); }
-        $__enc_impl = eval('return ' . $_raw . ';');
-        unset($_x0, $_x1, $_x2, $_x3, $_k, $_p, $_xo, $_raw);
-        if (!($__enc_impl instanceof \Closure)) {
-            throw new \RuntimeException('核心代码解密失败: 未生成可执行闭包');
-        }
-    }
-    return $__enc_impl(...func_get_args());
-}
+
+
