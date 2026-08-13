@@ -3539,9 +3539,12 @@ if (!$_mxGXSecret) {
 
             <!-- ========== 4. 嗅探测试 ========== -->
             <div class="card">
-                <div class="card-title">③ 嗅探测试（按当前页面未保存配置立即试跑）</div>
+                <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span>③ 嗅探测试（按当前页面未保存配置立即试跑）</span>
+                    <span style="font-size:12px;font-weight:normal;color:#909399">新增：失败时也能看到「平台识别 → 抽剧名 → 资源站搜索 → AI匹配 → 去广告」每一步错在哪</span>
+                </div>
                 <div style="font-size:12px;color:#909399;margin-bottom:12px">
-                    这里会直接拿表单里的值来解析（即使还没点保存也可以试），验证通道是否可用。
+                    这里会直接拿表单里的值来解析（即使还没点保存也可以试）。失败时直接看下面的「解析时间线」定位环节：✓ 成功  △ 警告  ✕ 失败  ℹ 信息
                 </div>
                 <div class="input-group">
                     <input type="text" id="snifferTestUrl" placeholder="示例：https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html">
@@ -10784,18 +10787,134 @@ if (!$_mxGXSecret) {
                     return;
                 }
 
-                if (data.code === 200) {
-                    resultEl.innerHTML = '<div style="padding:12px;border:1px solid #67c23a;border-radius:6px;background:#f0f9eb">'
-                        + '<div style="color:#67c23a;font-weight:600;margin-bottom:8px">✓ 解析成功（耗时 ' + escapeHtml(data.time || '-') + '）</div>'
-                        + '<div style="font-size:13px;color:#606266;margin-bottom:8px">' + escapeHtml(data.msg || '') + '</div>'
-                        + '<div style="background:#fff;padding:8px;border-radius:4px;font-size:12px;word-break:break-all">'
-                        + '<strong>播放地址：</strong><a href="' + escapeHtml(data.url || '') + '" target="_blank" style="color:#409eff">' + escapeHtml(data.url || '') + '</a>'
+                const ok = data.code === 200;
+                let headerCard = '';
+                if (ok) {
+                    const platform = data.platform ? escapeHtml(data.platform) : (data.source ? escapeHtml(data.source) : '—');
+                    const extraMeta = [];
+                    if (data.video_title) extraMeta.push('剧名:<b>' + escapeHtml(data.video_title) + '</b>');
+                    if (data.base_title)  extraMeta.push('base_title:<b>' + escapeHtml(data.base_title) + '</b>');
+                    if (data.site)        extraMeta.push('站点:<b>' + escapeHtml(data.site) + '</b>');
+                    if (data.episode_num) extraMeta.push('集:<b>第' + data.episode_num + '集</b>');
+                    if (data.match_score) extraMeta.push('分数:<b>' + data.match_score + '</b>');
+                    headerCard = '<div style="padding:14px 16px;border:1px solid #67c23a;border-radius:10px;background:linear-gradient(135deg,#f0f9eb 0%, #ffffff 100%)">'
+                        + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
+                        +   '<div style="color:#67c23a;font-weight:600;font-size:15px">✓ 解析成功（耗时 ' + escapeHtml(data.time || '-') + ' · 通道 ' + platform + '）</div>'
+                        + '</div>'
+                        + '<div style="font-size:13px;color:#606266;margin:8px 0 10px">' + escapeHtml(data.msg || '') + '</div>'
+                        + (extraMeta.length ? ('<div style="font-size:12px;color:#303133;line-height:1.9">'+extraMeta.join(' &nbsp;·&nbsp; ')+'</div>') : '')
+                        + '<div style="background:#fff;padding:10px 12px;border-radius:6px;font-size:12px;word-break:break-all;margin-top:10px;border:1px dashed #c8e6c9">'
+                        +   '<strong>播放地址：</strong><a href="' + escapeHtml(data.url || '') + '" target="_blank" style="color:#409eff">' + escapeHtml(data.url || '') + '</a>'
                         + '</div></div>';
                 } else {
-                    resultEl.innerHTML = '<div style="padding:12px;border:1px solid #f56c6c;border-radius:6px;background:#fef0f0">'
-                        + '<div style="color:#f56c6c;font-weight:600;margin-bottom:8px">✗ 解析失败</div>'
-                        + '<div style="font-size:13px;color:#606266">' + escapeHtml(data.msg || '未知错误') + '</div>'
+                    const debug = data.debug_info || {};
+                    const extraMeta = [];
+                    if (data.platform) extraMeta.push('平台:<b>' + escapeHtml(data.platform) + '</b>');
+                    if (data.base_title) extraMeta.push('base_title:<b>' + escapeHtml(data.base_title) + '</b>');
+                    else if (data.video_title) extraMeta.push('识别到的标题:<b>' + escapeHtml(data.video_title) + '</b>');
+                    if (data.search_keywords && data.search_keywords.length) extraMeta.push('搜索关键词:<b style="color:#e6a23c">' + data.search_keywords.slice(0, 3).map(escapeHtml).join(' | ') + '</b>');
+                    if (debug.searched_sites != null) extraMeta.push('搜索站点数:<b>' + debug.searched_sites + '</b>');
+                    if (debug.matched_sites != null) extraMeta.push('命中站点数:<b>' + debug.matched_sites + '</b>');
+                    if (Array.isArray(debug.successful_sites) && debug.successful_sites.length) extraMeta.push('成功站点:<b style="color:#67c23a">' + debug.successful_sites.slice(0, 4).map(escapeHtml).join('/') + '</b>');
+                    if (Array.isArray(debug.failed_sites) && debug.failed_sites.length) extraMeta.push('失败站点:<b style="color:#f56c6c">' + debug.failed_sites.slice(0, 4).map(escapeHtml).join('/') + (debug.failed_sites.length>4?' +'+(debug.failed_sites.length-4):'') + '</b>');
+                    headerCard = '<div style="padding:14px 16px;border:1px solid #f56c6c;border-radius:10px;background:linear-gradient(135deg,#fef0f0 0%, #ffffff 100%)">'
+                        + '<div style="color:#f56c6c;font-weight:600;font-size:15px;margin-bottom:6px">✗ 解析失败（耗时 ' + escapeHtml(data.time || '-') + '）</div>'
+                        + '<div style="font-size:13px;color:#606266;margin-bottom:8px">' + escapeHtml(data.msg || '未知错误') + '</div>'
+                        + (extraMeta.length ? ('<div style="font-size:12px;color:#303133;line-height:1.9">'+extraMeta.join(' &nbsp;·&nbsp; ')+'</div>') : '')
+                        + '<div style="margin-top:10px;padding:8px 12px;background:#fff7e7;border-left:3px solid #e6a23c;border-radius:0 6px 6px 0;font-size:12px;color:#9e7b1f">'
+                        +   '💡 从下方时间线找到第一个「✕ 失败」步骤，通常是那里出的问题。'
+                        + '</div></div>';
+                }
+
+                // ======= Step Trace 时间线 =======
+                let timelineCard = '';
+                const steps = Array.isArray(data.step_trace) ? data.step_trace : [];
+                if (steps.length > 0) {
+                    const items = steps.map(function (s, idx) {
+                        const st = s.status || 'info';
+                        const icons = { ok: '<span style="color:#67c23a">✓</span>', warn: '<span style="color:#e6a23c">△</span>', fail: '<span style="color:#f56c6c">✕</span>', info: '<span style="color:#409eff">ℹ</span>' };
+                        const borderColor = { ok: '#e1f3d8', warn: '#faecd8', fail: '#fbc4c4', info: '#d9ecff' }[st] || '#ebeef5';
+                        const dotColor    = { ok: '#67c23a', warn: '#e6a23c', fail: '#f56c6c', info: '#409eff' }[st] || '#909399';
+                        const detail = s.detail || {};
+                        let detailHtml = '';
+                        let flat = null;
+                        try {
+                            flat = [];
+                            function walk(prefix, obj) {
+                                if (obj == null) return;
+                                if (Array.isArray(obj)) {
+                                    if (obj.length === 0) return;
+                                    if (obj.length <= 8 && obj.every(function(x){ return typeof x !== 'object'; })) {
+                                        flat.push([prefix, JSON.stringify(obj)]);
+                                        return;
+                                    }
+                                    obj.forEach(function (v, i) { walk(prefix+'['+i+']', v); });
+                                } else if (typeof obj === 'object') {
+                                    const keys = Object.keys(obj);
+                                    if (keys.length === 0) return;
+                                    keys.forEach(function (k) { walk(prefix ? (prefix+'.'+k) : k, obj[k]); });
+                                } else {
+                                    flat.push([prefix, String(obj)]);
+                                }
+                            }
+                            walk('', detail);
+                            if (flat.length > 0) {
+                                detailHtml = '<div style="margin-top:8px;padding:8px 10px;background:#f5f7fa;border-radius:6px;font-size:11.5px;line-height:1.8;max-height:260px;overflow:auto">';
+                                flat.slice(0, 24).forEach(function (kv) {
+                                    const k = kv[0], v = kv[1];
+                                    let displayV = v.length > 180 ? (v.substring(0, 180) + '…') : v;
+                                    detailHtml += '<div style="display:flex;gap:8px"><span style="color:#909399;min-width:130px;flex-shrink:0">' + escapeHtml(k) + '</span><span style="color:#303133;word-break:break-all">' + escapeHtml(displayV) + '</span></div>';
+                                });
+                                if (flat.length > 24) detailHtml += '<div style="color:#909399">…省略 ' + (flat.length - 24) + ' 字段</div>';
+                                detailHtml += '</div>';
+                            }
+                        } catch (e) {}
+                        const elapsed = s.elapsed_ms != null ? (typeof s.elapsed_ms === 'number' ? s.elapsed_ms.toFixed(1) : String(s.elapsed_ms)) + 'ms' : '';
+                        const summary = s.summary || '';
+                        // 折叠开关：默认只展开 fail / warn 的详情
+                        const openByDefault = (st === 'fail') || (st === 'warn');
+                        const detailWrapId = 'sniffer_step_d_' + idx + '_' + Date.now();
+                        const toggleAble = flat && Array.isArray(flat) && flat.length > 0;
+                        return '<div style="position:relative;padding-left:28px;padding-bottom:16px">'
+                            + (idx < steps.length - 1 ? '<div style="position:absolute;left:9px;top:18px;bottom:0;width:2px;background:#ebeef5"></div>' : '')
+                            + '<div style="position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid ' + dotColor + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">'
+                            + icons[st] + '</div>'
+                            + '<div style="border:1px solid ' + borderColor + ';border-radius:8px;padding:10px 12px;background:#ffffff">'
+                            +   '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">'
+                            +     '<div style="font-weight:600;font-size:13.5px;color:#303133">' + escapeHtml(s.title || ('step ' + (idx + 1))) + '</div>'
+                            +     '<div style="display:flex;gap:10px;align-items:center;flex-shrink:0">'
+                            +       (elapsed ? '<span style="font-size:11.5px;color:#909399;background:#f5f7fa;padding:1px 8px;border-radius:10px">⏱ ' + elapsed + '</span>' : '')
+                            +       (toggleAble ? '<button type="button" class="step-toggle-btn" data-target="' + detailWrapId + '" style="font-size:11.5px;color:#409eff;background:#ecf5ff;border:1px solid #d9ecff;border-radius:6px;padding:1px 8px;cursor:pointer">' + (openByDefault ? '收起详情' : '展开详情') + '</button>' : '')
+                            +     '</div>'
+                            +   '</div>'
+                            +   '<div style="margin-top:4px;font-size:12.5px;color:#606266;line-height:1.65;word-break:break-word">' + escapeHtml(summary) + '</div>'
+                            +   (toggleAble ? ('<div id="' + detailWrapId + '" style="' + (openByDefault ? '' : 'display:none;') + '">' + detailHtml + '</div>') : '')
+                            + '</div></div>';
+                    }).join('');
+                    timelineCard = '<div style="margin-top:14px;border:1px solid #ebeef5;border-radius:10px;padding:14px 16px 4px;background:#fafcff">'
+                        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+                        +   '<div style="font-weight:600;color:#303133;font-size:14px">🕒 解析时间线（共 ' + steps.length + ' 步）</div>'
+                        +   '<div style="font-size:12px;color:#909399">✓ 成功  △ 警告  ✕ 失败  ℹ 信息</div>'
+                        + '</div>'
+                        + items + '</div>';
+                } else if (!ok) {
+                    timelineCard = '<div style="margin-top:12px;padding:10px 12px;background:#fdf6ec;border-radius:6px;font-size:12px;color:#9e7b1f">'
+                        + '当前接口未返回 step_trace，无法展示时间线。建议启用「官替接口」作为主路由（嗅探设置里 mode = replace）。'
                         + '</div>';
+                }
+
+                resultEl.innerHTML = headerCard + timelineCard;
+
+                // 绑定详情展开/收起
+                if (typeof resultEl.querySelectorAll === 'function') {
+                    resultEl.querySelectorAll('.step-toggle-btn').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            const target = document.getElementById(btn.getAttribute('data-target'));
+                            if (!target) return;
+                            if (target.style.display === 'none') { target.style.display = ''; btn.textContent = '收起详情'; }
+                            else { target.style.display = 'none'; btn.textContent = '展开详情'; }
+                        });
+                    });
                 }
             } catch (e) {
                 resultEl.innerHTML = '<div style="color:#f56c6c;padding:12px">请求失败：' + escapeHtml(e.message) + '</div>';

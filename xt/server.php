@@ -85,6 +85,71 @@ function parseVideo(string $videoUrl): array
     // 概率触发过期缓存清理
     maybeCleanExpiredCache($config);
 
+    // ===== v5.12 新增：本地官替快速通道（避免 HTTP 回环丢 step_trace）
+    //   当嗅探配置 replace_api.enabled=true 且未指定远端 url（或 replace_api 指向本地 mx.php），
+    //   直接实例化 OfficialReplaceManager，调用 resolve 拿完整结果（含 step_trace）。
+    //
+    //   注意：若已加载加密版 callOfficialReplaceDirect（jiami_core.php，签名只返回 ?string），
+    //        则跳过此直调路径（避免 HTTP 回环，由老 HTTP 官替接口兜底）；
+    //        等 jiami 分支把 jiami_core.php 重新生成升级为 V2 签名后，这里自动启用。
+    $replaceDirect = null;
+    $sniffer = $config['sniffer'] ?? [];
+    $replaceApi = $sniffer['replace_api'] ?? [];
+    $forceReplaceDirect = false;
+    if (!empty($sniffer['mode']) && $sniffer['mode'] === 'replace' && !empty($replaceApi['enabled'])) {
+        $replaceUrl = (string)($replaceApi['url'] ?? '');
+        // 没填 URL 或填的就是本地 mx.php action，都判定为本地官替
+        if ($replaceUrl === '' || (strpos($replaceUrl, 'official_replace/info') !== false) || (strpos($replaceUrl, 'official_replace/resolve') !== false)) {
+            $forceReplaceDirect = true;
+        }
+    }
+    // 只有明文版 V2 callOfficialReplaceDirectV2 存在（jiami_core 还没覆盖到）时才走本地直调
+    if ($forceReplaceDirect && function_exists('callOfficialReplaceDirectV2')) {
+        $replaceDirect = callOfficialReplaceDirectV2($videoUrl, $config);
+    }
+
+    if ($replaceDirect && !empty($replaceDirect['direct'])) {
+        $orm = $replaceDirect['orm']; // OfficialReplaceManager resolve 完整结果
+        $adSkipUrl = (string)($orm['ad_skip_url'] ?? '');
+        if (!empty($orm['success']) && $adSkipUrl !== '') {
+            // 写入解析缓存
+            setCache($cacheKey, ['url' => $adSkipUrl], $config);
+            $extras = [
+                'channel'       => 'replace_direct',
+                'source'        => 'replace',
+                'video_title'   => $orm['video_title'] ?? '',
+                'platform'      => $orm['platform'] ?? '',
+                'site'          => $orm['site'] ?? '',
+                'match_score'   => $orm['match_score'] ?? null,
+                'base_title'    => $orm['base_title'] ?? '',
+                'episode_num'   => $orm['episode_num'] ?? null,
+                'match_method'  => $orm['match_method'] ?? '',
+                'used_keyword'  => $orm['used_keyword'] ?? '',
+                'step_trace'    => $orm['step_trace'] ?? [],
+            ];
+            return buildResult(200, '解析成功', $adSkipUrl, $adSkipUrl, $startTime, false, $extras);
+        }
+        // 本地官替失败：把详细错误 + step_trace 带出去（供前端时间线 UI 显示哪一步错）
+        $failMsg = (string)($orm['message'] ?? '官替解析失败');
+        $extras = [
+            'channel'      => 'replace_direct',
+            'source'       => 'replace',
+            'video_title'  => $orm['video_title'] ?? '',
+            'platform'     => $orm['platform'] ?? '',
+            'base_title'   => $orm['base_title'] ?? '',
+            'search_keywords' => $orm['search_keywords'] ?? [],
+            'step_trace'   => $orm['step_trace'] ?? [],
+            'debug_info'   => [
+                'successful_sites' => $orm['successful_sites'] ?? [],
+                'failed_sites'     => array_slice($orm['failed_sites'] ?? [], 0, 20),
+                'searched_sites'   => $orm['searched_sites'] ?? 0,
+                'matched_sites'    => $orm['matched_sites'] ?? 0,
+                'error_code'        => $orm['error_code'] ?? null,
+            ],
+        ];
+        return buildResult(500, '解析失败', $failMsg, null, $startTime, false, $extras);
+    }
+
     // 步骤1：根据嗅探设置选择走官解解析还是官替接口
     //   - 官解通道 (official)：调用虾米官解接口，返回原始 m3u8/mp4 直链，需 xt 去广告
     //   - 官替通道 (replace) ：从资源站匹配 + AI 去广告/去插播/去水印，输出最终链接
@@ -101,7 +166,20 @@ function parseVideo(string $videoUrl): array
     $sniffSource = $sniffResult['source'];  // 'official' | 'replace' | null
 
     if (!$videoLink) {
-        return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime);
+        // 有可用的嗅探 step_trace 时也一并带上（如果 sniffResult 里有 orm_full 的话）
+        $extras = [];
+        if (!empty($sniffResult['orm_full']['step_trace'])) {
+            $extras['step_trace'] = $sniffResult['orm_full']['step_trace'];
+            $extras['video_title'] = $sniffResult['orm_full']['video_title'] ?? '';
+            $extras['platform']    = $sniffResult['orm_full']['platform'] ?? '';
+            $extras['search_keywords'] = $sniffResult['orm_full']['search_keywords'] ?? [];
+            $extras['debug_info'] = [
+                'successful_sites' => $sniffResult['orm_full']['successful_sites'] ?? [],
+                'failed_sites'     => array_slice($sniffResult['orm_full']['failed_sites'] ?? [], 0, 20),
+                'searched_sites'   => $sniffResult['orm_full']['searched_sites'] ?? 0,
+            ];
+        }
+        return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime, false, $extras);
     }
 
     // ============ 官替通道：从资源站匹配 + AI 去广告/去插播/去水印 ============
@@ -113,6 +191,50 @@ function parseVideo(string $videoUrl): array
     // ============ 官解通道：虾米接口 + xt 去广告 ============
     // 流程：调用虾米接口 → 下载 m3u8 → 规则引擎 + AI 去广告 → 输出可播放链接
     return parseVideoByOfficialChannel($videoUrl, $videoLink, $cacheKey, $startTime);
+}
+
+/**
+ * v5.12 新增：本地官替快速通道 V2（不走 HTTP，避免回环丢 step_trace）
+ *   - 直接 require OfficialReplaceManager，调用 resolve 拿完整结果（含 step_trace）
+ *   - 返回 ['direct'=>true, 'orm'=>$ormFullResult] 或 ['direct'=>false]
+ *
+ * 注意：函数名加 V2 后缀，避免与 jiami_core.php 里同名老签名函数冲突；
+ *       jiami 分支升级 jiami_core.php 时需要同步提供 V2 版本（或重命名覆盖）。
+ */
+if (!function_exists('callOfficialReplaceDirectV2')) {
+    function callOfficialReplaceDirectV2(string $videoUrl, array $config): array {
+        static $loaded = false;
+        if (!$loaded) {
+            $ormFile = __DIR__ . '/../gz/OfficialReplaceManager.php';
+            if (!file_exists($ormFile)) return ['direct' => false];
+            @require_once $ormFile;
+            if (!class_exists('OfficialReplaceManager')) return ['direct' => false];
+            $loaded = true;
+        }
+        try {
+            $mgr = new \OfficialReplaceManager();
+            $result = $mgr->resolve($videoUrl);
+            return ['direct' => true, 'orm' => is_array($result) ? $result : []];
+        } catch (Throwable $e) {
+            return [
+                'direct' => true,
+                'orm' => [
+                    'success' => false,
+                    'message' => '本地官替异常: ' . $e->getMessage(),
+                    'error_code' => 'INTERNAL_ERROR',
+                    'step_trace' => [[
+                        'name' => 'replace_direct_exception',
+                        'title' => '本地官替异常',
+                        'status' => 'fail',
+                        'summary' => get_class($e) . ': ' . $e->getMessage(),
+                        'detail' => ['file' => $e->getFile(), 'line' => $e->getLine()],
+                        'elapsed_ms' => null,
+                        'ts' => microtime(true),
+                    ]],
+                ],
+            ];
+        }
+    }
 }
 
 /**
@@ -287,13 +409,14 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
 
 /**
  * 构建统一结果数组
+ * v5.12 新增：支持 $extras 透传（step_trace / debug_info 等）
  */
-function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime, bool $fromCache = false): array
+function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime, bool $fromCache = false, array $extras = []): array
 {
     global $config;
     $elapsed = round(microtime(true) - $startTime, 3);
 
-    return [
+    $base = [
         'code' => $code,
         'ZT'   => $zt,
         'msg'  => $msg,
@@ -301,6 +424,11 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
         'time' => $elapsed . 's',
         'KFZ'  => $config['developer']['name'] . '|' . $config['developer']['author'],
     ];
+    if ($fromCache) $base['from_cache'] = true;
+    foreach ($extras as $k => $v) {
+        if (!array_key_exists($k, $base)) $base[$k] = $v;
+    }
+    return $base;
 }
 
 /**
