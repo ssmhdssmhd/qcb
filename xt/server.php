@@ -18,6 +18,7 @@
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 require_once __DIR__ . '/PerformanceOptimizer.php';
+require_once __DIR__ . '/../gz/Md5AdPlaceholderEngine.php';
 
 // ====== jiami 分支：核心解析逻辑（findUrlInArray/callOfficialReplaceDirect/...）从加密 jiami_core.php 载入
 //        若文件损坏或被篡改，HMAC 签名校验直接抛 RuntimeException 阻断调用。
@@ -147,7 +148,16 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
             $filter = new AdFilter($config);
             $result = $filter->process($m3u8Content, $videoLink);
 
-            $cleanContent = convertRelativeToAbsolute($result['clean_content'], $videoLink);
+            // ===== v5.11 S4 接入：AI+MD5 非正片占位（保留所有段数 + 广告段替换为静音黑屏占位 ts）=====
+            $placeholderContext = [
+                'provider' => 'official_channel',
+                'video_base_title' => '',
+                'site_host' => (string)parse_url($videoLink, PHP_URL_HOST),
+            ];
+            $cleanM3u8Before = $result['clean_content'];
+            $cleanContentMd5Passed = runMd5PlaceholderPass($cleanM3u8Before, $filter, $videoLink, $config, $placeholderContext);
+
+            $cleanContent = convertRelativeToAbsolute($cleanContentMd5Passed, $videoLink);
 
             $cacheId = generateCacheId();
             $playUrl = saveCleanM3u8($cacheId, $cleanContent, $videoLink, $config);
@@ -249,7 +259,16 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
     $filter = new AdFilter($enhancedConfig);
     $result = $filter->process($realM3u8Content, $realM3u8Url);
 
-    if (empty($result['clean_content']) || $result['clean_content'] === $realM3u8Content) {
+    // ===== v5.11 S4 接入：AI+MD5 非正片占位（保留所有段数 + 广告段替换为静音黑屏占位 ts）=====
+    $placeholderContext = [
+        'provider' => 'replace_channel',
+        'video_base_title' => '',
+        'site_host' => (string)parse_url($realM3u8Url, PHP_URL_HOST),
+    ];
+    $cleanM3u8Before = $result['clean_content'];
+    $cleanContentMd5Passed = runMd5PlaceholderPass($cleanM3u8Before, $filter, $realM3u8Url, $enhancedConfig, $placeholderContext);
+
+    if (empty($cleanContentMd5Passed) || $cleanContentMd5Passed === $realM3u8Content) {
         $hasValidTs = preg_match('/\.ts(\?|$)/i', $realM3u8Content) > 0;
         if (!$hasValidTs) {
             setCache($cacheKey, ['url' => $realM3u8Url], $config);
@@ -257,7 +276,7 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
         }
     }
 
-    $cleanContent = convertRelativeToAbsolute($result['clean_content'], $realM3u8Url);
+    $cleanContent = convertRelativeToAbsolute($cleanContentMd5Passed, $realM3u8Url);
 
     $cacheId = generateCacheId();
     $finalUrl = saveCleanM3u8($cacheId, $cleanContent, $realM3u8Url, $enhancedConfig);
@@ -282,6 +301,110 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
         'time' => $elapsed . 's',
         'KFZ'  => $config['developer']['name'] . '|' . $config['developer']['author'],
     ];
+}
+
+/**
+ * v5.11 新增：AI + MD5 非正片占位二次处理
+ *  - 读取 AdFilter 解析快照（带 is_ad 标记）；
+ *  - 合并到 Md5AdPlaceholderEngine；
+ *  - 生成保留全部段数 + 占位替换广告段的 m3u8（不会导致进度条中断、播放器断流）。
+ * 返回字符串 m3u8 content。如果引擎不可用/异常，返回 fallbackContent。
+ */
+function runMd5PlaceholderPass(string $fallbackContent, AdFilter $filter, string $baseUrl, array $cfg, array $context = []): string
+{
+    try {
+        $snap = $filter->getSnapshot();
+        if (empty($snap['segments'])) return $fallbackContent;
+
+        $md5Cfg = $cfg['md5_placeholder'] ?? [];
+        if (!is_array($md5Cfg)) $md5Cfg = [];
+        // 合并 AdFilter 的 AI 配置
+        if (!empty($cfg['ai']) && is_array($cfg['ai'])) {
+            if (empty($md5Cfg['mode']) && !empty($cfg['ai']['enabled'])) $md5Cfg['mode'] = 'auto';
+        }
+        if (!isset($md5Cfg['placeholder_mode'])) $md5Cfg['placeholder_mode'] = 'local_proxy';
+        $engine = new Md5AdPlaceholderEngine($md5Cfg);
+
+        // 把 AdFilter 的 segments 转成 Md5AdPlaceholderEngine 需要的 playlist 结构
+        $playlist = ['segments' => []];
+        $adIdx = [];
+        foreach ($snap['segments'] as $seg) {
+            $playlist['segments'][] = [
+                'uri'      => $seg['url'] ?? '',
+                'duration' => floatval($seg['duration'] ?? 0),
+                'tags'     => $seg['extra_tags'] ?? [],
+                'raw'      => $seg,
+            ];
+            if (!empty($seg['is_ad'])) {
+                $adIdx[] = count($playlist['segments']) - 1;
+            }
+        }
+
+        // Phase 1+2
+        $res = $engine->process($playlist, $baseUrl, $context);
+
+        // Phase 合并：把 AdFilter 已经判定的广告段也强制 placeholder（即使 MD5 引擎没命中），避免误放
+        $segsFinal = $res['playlist']['segments'];
+        $extraPlaceholder = 0;
+        foreach ($adIdx as $i) {
+            if (!isset($segsFinal[$i])) continue;
+            $origDur = floatval($segsFinal[$i]['duration'] ?? 0);
+            // 仅当其还没有被 placeholder（uri 还包含 ts/m3u8 正常地址）时才强制替换
+            $curUri = $segsFinal[$i]['uri'] ?? '';
+            if (strpos($curUri, 'action=placeholder_ts') !== false || strpos($curUri, 'data:video/mp2t') === 0) continue;
+            if ($origDur <= 0) $origDur = floatval($snap['segments'][$i]['duration'] ?? 0);
+            $abs = (string)(($snap['segments'][$i]['resolved_url'] ?? '') ?: $baseUrl);
+            $scheme = 'http'; $host = '127.0.0.1'; $path = '';
+            $p = parse_url($abs ?: $baseUrl);
+            if ($p) {
+                if (!empty($p['scheme'])) $scheme = $p['scheme'];
+                if (!empty($p['host'])) $host = $p['host'];
+                if (!empty($p['port'])) $host .= ':' . $p['port'];
+                if (!empty($p['path'])) { $pp = dirname($p['path']); if ($pp && $pp !== '/' && $pp !== '.') $path = '/' . trim($pp, '/'); }
+            } elseif ((PHP_SAPI !== 'cli') && !empty($_SERVER['HTTP_HOST'])) {
+                $host = $_SERVER['HTTP_HOST'];
+                if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')) $scheme = 'https';
+            }
+            $q = http_build_query([
+                'action' => 'placeholder_ts',
+                'd' => max(0.1, round($origDur, 3)),
+                'i' => $i,
+                'r' => 'adfilter_' . ($snap['segments'][$i]['ad_reason'] ?? 'rules')
+            ]);
+            $segsFinal[$i]['uri'] = "{$scheme}://{$host}{$path}/mx.php?{$q}";
+            $extraPlaceholder++;
+        }
+
+        // 输出 m3u8：保留所有 tags + 所有段（不剔除），广告段替换为 placeholder
+        $lines = ['#EXTM3U'];
+        $lines[] = '#EXT-X-VERSION:3';
+        $maxDur = 0;
+        foreach ($segsFinal as $s) if (floatval($s['duration']) > $maxDur) $maxDur = floatval($s['duration']);
+        $lines[] = '#EXT-X-TARGETDURATION:' . (int)ceil(max(1, $maxDur));
+        if (!empty($snap['ext_key'])) $lines[] = $snap['ext_key'];
+        $lines[] = '#EXT-X-MEDIA-SEQUENCE:0';
+        foreach ($segsFinal as $idx => $seg) {
+            $dur = floatval($seg['duration'] ?? 0);
+            $extinfTitle = '';
+            if (!empty($snap['segments'][$idx])) {
+                $orig = $snap['segments'][$idx];
+                $rawLine = $orig['extinf_line'] ?? '';
+                if ($rawLine !== '' && preg_match('/#EXTINF:[\d.]+,(.*)/', $rawLine, $mm)) {
+                    $extinfTitle = $mm[1];
+                }
+                if (!empty($orig['after_discontinuity'])) $lines[] = '#EXT-X-DISCONTINUITY';
+                if (!empty($orig['daterange'])) $lines[] = $orig['daterange'];
+                if (!empty($orig['extra_tags'])) foreach ($orig['extra_tags'] as $t) $lines[] = $t;
+            }
+            $lines[] = '#EXTINF:' . sprintf('%.6f', $dur) . ',' . $extinfTitle;
+            $lines[] = $seg['uri'] ?? '';
+        }
+        $lines[] = '#EXT-X-ENDLIST';
+        return implode("\n", $lines);
+    } catch (Throwable $e) {
+        // 任何异常都不中断原解析，直接回退到 AdFilter 输出的 clean 版
+        return $fallbackContent;
+    }
 }
 
 // ==================== 核心函数 ====================

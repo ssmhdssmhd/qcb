@@ -5975,6 +5975,37 @@ try {
             }
             break;
 
+        // ===== v5.11 新增：AI+MD5 占位引擎专用。返回一段「静音黑屏 + 时长完全等于参数 d」的合法 MPEG-TS，
+        //       保证 m3u8 总时长不变、播放器进度条平滑推进、不会因段缺失/时长错乱导致中断或花屏。
+        case 'placeholder_ts':
+            while (ob_get_level() > 0) ob_end_clean();
+            $durSec = max(0.1, floatval($_GET['d'] ?? 2.0));
+            $reason = (string)($_GET['r'] ?? 'placeholder');
+            $idx = intval($_GET['i'] ?? -1);
+            header('Content-Type: video/mp2t');
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, OPTIONS');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: public, max-age=604800'); // 占位数据固定，可强缓存
+            if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+            // 生成静音黑屏 TS：目标：
+            //  - 视频：H264 Baseline，176x144（QCIF），全黑 P 帧循环
+            //  - 音频：AAC-LC 单声道 44100Hz，静音帧（无任何噪声）循环
+            //  - TS 包大小：188，按 MPEG-TS ISO/IEC 13818-1 打包
+            // 为避免 PC 端因「没有音频」或「没有视频」触发解码器错，音视频两轨都写。
+            require_once __DIR__ . '/gz/PlaceholderTsGenerator.php';
+            try {
+                $gen = new PlaceholderTsGenerator();
+                $fp = fopen('php://output', 'wb');
+                if (!$fp) { echo PlaceholderTsGenerator::minimalTs188(); exit; }
+                $gen->generateTo($fp, $durSec, 'black_silent', 'h264+aac');
+                fclose($fp);
+            } catch (Throwable $e) {
+                // 极端兜底：最小合法 TS（188 字节），播放器多数直接跳过
+                echo PlaceholderTsGenerator::minimalTs188();
+            }
+            exit;
+
         default:
             sendJsonResponse([
                 'success' => false,

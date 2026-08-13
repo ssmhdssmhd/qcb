@@ -30,6 +30,19 @@ class AdFilter
     private $extKeyLine = null;
 
     /**
+     * 获取解析出的原始分段快照（供外部 Md5AdPlaceholderEngine 等二次处理使用）
+     * @return array [segments, globalTags, extKeyLine]
+     */
+    public function getSnapshot(): array
+    {
+        return [
+            'segments'    => $this->segments,
+            'global_tags' => $this->globalTags,
+            'ext_key'     => $this->extKeyLine,
+        ];
+    }
+
+    /**
      * 构造函数
      *
      * @param array $config 全局配置

@@ -1,14 +1,35 @@
 <?php
 return array (
-  'version' => 'v5.10.9',
-  'branch' => 'jiami',
-  'build' => '20260813-jiami',
-  'version_code' => 51009,
-  'commit' => 'official-replace-first-original-url-trap-fix-core-encrypted',
-  'updated_at' => '2026-08-13',
-  'changelog' => 
+  'version' => 'v5.11.0',
+  'branch' => 'main',
+  'build' => '20260815-md5-placeholder',
+  'version_code' => 51100,
+  'commit' => 'v5.11-new-core-link->page_meta->res_search->ai+md5_placeholder->non_interrupt',
+  'updated_at' => '2026-08-15',
+  'changelog' =>
   array (
-    'v5.10.9' => 
+    'v5.11.0' =>
+    array (
+      'date' => '2026-08-15',
+      'title' => '【核心逻辑彻底重构：链接→官方页面识别→资源站精准搜索→AI+MD5非正片占位(不中断)】',
+      'changes' =>
+      array (
+        0 => '【P0 新主链路】解析流程改为四步串联：1) 官方视频页面爬取 2) 元数据识别 3) 资源站搜索+集数/分剧名定位 4) AI+MD5 非正片占位替换（不再剔除广告段，保证进度条/播放器不中断）',
+        1 => '【官方页面深度识别】OfficialReplaceManager::extractRichMetaFromHtml：从 youku/iqiyi/tencent 等 v_show / v_play 页面抽取 description、og:type、video:series、meta keywords 等字段，生成 base_title_guess(剧名) / episode_num(集次) / episode_subtitle(分剧名) 三维搜索词',
+        2 => '修复 PCRE2 正则编译错误：\\u{3000} → \\x{3000}（PCRE2 不支持 \\u 单码点写法，统一用 \\x{xxxx}）',
+        3 => '【资源站搜索匹配 + 集数定位升级 v2】findEpisodeUrl 改为双重匹配：分剧名(字幕)相似度匹配优先 + 集次匹配兜底；similar_text 做中文归一化比较（去空格/标点），subtitle_score ≥65 即锁定，解决资源站名 "九门 第2集 张启山和吴老狗达成合作" 的场景（老流程纯集次可能被集序错位干扰）',
+        4 => '【AI + MD5 非正片占位引擎 全新上线】新建 gz/Md5AdPlaceholderEngine.php：Phase1=URL 关键词/路径/时长异常/连续等时长/前后 10% 段聚类 4 条规则；Phase2=并发 curl_range 0-256KB 下载每段算 MD5 + 同 host 重复率≥70% 判为非正片 + 本地 json DB 广告指纹黑/白名单；最终输出 playlist 不剔除段而是替换 URI',
+        5 => '【Placeholder TS 零依赖生成器】新建 gz/PlaceholderTsGenerator.php：纯 PHP 手写 H264 Baseline QCIF(176x144) 全黑 SPS+PPS+IDR NALU + ADTS 头 + AAC-LC 单声道 44.1kHz 静音帧；封装 MPEG-TS PAT/PMT/PES/PTS/DTS/PCR 全部字段，每个 TS 包严格 188 字节对齐，mod188=0 通过',
+        6 => '【本地代理占位 action】mx.php 新增 action=placeholder_ts&d=2.3：按 d 参数秒数输出对应长度的黑屏静音 TS；Cache-Control: max-age=604800 强缓存；CORS 全开；HTTP_STATUS 204 OPTIONS 预检',
+        7 => '【核心 glue 层】xt/server.php 新增 runMd5PlaceholderPass()：读取 AdFilter::getSnapshot()（新增 public 方法，暴露 segments/global_tags/ext_key） → 构造 playlist 跑 Md5AdPlaceholderEngine → 再把 AdFilter 已判定 is_ad=true 的段强制转 placeholder（防止漏网）→ 生成保留所有段数、EXTINF 时长完全不变、广告段 URI 指向 mx.php?action=placeholder_ts 的最终 m3u8',
+        8 => '【官解/官替双通道接入】parseVideoByOfficialChannel / parseVideoByReplaceChannel 都已接入 runMd5PlaceholderPass；AdFilter 输出的 clean_content 作为 fallback（占位引擎异常时回退到旧版去广告行为，绝不中断返回）',
+        9 => '【XT config 新增 md5_placeholder 配置组】mode=auto/download_md5/rules_only；placeholder_mode=local_proxy/data_uri；download_max_bytes=256KB；download_timeout=4s；cluster_host_threshold=0.70；支持后台嗅探设置覆盖',
+        10 => '【播放器不中断保证】广告段占位的 EXTINF 时长使用原广告时长，HLS 播放器按原时长推进进度条，解决"剔除段 → TARGETDURATION 失配 → 缓冲不足/进度回跳/下一段加载失败"的老问题；连续 N 段插播广告也是等时长黑屏静音通过，解码器不中断',
+        11 => '【回归测试通过】6 个核心文件 PHP lint 全过；PlaceholderTsGenerator 单 PAT 包 size%188=0；2.3s 流 31960 bytes%188=0；0.3s 流 4700 bytes%188=0；合成 m3u8 测试 9/19 广告段 100% 命中 url_kw 规则并占位；title+description 样例抽出 base_title=老九门 subtitle=张启山和吴老狗达成合作 episode=2',
+        12 => '【版本升级】xt/config.php version=5.11.0 build=20260815-md5-placeholder；version.php version=v5.11.0 branch=main；',
+      ),
+    ),
+    'v5.10.9' =>
     array (
       'date' => '2026-08-13',
       'title' => '【解析失败根因修复 + 官替优先智能识别新架构】',
