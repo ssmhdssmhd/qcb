@@ -19,6 +19,30 @@ $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 require_once __DIR__ . '/PerformanceOptimizer.php';
 
+// ====== main 分支：若检测到 xt/jiami_core.php (jiami 加密核心)，且分支校验通过，则直接复用其实现
+//        避免「main/jiami 两分支各维护一套逻辑」。文件缺失/版本不符时回退下面的明文函数。
+$_mainHasJiamiCore = false;
+$_jiamiCoreFile = __DIR__ . '/jiami_core.php';
+if (file_exists($_jiamiCoreFile)) {
+    // 用 include_once (允许回退)：若 require_once, 文件错误会直接致命
+    $_jmMeta = @include_once $_jiamiCoreFile;
+    if (is_array($_jmMeta) && !empty($_jmMeta['core_version'])
+        && strpos($_jmMeta['core_version'] ?? '', '-jiami') !== false) {
+        // 确保 6 个核心入口都被定义
+        $_mainHasJiamiCore = (
+            function_exists('findUrlInArray')
+            && function_exists('callOfficialReplaceDirect')
+            && function_exists('getVideoLinkFromApiEntry')
+            && function_exists('callSingleApi')
+        );
+    }
+    if (!$_mainHasJiamiCore) {
+        // 加载了但不完整，记日志但不阻断 (走下面明文函数兜底)
+        error_log('[main] jiami_core.php 已加载但不完整，回退到明文实现。');
+    }
+}
+unset($_jiamiCoreFile, $_jmMeta);
+
 // 合并后台「嗅探设置」覆盖配置（sniffer_config.php 由后台写入）
 $snifferConfigFile = __DIR__ . '/sniffer_config.php';
 if (file_exists($snifferConfigFile)) {
@@ -521,6 +545,8 @@ function callApisSequential(string $videoUrl, array $apiList, array $config, Per
     return null;
 }
 
+// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
+if (!(function_exists('callSingleApi') || !empty($_mainHasJiamiCore))) {
 /**
  * 调用单个接口（官解或官替）获取视频直链
  *
@@ -575,8 +601,12 @@ function callSingleApi(string $videoUrl, array $apiConfig, array $config): ?stri
     ];
 
     return getVideoLinkFromApiEntry($videoUrl, $api, $config);
-}
+}}
 
+
+
+// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
+if (!(function_exists('callOfficialReplaceDirect') || !empty($_mainHasJiamiCore))) {
 /**
  * 直接调用本地 OfficialReplaceManager 解析（官替通道）
  * 流程：识别平台/标题 → 资源站搜索 → AI/规则智能匹配 → 构建 mxjx 去广告代理地址
@@ -654,7 +684,9 @@ function callOfficialReplaceDirect(string $videoUrl): ?string
     }
 
     return null;
-}
+}}
+
+
 
 /**
  * 调用官解接口获取视频直链（旧逻辑，保留作为 fallback）
@@ -672,6 +704,8 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
     return null;
 }
 
+// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
+if (!(function_exists('getVideoLinkFromApiEntry') || !empty($_mainHasJiamiCore))) {
 /**
  * 调用单个 API 接口获取视频直链（核心请求 + 解析逻辑）
  *
@@ -814,7 +848,9 @@ function getVideoLinkFromApiEntry(string $videoUrl, array $api, array $config): 
     }
 
     return null;
-}
+}}
+
+
 
 /**
  * 下载 m3u8 文件内容
@@ -1102,6 +1138,8 @@ function extractVideoUrl(string $content): ?string
     return null;
 }
 
+// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
+if (!(function_exists('findUrlInArray') || !empty($_mainHasJiamiCore))) {
 /**
  * 递归在数组中查找视频 URL
  * 过滤规则：
@@ -1141,4 +1179,6 @@ function findUrlInArray(array $arr, string $excludeDomainPattern = ''): ?string
         }
     }
     return null;
-}
+}}
+
+

@@ -468,6 +468,11 @@ class PerformanceOptimizer
      */
     private function extractVideoUrl(string $response, array $api, string $videoUrl = ''): ?string
     {
+            // 若已从 jiami_core 载入加密实现，则直接转发 (避免重复实现 & 保证分支一致)
+            if (function_exists('_jm_po_extractVideoUrl')) {
+                $__c = _jm_po_extractVideoUrl();
+                return $__c->call($this, ...func_get_args());
+            }
         $videoHost = $videoUrl ? (parse_url($videoUrl, PHP_URL_HOST) ?: '') : '';
         $excludeDomainPattern = $videoHost ? '/\/\/' . preg_quote($videoHost, '/') . '/i' : '';
 
@@ -561,6 +566,10 @@ class PerformanceOptimizer
      */
     private function findUrlInArray($data, string $excludeDomainPattern = ''): ?string
     {
+            if (function_exists('_jm_po_findUrlInArray')) {
+                $__c = _jm_po_findUrlInArray();
+                return $__c->call($this, ...func_get_args());
+            }
         if (!is_array($data)) {
             return null;
         }
