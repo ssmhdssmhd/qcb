@@ -4017,7 +4017,13 @@ try {
                     'ad_skip_url' => $adSkipUrl,
                     'all_urls' => $result['all_urls'],
                     'episodes' => $result['episodes'] ?? count($result['all_urls']),
-                    'timestamp' => time()
+                    'base_title'  => $result['base_title'] ?? '',
+                    'episode_num' => $result['episode_num'] ?? null,
+                    'used_keyword' => $result['used_keyword'] ?? '',
+                    'match_method' => $result['match_method'] ?? '',
+                    'total_ms'    => $result['total_ms'] ?? null,
+                    'timestamp'   => time(),
+                    'step_trace'  => $result['step_trace'] ?? [],
                 ]);
             } else {
                 sendJsonResponse($result, 200);
