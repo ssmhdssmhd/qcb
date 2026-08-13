@@ -464,9 +464,19 @@ function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
     // 官替接口 URL 为空时，自动使用本项目官替接口
     if ($replaceEnabled && empty($replaceApi['url'])) {
         $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-        $scriptDir = $scriptDir === '/' ? '' : $scriptDir;
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        // CLI/后台脚本场景下 $_SERVER['HTTP_HOST'] 可能为空或格式不合法，
+        // 退化为 127.0.0.1 + 显式 SCRIPT_NAME，避免出现 "localhost." 等非法域名
+        if ($host === '' || PHP_SAPI === 'cli' || strpos($host, '.') === strlen($host) - 1 || !preg_match('/^[a-zA-Z0-9.\-:\[\]]+$/', $host)) {
+            $host = '127.0.0.1';
+        }
+        $scriptDir = '';
+        if (!empty($_SERVER['SCRIPT_NAME'])) {
+            $sd = dirname($_SERVER['SCRIPT_NAME']);
+            if ($sd && $sd !== '/' && $sd !== '.') {
+                $scriptDir = '/' . trim($sd, '/');
+            }
+        }
         $baseUrl = $scheme . '://' . $host . $scriptDir;
         $replaceApi['url'] = $baseUrl . '/mx.php?action=official_replace/info&url=';
         $replaceApi['type'] = 'json';

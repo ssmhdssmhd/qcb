@@ -27,6 +27,11 @@ return array (
         10 => '官替默认配置升级：default_site 从 量子 改为 抖剧TV，match_threshold 从 75 降至 65 提高命中率，新增 360kan.com 抖剧TV官替平台(priority=1)',
         11 => 'search_sites 首位插入抖剧TV，确保最高优先级命中；平台列表从7个扩容到8个（含360kan.com）',
         12 => 'jiami 分支：核心解析逻辑（callOfficialReplaceDirect / findUrlInArray / extractVideoUrl / isSafeVideoUrl 等）采用 Base64+乱码+自解码加密，防止被恶意扫描特征',
+        13 => '【部署修复】sniffer_config.php 默认通道从 official 改为 replace，官替 enabled=false→true，url_field 从 m3u8_url→ad_skip_url，update_date=2026-08-13',
+        14 => '【部署修复】config.php（兜底）version 升级到 5.10.9 / build=20260813，与 sniffer_config 保持一致',
+        15 => '【解析链路修复】getVideoLinkByConcurrentRace 自动计算 baseUrl 修复：CLI 或 $_SERVER[HTTP_HOST] 非法(空/末尾带点/非Host格式)时，退化到 127.0.0.1，不再生成 http://localhost./ 这种 parse_url 直接失败的域名',
+        16 => 'SCRIPT_NAME 目录处理：空/根/当前目录时统一生成不带多余斜杠的 $scriptDir，保证 /mx.php?action=official_replace/info&url= 可直接 curl 请求',
+        17 => '官替通道薄包装验证：concurrentRaceRequest apiList 同时带 official + replace 两条，enabled=true，url_field=ad_skip_url，_channel=replace 打标正确',
       ),
     ),
     'v5.10.8' => 
