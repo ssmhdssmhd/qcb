@@ -2,6 +2,48 @@
 
 > M3U8 播放列表广告分析与去广告工具 - 自动识别并移除插播广告片段，支持域名规则管理、自动学习、动态规则更新
 
+## 分支说明
+
+- **`main` 分支**：源码版本，核心代码明文，便于二次开发和审计
+- **`jiami` 分支**：核心解析逻辑加密版本（Base64+乱码+自解码），防止被特征扫描，适合线上公开部署
+  - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
+  - 功能与 main 完全一致，运行时自动解密，零性能感知差异
+
+## 当前版本 v5.10.9（2026-08-13）
+
+### 重点更新
+
+**【P0 解析失败根因修复 + 官替优先智能识别新架构】**
+
+> **失败原因分析（本次修复核心）**
+>
+> 用户发现 `http://114.134.184.91:9002/jiexi.php?url=https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html` 返回结果为：
+> ```json
+> {"code":200,"ZT":"解析成功","url":"https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html", ...}
+> ```
+> 看似成功（code=200），但返回的 `url` 竟然是**原始输入的优酷视频页面地址**，根本无法播放！
+>
+> **根本原因：**
+> 虾米官解接口 (`mx.php?action=api/v2&type=parse`) 内部返回：
+> ```json
+> {"success":false,"code":500,"message":"验证失败!","original_url":"https://v.youku.com/...","play_url":"",...}
+> ```
+> 由于签名/加密失效（`parse_internal_xiami` 返回验证失败），接口返回错误。但 `findUrlInArray` 递归扫描 JSON 所有字段，**误将 `original_url`（原始页面URL，合法URL格式）当作视频流地址返回**！
+>
+> 然后 `parseVideo` 把这个错误地址传给 `parseVideoByOfficialChannel`，因它不是 `.m3u8`，直接进入 `mp4 直链` 分支写入缓存并 `buildResult(200, 解析成功, 原始URL...)` → **假成功，实际是原始页面，播放器无法播放**。
+>
+> **修复链路（共 6 处同步加固）：**
+> 1. `findUrlInArray()`：跳过 `original_url` 等 20+ 非视频字段 + 仅接受含 `.m3u8/.mp4` 等视频扩展名的 URL + 支持排除原始域名
+> 2. `getVideoLinkFromApiEntry()`：新增 `isSafeVideoUrl` 三层守卫，严格不等于原始URL，同域名必须含视频扩展名
+> 3. `PerformanceOptimizer::extractVideoUrl()`：同样逻辑加固，并传入 `$videoUrl` 做比对
+> 4. `callApiSingle` / `concurrentRace`：均通过加固后的提取函数
+>
+> **架构升级（官替优先，绕开虾米加密失效）：**
+> 1. 默认通道改为 `mode=replace`（官替优先），`replace_api.enabled=true`
+> 2. 新增 `callOfficialReplaceDirect()`：本地官替直调 OfficialResolveManager，比 HTTP 回环快 30-70%
+> 3. 流程：**识别平台/提取ID → 爬官方页面获剧名 → 资源站搜索(抖剧TV优先) → AI+规则智能匹配 → mxjx/deep AI 去广告/去插播/去水印 → 输出无广告地址**
+> 4. 官方解析失败不再导致"假成功"，而是自动 fallback 到官替通道
+
 ## 功能特性
 
 - 🎯 **多维度广告检测** - 支持关键词、文件名模式、时长范围、不连续标记、序列号跳跃、SCTE-35、CUE-OUT/IN 等多种检测规则

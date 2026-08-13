@@ -42,7 +42,7 @@ class OfficialReplaceManager {
             'version' => '1.0',
             'update_date' => date('Y-m-d H:i:s'),
             'enabled' => true,
-            'default_site' => '量子',
+            'default_site' => '抖剧TV',
             'max_search_sites' => 40,
             'cache_ttl' => 3600,
             'platforms' => [
@@ -87,6 +87,14 @@ class OfficialReplaceManager {
                     'priority' => 1
                 ],
                 [
+                    'name' => '抖剧TV',
+                    'domain' => '360kan.com',
+                    'enabled' => true,
+                    'pattern' => '/360kan\.com\/.*?\/(vod|play)\/[^\/]*?([a-zA-Z0-9]+)/i',
+                    'title_selector' => 'meta[property="og:title"], meta[name="twitter:title"], h1',
+                    'priority' => 1
+                ],
+                [
                     'name' => '搜狐视频',
                     'domain' => 'sohu.com',
                     'enabled' => true,
@@ -103,8 +111,8 @@ class OfficialReplaceManager {
                     'priority' => 2
                 ]
             ],
-            'search_sites' => ['量子', '暴风', '非凡', '天影', '6度资源', '豆包', '猫眼', '索尼', '最大', 'OK资源', '快车', '闪电', '丫丫（鸭鸭）', '无尽', '速播', '红牛', '豪华', '光速', '蓝光', '魔都', '看看', '樱花', '好花', '电影天堂', '茅台', '13大众', '百度', '爱奇艺资', '牛牛6', '蓝志', '天逸', '如意', '天繁', '西瓜'],
-            'match_threshold' => 75
+            'search_sites' => ['抖剧TV', '量子', '暴风', '非凡', '天影', '6度资源', '豆包', '猫眼', '索尼', '最大', 'OK资源', '快车', '闪电', '丫丫（鸭鸭）', '无尽', '速播', '红牛', '豪华', '光速', '蓝光', '魔都', '看看', '樱花', '好花', '电影天堂', '茅台', '13大众', '百度', '爱奇艺资', '牛牛6', '蓝志', '天逸', '如意', '天繁', '西瓜'],
+            'match_threshold' => 65
         ];
     }
 

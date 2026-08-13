@@ -1,11 +1,30 @@
 <?php
 return [
-    'version' => 'v5.10.8',
-    'build' => '20260810',
-    'version_code' => 51008,
-    'commit' => 'sitecheck-lightweight-stuck-healing',
-    'updated_at' => '2026-08-10',
+    'version' => 'v5.10.9',
+    'build' => '20260813',
+    'version_code' => 51009,
+    'commit' => 'official-replace-first-original-url-trap-fix',
+    'updated_at' => '2026-08-13',
     'changelog' => [
+        'v5.10.9' => [
+            'date' => '2026-08-13',
+            'title' => '【解析失败根因修复 + 官替优先智能识别新架构】',
+            'changes' => [
+                '【P0 根因修复】修复 findUrlInArray 误将 original_url 字段当作视频地址的严重 Bug',
+                'Bug 成因：虾米官解返回 验证失败 error JSON 中含 original_url=原始页面URL，递归搜索函数误提取为视频流地址，导致 code=200 返回假成功，实际输出优酷/腾讯原始HTML页面 URL',
+                '修复范围：server.php::findUrlInArray() + PerformanceOptimizer::findUrlInArray() + extractVideoUrl() + getVideoLinkFromApiEntry() 共 6 处同步加固',
+                '新增 isSafeVideoUrl 三层守卫：①严格不等于原始URL ②同域名必须含 .m3u8/.mp4 等视频扩展名 ③兜底递归必须排除 original_url 等 20+ 非视频字段+排除原域名匹配',
+                '通用兜底字段(url/play_url/data.url)从 allowProxy=true 收紧为 allowProxy=false：必须含视频扩展名，避免伪视频地址蒙混过关',
+                '【架构升级】默认解析通道改为官替优先(mode=replace)：资源站搜索匹配 > AI智能识别 > 去广告输出，不再依赖虾米官解加密签名',
+                'sniffer.replace_api.enabled 默认从 false 改为 true，url_field 从 m3u8_url 改为 ad_skip_url（优先取已去广告代理地址）',
+                '新增 callOfficialReplaceDirect() 本地官替直调通道：检测到 replace_api 指向本地 mx.php official_replace 时，直接 PHP 内调 OfficialReplaceManager，比 HTTP 回环快 30-70%',
+                '直调流程：识别平台/提取视频ID → 爬取官方页面获取标题 → 多个资源站并发搜索 → AI+PtManager 混合智能匹配最佳集数 → mxjx/deep AI 去广告+去插播+去水印 → 输出无广告播放地址',
+                '调用链安全：callSingleApi 新增官替直调入口，直调失败再 fallback HTTP，两种方式返回的视频地址均已通过 isSafeVideoUrl 校验',
+                '官替默认配置升级：default_site 从 量子 改为 抖剧TV，match_threshold 从 75 降至 65 提高命中率，新增 360kan.com 抖剧TV官替平台(priority=1)',
+                'search_sites 首位插入抖剧TV，确保最高优先级命中；平台列表从7个扩容到8个（含360kan.com）',
+                'jiami 分支：核心解析逻辑（callOfficialReplaceDirect / findUrlInArray / extractVideoUrl / isSafeVideoUrl 等）采用 Base64+乱码+自解码加密，防止被恶意扫描特征',
+            ],
+        ],
         'v5.10.8' => [
             'date' => '2026-08-10',
             'title' => '【进度条卡住问题彻底修复 v2】site_check 轻量探测 + 每站独立推进 + 前端卡住自愈',

@@ -277,7 +277,7 @@ class PerformanceOptimizer
                 $response = curl_multi_getcontent($done['handle']);
 
                 if ($httpCode === 200 && $response) {
-                    $link = $this->extractVideoUrl($response, $api);
+                    $link = $this->extractVideoUrl($response, $api, $videoUrl);
                     if ($link && filter_var($link, FILTER_VALIDATE_URL)) {
                         // 成功！立即记录并返回
                         $resultUrl = $link;
@@ -451,18 +451,40 @@ class PerformanceOptimizer
             return null;
         }
 
-        return $this->extractVideoUrl($response, $api);
+        return $this->extractVideoUrl($response, $api, $videoUrl);
     }
 
     /**
      * 从接口响应中提取视频 URL
+     * 【v5.10.9 安全加固】
+     *   - 禁止返回与输入视频页面完全相同的 URL
+     *   - 禁止返回原始页面域名相同的 HTML 页面（original_url 陷阱）
+     *   - 已知安全字段（url_field / success=true 字段）允许代理地址
+     *   - 兜底递归搜索仅接受带视频扩展名的 URL
      *
      * @param string $response 响应内容
      * @param array  $api      接口配置
      * @return string|null
      */
-    private function extractVideoUrl(string $response, array $api): ?string
+    private function extractVideoUrl(string $response, array $api, string $videoUrl = ''): ?string
     {
+        $videoHost = $videoUrl ? (parse_url($videoUrl, PHP_URL_HOST) ?: '') : '';
+        $excludeDomainPattern = $videoHost ? '/\/\/' . preg_quote($videoHost, '/') . '/i' : '';
+
+        $isSafeVideoUrl = function (string $candidate, bool $allowProxy = true) use ($videoUrl, $videoHost): bool {
+            if ($candidate === $videoUrl || rtrim($candidate, '/') === rtrim($videoUrl, '/')) {
+                return false;
+            }
+            if (!filter_var($candidate, FILTER_VALIDATE_URL)) {
+                return false;
+            }
+            $cHost = parse_url($candidate, PHP_URL_HOST);
+            if ($cHost && $videoHost && strcasecmp($cHost, $videoHost) === 0) {
+                return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
+            }
+            return $allowProxy ? true : (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
+        };
+
         $type = $api['type'] ?? 'json';
 
         switch ($type) {
@@ -477,41 +499,51 @@ class PerformanceOptimizer
 
                 if ($urlField && isset($data[$urlField])) {
                     $url = $data[$urlField];
+                    if ($url && $isSafeVideoUrl($url, true)) {
+                        return $url;
+                    }
+                    $url = null;
                 }
 
-                // 兼容官替接口返回结构
                 if (!$url && !empty($data['success'])) {
                     $url = $data['ad_skip_url'] ?? $data['m3u8_url'] ?? null;
+                    if ($url && $isSafeVideoUrl($url, true)) {
+                        return $url;
+                    }
+                    $url = null;
                 }
 
-                // 通用兜底
                 if (!$url) {
-                    $url = $data['url'] ?? $data['play_url']
-                        ?? $data['data']['url'] ?? $data['data']['play_url']
-                        ?? $data['video_url'] ?? null;
+                    $candidates = [
+                        $data['url'] ?? null,
+                        $data['play_url'] ?? null,
+                        $data['data']['url'] ?? null,
+                        $data['data']['play_url'] ?? null,
+                        $data['video_url'] ?? null,
+                    ];
+                    foreach ($candidates as $c) {
+                        if ($c && $isSafeVideoUrl($c, false)) {
+                            return $c;
+                        }
+                    }
                 }
 
-                if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
-                    return $url;
-                }
-
-                // 递归搜索 URL
-                return $this->findUrlInArray($data);
+                return $this->findUrlInArray($data, $excludeDomainPattern);
 
             case 'redirect':
-                // 重定向类型已经通过 curl FOLLOWLOCATION 拿到了最终 URL
-                // 这里直接判断 response 是否是 URL
                 if (filter_var(trim($response), FILTER_VALIDATE_URL)) {
-                    return trim($response);
+                    $candidate = trim($response);
+                    if ($isSafeVideoUrl($candidate, true)) {
+                        return $candidate;
+                    }
                 }
                 return null;
 
             case 'text':
             default:
-                // 文本类型，尝试从响应中提取 URL
                 if (preg_match('/https?:\/\/[^\s"\'<>]+/i', $response, $matches)) {
                     $url = $matches[0];
-                    if (filter_var($url, FILTER_VALIDATE_URL)) {
+                    if ($isSafeVideoUrl($url, true)) {
                         return $url;
                     }
                 }
@@ -520,22 +552,42 @@ class PerformanceOptimizer
     }
 
     /**
-     * 递归从数组中查找第一个有效 URL
+     * 递归从数组中查找第一个有效视频 URL
+     * 【安全加固】跳过 original_url 等非视频字段，仅接受视频扩展名 URL，可排除指定域名
      *
-     * @param mixed $data
+     * @param mixed  $data
+     * @param string $excludeDomainPattern
      * @return string|null
      */
-    private function findUrlInArray($data): ?string
+    private function findUrlInArray($data, string $excludeDomainPattern = ''): ?string
     {
         if (!is_array($data)) {
             return null;
         }
+        $excludeKeys = [
+            'original_url','source_url','input_url','request_url',
+            'referer','referrer','redirect_url','callback_url',
+            'page_url','web_url','link','share_url','msg','message',
+            'homepage','logo_url','pic','cover','poster','avatar',
+            'download_url','subtitle_url','danmaku_url',
+        ];
+        $videoExtPattern = '/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i';
+
         foreach ($data as $key => $value) {
+            if (is_string($key) && in_array(strtolower($key), $excludeKeys, true)) {
+                continue;
+            }
             if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)) {
+                if (!preg_match($videoExtPattern, $value)) {
+                    continue;
+                }
+                if ($excludeDomainPattern && preg_match($excludeDomainPattern, $value)) {
+                    continue;
+                }
                 return $value;
             }
             if (is_array($value)) {
-                $found = $this->findUrlInArray($value);
+                $found = $this->findUrlInArray($value, $excludeDomainPattern);
                 if ($found) {
                     return $found;
                 }

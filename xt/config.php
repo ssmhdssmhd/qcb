@@ -16,7 +16,9 @@ return [
     // 合并优先级：sniffer_config.php > 此处默认值
     'sniffer' => [
         // 当前解析通道：official=官解解析 / replace=官替接口
-        'mode' => 'official',
+        // v5.10.9 默认改为 replace 优先：先识别平台 → 资源站官替匹配 → AI 去广告/去插播
+        //   官替(资源站)相比官解(虾米)更稳定，不受上游加密验证影响
+        'mode' => 'replace',
         // 官解接口（支持多个，按优先级排列；后台可动态增删）
         // 注意：single_api 模式下也可只配置一条
         'official_apis' => [
@@ -40,12 +42,14 @@ return [
             'headers'    => [],
         ],
         // 官替接口（开关 + 接口参数）
+        // v5.10.9 默认开启官替：资源站搜索匹配 + AI 智能识别去广告/去插播/去水印
+        //   流程：识别视频平台/标题 → 多个资源站并发搜索 → AI/规则智能匹配 → 返回无广告播放地址
         'replace_api' => [
-            'enabled'    => false,
+            'enabled'    => true,
             'name'       => '本地官替',
             'url'        => '',
             'type'       => 'json',
-            'url_field'  => 'm3u8_url',
+            'url_field'  => 'ad_skip_url',
             'headers'    => [],
         ],
     ],

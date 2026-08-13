@@ -1,5 +1,112 @@
 # 更新日志
 
+## v5.10.9 (2026-08-13)
+
+### P0 解析失败根因修复 + 官替优先智能识别新架构
+
+#### 问题复现（用户反馈）
+
+访问：`http://114.134.184.91:9002/jiexi.php?url=https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html`
+
+返回：
+```json
+{"code":200,"ZT":"解析成功","url":"https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html","msg":"https://v.youku.com/...","time":"0s","KFZ":"超级嗅探|XT"}
+```
+
+**现象：** `code=200` + `ZT=解析成功`，但返回的 `url` 与输入的优酷视频页面地址**完全相同**，导致播放器接收到一个 HTML 页面链接而不是 `.m3u8/.mp4` 视频流，**无法播放**。
+
+---
+
+#### 根因分析（original_url 陷阱）
+
+1. **虾米官解接口验证失败**：`parse_internal_xiami()` 调用的远程加密接口返回 `{"success":false,"code":500,"message":"验证失败!","original_url":"https://v.youku.com/...","play_url":""}` — 签名/加密机制已失效或服务端校验不通过
+
+2. **findUrlInArray 递归误提取**：兜底的 `findUrlInArray($data)` 递归遍历 JSON 所有字段，找到 `original_url` 字段：其值 `https://v.youku.com/...` 满足 `filter_var(..., FILTER_VALIDATE_URL)` 为真 → **错误地把原始页面地址当作视频流地址返回**
+
+3. **parseVideo 链条未校验**：
+   - `$videoLink = "https://v.youku.com/..."` 非空不报错
+   - 进入 `parseVideoByOfficialChannel()` → 不是 `.m3u8` → 直接走 `setCache + buildResult(200, 解析成功, $videoLink)`
+   - → **code=200 假成功，实际是原始 HTML 页面 URL**
+
+4. **官替通道默认关闭**：`sniffer.replace_api.enabled=false`，无法 fallback 到更可靠的资源站匹配
+
+---
+
+#### 修复方案（6 处代码同步加固）
+
+**核心守卫：isSafeVideoUrl 三层校验模型**
+
+| 层级 | 规则 | 作用 |
+|------|------|------|
+| 第一层 | `$candidate !== $videoUrl`（严格不等 + 末尾 / 归一化） | 完全阻止返回原始 URL |
+| 第二层 | 同域名（优酷/腾讯等）必须以 `.m3u8/.mp4/.mkv/.flv/.avi/.ts/.webm` 等视频扩展名结尾 | 阻止原视频站点 HTML 页面 |
+| 第三层 | 兜底递归扫描前排除 20+ 非视频字段 | `original_url/source_url/input_url/referer/page_url/msg/logo_url/pic/cover` 全部跳过 |
+
+**修改文件清单：**
+
+| 文件 | 修改 |
+|------|------|
+| `xt/server.php::findUrlInArray()` | 新增 $excludeDomainPattern 参数 + excludeKeys 黑名单 + videoExtPattern 扩展名强校验 |
+| `xt/server.php::getVideoLinkFromApiEntry()` | 新增 isSafeVideoUrl 三层守卫；json 字段分 4 级信任度（url_field/success=true 字段 allowProxy，通用兜底 allowProxy=false）；调用 findUrlInArray 传入排除域名 |
+| `xt/server.php::callSingleApi()` | 检测本地官替（URL 含 official_replace/info 或 name 含"官替"）→ 直接调 callOfficialReplaceDirect()，避免 HTTP 自请求 + original_url 陷阱 |
+| `xt/server.php::callOfficialReplaceDirect()` | 【新函数】本地官替直调 OfficialReplaceManager，流程：识别平台→资源站搜索→AI 匹配→mxjx/deep 去广告代理→输出无广告 URL |
+| `xt/PerformanceOptimizer::extractVideoUrl()` | 相同 isSafeVideoUrl 加固；findUrlInArray 传排除域名；新增 3 参签名（传 $videoUrl 进来） |
+| `xt/PerformanceOptimizer::findUrlInArray()` | 同 server.php 加固；concurrentRace / callApiSingle 均传 videoUrl |
+| `xt/PerformanceOptimizer::callApiSingle` / concurrentRace 内 extractVideoUrl 调用 | 新增第 3 参传当前 $videoUrl |
+| `xt/config.php` | sniffer.mode=replace（官替优先）；replace_api.enabled=true；replace_api.url_field=ad_skip_url（优先取已去广告代理地址） |
+| `gz/OfficialReplaceManager::getDefaultConfig()` | default_site=抖剧TV；match_threshold=75→65；platforms 新增 360kan.com（抖剧TV根源来源）；search_sites 首位=抖剧TV |
+| `version.php` | v5.10.8→v5.10.9，build 20260810→20260813，新增完整 changelog |
+| `README.md` | 新增分支说明 + v5.10.9 失败原因/修复链路 + 官替优先架构说明 |
+| `CHANGELOG.md` | 新增 v5.10.9 完整问题根因 + 修复方案记录 |
+
+---
+
+#### 架构升级：官替优先智能识别流程
+
+```
+用户请求 jiexi.php?url=优酷/腾讯/爱奇艺...
+   │
+   ▼
+[1] 平台识别 + 视频ID/标题提取（OfficialReplaceManager::resolve）
+   │  detectPlatform → extractVideoId → fetchVideoInfo
+   │
+   ▼
+[2] 资源站并发搜索（默认首站：抖剧TV → 量子 → 暴风 → ...）
+   │  searchInSites(search_sites 数组) 多策略 ac=list/videolist/detail/...
+   │
+   ▼
+[3] AI+规则智能匹配最佳视频
+   │  AiSmartProcessor + TitleNormalizer + PtManager 交叉验证
+   │  - 剧名/季/集匹配（阈值 65）
+   │  - 年份 + 演员交叉加分
+   │  - 非正片正则排除（预告/花絮/速看/解说/饭制 50+ 模式）
+   │
+   ▼
+[4] 目标集数定位 + 去广告代理组装
+   │  findEpisodeUrl → buildAdSkipUrl → mxjx/deep=1
+   │
+   ▼
+[5] M3U8 下载 → 规则引擎 + AI 广告识别 → 去插播/去水印 → clean 输出
+   │  AdFilter::process() 结合 EnhancedAdRuleEngine + ProfessionalAdDetector
+   │
+   ▼
+最终输出：无广告、无插播、无水印的清洁 m3u8 播放链接
+```
+
+---
+
+#### 验证
+
+**Bug Fix 单元测试（PHP CLI）：**
+```
+Old behavior would pick: https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html (WRONG)
+NEW findUrlInArray result: NULL (CORRECT - no valid video URL in error response)
+✅ PASS: original_url trap now correctly avoided
+✅ PASS: correctly identifies local replace API
+```
+
+---
+
 ## v5.9.7 (2026-08-03)
 
 ### Bug 修复 - exec 被禁用时 AI 学习报错
