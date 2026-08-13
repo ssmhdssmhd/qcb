@@ -1121,451 +1121,226 @@ class OfficialReplaceManager {
     //   ]
     // =========================================================================
 
+    // ================================================================
+    // v5.12 平台独立元数据解析器（极简版）
+    //   用户要求：只要「影视剧名(base_title) + 集数(episode_num)」两项，其他一概不要，减轻服务器负担。
+    //   每个平台 < 15 行，共用一个 _extractQuickBaseAndEpisode 小助手。
+    //   资源站搜索、AI+MD5 去广告/去非正片占位链路后续保持不变。
+    // ================================================================
+
     /**
-     * 优酷（youku.com）元数据提取
-     * 核心：showName 字段放的是真正的剧名（如"九门"），og:title 是拼接名。
-     * og:video:tag / keywords 的第一个独立中文词也通常是剧名。
+     * 快速提取：剧名(系列名) + 集数
+     *  - 剧名：先扫 $inlineKeys 指定的内联 JS 键（如 showName），命中即返回；否则扫 $metaKeys 指定的 meta 标签；最后扫 og:title/<title> 正则截取 "第X集" 前半段。
+     *  - 集数：只在 og:title + <title> 拼接的前 320 字里用一次正则匹配 「第N集/话/期」。
+     *  - 不扫 description、cover、keywords、subtitle_guess、total_episodes，不做 json_decode，不建候选池。
      */
-    private function fetchMeta_Youku(string $html, string $url, array $videoIds): array {
-        $out = [
-            'ok' => false, 'base_title' => '', 'episode_num' => null,
-            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
-            'description' => '', 'total_episodes' => null,
-            'raw_title' => '', 'hits' => [],
-        ];
+    private function _extractQuickBaseAndEpisode(string $html, array $inlineKeys, array $metaKeys, array $banWords): array {
+        $base = '';
+        $ep = null;
 
-        // 1) og:title / description / keywords 等 meta
-        $meta = $this->extractMetaTags($html);
-        $out['raw_title'] = $meta['og:title'] ?? $meta['<title>'] ?? '';
-        $out['description'] = $meta['description'] ?? $meta['og:description'] ?? '';
-        if (empty($out['cover']) && !empty($meta['og:image'])) $out['cover'] = $meta['og:image'];
-
-        // 2) 最核心：内联 JSON 关键字段提取（showName / albumName / seriesName / partOfSeries.name）
-        $inlineTitles = $this->extractInlineSeriesTitles($html);
-        $out['hits']['inline'] = $inlineTitles;
-
-        // 3) 候选池：按优先级排列
-        $candidates = [];
-        foreach (['showName','videoShowName','seriesName','albumName','videoSeriesName','videoAlbumName','tvName','seriesTitle','albumTitle','mainTitle','pgcTitle','partOfSeriesName','isPartOfName'] as $k) {
-            if (!empty($inlineTitles[$k])) {
-                foreach ($inlineTitles[$k] as $t) $candidates[] = ['src'=>$k, 't'=>$t];
-            }
-        }
-
-        // 4) og:video:tag / meta keywords 里第一个出现的独立 2~10 字中文短语，通常是剧名
-        if (!empty($meta['keywords'])) {
-            $kw = preg_split('/[,，\s]+/u', $meta['keywords']);
-            $kw = array_values(array_filter(array_map('trim', $kw), fn($s)=>$s!==''));
-            $out['hits']['keywords'] = array_slice($kw, 0, 8);
-            foreach ($kw as $w) {
-                if (preg_match('/^[\x{4e00}-\x{9fa5}A-Za-z0-9·]{2,14}$/u', $w)) {
-                    if (mb_strpos($out['raw_title'], $w) !== false) {
-                        $candidates[] = ['src'=>'keywords', 't'=>$w];
+        // ---- 剧名 ----
+        // 1) 内联 JS：按 $inlineKeys 顺序扫，命中第一个合法值即 break
+        if (!empty($inlineKeys)) {
+            $htmlSnippet = substr($html, 0, 260000); // 只扫前 260KB（优酷等的内联 JSON 通常都在 head 里），减少 preg 回溯
+            foreach ($inlineKeys as $k) {
+                if (strpos($k, '.name') !== false) {
+                    // 嵌套对象形式：key: { name: "VALUE" }  或  "key": { "name": "VALUE" }
+                    $parent = substr($k, 0, -5); // 去掉 .name
+                    $parentQ = preg_quote($parent, '~');
+                    $reList = [
+                        '~["\']' . $parentQ . '["\']\s*:\s*\{[^\}]{0,600}?["\']name["\']\s*:\s*"([^"\\\\]{2,60})"~s',
+                        '~(?:^|[{,])\s*'  . $parentQ . '\s*:\s*\{[^\}]{0,600}?["\']name["\']\s*:\s*"([^"\\\\]{2,60})"~s',
+                        '~["\']' . $parentQ . '["\']\s*:\s*\{[^\}]{0,600}?(?:^|[{,])\s*name\s*:\s*"([^"\\\\]{2,60})"~s',
+                        '~(?:^|[{,])\s*'  . $parentQ . '\s*:\s*\{[^\}]{0,600}?(?:^|[{,])\s*name\s*:\s*"([^"\\\\]{2,60})"~s',
+                    ];
+                } else {
+                    // 扁平字段形式："key": "VALUE"  或  key: "VALUE" （裸键名常见于腾讯/B站/芒果等对象字面量）
+                    $q = preg_quote($k, '~');
+                    $reList = [
+                        '~["\']' . $q . '["\']\s*:\s*"([^"\\\\]{2,60})"~',
+                        '~(?:^|[{,])\s*'  . $q . '\s*:\s*"([^"\\\\]{2,60})"~',
+                    ];
+                }
+                $mm = null;
+                $matched = false;
+                foreach ($reList as $re) {
+                    if (preg_match($re, $htmlSnippet, $mm)) {
+                        $matched = true;
                         break;
                     }
                 }
-            }
-        }
-
-        // 5) og:title / description 中通常格式是：《剧名 第N集 副标题》/ "剧名 第N集 副标题 是在优酷..."
-        if (!empty($meta['og:title'])) {
-            $t = trim($meta['og:title']);
-            $parsed = $this->parseTitleEpisodeSubtitle($t);
-            if ($parsed['base']) $candidates[] = ['src'=>'og:title parse', 't'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle']) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        // 6) description 里再补一次（og:title 缺失时）
-        if ((!$out['episode_num'] || empty($out['subtitle_guess'])) && !empty($meta['description'])) {
-            $parsed = $this->parseTitleEpisodeSubtitle($meta['description']);
-            if ($parsed['base'] && empty($out['episode_num'])) $candidates[] = ['src'=>'description parse', 't'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle'] && empty($out['subtitle_guess'])) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        // 7) 书名号兜底
-        if (empty($candidates) && preg_match_all('~《([^》]{2,24})》~u', $html.$meta['keywords'], $mm)) {
-            $freq = array_count_values(array_map('trim', $mm[1]));
-            arsort($freq);
-            $top = (string)key($freq);
-            if ($top) $candidates[] = ['src'=>'《》freq', 't'=>$top];
-        }
-
-        // 选 base_title：优先选 inline showName 这类明确字段
-        $base = '';
-        foreach ($candidates as $c) {
-            $clean = $this->cleanTitle($c['t']) ?: trim($c['t'], " \t\n\r《》<>\"'");
-            if ($clean && mb_strlen($clean) >= 2 && mb_strlen($clean) <= 30
-                && !in_array(mb_strtolower($clean), ['优酷','优酷视频','高清视频在线观看','电视剧'])) {
-                $base = $clean;
-                $out['hits']['picked'] = $c;
-                break;
-            }
-        }
-        if ($base === '' && !empty($out['raw_title'])) {
-            // 最后兜底：从 raw_title 直接 parse
-            $p = $this->parseVideoTitle($out['raw_title']);
-            $base = $this->cleanTitle($p['base_title']) ?: trim($p['base_title']);
-            if ($p['episode_num']) $out['episode_num'] = $p['episode_num'];
-            $out['hits']['picked'] = ['src'=>'parseVideoTitle fallback', 't'=>$base];
-        }
-
-        // 总集数
-        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) $out['total_episodes'] = intval($m[1]);
-
-        $out['base_title'] = $base;
-        $out['ok'] = $base !== '';
-
-        // episode_name = 第N集 + 副标题
-        if ($out['episode_num'] || $out['subtitle_guess']) {
-            $out['episode_name'] = trim(
-                ($out['episode_num'] ? '第'.$out['episode_num'].'集' : '')
-                . ($out['subtitle_guess'] ? ' '.$out['subtitle_guess'] : '')
-            );
-        }
-        return $out;
-    }
-
-    /**
-     * 腾讯视频（v.qq.com）元数据提取
-     * 腾讯 og:title 是《剧名 第N集 副标题》，同时 ld+json 的 partOfSeries.name / isPartOf.name 也是剧名
-     * 内联 window.__INITIAL_DATA__ 里有 coverInfo / title
-     */
-    private function fetchMeta_Tencent(string $html, string $url, array $videoIds): array {
-        $out = [
-            'ok' => false, 'base_title' => '', 'episode_num' => null,
-            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
-            'description' => '', 'total_episodes' => null,
-            'raw_title' => '', 'hits' => [],
-        ];
-        $meta = $this->extractMetaTags($html);
-        $out['raw_title'] = $meta['og:title'] ?? $meta['<title>'] ?? '';
-        $out['description'] = $meta['description'] ?? $meta['og:description'] ?? '';
-        if (empty($out['cover']) && !empty($meta['og:image'])) $out['cover'] = $meta['og:image'];
-
-        $inline = $this->extractInlineSeriesTitles($html);
-        $out['hits']['inline'] = $inline;
-
-        $candidates = [];
-        foreach (['partOfSeriesName','isPartOfName','seriesName','showName','tvName','albumName','seriesTitle','albumTitle','mainTitle','videoSeriesName'] as $k) {
-            if (!empty($inline[$k])) foreach ($inline[$k] as $t) $candidates[] = ['src'=>$k,'t'=>$t];
-        }
-        // ld+json 里的 partOfSeries.name / name
-        if (preg_match_all('~<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>~is', $html, $mm)) {
-            foreach ($mm[1] as $i=>$j) {
-                $d = json_decode(trim($j), true);
-                if (!$d) continue;
-                if (!empty($d['partOfSeries']['name'])) $candidates[] = ['src'=>"ld#$i.partOfSeries.name", 't'=>$d['partOfSeries']['name']];
-                if (!empty($d['isPartOf']['name']))    $candidates[] = ['src'=>"ld#$i.isPartOf.name",    't'=>$d['isPartOf']['name']];
-                if (!empty($d['name']) && empty($out['raw_title'])) $out['raw_title'] = $d['name'];
-            }
-        }
-
-        // og:title / <title> 解析
-        if (!empty($meta['og:title']) || !empty($meta['<title>'])) {
-            $t = trim($meta['og:title'] ?: $meta['<title>']);
-            $parsed = $this->parseTitleEpisodeSubtitle($t);
-            if ($parsed['base']) $candidates[] = ['src'=>'og:title parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle']) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        // description 兜底
-        if ((!$out['episode_num'] || empty($out['subtitle_guess'])) && !empty($meta['description'])) {
-            $parsed = $this->parseTitleEpisodeSubtitle($meta['description']);
-            if ($parsed['base'] && empty($out['episode_num'])) $candidates[] = ['src'=>'description parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle'] && empty($out['subtitle_guess'])) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        $base = '';
-        foreach ($candidates as $c) {
-            $clean = $this->cleanTitle($c['t']) ?: trim($c['t'], " \t\n\r《》<>\"'");
-            if ($clean && mb_strlen($clean) >= 2 && mb_strlen($clean) <= 30
-                && !in_array(mb_strtolower($clean), ['腾讯视频','腾讯','v.qq.com'])) {
-                $base = $clean;
-                $out['hits']['picked'] = $c;
-                break;
-            }
-        }
-        if ($base === '' && !empty($out['raw_title'])) {
-            $p = $this->parseVideoTitle($out['raw_title']);
-            $base = $this->cleanTitle($p['base_title']) ?: trim($p['base_title']);
-            if ($p['episode_num']) $out['episode_num'] = $p['episode_num'];
-            $out['hits']['picked'] = ['src'=>'parseVideoTitle fallback','t'=>$base];
-        }
-        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) $out['total_episodes'] = intval($m[1]);
-
-        $out['base_title'] = $base;
-        $out['ok'] = $base !== '';
-        if ($out['episode_num'] || $out['subtitle_guess']) {
-            $out['episode_name'] = trim(
-                ($out['episode_num'] ? '第'.$out['episode_num'].'集' : '')
-                . ($out['subtitle_guess'] ? ' '.$out['subtitle_guess'] : '')
-            );
-        }
-        return $out;
-    }
-
-    /**
-     * 爱奇艺（iqiyi.com）元数据提取
-     * og:video:series_name / tv:series_name 是剧名；qipuPlayer/cookieListData 里也有 albumName/电视剧名
-     */
-    private function fetchMeta_Iqiyi(string $html, string $url, array $videoIds): array {
-        $out = [
-            'ok' => false, 'base_title' => '', 'episode_num' => null,
-            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
-            'description' => '', 'total_episodes' => null,
-            'raw_title' => '', 'hits' => [],
-        ];
-        $meta = $this->extractMetaTags($html);
-        $out['raw_title'] = $meta['og:title'] ?? $meta['<title>'] ?? '';
-        $out['description'] = $meta['description'] ?? $meta['og:description'] ?? '';
-        if (empty($out['cover']) && !empty($meta['og:image'])) $out['cover'] = $meta['og:image'];
-
-        $inline = $this->extractInlineSeriesTitles($html);
-        $out['hits']['inline'] = $inline;
-        $candidates = [];
-        foreach (['seriesName','showName','albumName','videoSeriesName','tvName','partOfSeriesName','isPartOfName','seriesTitle','albumTitle','mainTitle','pageTitle'] as $k) {
-            if (!empty($inline[$k])) foreach ($inline[$k] as $t) $candidates[] = ['src'=>$k,'t'=>$t];
-        }
-        // 爱奇艺专有 meta
-        foreach (['og:video:series_name','tv:series_name','video:series'] as $mk) {
-            if (!empty($meta[$mk])) $candidates[] = ['src'=>'meta '.$mk,'t'=>$meta[$mk]];
-        }
-
-        if (!empty($meta['og:title']) || !empty($meta['<title>'])) {
-            $t = trim($meta['og:title'] ?: $meta['<title>']);
-            $parsed = $this->parseTitleEpisodeSubtitle($t);
-            if ($parsed['base']) $candidates[] = ['src'=>'og:title parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle']) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-        if ((!$out['episode_num'] || empty($out['subtitle_guess'])) && !empty($meta['description'])) {
-            $parsed = $this->parseTitleEpisodeSubtitle($meta['description']);
-            if ($parsed['base'] && empty($out['episode_num'])) $candidates[] = ['src'=>'description parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle'] && empty($out['subtitle_guess'])) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        $base = '';
-        foreach ($candidates as $c) {
-            $clean = $this->cleanTitle($c['t']) ?: trim($c['t'], " \t\n\r《》<>\"'");
-            if ($clean && mb_strlen($clean) >= 2 && mb_strlen($clean) <= 30
-                && !in_array(mb_strtolower($clean), ['爱奇艺','iqiyi','高清在线观看'])) {
-                $base = $clean;
-                $out['hits']['picked'] = $c;
-                break;
-            }
-        }
-        if ($base === '' && !empty($out['raw_title'])) {
-            $p = $this->parseVideoTitle($out['raw_title']);
-            $base = $this->cleanTitle($p['base_title']) ?: trim($p['base_title']);
-            if ($p['episode_num']) $out['episode_num'] = $p['episode_num'];
-            $out['hits']['picked'] = ['src'=>'parseVideoTitle fallback','t'=>$base];
-        }
-        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) $out['total_episodes'] = intval($m[1]);
-
-        $out['base_title'] = $base;
-        $out['ok'] = $base !== '';
-        if ($out['episode_num'] || $out['subtitle_guess']) {
-            $out['episode_name'] = trim(
-                ($out['episode_num'] ? '第'.$out['episode_num'].'集' : '')
-                . ($out['subtitle_guess'] ? ' '.$out['subtitle_guess'] : '')
-            );
-        }
-        return $out;
-    }
-
-    /**
-     * 芒果TV（mgtv.com）元数据提取
-     * 芒果 <title> / og:title 一般含"剧名 第N期"；元 data-clip / partOfSeries 常见
-     */
-    private function fetchMeta_Mgtv(string $html, string $url, array $videoIds): array {
-        $out = [
-            'ok' => false, 'base_title' => '', 'episode_num' => null,
-            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
-            'description' => '', 'total_episodes' => null,
-            'raw_title' => '', 'hits' => [],
-        ];
-        $meta = $this->extractMetaTags($html);
-        $out['raw_title'] = $meta['og:title'] ?? $meta['<title>'] ?? '';
-        $out['description'] = $meta['description'] ?? $meta['og:description'] ?? '';
-        if (empty($out['cover']) && !empty($meta['og:image'])) $out['cover'] = $meta['og:image'];
-
-        $inline = $this->extractInlineSeriesTitles($html);
-        $out['hits']['inline'] = $inline;
-        $candidates = [];
-        foreach (['showName','seriesName','albumName','partOfSeriesName','isPartOfName','seriesTitle','albumTitle','mainTitle','pageTitle','tvName'] as $k) {
-            if (!empty($inline[$k])) foreach ($inline[$k] as $t) $candidates[] = ['src'=>$k,'t'=>$t];
-        }
-
-        if (!empty($meta['og:title']) || !empty($meta['<title>'])) {
-            $t = trim($meta['og:title'] ?: $meta['<title>']);
-            $parsed = $this->parseTitleEpisodeSubtitle($t);
-            if ($parsed['base']) $candidates[] = ['src'=>'og:title parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle']) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-        // 芒果综艺用"第N期"也算一集
-        if (!$out['episode_num']) {
-            $src = $out['raw_title'] . ' ' . ($meta['description'] ?? '');
-            if (preg_match('/第\s*(\d+)\s*期/u', $src, $mm)) {
-                $out['episode_num'] = intval($mm[1]);
-                $out['hits']['episode_from_period'] = true;
-            }
-        }
-        if ((!$out['episode_num'] || empty($out['subtitle_guess'])) && !empty($meta['description'])) {
-            $parsed = $this->parseTitleEpisodeSubtitle($meta['description']);
-            if ($parsed['base'] && empty($out['episode_num'])) $candidates[] = ['src'=>'description parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle'] && empty($out['subtitle_guess'])) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        $base = '';
-        foreach ($candidates as $c) {
-            $clean = $this->cleanTitle($c['t']) ?: trim($c['t'], " \t\n\r《》<>\"'");
-            if ($clean && mb_strlen($clean) >= 2 && mb_strlen($clean) <= 30
-                && !in_array(mb_strtolower($clean), ['芒果tv','芒果','mgtv','在线观看'])) {
-                $base = $clean;
-                $out['hits']['picked'] = $c;
-                break;
-            }
-        }
-        if ($base === '' && !empty($out['raw_title'])) {
-            $p = $this->parseVideoTitle($out['raw_title']);
-            $base = $this->cleanTitle($p['base_title']) ?: trim($p['base_title']);
-            if ($p['episode_num']) $out['episode_num'] = $p['episode_num'];
-            $out['hits']['picked'] = ['src'=>'parseVideoTitle fallback','t'=>$base];
-        }
-        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) $out['total_episodes'] = intval($m[1]);
-
-        $out['base_title'] = $base;
-        $out['ok'] = $base !== '';
-        if ($out['episode_num'] || $out['subtitle_guess']) {
-            $out['episode_name'] = trim(
-                ($out['episode_num'] ? '第'.$out['episode_num'].'集' : '')
-                . ($out['subtitle_guess'] ? ' '.$out['subtitle_guess'] : '')
-            );
-        }
-        return $out;
-    }
-
-    /**
-     * 哔哩哔哩（bilibili.com / B站）元数据提取
-     * og:title / <title> 通常是 "视频标题 - 哔哩哔哩"；partOfSeries.name 是番剧名（如果是番剧）
-     * UGC 视频：视频标题本身就是搜索关键词，不存在"集数"概念，episode_num 留 null
-     */
-    private function fetchMeta_Bilibili(string $html, string $url, array $videoIds): array {
-        $out = [
-            'ok' => false, 'base_title' => '', 'episode_num' => null,
-            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
-            'description' => '', 'total_episodes' => null,
-            'raw_title' => '', 'hits' => [],
-        ];
-        $meta = $this->extractMetaTags($html);
-        $out['raw_title'] = $meta['og:title'] ?? $meta['<title>'] ?? '';
-        $out['description'] = $meta['description'] ?? $meta['og:description'] ?? '';
-        if (empty($out['cover']) && !empty($meta['og:image'])) $out['cover'] = $meta['og:image'];
-
-        $inline = $this->extractInlineSeriesTitles($html);
-        $out['hits']['inline'] = $inline;
-        $candidates = [];
-        // 番剧/影视区：优先 partOfSeries（这才是系列名）
-        foreach (['partOfSeriesName','isPartOfName','seriesName','showName','albumName','seriesTitle','albumTitle','videoSeriesName'] as $k) {
-            if (!empty($inline[$k])) foreach ($inline[$k] as $t) $candidates[] = ['src'=>$k,'t'=>$t];
-        }
-
-        // ld+json
-        if (preg_match_all('~<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>~is', $html, $mm)) {
-            foreach ($mm[1] as $i=>$j) {
-                $d = json_decode(trim($j), true);
-                if (!$d) continue;
-                if (!empty($d['partOfSeries']['name'])) $candidates[] = ['src'=>"ld#$i.partOfSeries.name", 't'=>$d['partOfSeries']['name']];
-                if (!empty($d['isPartOf']['name']))    $candidates[] = ['src'=>"ld#$i.isPartOf.name",    't'=>$d['isPartOf']['name']];
-            }
-        }
-
-        // 对 UGC：拿 og:title 当 base_title（标题本身就是内容名）
-        $rawTitleClean = '';
-        if (!empty($meta['og:title'])) {
-            $t = preg_replace('/\s*[-_|·]+\s*(?:哔哩哔哩|bilibili|b站)\s*$/iu', '', trim($meta['og:title']));
-            $rawTitleClean = trim($t);
-            $parsed = $this->parseTitleEpisodeSubtitle($t);
-            if ($parsed['base']) $candidates[] = ['src'=>'og:title parse','t'=>$parsed['base']];
-            if ($parsed['episode_num']) $out['episode_num'] = $parsed['episode_num'];
-            if ($parsed['subtitle']) $out['subtitle_guess'] = $parsed['subtitle'];
-        }
-
-        // UGC 视频：如果 candidates 里没有系列名，就直接用 videoTitle 当 base_title（让资源站搜 P1/P2 / 分P）
-        if (empty($candidates) && $rawTitleClean) {
-            $candidates[] = ['src'=>'ugc_title', 't'=>$rawTitleClean];
-        }
-
-        $base = '';
-        foreach ($candidates as $c) {
-            $clean = $this->cleanTitle($c['t']) ?: trim($c['t'], " \t\n\r《》<>\"'");
-            if ($clean && mb_strlen($clean) >= 2 && mb_strlen($clean) <= 40
-                && !in_array(mb_strtolower($clean), ['哔哩哔哩','bilibili','b站','bilibili视频'])) {
-                $base = $clean;
-                $out['hits']['picked'] = $c;
-                break;
-            }
-        }
-        if ($base === '' && !empty($out['raw_title'])) {
-            $p = $this->parseVideoTitle($out['raw_title']);
-            $base = $this->cleanTitle($p['base_title']) ?: trim($p['base_title']);
-            if ($p['episode_num']) $out['episode_num'] = $p['episode_num'];
-            $out['hits']['picked'] = ['src'=>'parseVideoTitle fallback','t'=>$base];
-        }
-
-        $out['base_title'] = $base;
-        $out['ok'] = $base !== '';
-        if ($out['episode_num'] || $out['subtitle_guess']) {
-            $out['episode_name'] = trim(
-                ($out['episode_num'] ? '第'.$out['episode_num'].'集' : '')
-                . ($out['subtitle_guess'] ? ' '.$out['subtitle_guess'] : '')
-            );
-        }
-        return $out;
-    }
-
-    /**
-     * 通用兜底：不区分平台，使用旧逻辑提取
-     */
-    private function fetchMeta_Generic(string $html, string $url, array $videoIds): array {
-        $out = [
-            'ok' => false, 'base_title' => '', 'episode_num' => null,
-            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
-            'description' => '', 'total_episodes' => null,
-            'raw_title' => '', 'hits' => [],
-        ];
-        $meta = $this->extractMetaTags($html);
-        $out['raw_title'] = $meta['og:title'] ?? $meta['twitter:title'] ?? $meta['<title>'] ?? '';
-        $out['description'] = $meta['description'] ?? $meta['og:description'] ?? '';
-        if (empty($out['cover']) && !empty($meta['og:image'])) $out['cover'] = $meta['og:image'];
-        if (!empty($out['raw_title'])) {
-            $p = $this->parseVideoTitle($out['raw_title']);
-            $out['base_title'] = $this->cleanTitle($p['base_title']) ?: trim($p['base_title']);
-            $out['episode_num'] = $p['episode_num'];
-            if ($out['episode_num']) {
-                $out['episode_name'] = '第'.$out['episode_num'].'集';
-                $trimmed = preg_replace('/^(.*?第\s*'.$out['episode_num'].'\s*集)\s*/u', '', $out['raw_title'], 1);
-                if ($trimmed && $trimmed !== $out['raw_title']) {
-                    $sub = preg_split('/[-_|·|\s]+在线观看|\s*-\s*(?:电视剧|电影|综艺|动漫)|，|。|\.|\s|$/u', $trimmed, 2)[0] ?? '';
-                    $sub = preg_replace('/\s+/u',' ', trim($sub, " \t\r\n:：-_—|·"));
-                    if ($sub && mb_strlen($sub) >= 2 && mb_strlen($sub) <= 60) {
-                        $out['subtitle_guess'] = $sub;
-                        $out['episode_name'] .= ' '.$sub;
+                if ($matched && !empty($mm[1])) {
+                    $t = html_entity_decode(trim($mm[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                    $t = trim($t, " \t\n\r《》<>\"'");
+                    if ($t && mb_strlen($t) >= 2 && mb_strlen($t) <= 30) {
+                        $lower = mb_strtolower($t);
+                        foreach ($banWords as $b) if (strpos($lower, $b) !== false) { $t = ''; break; }
+                        if ($t) { $base = $t; break; }
                     }
                 }
             }
-            $out['ok'] = !empty($out['base_title']);
-            $out['hits']['picked'] = ['src'=>'generic parseVideoTitle', 't'=>$out['base_title']];
         }
-        if (preg_match('/(?:共|全)\s*(\d+)\s*集/u', $html, $m)) $out['total_episodes'] = intval($m[1]);
+        // 2) meta 标签兜底（og:video:series_name / tv:series_name / ...）
+        if ($base === '' && !empty($metaKeys)) {
+            foreach ($metaKeys as $prop) {
+                $re = '~<meta\s+(?:property|name)=["\']' . preg_quote($prop, '~') . '["\'][^>]*content=["\']([^"\']{2,60})["\']~i';
+                $reRev = '~<meta\s+content=["\']([^"\']{2,60})["\'][^>]*(?:property|name)=["\']' . preg_quote($prop, '~') . '["\']~i';
+                if (preg_match($re, $html, $mm) || preg_match($reRev, $html, $mm)) {
+                    $t = html_entity_decode(trim($mm[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                    $t = trim($t, " \t\n\r《》<>\"'");
+                    if ($t && mb_strlen($t) >= 2 && mb_strlen($t) <= 30) {
+                        $lower = mb_strtolower($t);
+                        $ok = true; foreach ($banWords as $b) if (strpos($lower, $b) !== false) { $ok = false; break; }
+                        if ($ok) { $base = $t; break; }
+                    }
+                }
+            }
+        }
+        // 3) og:title / <title> 截取 "第X集/话/期" 之前的文本作为剧名兜底
+        if ($base === '' && preg_match('~<title[^>]*>([^<]{3,200})</title>~is', $html, $mm)) {
+            $tSrc = html_entity_decode(trim($mm[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $tSrc = preg_replace('/\s*[-_|·]+\s*(?:在线观看|高清|电视剧|电影|综艺|动漫|纪录片)\s*$/iu', '', $tSrc);
+            if (preg_match('/第\s*\d+\s*[集话期部季]/u', $tSrc, $epPos, PREG_OFFSET_CAPTURE)) {
+                $before = trim(mb_substr($tSrc, 0, $epPos[0][1]));
+                if ($before) { $before = preg_replace('/^《(.+)》$/u', '$1', $before); $before = trim($before, " \t\n\r《》<>\"'_-"); }
+                if ($before && mb_strlen($before) >= 2 && mb_strlen($before) <= 30) {
+                    $lower = mb_strtolower($before);
+                    $ok = true; foreach ($banWords as $b) if (strpos($lower, $b) !== false) { $ok = false; break; }
+                    if ($ok) $base = $before;
+                }
+            } else {
+                // 没集数（如电影名）：整段 title 去平台后缀
+                $clean = preg_replace('/\s*[-_|·]+\s*(?:优酷|爱奇艺|腾讯视频|芒果tv|哔哩哔哩|bilibili|b站)\s*$/iu', '', $tSrc);
+                $clean = trim($clean, " \t\n\r《》<>\"'");
+                if ($clean && mb_strlen($clean) >= 2 && mb_strlen($clean) <= 40) {
+                    $lower = mb_strtolower($clean);
+                    $ok = true; foreach ($banWords as $b) if (strpos($lower, $b) !== false) { $ok = false; break; }
+                    if ($ok) $base = $clean;
+                }
+            }
+        }
+
+        // ---- 集数（只扫一次短文本拼接）----
+        if (preg_match('~<meta\s+property=["\']og:title["\'][^>]+content=["\']([^"\']{3,200})["\']~i', $html, $mm1)) {
+            $og = html_entity_decode(trim($mm1[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        } elseif (preg_match('~<meta\s+content=["\']([^"\']{3,200})["\'][^>]+property=["\']og:title["\']~i', $html, $mm1)) {
+            $og = html_entity_decode(trim($mm1[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        } else {
+            $og = '';
+        }
+        $titleStr = '';
+        if (preg_match('~<title[^>]*>([^<]{3,200})</title>~is', $html, $mm2)) {
+            $titleStr = html_entity_decode(trim($mm2[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+        $epSrc = $og . ' ' . $titleStr;
+        if (mb_strlen($epSrc) > 320) $epSrc = mb_substr($epSrc, 0, 320);
+        if (preg_match('/第\s*(\d+)\s*[集话期部季]/u', $epSrc, $mm)) $ep = intval($mm[1]);
+        if (!$ep && preg_match('/\bEP\s*(\d+)\b/ui', $epSrc, $mm)) $ep = intval($mm[1]);
+        if (!$ep && preg_match('/(?:^|[\s\-_|·])(\d{1,3})\s*\/\s*\d{1,3}(?:$|[\s\-_|·])/u', $epSrc, $mm)) $ep = intval($mm[1]); // "2 / 24 全" 格式
+
+        return [
+            'ok' => ($base !== ''),
+            'base_title'   => $base,
+            'episode_num'  => $ep,
+            // 以下字段固定为空/零值：fetchVideoInfo 仍会尝试读取它们，但我们不填，节省内存
+            'episode_name' => '', 'subtitle_guess' => '', 'cover' => '',
+            'description'  => '', 'total_episodes' => null,
+            'raw_title'    => '',
+            'hits'         => [], // 保持 key 存在（避免 fetchVideoInfo 读键 Notice），内部不再塞大对象
+        ];
+    }
+
+    /**
+     * 优酷（youku.com）元数据提取（极简）
+     * 核心：showName="九门"（内联 JSON），og:title 只抽集数用。其他字段一律丢弃。
+     */
+    private function fetchMeta_Youku(string $html, string $url, array $videoIds): array {
+        return $this->_extractQuickBaseAndEpisode($html,
+            ['showName', 'videoShowName', 'seriesName', 'albumName', 'videoSeriesName', 'videoAlbumName', 'pgcTitle'],
+            ['og:video:show', 'og:video:series_name', 'og:video:album'],
+            ['优酷', '优酷视频', 'youku', '高清视频在线观看', '视频平台', '电视剧', '电影', '综艺']
+        );
+    }
+
+    /**
+     * 腾讯视频（v.qq.com）元数据提取（极简）
+     * 核心：ld+json partOfSeries.name / isPartOf.name  → 我们也用正则直接扫 partOfSeries 内联字段，不 json_decode
+     */
+    private function fetchMeta_Tencent(string $html, string $url, array $videoIds): array {
+        return $this->_extractQuickBaseAndEpisode($html,
+            ['partOfSeries.name', 'isPartOf.name', 'seriesName', 'showName', 'albumName', 'tvName', 'videoSeriesName', 'mainTitle'],
+            ['og:video:series', 'og:video:show', 'og:video:album'],
+            ['腾讯视频', '腾讯', 'v.qq.com', 'qq', '在线观看', '电视剧', '电影', '综艺']
+        );
+    }
+
+    /**
+     * 爱奇艺（iqiyi.com）元数据提取（极简）
+     * 核心：seriesName / albumName（内联） + og:video:series_name / tv:series_name meta
+     */
+    private function fetchMeta_Iqiyi(string $html, string $url, array $videoIds): array {
+        return $this->_extractQuickBaseAndEpisode($html,
+            ['seriesName', 'albumName', 'showName', 'partOfSeries.name', 'isPartOf.name', 'videoSeriesName', 'pageTitle', 'mainTitle'],
+            ['og:video:series_name', 'tv:series_name', 'og:video:series', 'video:series', 'og:video:album'],
+            ['爱奇艺', 'iqiyi', '高清在线观看', '在线观看', '电视剧', '电影', '综艺']
+        );
+    }
+
+    /**
+     * 芒果TV（mgtv.com）元数据提取（极简）
+     * 综艺常写"第N期"——正则一并匹配（[集话期部季] 里含期）
+     */
+    private function fetchMeta_Mgtv(string $html, string $url, array $videoIds): array {
+        return $this->_extractQuickBaseAndEpisode($html,
+            ['showName', 'seriesName', 'albumName', 'partOfSeries.name', 'isPartOf.name', 'seriesTitle', 'albumTitle', 'pageTitle', 'mainTitle', 'tvName'],
+            ['og:video:series', 'og:video:show', 'og:video:album'],
+            ['芒果tv', '芒果', 'mgtv', '在线观看', '湖南卫视', '电视剧', '电影', '综艺']
+        );
+    }
+
+    /**
+     * 哔哩哔哩（bilibili.com / B站）元数据提取（极简）
+     * 番剧：partOfSeries.name / season_title；UGC 视频：没系列名 → 用 og:title 去 "-哔哩哔哩" 后缀作剧名，episode_num=null
+     */
+    private function fetchMeta_Bilibili(string $html, string $url, array $videoIds): array {
+        $out = $this->_extractQuickBaseAndEpisode($html,
+            ['partOfSeries.name', 'isPartOf.name', 'seasonName', 'seriesName', 'showName', 'albumName', 'videoSeriesName'],
+            ['og:video:series', 'og:video:show'],
+            ['哔哩哔哩', 'bilibili', 'b站', 'bilibili视频', '弹幕视频网', '在线观看']
+        );
+        // UGC 兜底：如果没抓到 base_title（非番剧），就用 og:title / <title> 去平台后缀当内容名（让资源站搜分 P / 投稿标题）
+        if ($out['base_title'] === '') {
+            $og = '';
+            if (preg_match('~<meta\s+property=["\']og:title["\'][^>]+content=["\']([^"\']{3,200})["\']~i', $html, $mm)) {
+                $og = (string)$mm[1];
+            } elseif (preg_match('~<meta\s+content=["\']([^"\']{3,200})["\'][^>]+property=["\']og:title["\']~i', $html, $mm)) {
+                $og = (string)$mm[1];
+            }
+            if ($og === '' && preg_match('~<title[^>]*>([^<]{3,200})</title>~is', $html, $mm)) {
+                $og = (string)$mm[1];
+            }
+            if ($og !== '') {
+                $t = html_entity_decode(trim($og), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $t = preg_replace('/\s*[-_|·]+\s*(?:哔哩哔哩|bilibili|b站)\s*$/iu', '', $t);
+                $t = trim($t, " \t\n\r《》<>\"'【】\[\]\(\)（）");
+                if ($t && mb_strlen($t) >= 2 && mb_strlen($t) <= 80 && preg_match('//u', $t)) { // 合法 UTF-8（避免 �）
+                    $out['base_title'] = $t;
+                    $out['ok'] = true;
+                }
+            }
+        }
         return $out;
+    }
+
+    /**
+     * 通用兜底（未识别平台）：只用 og:title/<title> 抽 base_title + 集数（正则最简，不扫 meta）
+     */
+    private function fetchMeta_Generic(string $html, string $url, array $videoIds): array {
+        return $this->_extractQuickBaseAndEpisode($html,
+            ['showName', 'seriesName', 'albumName', 'partOfSeries.name', 'isPartOf.name'],
+            ['og:video:series', 'og:video:show', 'og:video:album', 'og:video:series_name'],
+            ['在线观看', '高清', '完整版', '电视剧', '电影', '综艺', '动漫']
+        );
     }
 
     // -------- 以上平台解析器共用的工具方法 --------
