@@ -467,93 +467,14 @@ class PerformanceOptimizer
      * @return string|null
      */
     private function extractVideoUrl(string $response, array $api, string $videoUrl = ''): ?string
-    {
-            // 若已从 jiami_core 载入加密实现，则直接转发 (避免重复实现 & 保证分支一致)
-            if (function_exists('_jm_po_extractVideoUrl')) {
-                $__c = _jm_po_extractVideoUrl();
-                return $__c->call($this, ...func_get_args());
-            }
-        $videoHost = $videoUrl ? (parse_url($videoUrl, PHP_URL_HOST) ?: '') : '';
-        $excludeDomainPattern = $videoHost ? '/\/\/' . preg_quote($videoHost, '/') . '/i' : '';
-
-        $isSafeVideoUrl = function (string $candidate, bool $allowProxy = true) use ($videoUrl, $videoHost): bool {
-            if ($candidate === $videoUrl || rtrim($candidate, '/') === rtrim($videoUrl, '/')) {
-                return false;
-            }
-            if (!filter_var($candidate, FILTER_VALIDATE_URL)) {
-                return false;
-            }
-            $cHost = parse_url($candidate, PHP_URL_HOST);
-            if ($cHost && $videoHost && strcasecmp($cHost, $videoHost) === 0) {
-                return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-            }
-            return $allowProxy ? true : (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-        };
-
-        $type = $api['type'] ?? 'json';
-
-        switch ($type) {
-            case 'json':
-                $data = json_decode($response, true);
-                if (!$data) {
-                    return null;
-                }
-
-                $urlField = $api['url_field'] ?? null;
-                $url = null;
-
-                if ($urlField && isset($data[$urlField])) {
-                    $url = $data[$urlField];
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-
-                if (!$url && !empty($data['success'])) {
-                    $url = $data['ad_skip_url'] ?? $data['m3u8_url'] ?? null;
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-
-                if (!$url) {
-                    $candidates = [
-                        $data['url'] ?? null,
-                        $data['play_url'] ?? null,
-                        $data['data']['url'] ?? null,
-                        $data['data']['play_url'] ?? null,
-                        $data['video_url'] ?? null,
-                    ];
-                    foreach ($candidates as $c) {
-                        if ($c && $isSafeVideoUrl($c, false)) {
-                            return $c;
-                        }
-                    }
-                }
-
-                return $this->findUrlInArray($data, $excludeDomainPattern);
-
-            case 'redirect':
-                if (filter_var(trim($response), FILTER_VALIDATE_URL)) {
-                    $candidate = trim($response);
-                    if ($isSafeVideoUrl($candidate, true)) {
-                        return $candidate;
-                    }
-                }
-                return null;
-
-            case 'text':
-            default:
-                if (preg_match('/https?:\/\/[^\s"\'<>]+/i', $response, $matches)) {
-                    $url = $matches[0];
-                    if ($isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                }
-                return null;
+        {
+        // jiami 分支：核心解密逻辑由 xt/jiami_core.php 中的工厂函数提供，
+        //            用 Closure::call($this) 绑定实例
+        if (!function_exists('_jm_po_extractVideoUrl')) {
+            throw new \RuntimeException('[jiami] 缺少 PerformanceOptimizer::extractVideoUrl 解密工厂：请确认 xt/jiami_core.php 已加载。');
         }
+        $__c = _jm_po_extractVideoUrl();
+        return $__c->call($this, ...func_get_args());
     }
 
     /**
@@ -565,44 +486,12 @@ class PerformanceOptimizer
      * @return string|null
      */
     private function findUrlInArray($data, string $excludeDomainPattern = ''): ?string
-    {
-            if (function_exists('_jm_po_findUrlInArray')) {
-                $__c = _jm_po_findUrlInArray();
-                return $__c->call($this, ...func_get_args());
-            }
-        if (!is_array($data)) {
-            return null;
+        {
+        if (!function_exists('_jm_po_findUrlInArray')) {
+            throw new \RuntimeException('[jiami] 缺少 PerformanceOptimizer::findUrlInArray 解密工厂：请确认 xt/jiami_core.php 已加载。');
         }
-        $excludeKeys = [
-            'original_url','source_url','input_url','request_url',
-            'referer','referrer','redirect_url','callback_url',
-            'page_url','web_url','link','share_url','msg','message',
-            'homepage','logo_url','pic','cover','poster','avatar',
-            'download_url','subtitle_url','danmaku_url',
-        ];
-        $videoExtPattern = '/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i';
-
-        foreach ($data as $key => $value) {
-            if (is_string($key) && in_array(strtolower($key), $excludeKeys, true)) {
-                continue;
-            }
-            if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)) {
-                if (!preg_match($videoExtPattern, $value)) {
-                    continue;
-                }
-                if ($excludeDomainPattern && preg_match($excludeDomainPattern, $value)) {
-                    continue;
-                }
-                return $value;
-            }
-            if (is_array($value)) {
-                $found = $this->findUrlInArray($value, $excludeDomainPattern);
-                if ($found) {
-                    return $found;
-                }
-            }
-        }
-        return null;
+        $__c = _jm_po_findUrlInArray();
+        return $__c->call($this, ...func_get_args());
     }
 
     /**

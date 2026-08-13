@@ -181,13 +181,32 @@ class OfficialReplaceManager {
             $videoInfo['version'] = $parsedInfo['version'];
             $videoInfo['video_id'] = $videoId;
 
+            // ===== v5.11 新增：优先使用 extractRichMetaFromHtml 里的 base_title_guess（比 parseVideoTitle 更准，因为基于 description / og:type）=====
+            if (!empty($videoInfo['episode_info']['base_title_guess'])
+                && mb_strlen($videoInfo['episode_info']['base_title_guess']) >= 2
+                && (empty($videoInfo['base_title']) || mb_strlen($videoInfo['base_title']) < 2)) {
+                $videoInfo['base_title'] = $videoInfo['episode_info']['base_title_guess'];
+            }
+            if (!empty($videoInfo['episode_info']['subtitle_guess'])) {
+                if (empty($videoInfo['episode']) || mb_strlen($videoInfo['episode']) < 3) {
+                    $videoInfo['episode'] = $videoInfo['episode_info']['subtitle_guess'];
+                }
+                $videoInfo['episode_subtitle'] = $videoInfo['episode_info']['subtitle_guess'];
+            }
+            if (!empty($videoInfo['episode_info']['episode_name']) && empty($videoInfo['episode'])) {
+                $videoInfo['episode'] = $videoInfo['episode_info']['episode_name'];
+            }
+
             if (empty($videoInfo['episode_num']) && !empty($videoInfo['episode_info']['episode_num'])) {
                 $videoInfo['episode_num'] = $videoInfo['episode_info']['episode_num'];
-                $videoInfo['episode'] = $videoInfo['episode_info']['episode_name'];
+                $videoInfo['episode'] = $videoInfo['episode_info']['episode_name'] ?: ($videoInfo['episode'] ?? '第' . $videoInfo['episode_num'] . '集');
             }
 
             if (empty($videoInfo['total_episodes']) && !empty($videoInfo['episode_info']['total_episodes'])) {
                 $videoInfo['total_episodes'] = $videoInfo['episode_info']['total_episodes'];
+            }
+            if (empty($videoInfo['description']) && !empty($videoInfo['description'] ?? '')) {
+                // noop (兼容字段)
             }
 
             $searchKeywords = $this->buildSearchKeywords($videoInfo, $platform);
@@ -296,7 +315,7 @@ class OfficialReplaceManager {
             $episodeFromPlaylist = false;
 
             if (!empty($videoInfo['episode_num']) && !empty($allUrls)) {
-                $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num']);
+                $epResult = $this->findEpisodeUrl($allUrls, $videoInfo['episode_num'], $videoInfo);
                 if ($epResult) {
                     $targetEpisodeUrl = $epResult['url'];
                     $targetEpisodeName = $epResult['name'];
@@ -437,6 +456,31 @@ class OfficialReplaceManager {
         $version = $videoInfo['version'] ?? '';
         $part = $videoInfo['part'] ?? '';
         $videoTitle = $videoInfo['title'] ?? '';
+        $episodeNum = $videoInfo['episode_num'] ?? null;
+        $episodeSubtitle = $videoInfo['episode_subtitle'] ?? '';
+        $episodeStr = $videoInfo['episode'] ?? '';
+
+        // ===== v5.11 新增：最高优先级——官方页面解析出的精准组合词 = base_title + 第X集 + 分剧名(如"张启山和吴老狗达成合作") =====
+        // 资源站很多资源都命名为"九门 第2集 张启山和吴老狗达成合作"，这种搜索词命中率 80%+
+        if (!empty($baseTitle)) {
+            if ($episodeNum) {
+                $kw = $baseTitle . ' 第' . $episodeNum . '集';
+                if ($episodeSubtitle) {
+                    $keywords[] = $kw . ' ' . $episodeSubtitle;
+                }
+                $keywords[] = $kw;
+                if ($episodeStr && $episodeStr !== $kw && mb_strlen($episodeStr) <= 60) {
+                    $keywords[] = $baseTitle . ' ' . $episodeStr;
+                }
+            } elseif ($episodeSubtitle) {
+                $keywords[] = $baseTitle . ' ' . $episodeSubtitle;
+            }
+        }
+        // v5.11 把分剧名本身也作为 fallback 搜索词（资源站可能直接按"张启山和吴老狗达成合作"命名 90% 命中率）
+        if ($episodeSubtitle && !in_array($episodeSubtitle, $keywords, true)) {
+            $keywords[] = $episodeSubtitle;
+            if (!empty($baseTitle)) $keywords[] = $baseTitle . $episodeSubtitle; // 无空格版
+        }
 
         // 以 video_title 和 base_title 为准，作为最优先搜索词
         if (!empty($videoTitle)) {
@@ -856,6 +900,10 @@ class OfficialReplaceManager {
             'total_episodes' => null
         ];
         $isExpired = false;
+        $description = '';
+        $ogType = '';
+        $category = '';
+        $releaseDate = '';
 
         $apiInfo = $this->fetchVideoInfoFromApi($videoId, $platform, $coverId, $url);
         if ($apiInfo) {
@@ -882,9 +930,32 @@ class OfficialReplaceManager {
                 if (!empty($htmlEpisodeInfo['episode_num'])) {
                     $episodeInfo = $htmlEpisodeInfo;
                 }
+                // ===== v5.11 新增：官方页面元数据深度解析 =====
+                $meta = $this->extractRichMetaFromHtml($html, $title ?: $htmlTitle);
+                if (!empty($meta['description'])) {
+                    $description = $meta['description'];
+                    if (empty($episodeInfo['episode_num']) && !empty($meta['episode_num'])) {
+                        $episodeInfo['episode_num'] = $meta['episode_num'];
+                        $episodeInfo['episode_name'] = $meta['episode_name'] ?? '';
+                    } elseif (!empty($meta['episode_name'])) {
+                        $episodeInfo['episode_name'] = $meta['episode_name'];
+                    }
+                    if (!empty($meta['total_episodes'])) $episodeInfo['total_episodes'] = $meta['total_episodes'];
+                }
+                if (!empty($meta['og_type'])) $ogType = $meta['og_type'];
+                if (!empty($meta['category'])) $category = $meta['category'];
+                if (!empty($meta['release_date'])) $releaseDate = $meta['release_date'];
+                // ===== v5.11 新增：如果 og:type 是 video.episode 且从 <title> 解析出的集次/分剧名，强行补上 =====
+                if (($ogType === 'video.episode' || strpos($ogType,'episode') !== false) && empty($episodeInfo['episode_num'])) {
+                    $tEpi = $this->parseVideoTitle($title ?: $htmlTitle);
+                    if (!empty($tEpi['episode_num'])) {
+                        $episodeInfo['episode_num'] = $tEpi['episode_num'];
+                        $episodeInfo['episode_name'] = $tEpi['episode'] ?? $episodeInfo['episode_name'];
+                    }
+                }
             }
-            
-            if ((empty($title) || mb_strlen($title) < 3) && in_array($platform['domain'], ['iqiyi.com', 'youku.com', 'mgtv.com', 'sohu.com', 'pptv.com'])) {
+
+            if ((empty($title) || mb_strlen($title) < 3) && in_array($platform['domain'], ['iqiyi.com', 'youku.com', 'mgtv.com', 'sohu.com', 'pptv.com', 'v.qq.com'])) {
                 $mobileHtml = $this->httpGetMobile($url);
                 if ($mobileHtml) {
                     $mobileTitle = $this->extractTitle($mobileHtml, $platform);
@@ -918,6 +989,15 @@ class OfficialReplaceManager {
             $isExpired = true;
         }
 
+        // ===== v5.11 新增：从 title 解析出的集次信息，如果 episode_info 仍为空，再次补一遍 =====
+        if (empty($episodeInfo['episode_num']) && !empty($title)) {
+            $p = $this->parseVideoTitle($title);
+            if (!empty($p['episode_num'])) {
+                $episodeInfo['episode_num'] = $p['episode_num'];
+                $episodeInfo['episode_name'] = $p['episode'] ?? '';
+            }
+        }
+
         return [
             'title' => $title,
             'cover' => $cover,
@@ -926,7 +1006,11 @@ class OfficialReplaceManager {
             'episode_info' => $episodeInfo,
             'video_id' => $videoId,
             'cover_id' => $coverId,
-            'is_expired' => $isExpired
+            'is_expired' => $isExpired,
+            'description' => $description,
+            'og_type' => $ogType,
+            'category' => $category,
+            'release_date' => $releaseDate,
         ];
     }
 
@@ -1692,6 +1776,109 @@ class OfficialReplaceManager {
         });
 
         return $result;
+    }
+
+    /**
+     * v5.11 新增：从官方页面 HTML 里深度抽取 description / category / og:type / release_date / 集次-分剧名
+     * 直接从 meta[name=description] / property=og:description / property=og:type 等取，
+     * 再从 description 前半段抽 "九门 第2集 张启山和吴老狗达成合作" 这种「剧+第N集+分剧名」格式，
+     * 用于后续 buildSearchKeywords 的最优先搜索词。
+     */
+    private function extractRichMetaFromHtml($html, $currentTitle = '') {
+        $out = [
+            'description' => '',
+            'category' => '',
+            'og_type' => '',
+            'release_date' => '',
+            'episode_num' => null,
+            'episode_name' => '',
+            'total_episodes' => null,
+            'base_title_guess' => '',
+            'subtitle_guess' => ''
+        ];
+
+        // ---------- 1. 抽取 description / category / og_type / release_date ----------
+        $metaPatterns = [
+            ['re'=>'~<meta\s+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'description'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+name=["\']description["\']~si', 'k'=>'description'],
+            ['re'=>'~<meta\s+property=["\']og:description["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'description'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+property=["\']og:description["\']~si', 'k'=>'description'],
+            ['re'=>'~<meta\s+property=["\']og:type["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'og_type'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+property=["\']og:type["\']~si', 'k'=>'og_type'],
+            ['re'=>'~<meta\s+name=["\']category["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'category'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+name=["\']category["\']~si', 'k'=>'category'],
+            ['re'=>'~<meta\s+property=["\']og:category["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'category'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+property=["\']og:category["\']~si', 'k'=>'category'],
+            ['re'=>'~<meta\s+property=["\']video:release_date["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'release_date'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+property=["\']video:release_date["\']~si', 'k'=>'release_date'],
+            ['re'=>'~<meta\s+property=["\']article:published_time["\'][^>]+content=["\']([^"\']+)["\']~si', 'k'=>'release_date'],
+            ['re'=>'~<meta\s+content=["\']([^"\']+)["\'][^>]+property=["\']article:published_time["\']~si', 'k'=>'release_date'],
+        ];
+        foreach ($metaPatterns as $p) {
+            if (empty($out[$p['k']]) && preg_match($p['re'], $html, $m)) {
+                $val = html_entity_decode(trim($m[1]), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+                if ($val !== '') $out[$p['k']] = $val;
+            }
+        }
+        // 优酷 description 里常包含「于 2026-07-30 11:50:01 上线」直接抓上线时间
+        if (!$out['release_date'] && $out['description']) {
+            if (preg_match('/(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/u', $out['description'], $dm)) {
+                $out['release_date'] = $dm[1];
+            }
+        }
+
+        // ---------- 2. 从 description 开头/title 中抽取「剧+第N集+分剧名」组合 ----------
+        $candidates = [];
+        if ($out['description']) $candidates[] = mb_substr($out['description'], 0, 120);
+        if ($currentTitle) $candidates[] = $currentTitle;
+
+        $foundHead = '';
+        $foundEpisodeNum = null;
+        $foundSubtitle = '';
+        $foundBase = '';
+        foreach ($candidates as $c) {
+            // 匹配：  ...剧 第X集 分剧名( - 或后面的 - 或第一个句号之前)
+            if (preg_match('/([\x{4e00}-\x{9fa5}A-Za-z0-9《》]{2,40})\s*第\s*(\d+)\s*集\s*[\x{3000}\s:：\-_]*(.{2,60}?)(?:(?:\s+是在|，|。|\.|\s|-|$))/u', $c, $mm)) {
+                $foundBase = $this->cleanTitle($mm[1]) ?: trim($mm[1], " \t《》\r\n");
+                $foundEpisodeNum = intval($mm[2]);
+                $foundSubtitle = preg_replace('/\s+/u',' ', trim($mm[3], " \t\r\n:：-_—|·。，,、"));
+                $foundHead = $foundBase . ' 第' . $foundEpisodeNum . '集' . ($foundSubtitle ? ' ' . $foundSubtitle : '');
+                break;
+            }
+        }
+        // 再从 title 兜底：《九门 第2集 张启山和吴老狗达成合作-电视剧》
+        if (!$foundEpisodeNum && $currentTitle) {
+            $pt = $this->parseVideoTitle($currentTitle);
+            if (!empty($pt['episode_num'])) {
+                $foundEpisodeNum = $pt['episode_num'];
+                $foundBase = $this->cleanTitle($pt['base_title']) ?: trim($pt['base_title']);
+                // 从 title 里截掉"剧名 第X集 " 后的前缀到第一个分隔符之前的部分作为分剧名
+                $trimmed = preg_replace('/^(.*?第\s*' . $foundEpisodeNum . '\s*集)\s*/u', '', $currentTitle, 1);
+                if ($trimmed && $trimmed !== $currentTitle) {
+                    $sub = preg_split('/[-_|·|\s]+在线观看|\s+-\s+(?:电视剧|电影|综艺|动漫|纪录片)|，|。|\.|\s|$/u', $trimmed, 2)[0] ?? '';
+                    $sub = preg_replace('/\s+/u', ' ', trim($sub, " \t\r\n:：-_—|·"));
+                    if ($sub && mb_strlen($sub) >= 2 && mb_strlen($sub) <= 60) {
+                        $foundSubtitle = $sub;
+                    }
+                }
+            }
+        }
+
+        if ($foundEpisodeNum) {
+            $out['episode_num'] = $foundEpisodeNum;
+            $out['episode_name'] = $foundHead ?: ('第' . $foundEpisodeNum . '集' . ($foundSubtitle ? ' ' . $foundSubtitle : ''));
+            $out['base_title_guess'] = $foundBase;
+            $out['subtitle_guess'] = $foundSubtitle;
+        }
+
+        // 从全文里匹配共多少集
+        if (preg_match('/共\s*(\d+)\s*集/u', $html, $mm2)) {
+            $out['total_episodes'] = intval($mm2[1]);
+        } elseif (preg_match('/全\s*(\d+)\s*集/u', $html, $mm2)) {
+            $out['total_episodes'] = intval($mm2[1]);
+        }
+
+        return $out;
     }
 
     private function extractEpisodeFromHtml($html, $platform) {
@@ -2601,23 +2788,34 @@ class OfficialReplaceManager {
         return round($finalScore, 2);
     }
 
-    private function findEpisodeUrl($urls, $episodeInfo) {
+    private function findEpisodeUrl($urls, $episodeInfo, $videoInfo = null) {
         $targetEpNum = null;
+        $targetSubtitle = is_array($videoInfo) ? ($videoInfo['episode_subtitle'] ?? '') : '';
+        $targetEpisodeName = is_array($videoInfo) ? ($videoInfo['episode'] ?? '') : '';
         if (is_numeric($episodeInfo)) {
             $targetEpNum = intval($episodeInfo);
         } elseif (is_array($episodeInfo) && isset($episodeInfo['episode_num'])) {
             $targetEpNum = $episodeInfo['episode_num'];
+            if (empty($targetSubtitle) && !empty($episodeInfo['episode_name'])) $targetSubtitle = $episodeInfo['episode_name'];
         } elseif (is_string($episodeInfo)) {
             $parsed = $this->parseVideoTitle($episodeInfo);
             $targetEpNum = $parsed['episode_num'];
         }
 
-        if ($targetEpNum === null) {
+        if ($targetEpNum === null && !$targetSubtitle && !$targetEpisodeName) {
             return null;
         }
 
         $bestMatch = null;
         $bestDiff = PHP_INT_MAX;
+        $bestSubtitleScore = -1;
+
+        $toShort = function($s) {
+            $s = preg_replace('/\s+/u', '', (string)$s);
+            return preg_replace('/[，。！？：；、\-_]/u', '', $s);
+        };
+        $targetSubS = $toShort($targetSubtitle);
+        $targetEpS = $toShort($targetEpisodeName);
 
         foreach ($urls as $index => $urlItem) {
             $epName = '';
@@ -2634,6 +2832,42 @@ class OfficialReplaceManager {
             if (empty($epUrl)) {
                 continue;
             }
+
+            // ===== v5.11 S3：先做分剧名(字幕)匹配，再做集次匹配。对资源站命名「第2集 张启山和吴老狗达成合作」很有效 =====
+            if ($targetSubS !== '' || $targetEpS !== '') {
+                $nameS = $toShort($epName);
+                $subtitleScore = 0;
+                if ($targetSubS !== '' && mb_strlen($targetSubS) >= 4) {
+                    similar_text($nameS, $targetSubS, $pct1);
+                    $subtitleScore = max($subtitleScore, $pct1);
+                    if (strpos($nameS, $targetSubS) !== false || strpos($targetSubS, $nameS) !== false) {
+                        $subtitleScore = max($subtitleScore, 99.0);
+                    }
+                }
+                if ($targetEpS !== '' && mb_strlen($targetEpS) >= 4) {
+                    similar_text($nameS, $targetEpS, $pct2);
+                    $subtitleScore = max($subtitleScore, $pct2);
+                    if (strpos($nameS, $targetEpS) !== false || strpos($targetEpS, $nameS) !== false) {
+                        $subtitleScore = max($subtitleScore, 99.0);
+                    }
+                }
+                // 字幕分足够高时，直接返回该集（可以比单纯集次更准，防止集数错位的情况）
+                if ($subtitleScore >= 65 && $subtitleScore > $bestSubtitleScore) {
+                    $bestSubtitleScore = $subtitleScore;
+                    $epNum = null;
+                    $parsed = $this->parseVideoTitle($epName);
+                    if ($parsed['episode_num'] !== null) $epNum = $parsed['episode_num'];
+                    elseif (preg_match('/第\s*(\d+)\s*集/i', $epName, $mch)) $epNum = intval($mch[1]);
+                    elseif (preg_match('/^(\d{1,4})/', $epName, $mch)) $epNum = intval($mch[1]);
+                    if ($epNum === null) $epNum = $index + 1;
+                    $bestMatch = ['name' => $epName, 'url' => $epUrl, 'episode_num' => $epNum, 'subtitle_score' => $subtitleScore];
+                    $bestDiff = 0;
+                }
+            }
+
+            if ($bestSubtitleScore >= 85) break; // 足够高就不继续扫了
+
+            if ($targetEpNum === null) continue;
 
             $epNum = null;
             $parsed = $this->parseVideoTitle($epName);
@@ -2681,7 +2915,7 @@ class OfficialReplaceManager {
             }
         }
 
-        if ($bestMatch && $bestDiff <= 10) {
+        if ($bestMatch && ($bestSubtitleScore >= 65 || $bestDiff <= 10)) {
             return $bestMatch;
         }
 

@@ -18,30 +18,23 @@
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 require_once __DIR__ . '/PerformanceOptimizer.php';
+require_once __DIR__ . '/../gz/Md5AdPlaceholderEngine.php';
 
-// ====== main 分支：若检测到 xt/jiami_core.php (jiami 加密核心)，且分支校验通过，则直接复用其实现
-//        避免「main/jiami 两分支各维护一套逻辑」。文件缺失/版本不符时回退下面的明文函数。
-$_mainHasJiamiCore = false;
-$_jiamiCoreFile = __DIR__ . '/jiami_core.php';
-if (file_exists($_jiamiCoreFile)) {
-    // 用 include_once (允许回退)：若 require_once, 文件错误会直接致命
-    $_jmMeta = @include_once $_jiamiCoreFile;
-    if (is_array($_jmMeta) && !empty($_jmMeta['core_version'])
-        && strpos($_jmMeta['core_version'] ?? '', '-jiami') !== false) {
-        // 确保 6 个核心入口都被定义
-        $_mainHasJiamiCore = (
-            function_exists('findUrlInArray')
-            && function_exists('callOfficialReplaceDirect')
-            && function_exists('getVideoLinkFromApiEntry')
-            && function_exists('callSingleApi')
-        );
-    }
-    if (!$_mainHasJiamiCore) {
-        // 加载了但不完整，记日志但不阻断 (走下面明文函数兜底)
-        error_log('[main] jiami_core.php 已加载但不完整，回退到明文实现。');
-    }
+// ====== jiami 分支：核心解析逻辑（findUrlInArray/callOfficialReplaceDirect/...）从加密 jiami_core.php 载入
+//        若文件损坏或被篡改，HMAC 签名校验直接抛 RuntimeException 阻断调用。
+//        修改业务逻辑 → main 分支改 xt/server.php / PerformanceOptimizer.php 对应明文函数，
+//        再通过构建脚本重新生成 jiami_core.php 切到本分支提交。
+$_jiami_core_file = __DIR__ . '/jiami_core.php';
+if (!file_exists($_jiami_core_file)) {
+    throw new \RuntimeException(
+        '[jiami] 缺少 xt/jiami_core.php（加密核心文件）。请确保在 jiami 分支部署完整代码，或切换到 main 分支明文版。'
+    );
 }
-unset($_jiamiCoreFile, $_jmMeta);
+$_jiami_meta = require_once $_jiami_core_file;
+if (!is_array($_jiami_meta) || !isset($_jiami_meta['core_version'])) {
+    throw new \RuntimeException('[jiami] xt/jiami_core.php 加载失败：格式不正确。请重新从 jiami 分支获取该文件。');
+}
+unset($_jiami_core_file, $_jiami_meta);
 
 // 合并后台「嗅探设置」覆盖配置（sniffer_config.php 由后台写入）
 $snifferConfigFile = __DIR__ . '/sniffer_config.php';
@@ -155,7 +148,16 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
             $filter = new AdFilter($config);
             $result = $filter->process($m3u8Content, $videoLink);
 
-            $cleanContent = convertRelativeToAbsolute($result['clean_content'], $videoLink);
+            // ===== v5.11 S4 接入：AI+MD5 非正片占位（保留所有段数 + 广告段替换为静音黑屏占位 ts）=====
+            $placeholderContext = [
+                'provider' => 'official_channel',
+                'video_base_title' => '',
+                'site_host' => (string)parse_url($videoLink, PHP_URL_HOST),
+            ];
+            $cleanM3u8Before = $result['clean_content'];
+            $cleanContentMd5Passed = runMd5PlaceholderPass($cleanM3u8Before, $filter, $videoLink, $config, $placeholderContext);
+
+            $cleanContent = convertRelativeToAbsolute($cleanContentMd5Passed, $videoLink);
 
             $cacheId = generateCacheId();
             $playUrl = saveCleanM3u8($cacheId, $cleanContent, $videoLink, $config);
@@ -257,7 +259,16 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
     $filter = new AdFilter($enhancedConfig);
     $result = $filter->process($realM3u8Content, $realM3u8Url);
 
-    if (empty($result['clean_content']) || $result['clean_content'] === $realM3u8Content) {
+    // ===== v5.11 S4 接入：AI+MD5 非正片占位（保留所有段数 + 广告段替换为静音黑屏占位 ts）=====
+    $placeholderContext = [
+        'provider' => 'replace_channel',
+        'video_base_title' => '',
+        'site_host' => (string)parse_url($realM3u8Url, PHP_URL_HOST),
+    ];
+    $cleanM3u8Before = $result['clean_content'];
+    $cleanContentMd5Passed = runMd5PlaceholderPass($cleanM3u8Before, $filter, $realM3u8Url, $enhancedConfig, $placeholderContext);
+
+    if (empty($cleanContentMd5Passed) || $cleanContentMd5Passed === $realM3u8Content) {
         $hasValidTs = preg_match('/\.ts(\?|$)/i', $realM3u8Content) > 0;
         if (!$hasValidTs) {
             setCache($cacheKey, ['url' => $realM3u8Url], $config);
@@ -265,7 +276,7 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
         }
     }
 
-    $cleanContent = convertRelativeToAbsolute($result['clean_content'], $realM3u8Url);
+    $cleanContent = convertRelativeToAbsolute($cleanContentMd5Passed, $realM3u8Url);
 
     $cacheId = generateCacheId();
     $finalUrl = saveCleanM3u8($cacheId, $cleanContent, $realM3u8Url, $enhancedConfig);
@@ -290,6 +301,110 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
         'time' => $elapsed . 's',
         'KFZ'  => $config['developer']['name'] . '|' . $config['developer']['author'],
     ];
+}
+
+/**
+ * v5.11 新增：AI + MD5 非正片占位二次处理
+ *  - 读取 AdFilter 解析快照（带 is_ad 标记）；
+ *  - 合并到 Md5AdPlaceholderEngine；
+ *  - 生成保留全部段数 + 占位替换广告段的 m3u8（不会导致进度条中断、播放器断流）。
+ * 返回字符串 m3u8 content。如果引擎不可用/异常，返回 fallbackContent。
+ */
+function runMd5PlaceholderPass(string $fallbackContent, AdFilter $filter, string $baseUrl, array $cfg, array $context = []): string
+{
+    try {
+        $snap = $filter->getSnapshot();
+        if (empty($snap['segments'])) return $fallbackContent;
+
+        $md5Cfg = $cfg['md5_placeholder'] ?? [];
+        if (!is_array($md5Cfg)) $md5Cfg = [];
+        // 合并 AdFilter 的 AI 配置
+        if (!empty($cfg['ai']) && is_array($cfg['ai'])) {
+            if (empty($md5Cfg['mode']) && !empty($cfg['ai']['enabled'])) $md5Cfg['mode'] = 'auto';
+        }
+        if (!isset($md5Cfg['placeholder_mode'])) $md5Cfg['placeholder_mode'] = 'local_proxy';
+        $engine = new Md5AdPlaceholderEngine($md5Cfg);
+
+        // 把 AdFilter 的 segments 转成 Md5AdPlaceholderEngine 需要的 playlist 结构
+        $playlist = ['segments' => []];
+        $adIdx = [];
+        foreach ($snap['segments'] as $seg) {
+            $playlist['segments'][] = [
+                'uri'      => $seg['url'] ?? '',
+                'duration' => floatval($seg['duration'] ?? 0),
+                'tags'     => $seg['extra_tags'] ?? [],
+                'raw'      => $seg,
+            ];
+            if (!empty($seg['is_ad'])) {
+                $adIdx[] = count($playlist['segments']) - 1;
+            }
+        }
+
+        // Phase 1+2
+        $res = $engine->process($playlist, $baseUrl, $context);
+
+        // Phase 合并：把 AdFilter 已经判定的广告段也强制 placeholder（即使 MD5 引擎没命中），避免误放
+        $segsFinal = $res['playlist']['segments'];
+        $extraPlaceholder = 0;
+        foreach ($adIdx as $i) {
+            if (!isset($segsFinal[$i])) continue;
+            $origDur = floatval($segsFinal[$i]['duration'] ?? 0);
+            // 仅当其还没有被 placeholder（uri 还包含 ts/m3u8 正常地址）时才强制替换
+            $curUri = $segsFinal[$i]['uri'] ?? '';
+            if (strpos($curUri, 'action=placeholder_ts') !== false || strpos($curUri, 'data:video/mp2t') === 0) continue;
+            if ($origDur <= 0) $origDur = floatval($snap['segments'][$i]['duration'] ?? 0);
+            $abs = (string)(($snap['segments'][$i]['resolved_url'] ?? '') ?: $baseUrl);
+            $scheme = 'http'; $host = '127.0.0.1'; $path = '';
+            $p = parse_url($abs ?: $baseUrl);
+            if ($p) {
+                if (!empty($p['scheme'])) $scheme = $p['scheme'];
+                if (!empty($p['host'])) $host = $p['host'];
+                if (!empty($p['port'])) $host .= ':' . $p['port'];
+                if (!empty($p['path'])) { $pp = dirname($p['path']); if ($pp && $pp !== '/' && $pp !== '.') $path = '/' . trim($pp, '/'); }
+            } elseif ((PHP_SAPI !== 'cli') && !empty($_SERVER['HTTP_HOST'])) {
+                $host = $_SERVER['HTTP_HOST'];
+                if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')) $scheme = 'https';
+            }
+            $q = http_build_query([
+                'action' => 'placeholder_ts',
+                'd' => max(0.1, round($origDur, 3)),
+                'i' => $i,
+                'r' => 'adfilter_' . ($snap['segments'][$i]['ad_reason'] ?? 'rules')
+            ]);
+            $segsFinal[$i]['uri'] = "{$scheme}://{$host}{$path}/mx.php?{$q}";
+            $extraPlaceholder++;
+        }
+
+        // 输出 m3u8：保留所有 tags + 所有段（不剔除），广告段替换为 placeholder
+        $lines = ['#EXTM3U'];
+        $lines[] = '#EXT-X-VERSION:3';
+        $maxDur = 0;
+        foreach ($segsFinal as $s) if (floatval($s['duration']) > $maxDur) $maxDur = floatval($s['duration']);
+        $lines[] = '#EXT-X-TARGETDURATION:' . (int)ceil(max(1, $maxDur));
+        if (!empty($snap['ext_key'])) $lines[] = $snap['ext_key'];
+        $lines[] = '#EXT-X-MEDIA-SEQUENCE:0';
+        foreach ($segsFinal as $idx => $seg) {
+            $dur = floatval($seg['duration'] ?? 0);
+            $extinfTitle = '';
+            if (!empty($snap['segments'][$idx])) {
+                $orig = $snap['segments'][$idx];
+                $rawLine = $orig['extinf_line'] ?? '';
+                if ($rawLine !== '' && preg_match('/#EXTINF:[\d.]+,(.*)/', $rawLine, $mm)) {
+                    $extinfTitle = $mm[1];
+                }
+                if (!empty($orig['after_discontinuity'])) $lines[] = '#EXT-X-DISCONTINUITY';
+                if (!empty($orig['daterange'])) $lines[] = $orig['daterange'];
+                if (!empty($orig['extra_tags'])) foreach ($orig['extra_tags'] as $t) $lines[] = $t;
+            }
+            $lines[] = '#EXTINF:' . sprintf('%.6f', $dur) . ',' . $extinfTitle;
+            $lines[] = $seg['uri'] ?? '';
+        }
+        $lines[] = '#EXT-X-ENDLIST';
+        return implode("\n", $lines);
+    } catch (Throwable $e) {
+        // 任何异常都不中断原解析，直接回退到 AdFilter 输出的 clean 版
+        return $fallbackContent;
+    }
 }
 
 // ==================== 核心函数 ====================
@@ -472,9 +587,19 @@ function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
     // 官替接口 URL 为空时，自动使用本项目官替接口
     if ($replaceEnabled && empty($replaceApi['url'])) {
         $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-        $scriptDir = $scriptDir === '/' ? '' : $scriptDir;
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        // CLI/后台脚本场景下 $_SERVER['HTTP_HOST'] 可能为空或格式不合法，
+        // 退化为 127.0.0.1 + 显式 SCRIPT_NAME，避免出现 "localhost." 等非法域名
+        if ($host === '' || PHP_SAPI === 'cli' || strpos($host, '.') === strlen($host) - 1 || !preg_match('/^[a-zA-Z0-9.\-:\[\]]+$/', $host)) {
+            $host = '127.0.0.1';
+        }
+        $scriptDir = '';
+        if (!empty($_SERVER['SCRIPT_NAME'])) {
+            $sd = dirname($_SERVER['SCRIPT_NAME']);
+            if ($sd && $sd !== '/' && $sd !== '.') {
+                $scriptDir = '/' . trim($sd, '/');
+            }
+        }
         $baseUrl = $scheme . '://' . $host . $scriptDir;
         $replaceApi['url'] = $baseUrl . '/mx.php?action=official_replace/info&url=';
         $replaceApi['type'] = 'json';
@@ -545,146 +670,9 @@ function callApisSequential(string $videoUrl, array $apiList, array $config, Per
     return null;
 }
 
-// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
-if (!(function_exists('callSingleApi') || !empty($_mainHasJiamiCore))) {
-/**
- * 调用单个接口（官解或官替）获取视频直链
- *
- * 接口配置结构：
- *   [
- *     'enabled'   => bool,
- *     'name'      => string,
- *     'url'       => string,  // 接口地址，会拼接 urlencode($videoUrl)
- *     'type'      => string,  // redirect / json / text
- *     'url_field' => string,  // json 类型时视频地址字段名
- *     'headers'   => array,
- *   ]
- *
- * 【v5.10.9 优化】如果 replace_api.url 为空或指向本地 mx.php official_replace/info，
- *   直接在 PHP 内调用 OfficialReplaceManager，避免自 HTTP 请求浪费开销，
- *   同时不会触发 original_url 误提取陷阱。
- *
- * @param string $videoUrl  视频页面 URL
- * @param array  $apiConfig 单个接口配置
- * @param array  $config    全局配置（用于读取 http 超时等参数）
- * @return string|null
- */
-function callSingleApi(string $videoUrl, array $apiConfig, array $config): ?string
-{
-    // url 为空直接返回（保留 enabled 但未配置的情况）
-    if (empty($apiConfig['url'])) {
-        return null;
-    }
-
-    // ===== 本地官替接口快捷路径：不走 HTTP，直接调用 OfficialReplaceManager =====
-    $apiUrl = $apiConfig['url'];
-    $isLocalOfficialReplace =
-        (strpos($apiUrl, '/mx.php?action=official_replace') !== false) ||
-        (strpos($apiUrl, 'official_replace/info') !== false) ||
-        (trim($apiUrl) === '');
-
-    // 当接口名含「本地」「官替」或 URL 指向 official_replace 时，尝试直调
-    if ($isLocalOfficialReplace || stripos(($apiConfig['name'] ?? ''), '官替') !== false) {
-        $directResult = callOfficialReplaceDirect($videoUrl);
-        if ($directResult !== null) {
-            return $directResult;
-        }
-        // 直调失败，继续走 HTTP（可能是远程官替接口）
-    }
-
-    $api = [
-        'name'      => $apiConfig['name'] ?? '未命名接口',
-        'url'       => $apiConfig['url'],
-        'type'      => $apiConfig['type'] ?? 'json',
-        'url_field' => $apiConfig['url_field'] ?? '',
-        'headers'   => $apiConfig['headers'] ?? [],
-    ];
-
-    return getVideoLinkFromApiEntry($videoUrl, $api, $config);
-}}
 
 
 
-// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
-if (!(function_exists('callOfficialReplaceDirect') || !empty($_mainHasJiamiCore))) {
-/**
- * 直接调用本地 OfficialReplaceManager 解析（官替通道）
- * 流程：识别平台/标题 → 资源站搜索 → AI/规则智能匹配 → 构建 mxjx 去广告代理地址
- *
- * 优势：比 HTTP 回环调用快 30-70%，不受 curl/$_SERVER 环境影响，
- *       完全规避 original_url 误提取陷阱
- *
- * @param string $videoUrl 原始视频页面 URL
- * @return string|null 返回 ad_skip_url（mxjx 去广告代理地址）或 m3u8_url，失败返回 null
- */
-function callOfficialReplaceDirect(string $videoUrl): ?string
-{
-    static $managerLoaded = false;
-    if (!$managerLoaded) {
-        $gzDir = __DIR__ . '/../gz';
-        if (file_exists($gzDir . '/OfficialReplaceManager.php')) {
-            require_once $gzDir . '/OfficialReplaceManager.php';
-            require_once $gzDir . '/ResourceSiteManager.php';
-            require_once $gzDir . '/TitleNormalizer.php';
-            $ptDir = __DIR__ . '/../pt';
-            if (file_exists($ptDir . '/PtManager.php')) {
-                require_once $ptDir . '/PtManager.php';
-            }
-            $managerLoaded = true;
-        }
-    }
-
-    if (!class_exists('OfficialReplaceManager')) {
-        return null;
-    }
-
-    try {
-        static $mgr = null;
-        if ($mgr === null) {
-            $mgr = new OfficialReplaceManager();
-        }
-
-        $result = $mgr->resolve($videoUrl);
-        if (empty($result['success'])) {
-            return null;
-        }
-
-        $m3u8Url = $result['m3u8_url'] ?? '';
-        $adSkipUrl = $result['ad_skip_url'] ?? '';
-
-        // 优先使用 ad_skip_url (已由 OfficialReplaceManager 组装的 mxjx 去广告地址)
-        if (!empty($adSkipUrl) && filter_var($adSkipUrl, FILTER_VALIDATE_URL)) {
-            return $adSkipUrl;
-        }
-
-        // 回退：自行组装 mxjx/deep 去广告地址（AI 深度识别广告 + 去插播 + 去水印）
-        if (!empty($m3u8Url) && filter_var($m3u8Url, FILTER_VALIDATE_URL)) {
-            // 组装本地 mx.php?action=mxjx&deep=1 去广告代理地址
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/') : '';
-            $serverDir = rtrim(dirname(__DIR__), '/');
-            $urlPath = '';
-            if ($docRoot !== '' && strpos($serverDir, $docRoot) === 0) {
-                $relative = substr($serverDir, strlen($docRoot));
-                $urlPath = rtrim($relative, '/');
-            } else {
-                $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-                if ($scriptDir === '/' || $scriptDir === '\\') {
-                    $urlPath = '';
-                } else {
-                    $urlPath = rtrim($scriptDir, '/');
-                }
-            }
-            $selfUrl = $scheme . '://' . $host . $urlPath;
-            return $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
-        }
-    } catch (Throwable $e) {
-        // 静默失败：fallback 到 HTTP 官替或官解通道
-    }
-
-    return null;
-}}
 
 
 
@@ -704,151 +692,6 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
     return null;
 }
 
-// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
-if (!(function_exists('getVideoLinkFromApiEntry') || !empty($_mainHasJiamiCore))) {
-/**
- * 调用单个 API 接口获取视频直链（核心请求 + 解析逻辑）
- *
- * 支持 redirect / json / text 三种接口类型，被以下两个函数复用：
- *   - getVideoLinkFromOfficialApi（遍历 official_apis 数组）
- *   - callSingleApi（嗅探设置中的官解/官替单接口）
- *
- * @param string $videoUrl 视频页面 URL
- * @param array  $api      单个接口配置（name/url/type/url_field/headers）
- * @param array  $config   全局配置（读取 http 超时等参数）
- * @return string|null
- */
-function getVideoLinkFromApiEntry(string $videoUrl, array $api, array $config): ?string
-{
-    if (empty($api['url'])) {
-        return null;
-    }
-
-    $targetUrl = $api['url'] . urlencode($videoUrl);
-
-    // 构建排除域名模式：防止错误返回原始视频页面的 URL
-    $videoHost = parse_url($videoUrl, PHP_URL_HOST);
-    $excludeDomainPattern = $videoHost ? '/\/\/' . preg_quote($videoHost, '/') . '/i' : '';
-
-    // 安全校验：判断 URL 是否是有效的视频地址（而非原始页面）
-    $isSafeVideoUrl = function (string $candidate, bool $allowProxy = true) use ($videoUrl, $videoHost): bool {
-        if ($candidate === $videoUrl || rtrim($candidate, '/') === rtrim($videoUrl, '/')) {
-            return false;
-        }
-        if (!filter_var($candidate, FILTER_VALIDATE_URL)) {
-            return false;
-        }
-        $candidateHost = parse_url($candidate, PHP_URL_HOST);
-        if ($candidateHost && $videoHost && strcasecmp($candidateHost, $videoHost) === 0) {
-            // 同域名时必须是明确的视频扩展名文件（m3u8/mp4 等），不能是 html 页面
-            return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-        }
-        if ($allowProxy) {
-            // 允许跨域代理地址（如 clean.php / mxjx / xiami 等），它们本身不含视频扩展名
-            return true;
-        }
-        // 严格模式：必须带视频扩展名
-        return (bool)preg_match('/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i', $candidate);
-    };
-
-    $ch = curl_init();
-    $headers = [];
-    foreach ($api['headers'] ?? [] as $key => $value) {
-        $headers[] = $key . ': ' . $value;
-    }
-
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $targetUrl,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS      => 5,
-        CURLOPT_TIMEOUT        => $config['http']['timeout'],
-        CURLOPT_CONNECTTIMEOUT => $config['http']['connect_timeout'],
-        CURLOPT_SSL_VERIFYPEER => $config['http']['ssl_verify'],
-        CURLOPT_SSL_VERIFYHOST => $config['http']['ssl_verify'] ? 2 : 0,
-        CURLOPT_USERAGENT      => $config['http']['user_agent'],
-        CURLOPT_HTTPHEADER     => $headers,
-        CURLOPT_ENCODING       => '',
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-    $error = curl_error($ch);
-    curl_close($ch);
-
-    if ($error || $httpCode !== 200) {
-        return null;
-    }
-
-    switch ($api['type'] ?? 'json') {
-        case 'redirect':
-            if (preg_match('/\.(m3u8|mp4)(\?|$)/i', $effectiveUrl)) {
-                if ($isSafeVideoUrl($effectiveUrl, true)) {
-                    return $effectiveUrl;
-                }
-            }
-            $extracted = extractVideoUrl($response);
-            if ($extracted && $isSafeVideoUrl($extracted, true)) {
-                return $extracted;
-            }
-            break;
-
-        case 'json':
-            $data = json_decode($response, true);
-            if ($data) {
-                $urlField = $api['url_field'] ?? null;
-                $url = null;
-                // 1) 优先取配置的字段名（用户配置的字段允许代理地址）
-                if ($urlField && isset($data[$urlField])) {
-                    $url = $data[$urlField];
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-                // 2) 兼容官替接口返回结构 {success, m3u8_url, ad_skip_url}
-                //    注意：success=true 时才信任这些字段，允许代理地址
-                if (!$url && !empty($data['success'])) {
-                    $url = $data['ad_skip_url'] ?? $data['m3u8_url'] ?? null;
-                    if ($url && $isSafeVideoUrl($url, true)) {
-                        return $url;
-                    }
-                    $url = null;
-                }
-                // 3) 通用字段兜底（url / play_url 等）：要求更严格
-                if (!$url) {
-                    $candidates = [
-                        $data['url'] ?? null,
-                        $data['play_url'] ?? null,
-                        $data['data']['url'] ?? null,
-                        $data['data']['play_url'] ?? null,
-                        $data['video_url'] ?? null,
-                    ];
-                    foreach ($candidates as $c) {
-                        if ($c && $isSafeVideoUrl($c, false)) {
-                            return $c;
-                        }
-                    }
-                }
-                // 4) 递归搜索兜底：最严格，仅接受视频扩展名且非原域名
-                $foundUrl = findUrlInArray($data, $excludeDomainPattern);
-                if ($foundUrl) {
-                    return $foundUrl;
-                }
-            }
-            break;
-
-        case 'text':
-            $trimmed = trim($response);
-            if ($trimmed && $isSafeVideoUrl($trimmed, true)) {
-                return $trimmed;
-            }
-            break;
-    }
-
-    return null;
-}}
 
 
 
@@ -1138,47 +981,5 @@ function extractVideoUrl(string $content): ?string
     return null;
 }
 
-// ===== [main 明文函数] 若已从 jiami_core 载入（或函数已存在）则跳过 =====
-if (!(function_exists('findUrlInArray') || !empty($_mainHasJiamiCore))) {
-/**
- * 递归在数组中查找视频 URL
- * 过滤规则：
- *   - 跳过 original_url / url / msg / referer / redirect_url 等非视频字段
- *   - 仅接受以 .m3u8 / .mp4 / .mkv / .flv / .avi 等视频扩展名结尾的 URL
- *   - 不接受与输入视频页面域名相同的原始 URL（防止错误返回 original_url）
- */
-function findUrlInArray(array $arr, string $excludeDomainPattern = ''): ?string
-{
-    $excludeKeys = [
-        'original_url','source_url','input_url','request_url',
-        'referer','referrer','redirect_url','callback_url',
-        'page_url','web_url','link','share_url','msg','message',
-        'homepage','logo_url','pic','cover','poster','avatar',
-        'download_url','subtitle_url','danmaku_url',
-    ];
-    $videoExtPattern = '/\.(m3u8|mp4|mkv|flv|avi|mov|wmv|webm|ts|3gp)(\?|$)/i';
-
-    foreach ($arr as $key => $value) {
-        if (is_string($key) && in_array(strtolower($key), $excludeKeys, true)) {
-            continue;
-        }
-        if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)) {
-            if (!preg_match($videoExtPattern, $value)) {
-                continue;
-            }
-            if ($excludeDomainPattern && preg_match($excludeDomainPattern, $value)) {
-                continue;
-            }
-            return $value;
-        }
-        if (is_array($value)) {
-            $found = findUrlInArray($value, $excludeDomainPattern);
-            if ($found) {
-                return $found;
-            }
-        }
-    }
-    return null;
-}}
 
 
