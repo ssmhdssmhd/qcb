@@ -1,6 +1,7 @@
 <?php
 return [
     'version' => 'v5.10.9',
+    'branch'  => 'main',        // main=明文源码版 / jiami=核心代码加密版
     'build' => '20260813',
     'version_code' => 51009,
     'commit' => 'official-replace-first-original-url-trap-fix',
