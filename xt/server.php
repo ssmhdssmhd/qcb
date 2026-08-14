@@ -877,41 +877,85 @@ function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
         }
     }
 
-    // ============ 2. 官解通道：curl_multi 并发请求 ============
-    $officialUrl = null;
-    $officialApi = null;
-    if (!empty($officialApis)) {
-        if (!empty($perfCfg['ai_sort_enabled']) && count($officialApis) > 1) {
-            $officialApis = $optimizer->sortApisByScore($officialApis);
-        }
-        $maxConcurrent = max(1, (int)($perfCfg['max_concurrent'] ?? 3));
-        $timeout = (float)($perfCfg['timeout'] ?? 15.0);
-        $officialResult = $optimizer->concurrentRaceRequest($officialApis, $videoUrl, $maxConcurrent, $timeout);
-        if (!empty($officialResult['url'])) {
-            $officialUrl = $officialResult['url'];
-            $officialApi = $officialResult['api'];
-        }
+    // ============ 2. 真正并行：官解 + 官替同时跑 curl_multi ============
+    // v5.13.7-I2：原实现先跑官解(1s)再跑官替(66s)=串行67s超时。
+    //   现在把官替也包装成 HTTP 请求放进同一个 curl_multi 并发池，两个通道真正同时跑。
+    //   官解 ~1s 返回 jx.xmflv.cc URL，官替 ~66s 返回资源站 m3u8，谁先成功用谁。
+    //   注意：官替走 HTTP 自调用（mx.php?action=official_replace/info），不是 PHP 直调，
+    //   这样才能放进 curl_multi。为避免 127.0.0.1 回环被当 play_url，结果从 JSON 响应体提取。
+
+    $allApis = [];
+
+    // 2a. 官解接口
+    foreach ($officialApis as $api) {
+        $allApis[] = $api;
     }
 
-    // ============ 3. 官替通道：PHP 直调（无 HTTP 回环，不再生成 127.0.0.1 URL） ============
-    // v5.13.5-G2：原逻辑在 replace_api.url 为空时生成 http://127.0.0.1/mx.php?... HTTP 回环，
-    //   导致该 URL 被当成 play_url 返回。现改为直接调用 callOfficialReplaceDirectV2（PHP 内部调用）。
-    $replaceUrl = null;
-    $replaceOrm = null;
+    // 2b. 官替接口：包装成 HTTP 请求
     $replaceApi = $sniffer['replace_api'] ?? [];
     $replaceEnabled = !empty($replaceApi['enabled']);
-    if ($replaceEnabled && function_exists('callOfficialReplaceDirectV2')) {
-        $replaceDirect = callOfficialReplaceDirectV2($videoUrl, $config);
-        if (!empty($replaceDirect['direct']) && !empty($replaceDirect['orm'])) {
-            $replaceOrm = $replaceDirect['orm'];
-            if (!empty($replaceOrm['success'])) {
-                $replaceUrl = (string)($replaceOrm['ad_skip_url'] ?? $replaceOrm['m3u8_url'] ?? '');
-                if ($replaceUrl === '') $replaceUrl = null;
+    $replaceHttpUrl = null;
+    if ($replaceEnabled) {
+        // 构建本地官替 HTTP URL（用于 curl_multi 并行调用）
+        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        if ($host === '' || PHP_SAPI === 'cli' || !preg_match('/^[a-zA-Z0-9.\-:\[\]]+$/', $host)) {
+            $host = '127.0.0.1';
+        }
+        $scriptDir = '';
+        if (!empty($_SERVER['SCRIPT_NAME'])) {
+            $sd = dirname($_SERVER['SCRIPT_NAME']);
+            if ($sd && $sd !== '/' && $sd !== '.') {
+                $scriptDir = '/' . trim($sd, '/');
             }
         }
+        $replaceHttpUrl = $scheme . '://' . $host . $scriptDir . '/mx.php?action=official_replace/info&url=' . urlencode($videoUrl);
+
+        $allApis[] = [
+            'name'      => $replaceApi['name'] ?: '本地官替(并行)',
+            'url'       => $replaceHttpUrl,
+            'type'      => 'json',
+            'url_field' => 'ad_skip_url',
+            'enabled'   => true,
+            '_channel'  => 'replace',
+            'headers'   => [],
+        ];
     }
 
-    // ============ 4. 返回两条独立结果 + 主 play_url（最快成功的） ============
+    $officialUrl = null;
+    $replaceUrl  = null;
+    $replaceOrm  = null;
+
+    if (!empty($allApis)) {
+        if (!empty($perfCfg['ai_sort_enabled']) && count($allApis) > 1) {
+            $allApis = $optimizer->sortApisByScore($allApis);
+        }
+        $maxConcurrent = max(2, (int)($perfCfg['max_concurrent'] ?? 3));
+        if (count($allApis) > $maxConcurrent) {
+            $maxConcurrent = count($allApis);
+        }
+        $timeout = (float)($perfCfg['timeout'] ?? 15.0);
+        // 官替资源站匹配可能需要 60s+，给 concurrent 模式更长的总超时
+        $timeout = max($timeout, 90.0);
+
+        $result = $optimizer->concurrentRaceRequest($allApis, $videoUrl, $maxConcurrent, $timeout);
+
+        // 从结果中分离 official / replace
+        if (!empty($result['url']) && !empty($result['api'])) {
+            $channel = $result['api']['_channel'] ?? 'official';
+            if ($channel === 'replace') {
+                $replaceUrl = $result['url'];
+            } else {
+                $officialUrl = $result['url'];
+            }
+        }
+
+        // concurrentRaceRequest 只返回最快的那个；如果官解先成功（~1s），
+        // 官替可能被取消了。这里不再串行补跑官替，避免 66s 阻塞。
+        // 如果用户需要同时拿到两个通道结果，可以后续用异步方式补充。
+    }
+
+    // ============ 3. 返回结果 ============
     // 主 play_url 优先取官解（jx.xmflv.cc 响应快，~1s），官解失败再取官替
     $primaryUrl = $officialUrl ?? $replaceUrl;
     $primarySource = $officialUrl !== null ? 'official' : ($replaceUrl !== null ? 'replace' : null);

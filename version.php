@@ -1,13 +1,28 @@
 <?php
 return array (
-  'version' => 'v5.13.6',
+  'version' => 'v5.13.7',
   'branch' => 'main',
-  'build' => '20260814-add-xt-php-entrypoint-for-sniffer-setting-based-remote-api',
-  'version_code' => 51306,
-  'commit' => 'v5.13.6-new-entrypoint-xt-php-url-follows-mxadmin-sniffer-mode-plus-parse-list-updated',
+  'build' => '20260814-hotfix-concurrent-true-parallel-curl-multi-plus-loopback-filter',
+  'version_code' => 51307,
+  'commit' => 'v5.13.7-hotfix-concurrent-mode-true-parallel-curl_multi-plus-127.0.0.1-loopback-filter-plus-buildApiUrl-url-check',
   'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.7' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【修复：同时调用模式真正并行 + 127.0.0.1 回环 URL 彻底过滤】',
+      'changes' =>
+      array (
+        0 => '【I1 根因确认】服务器上 xt.php 已部署且无参/错误URL秒回400，但真实URL超时因为 concurrent 模式串行执行（先官解1s+官替66s=67s超nginx 60s→502 Bad Gateway）。本地测试确认：callApiSingle 官解1.6s返回正确jx.xmflv.cc URL，官替20s返回NULL（资源站匹配不到）',
+        1 => '【I2 真正并行：官解+官替同时跑 curl_multi】重写 getVideoLinkByConcurrentRace：①官解接口+官替HTTP请求合并到 allApis 数组→同一个 curl_multi 并发池→谁先成功用谁；②官替包装成 HTTP 请求 mx.php?action=official_replace/info（type=json url_field=ad_skip_url _channel=replace），不再用 callOfficialReplaceDirectV2 PHP 直调（直调无法放进 curl_multi）；③总超时 max(perfCfg.timeout, 90s) 给官替资源站匹配足够时间',
+        2 => '【I2 buildApiUrl 修复】新增 url= 检测：模板已包含 url=（如官替完整HTTP URL）时不再追加 urlencode(videoUrl)，避免 URL 重复拼接',
+        3 => '【I2 extractVideoUrl 并发 context 修复】concurrentRaceRequest 在调用 extractVideoUrl 之前，先把 requestContextByHandle[\'last\'] 更新为当前完成 handle 的 context（原来指向最后一个创建的 handle，并发场景下可能是错误的）',
+        4 => '【I2 127.0.0.1/localhost 回环 URL 彻底过滤】concurrentRaceRequest + callApiSingle 两处：extractVideoUrl 返回的 URL 如果包含 127.0.0.1 或 ://localhost，直接记录失败并返回 null，不再把回环地址当 play_url 返回',
+        5 => '【I2 本地测试通过】elapsed: 2.622s, code: 200, url: https://jx.xmflv.cc/?url=...&ref=https%3A%2F%2Fv.youku.com%2F, official_url: 同上, replace_url: NULL（官替服务器旧代码超时但主URL正确）',
+        6 => '【lint 0 错误通过】php -l xt/server.php + xt/PerformanceOptimizer.php → 全部 No syntax errors detected',
+      ),
+    ),
     'v5.13.6' =>
     array (
       'date' => '2026-08-14',

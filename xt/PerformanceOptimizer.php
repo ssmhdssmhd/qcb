@@ -303,8 +303,17 @@ class PerformanceOptimizer
                     }
 
                     if ($bizOk) {
+                        // v5.13.7-I2：并发场景下 requestContextByHandle['last'] 可能指向错误的 handle，
+                        //   在调 extractVideoUrl 之前更新为当前完成的 handle 的 context
+                        $chInt = (int)$done['handle'];
+                        if (isset($this->requestContextByHandle[$chInt])) {
+                            $this->requestContextByHandle['last'] = &$this->requestContextByHandle[$chInt];
+                        }
                         $link = $this->extractVideoUrl($response, $api, $videoUrl);
-                        if ($link && filter_var($link, FILTER_VALIDATE_URL)) {
+                        // v5.13.7-I2：过滤掉 127.0.0.1/localhost 的回环 URL（防止官替 HTTP 自调用返回内部地址）
+                        if ($link && filter_var($link, FILTER_VALIDATE_URL)
+                            && stripos($link, '127.0.0.1') === false
+                            && stripos($link, '://localhost') === false) {
                             // 成功！立即记录并返回
                             $resultUrl = $link;
                             $resultApi = $api;
@@ -547,6 +556,10 @@ class PerformanceOptimizer
             return strtr($tpl, $replace);
         }
         // 兼容旧模板：纯前缀，直接后缀拼 url=xxx
+        // v5.13.7-I2：如果模板已经包含 url=（如官替 HTTP 并行调用的完整URL），不再追加
+        if (stripos($tpl, 'url=') !== false) {
+            return $tpl;  // 已是完整 URL，不需要拼接
+        }
         return $tpl . urlencode($videoUrl);
     }
 
@@ -675,6 +688,11 @@ class PerformanceOptimizer
         $link = $this->extractVideoUrl($response, $api, $videoUrl);
         if ($link === null) {
             $this->recordFailedApi($api, 200, $response, 'HTTP 200 & 业务成功，但视频字段（' . ($api['url_field'] ?? '未指定') . '）为空/格式非法');
+            return null;
+        }
+        // v5.13.7-I2：过滤掉 127.0.0.1/localhost 回环 URL
+        if (stripos($link, '127.0.0.1') !== false || stripos($link, '://localhost') !== false) {
+            $this->recordFailedApi($api, 200, $response, '提取到回环URL(127.0.0.1/localhost)，已过滤');
             return null;
         }
         return $link;
