@@ -877,90 +877,68 @@ function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
         }
     }
 
-    // ============ 2. 真正并行：官解 + 官替同时跑 curl_multi ============
-    // v5.13.7-I2：原实现先跑官解(1s)再跑官替(66s)=串行67s超时。
-    //   现在把官替也包装成 HTTP 请求放进同一个 curl_multi 并发池，两个通道真正同时跑。
-    //   官解 ~1s 返回 jx.xmflv.cc URL，官替 ~66s 返回资源站 m3u8，谁先成功用谁。
-    //   注意：官替走 HTTP 自调用（mx.php?action=official_replace/info），不是 PHP 直调，
-    //   这样才能放进 curl_multi。为避免 127.0.0.1 回环被当 play_url，结果从 JSON 响应体提取。
-
-    $allApis = [];
-
-    // 2a. 官解接口
-    foreach ($officialApis as $api) {
-        $allApis[] = $api;
-    }
-
-    // 2b. 官替接口：包装成 HTTP 请求
-    $replaceApi = $sniffer['replace_api'] ?? [];
-    $replaceEnabled = !empty($replaceApi['enabled']);
-    $replaceHttpUrl = null;
-    if ($replaceEnabled) {
-        // 构建本地官替 HTTP URL（用于 curl_multi 并行调用）
-        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? '';
-        if ($host === '' || PHP_SAPI === 'cli' || !preg_match('/^[a-zA-Z0-9.\-:\[\]]+$/', $host)) {
-            $host = '127.0.0.1';
-        }
-        $scriptDir = '';
-        if (!empty($_SERVER['SCRIPT_NAME'])) {
-            $sd = dirname($_SERVER['SCRIPT_NAME']);
-            if ($sd && $sd !== '/' && $sd !== '.') {
-                $scriptDir = '/' . trim($sd, '/');
-            }
-        }
-        $replaceHttpUrl = $scheme . '://' . $host . $scriptDir . '/mx.php?action=official_replace/info&url=' . urlencode($videoUrl);
-
-        $allApis[] = [
-            'name'      => $replaceApi['name'] ?: '本地官替(并行)',
-            'url'       => $replaceHttpUrl,
-            'type'      => 'json',
-            'url_field' => 'ad_skip_url',
-            'enabled'   => true,
-            '_channel'  => 'replace',
-            'headers'   => [],
-        ];
-    }
+    // ============ 2. 先官解（快速备用）+ 后官替（APK 可播 m3u8 优先，v5.13.8 APK 优化） ============
+    // 执行顺序：
+    //   ① 官解 jx.xmflv.cc：1-2s 返回 HTML 播放器页面 URL，先跑 → 快速拿到备用 URL，避免用户等太久
+    //   ② 官替 OfficialReplaceManager：PHP 直调，20s 预算（可配置），若成功拿到 ad_skip_url（m3u8 直链），
+    //      → 把主 play_url 覆盖为官替 URL（APK 直接可播）
+    // 这样：用户最差 1-2s 看到官解 HTML 播放器；若官替匹配到 APK 可播的 m3u8，主 URL 自动切换为 APK 可播
+    //       官替超过 20s 不匹配 → 继续用官解，不再阻塞 66s
 
     $officialUrl = null;
     $replaceUrl  = null;
     $replaceOrm  = null;
+    $replaceDirectUsed = false;
 
-    if (!empty($allApis)) {
-        if (!empty($perfCfg['ai_sort_enabled']) && count($allApis) > 1) {
-            $allApis = $optimizer->sortApisByScore($allApis);
+    // ============ 2a. 官解：curl_multi 并发请求（jx.xmflv.cc ~1-2s，先跑做备用） ============
+    if (!empty($officialApis)) {
+        if (!empty($perfCfg['ai_sort_enabled']) && count($officialApis) > 1) {
+            $officialApis = $optimizer->sortApisByScore($officialApis);
         }
-        $maxConcurrent = max(2, (int)($perfCfg['max_concurrent'] ?? 3));
-        if (count($allApis) > $maxConcurrent) {
-            $maxConcurrent = count($allApis);
+        $maxConcurrent = max(1, (int)($perfCfg['max_concurrent'] ?? 3));
+        $officialTimeout = (float)($perfCfg['timeout'] ?? 15.0);
+        $officialResult = $optimizer->concurrentRaceRequest($officialApis, $videoUrl, $maxConcurrent, $officialTimeout);
+        if (!empty($officialResult['url'])) {
+            $officialUrl = $officialResult['url'];
         }
-        $timeout = (float)($perfCfg['timeout'] ?? 15.0);
-        // 官替资源站匹配可能需要 60s+，给 concurrent 模式更长的总超时
-        $timeout = max($timeout, 90.0);
-
-        $result = $optimizer->concurrentRaceRequest($allApis, $videoUrl, $maxConcurrent, $timeout);
-
-        // 从结果中分离 official / replace
-        if (!empty($result['url']) && !empty($result['api'])) {
-            $channel = $result['api']['_channel'] ?? 'official';
-            if ($channel === 'replace') {
-                $replaceUrl = $result['url'];
-            } else {
-                $officialUrl = $result['url'];
-            }
-        }
-
-        // concurrentRaceRequest 只返回最快的那个；如果官解先成功（~1s），
-        // 官替可能被取消了。这里不再串行补跑官替，避免 66s 阻塞。
-        // 如果用户需要同时拿到两个通道结果，可以后续用异步方式补充。
     }
 
-    // ============ 3. 返回结果 ============
-    // 主 play_url 优先取官解（jx.xmflv.cc 响应快，~1s），官解失败再取官替
-    $primaryUrl = $officialUrl ?? $replaceUrl;
-    $primarySource = $officialUrl !== null ? 'official' : ($replaceUrl !== null ? 'replace' : null);
+    // ============ 2b. 官替：PHP 直调 callOfficialReplaceDirectV2（APK m3u8 可播优先，带 20s 预算） ============
+    // 独立 directTimeout：默认 20s，可在 performance.replace_direct_timeout 配置（1-60s），
+    // 超过预算直接放弃，不再阻塞 66s 资源站匹配
+    $replaceApi = $sniffer['replace_api'] ?? [];
+    $replaceEnabled = !empty($replaceApi['enabled']);
+    if ($replaceEnabled && function_exists('callOfficialReplaceDirectV2')) {
+        $replaceDirectBudget = (float)($perfCfg['replace_direct_timeout'] ?? 20.0);
+        if ($replaceDirectBudget <= 0 || $replaceDirectBudget > 60.0) $replaceDirectBudget = 20.0;
+        $directDeadline = microtime(true) + $replaceDirectBudget;
+        try {
+            $GLOBALS['XT_REPLACE_DIRECT_DEADLINE'] = $directDeadline;
+            $replaceDirect = callOfficialReplaceDirectV2($videoUrl, $config);
+            $replaceDirectUsed = !empty($replaceDirect['direct']);
+        } catch (\Throwable $e) {
+            $replaceDirectUsed = false;
+            $replaceDirect = ['direct' => false];
+        }
+        if ($replaceDirectUsed && !empty($replaceDirect['orm'])) {
+            $replaceOrm = $replaceDirect['orm'];
+            if (!empty($replaceOrm['success'])) {
+                $replaceUrl = (string)($replaceOrm['ad_skip_url'] ?? $replaceOrm['m3u8_url'] ?? '');
+                if ($replaceUrl === '') $replaceUrl = null;
+            }
+        }
+    }
+
+    // ============ 3. 返回结果：主 play_url 优先官替（m3u8 直链，APK 可播） ============
+    // 官替成功 → replaceUrl 做主 play_url（APK 直接可播）
+    // 官替失败/超时 → 官解 URL 做主 play_url（HTML 播放器，WebView/浏览器可播）
+    // 全部失败 → 返回 null
+    $primaryUrl = $replaceUrl ?? $officialUrl;
+    $primarySource = $replaceUrl !== null ? 'replace' : ($officialUrl !== null ? 'official' : null);
 
     // v5.13.5-G3：把两条独立结果存入全局变量，供 jiexi.php 输出 official_url + replace_url
+    // v5.13.8：replaceUrl 优先做主 play_url 的同时，official_url / replace_url 仍分开输出，
+    //          用户侧可在 APK 里选择「替换源」(replace_url) 播 m3u8 或「官方源」(official_url) 用 WebView
     $GLOBALS['XT_CONCURRENT_RESULTS'] = [
         'official_url' => $officialUrl,
         'replace_url'  => $replaceUrl,

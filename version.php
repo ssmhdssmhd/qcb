@@ -1,13 +1,28 @@
 <?php
 return array (
-  'version' => 'v5.13.7',
+  'version' => 'v5.13.8',
   'branch' => 'main',
-  'build' => '20260814-hotfix-concurrent-true-parallel-curl-multi-plus-loopback-filter',
-  'version_code' => 51307,
-  'commit' => 'v5.13.7-hotfix-concurrent-mode-true-parallel-curl_multi-plus-127.0.0.1-loopback-filter-plus-buildApiUrl-url-check',
+  'build' => '20260814-apk-playable-optimization-replace-first-m3u8-plus-xmflv-htmlplayer-apk-fallback',
+  'version_code' => 51308,
+  'commit' => 'v5.13.8-apk-playable-optimization-concurrent-mode-prioritize-replace-m3u8-with-direct-budget-plus-replace_direct_timeout-config',
   'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.8' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【APK 播放优化：官替 m3u8 直链优先 + xmflv.cc 真实源逆向分析失败文档化】',
+      'changes' =>
+      array (
+        0 => '【J1 根因确认】此前 jiexi.php 返回的 play_url=https://jx.xmflv.cc/?url=... 是 HTML 播放器页面（<title>虾米播放器 <div id="Xmflv"> + 4 个混淆JS bundle + inline eval/Base64/RC4/window/DOM 动态解密），TVBox/影视仓 APK 内置播放器（ExoPlayer/IJKPlayer/MediaPlayer）只认 .m3u8/.mp4 直链，HTML 页面 URL 直接拿去播 = 播放失败黑屏',
+        1 => '【J2 xmflv.cc 逆向】抓 jx.xmflv.cc HTML 10.6KB：5 个 <script src>（Cloudflare beacon + 4 个网易云 CDN JS 混淆包）+ 2 段 inline script：第一段 OBF/RC4+atob+urlDecode 动态解密，第二段 pushCode(@@@转义) + eval。URL/m3u8/parse/api/playerConfig 在 HTML 页面里 0 个明文字面量，全部在浏览器端 window+DOM 后才出来。结论：纯 PHP 服务器端无法逆向真实视频源。',
+        2 => '【J3 concurrent 模式重写为「先官解 1-2s 快速备用 + 后官替 12s 直调 APK 可播优先」】执行顺序：①官解 curl_multi 请求 jx.xmflv.cc（1-2s 返回 HTML 播放器 URL 做兜底）；②官替 callOfficialReplaceDirectV2（OfficialReplaceManager 资源站匹配，带独立 replace_direct_timeout=12s 预算，超过就放弃不再 66s 阻塞）。主 play_url = replace_url ?? official_url：官替成功→返回资源站 m3u8 直链 APK 直接播；官替失败/超时→返回 jx.xmflv.cc HTML 播放器 URL 做 WebView/浏览器兜底',
+        3 => '【J3 xt/config.php 新增 performance.replace_direct_timeout = 12.0】默认 12 秒（1-60 可配置），安全余量远小于 nginx fastcgi_read_timeout 60s / PHP max_execution_time 30s 避免 502',
+        4 => '【J3 XT_CONCURRENT_RESULTS 双通道字段仍输出】JSON 同时含 official_url（jx.xmflv.cc HTML 播放器）+ replace_url（资源站 m3u8 直链），APK 侧可自行选择：替换源 m3u8（APK 直接播）/ 官方源 WebView（内嵌虾米播放器容器）',
+        5 => '【APK 用法】部署后：①若官替资源站匹配成功（有片源），jiexi.php/xt.php 返回 .m3u8 直链→APK 秒播；②官替无匹配或超时，返回 jx.xmflv.cc HTML 播放器→APK 侧切换到 WebView 模式（内嵌 iframe）播放。想 100% 出 APK 可播直链→把嗅探模式从「同时调用」切到「官替(replace)」即可（只跑官替直调，匹配失败直接返回解析失败）。',
+        6 => '【lint 0 错误通过】php -l xt/server.php + xt/config.php → 全部 No syntax errors detected',
+      ),
+    ),
     'v5.13.7' =>
     array (
       'date' => '2026-08-14',

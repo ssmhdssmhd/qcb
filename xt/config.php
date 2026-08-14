@@ -90,6 +90,11 @@ return [
         //   - mode=official/replace 时此开关=true 会自动升级为 concurrent（向后兼容）
         //   - 全新安装建议保持 true + mode=concurrent
         'concurrent_race_enabled' => true,
+        // v5.13.8 新增：concurrent 模式下官替直调的独立预算时间（秒），1-60 之间
+        //   官替 OfficialReplaceManager 匹配资源站需要时间（通常 5-30s），此预算内没出结果
+        //   就直接放弃官替，主 play_url 回落到官解（HTML 播放器）。
+        //   注意：此值应 < nginx fastcgi_read_timeout / PHP max_execution_time - 5s，避免 502。
+        'replace_direct_timeout' => 12.0,
         // AI 评分权重配置
         'ai_score_weights' => [
             'success_rate'     => 0.5, // 成功率权重
