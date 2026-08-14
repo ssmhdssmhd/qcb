@@ -17,32 +17,43 @@ return [
     'mode' => 'replace',
 
     // ============ 官解接口（支持多个，AI 学习自动排序） ============
-    // v5.13.2-C3：第三方虾米官解 114.134.184.91:9002 已于 2026-08-14 改为签名/白名单校验，
-    // 任何请求都返回 {"success":false,"message":"验证失败!"}，故默认关闭。
+    // v5.13.3-D4：2026-08-14 替换虾米官解到 https://jx.xmflv.cc/?url=（新 HTML 播放器）
+    //             play_url 返回整段播放器链接 → 302 跳转或 <iframe src= 直接播放。
     'official_apis' => [
         [
-            'enabled'    => false,
-            'name'       => '虾米官解(第三方服务器2026-08-14起需签名验证：请改为官替本地直调或替换为可用的官解地址)',
-            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
-            'type'       => 'json',
+            'enabled'    => true,
+            'name'       => '虾米官解(jx.xmflv.cc v5.13.3新地址，HTML播放器{url}{ref}占位符，直接302跳转/iframe播放)',
+            'url'        => 'https://jx.xmflv.cc/?url={url}&ref={ref}',
+            'type'       => 'html_player',
             'url_field'  => 'play_url',
-            'headers'    => [],
+            'headers'    => [
+                'Accept'                    => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language'           => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'sec-ch-ua'                 => '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+                'sec-ch-ua-mobile'          => '?0',
+                'sec-ch-ua-platform'        => '"Windows"',
+                'Upgrade-Insecure-Requests' => '1',
+            ],
         ],
     ],
 
     // ============ 官解接口（单接口兼容，保留旧结构） ============
     'official_api' => [
-        // v5.13.2-C3：总开关默认 false。第三方服务器已加签名验证，不再作为默认通道。
-        'enabled'    => false,
-        'name'       => '虾米官解(2026-08-14已失效，见上方注释)',
-        // 接口地址，使用时会自动拼接 urlencode($videoUrl)
-        'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
-        // 接口类型：redirect / json / text
-        'type'       => 'json',
+        // v5.13.3-D4：单接口兼容同样替换为 jx.xmflv.cc 新地址 + enabled=true
+        'enabled'    => true,
+        'name'       => '虾米官解(单接口兼容：jx.xmflv.cc新地址 HTML播放器)',
+        // 接口地址：支持 {url} {ref} {origin} {ts} {t} 占位符（v5.13.3+）
+        'url'        => 'https://jx.xmflv.cc/?url={url}&ref={ref}',
+        // 接口类型：redirect / json / text / html_player（v5.13.3 新增 html_player=直接把 URL 作为play_url）
+        'type'       => 'html_player',
         // json 类型时，视频地址所在的字段名
         'url_field'  => 'play_url',
         // 自定义请求头
-        'headers'    => [],
+        'headers'    => [
+            'Accept'                    => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language'           => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Upgrade-Insecure-Requests' => '1',
+        ],
     ],
 
     // ============ 官替接口 ============

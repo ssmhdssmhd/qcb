@@ -21,6 +21,14 @@ class PerformanceOptimizer
     private $stats;
 
     /**
+     * v5.13.3-D3/D4：记录最后一次 buildApiUrl 的请求URL，以及对应请求的 api 配置，
+     *                 供「HTML 播放器页」接口（如 jx.xmflv.cc）命中时，直接把「请求 URL 本身」
+     *                 作为最终 play_url 返回给客户端（302 跳转或 iframe 直接 src=）。
+     * @var array<string, array{url:string, api:array}>  键 = spl_object_id($ch) 或 'last'
+     */
+    private $requestContextByHandle = [];
+
+    /**
      * 构造函数
      *
      * @param array $config 全局配置
@@ -417,7 +425,20 @@ class PerformanceOptimizer
         }
 
         $ch = curl_init();
+        if (!$ch) {
+            return null;
+        }
+        // v5.13.3-D3：按请求句柄存一份 context，供 extractVideoUrlWrapper 用
+        $this->requestContextByHandle[(int)$ch] = ['url' => $requestUrl, 'api' => $api, 'video_url' => $videoUrl];
+        $this->requestContextByHandle['last'] = &$this->requestContextByHandle[(int)$ch];
+
         $httpConfig = $this->config['http'] ?? [];
+        // v5.13.3-D4：默认 UA 升级成 Chrome 126（原 'Mozilla/5.0' 太短容易被 Cloudflare 拦截 403）
+        $defaultUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+        $ua = $httpConfig['user_agent'] ?? null;
+        if (!$ua || $ua === 'Mozilla/5.0') {
+            $ua = $defaultUA;
+        }
 
         curl_setopt_array($ch, [
             CURLOPT_URL            => $requestUrl,
@@ -426,17 +447,44 @@ class PerformanceOptimizer
             CURLOPT_MAXREDIRS      => 5,
             CURLOPT_TIMEOUT        => (int)($httpConfig['timeout'] ?? 15),
             CURLOPT_CONNECTTIMEOUT => (int)($httpConfig['connect_timeout'] ?? 5),
-            CURLOPT_USERAGENT      => $httpConfig['user_agent'] ?? 'Mozilla/5.0',
+            CURLOPT_USERAGENT      => $ua,
             CURLOPT_SSL_VERIFYPEER => ($httpConfig['ssl_verify'] ?? false) ? true : false,
             CURLOPT_SSL_VERIFYHOST => ($httpConfig['ssl_verify'] ?? false) ? 2 : 0,
             CURLOPT_ENCODING       => 'gzip,deflate',
         ]);
 
+        $headers = [];
         if (!empty($api['headers']) && is_array($api['headers'])) {
-            $headers = [];
             foreach ($api['headers'] as $k => $v) {
                 $headers[] = is_numeric($k) ? $v : "{$k}: {$v}";
             }
+        }
+        // v5.13.3-D4：针对 jx.xmflv.cc（Cloudflare WAF 下的虾米新播放器）自动补浏览器头，
+        //             防止 403 Forbidden（jmflv / xmflv 这类站点会检测 Origin/Referer/Accept）
+        $host = (string)parse_url($requestUrl, PHP_URL_HOST);
+        $isXmflv = stripos($host, 'xmflv.cc') !== false || stripos($host, 'jmflv') !== false || stripos($host, 'jx.') === 0;
+        if ($isXmflv) {
+            $scheme = (parse_url($requestUrl, PHP_URL_SCHEME) ?: 'https') . '://';
+            $origin = $scheme . $host;
+            $hasReferer = false; $hasOrigin = false; $hasAccept = false;
+            foreach ($headers as $h) {
+                $lh = strtolower($h);
+                if (strpos($lh, 'referer:') === 0) $hasReferer = true;
+                if (strpos($lh, 'origin:') === 0)  $hasOrigin = true;
+                if (strpos($lh, 'accept:') === 0)  $hasAccept = true;
+            }
+            if (!$hasAccept)  $headers[] = 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7';
+            if (!$hasOrigin)  $headers[] = 'Origin: ' . $origin;
+            if (!$hasReferer) {
+                $fallbackRef = $this->guessPlatformReferer($videoUrl);
+                $headers[] = 'Referer: ' . ($fallbackRef ?: ($origin . '/'));
+            }
+            $headers[] = 'sec-ch-ua: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"';
+            $headers[] = 'sec-ch-ua-mobile: ?0';
+            $headers[] = 'sec-ch-ua-platform: "Windows"';
+            $headers[] = 'Upgrade-Insecure-Requests: 1';
+        }
+        if (!empty($headers)) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         }
 
@@ -444,7 +492,31 @@ class PerformanceOptimizer
     }
 
     /**
+     * v5.13.3-D4：根据视频页 URL 推断一个合理 Referer（jx.xmflv.cc ref 参数和 HTTP Referer 头都用它）
+     */
+    private function guessPlatformReferer(string $videoUrl): string {
+        if ($videoUrl === '') return '';
+        $host = (string)parse_url($videoUrl, PHP_URL_HOST);
+        if ($host === '') return '';
+        $scheme = (string)(parse_url($videoUrl, PHP_URL_SCHEME) ?: 'https');
+        if (stripos($host, 'youku.com') !== false || stripos($host, 'ykimg.com') !== false) return $scheme . '://v.youku.com/';
+        if (stripos($host, 'iqiyi.com') !== false || stripos($host, 'qiyi') !== false) return $scheme . '://www.iqiyi.com/';
+        if (stripos($host, 'qq.com') !== false || stripos($host, 'video.qq') !== false) return $scheme . '://v.qq.com/';
+        if (stripos($host, 'mgtv.com') !== false) return $scheme . '://www.mgtv.com/';
+        if (stripos($host, 'le.com') !== false || stripos($host, 'letv') !== false) return $scheme . '://www.le.com/';
+        if (stripos($host, 'bilibili.com') !== false) return $scheme . '://www.bilibili.com/';
+        if (stripos($host, 'sohu.com') !== false) return $scheme . '://tv.sohu.com/';
+        if (stripos($host, 'pptv.com') !== false) return $scheme . '://v.pptv.com/';
+        return $scheme . '://' . $host . '/';
+    }
+
+    /**
      * 构建请求 URL
+     * v5.13.3-D3 新增占位符支持：
+     *   - {url}   → 原始视频页 URL（urlencode）
+     *   - {ref}   → 根据视频页推断的来源站点 Referer（urlencode，传给 jx.xmflv.cc ref 参数）
+     *   - {origin}→ 来源 Origin，即 {ref} 去掉 path
+     *   - 若没有任何占位符 → 走老逻辑：直接在末尾拼接 urlencode($videoUrl)
      *
      * @param string $videoUrl
      * @param array  $api
@@ -455,7 +527,27 @@ class PerformanceOptimizer
         if (empty($api['url'])) {
             return null;
         }
-        return $api['url'] . urlencode($videoUrl);
+        $tpl = (string)$api['url'];
+        // 检测占位符：只有出现 {xxx} 时才走占位符替换逻辑
+        if (strpos($tpl, '{') !== false) {
+            $ref    = $this->guessPlatformReferer($videoUrl);
+            $origin = '';
+            if ($ref !== '') {
+                $p = parse_url($ref);
+                $origin = ($p['scheme'] ?? 'https') . '://' . ($p['host'] ?? '') . (!empty($p['port']) ? ':' . $p['port'] : '') . '/';
+            }
+            $replace = [
+                '{url}'    => urlencode($videoUrl),
+                '{ref}'    => urlencode($ref),
+                '{referer}'=> urlencode($ref),
+                '{origin}' => urlencode($origin),
+                '{ts}'     => (string)time(),
+                '{t}'      => (string)(time() * 1000),
+            ];
+            return strtr($tpl, $replace);
+        }
+        // 兼容旧模板：纯前缀，直接后缀拼 url=xxx
+        return $tpl . urlencode($videoUrl);
     }
 
     /**
@@ -573,6 +665,41 @@ class PerformanceOptimizer
      */
     private function extractVideoUrl(string $response, array $api, string $videoUrl = ''): ?string
         {
+        // v5.13.3-D3：先做轻量级前置识别——HTML 播放器页面接口（如 jx.xmflv.cc 虾米新播放器）
+        // 特点：HTTP 200，Content-Type text/html；页面 <title> 是「虾米播放器…」，或者有 <div class="Xmflv" id="Xmflv"></div>
+        // 这类接口返回的 HTML 本身不含裸视频 URL，视频源由浏览器端混淆 JS runtime 拉取；但播放器页面完整 URL 本身就可以
+        // 直接被客户端 <iframe src=...> 打开 / 或 302 跳转播放，因此识别成功后直接返回我们 buildApiUrl 拼好的整段请求 URL。
+        $ctx = $this->requestContextByHandle['last'] ?? null;
+        $reqUrl = is_array($ctx) ? (string)($ctx['url'] ?? '') : '';
+        $apiType = strtolower((string)($api['type'] ?? 'json'));
+        $host = $reqUrl ? (string)parse_url($reqUrl, PHP_URL_HOST) : '';
+        $isHtmlPlayerType = ($apiType === 'html_player' || $apiType === 'iframe' || $apiType === 'page');
+        $isKnownPlayerHost = (stripos($host, 'xmflv.cc') !== false || stripos($host, 'jmflv') !== false
+                              || stripos($host, 'jx.xm') === 0 || stripos($host, 'xmplayer') !== false);
+        if ($response && is_string($response) && $reqUrl !== '' && ($isHtmlPlayerType || $isKnownPlayerHost)) {
+            $lower = substr($response, 0, 4096);
+            // 不需要把整个 10KB HTML 转小写；前 4KB 足够包含 <title> 与 <div id="Xmflv"> 锚点
+            $hitTitle   = stripos($lower, '<title>虾米播放器') !== false || stripos($lower, '虾米播放器') !== false;
+            $hitXmflv   = stripos($lower, 'id="Xmflv"') !== false || stripos($lower, 'class="Xmflv"') !== false;
+            $hitSignJs  = stripos($lower, 'Xmflv();') !== false || stripos($lower, 'new Xm') !== false;
+            // 兜底 type=html_player 的情况下只要响应像 HTML（不是 JSON/纯文本）就算命中
+            $looksHtml  = stripos($lower, '<!doctype html') !== false || stripos($lower, '<html') !== false;
+            if (($isHtmlPlayerType && $looksHtml) || $hitTitle || $hitXmflv || ($isKnownPlayerHost && $looksHtml && $hitSignJs)) {
+                // 必须确保 URL 合法且不等于原始 videoUrl（防止死循环/回源）
+                if (filter_var($reqUrl, FILTER_VALIDATE_URL) && strcasecmp($reqUrl, $videoUrl) !== 0) {
+                    // 对请求里的 {ref} 不完整或空的情况，再补一次 ref 参数（给播放器 JS 用作跨域 Referer）
+                    if (stripos($reqUrl, 'ref=') === false) {
+                        $ref = $this->guessPlatformReferer($videoUrl);
+                        if ($ref !== '') {
+                            $joiner = (strpos($reqUrl, '?') === false) ? '?' : '&';
+                            $reqUrl .= $joiner . 'ref=' . urlencode($ref);
+                        }
+                    }
+                    return $reqUrl;
+                }
+            }
+        }
+
         // jiami 分支：核心解密逻辑由 xt/jiami_core.php 中的工厂函数提供，
         //            用 Closure::call($this) 绑定实例
         if (!function_exists('_jm_po_extractVideoUrl')) {

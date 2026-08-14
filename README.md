@@ -9,7 +9,55 @@
   - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
   - 功能与 main 完全一致，运行时自动解密，零性能感知差异
 
-## 当前版本 v5.13.2（2026-08-14）
+## 当前版本 v5.13.3（2026-08-14）
+
+### 🚑 Hotfix：虾米官解新地址 `https://jx.xmflv.cc/?url=&ref=` 接入 + HTML播放器类型支持 + {url}/{ref}占位符 + Cloudflare 403 兼容
+
+**用户诉求**：
+> 虾米解析更换为 `https://jx.xmflv.cc/?url=&ref=`（原 `114.134.184.91:9002` 已于 2026-08-14 加签名+白名单验证，未授权IP必败）。
+
+**D1 新接口探测定案**：
+`jx.xmflv.cc` 返回的是**浏览器端 HTML 播放器页面**（`<title>虾米播放器…</title>` + `<div id=Xmflv>` + 混淆 Xmflv JS runtime 拉流），api/v2/mx.php/api.php/jx.php 等传统 JSON/Redirect 子路径**全部 404**，HTML 里也没有裸 m3u8 URL。
+→ **最终 play_url 就返回**我们拼好的整段 `https://jx.xmflv.cc/?url=URLENCODED&ref=URLENCODED`，客户端直接 302 跳转或 `<iframe src=>` 即可播放。
+
+---
+
+#### ✅ 用户 20 秒立即可用
+
+> **Option A：新安装 / 未改过后台默认配置 → 无需任何操作**：
+> v5.13.3 默认已把 5 处官解配置（sniffer.official_apis / sniffer.official_api / 顶层 official_apis fallback / sniffer_config 同名 2 处）**enabled=true**，url=`https://jx.xmflv.cc/?url={url}&ref={ref}`，type=html_player，首页直接点击解析即生效。
+
+> **Option B：曾改过后台配置仍挂旧 114.134.184.91 → 2 步立刻修复**：
+> 1. 后台 `mxadmin.php → 🔍 嗅探设置` → 若弹出红色告警 → 点「✅ 一键修复」→ 保存；
+> 2. 回到官解接口卡片：URL 改成 `https://jx.xmflv.cc/?url={url}&ref={ref}`，接口类型选 **html_player**，保存 → 回首页刷新 ✅。
+
+---
+
+#### 🛠 代码侧升级（D1~D5，6 文件 lint 全过）
+
+| 项 | 落地位置 | 说明 |
+|----|--------|------|
+| D3-① 6 占位符 | [PerformanceOptimizer.php buildApiUrl](file:///workspace/xt/PerformanceOptimizer.php#L513-L551) | `{url} / {ref}/{referer} / {origin} / {ts} / {t}`；模板无占位符时保留纯后缀拼接老行为 |
+| D3-② 精准 Referer 推断 | [PerformanceOptimizer.php guessPlatformReferer](file:///workspace/xt/PerformanceOptimizer.php#L494-L511) | 优酷/爱奇艺/腾讯视频/芒果/乐视/B站/搜狐/PPTV 返回官方 Referer；其余按原 host 推断 |
+| D3-③ HTML 播放器页 wrapper 识别 | [PerformanceOptimizer.php extractVideoUrl](file:///workspace/xt/PerformanceOptimizer.php#L666-L710) | 调用 jiami 闭包前前置 4 类命中（type=html_player / 标题虾米播放器 / id=Xmflv / host=xmflv.cc 且特征JS），命中直接把 buildApiUrl 拼好的 xmflv.cc 整段 URL 作为 play_url 返回，无需抽 JSON 字段 |
+| D4 Cloudflare 403 兼容 + UA Chrome126 | [PerformanceOptimizer.php createCurlHandle](file:///workspace/xt/PerformanceOptimizer.php#L420-L492) + [config.php http.user_agent](file:///workspace/xt/config.php#L159-L167) | host 含 xmflv.cc/jmflv/jx.* 自动补 Accept/Origin/Referer/sec-ch-ua三件套/Upgrade-Insecure-Requests；UA 默认 Chrome126（Mozilla/5.0或空会自动兜底） |
+| D4 5 处配置启用新地址 | [config.php sniffer.official_apis](file:///workspace/xt/config.php#L22-L45) / [sniffer.official_api](file:///workspace/xt/config.php#L46-L59) / [顶层 official_apis fallback](file:///workspace/xt/config.php#L98-L117) / [sniffer_config.php official_apis](file:///workspace/xt/sniffer_config.php#L19-L38) / [sniffer_config.php official_api](file:///workspace/xt/sniffer_config.php#L40-L57) | 5 处 enabled=true + url=`https://jx.xmflv.cc/?url={url}&ref={ref}` + type=html_player + Chrome126 headers |
+| D4 parseVideoByOfficialChannel 承接 | [server.php parseVideoByOfficialChannel](file:///workspace/xt/server.php#L413-L457) | 新 URL 无 `.m3u8` 后缀 → 走 else 分支：setCache + buildResult(200,解析成功,play_url=整段xmflv.cc URL)，CDN/广告处理直接交给 jx.xmflv.cc 官方播放器 |
+
+```bash
+php -l xt/PerformanceOptimizer.php  # ✅
+php -l xt/config.php                # ✅
+php -l xt/sniffer_config.php        # ✅
+php -l xt/server.php                # ✅
+php -l mxadmin.php                  # ✅
+php -l version.php                  # ✅  v5.13.3  version_code=51303
+```
+
+📄 完整修复图文 + 操作清单见 **CHANGELOG.md → v5.13.3**。
+
+---
+
+## 上一 Hotfix 版本 v5.13.2（2026-08-14）
 
 ### 🚑 Hotfix：虾米官解 api/v2 「验证失败!」根因修复 + 静默失败可追溯 + 后台告警横幅一键修复
 

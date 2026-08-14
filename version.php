@@ -1,13 +1,30 @@
 <?php
 return array (
-  'version' => 'v5.13.2',
+  'version' => 'v5.13.3',
   'branch' => 'main',
-  'build' => '20260814-hotfix-xiami-verify-fail-silent-fall-banner-fix',
-  'version_code' => 51302,
-  'commit' => 'v5.13.2-hotfix-xiami-official-verify-fail-114.134.184.91-silent-fall-backend-diagnostic-and-admin-banner',
+  'build' => '20260814-hotfix-replace-xiami-official-to-jx-xmflv-cc-html-player',
+  'version_code' => 51303,
+  'commit' => 'v5.13.3-hotfix-xiami-official-url-switched-to-jx-xmflv-cc-html-player-plus-placeholder-ref-origin',
   'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.3' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【Hotfix：虾米官解新地址 https://jx.xmflv.cc/?url=&ref= 接入 + HTML播放器类型支持 + {url}/{ref}占位符 + Cloudflare WAF 兼容】',
+      'changes' =>
+      array (
+        0 => '【D1 新接口探测】curl 3 场景（裸UA/Chrome126+ref=https://v.youku.com/ / 禁止跳转）确认 jx.xmflv.cc/?url=&ref= 返回的是完整 HTML 播放器页面(<title>虾米播放器…</title><div id=Xmflv></div> + 混淆 Xmflv JS runtime 拉流)；传统 api/v2 / mx.php / api.php / jx.php 等所有 JSON/Redirect 子路径全部 404；结论：新接口是「HTML播放器页」类型，play_url 就返回整段播放器 URL（302/iframe直接打开即可），无需后端抽 play_url JSON',
+        1 => '【D3 buildApiUrl 占位符升级】xt/PerformanceOptimizer::buildApiUrl 原「纯前缀 + 后缀拼 urlencode」扩展为 6 个占位符替换：{url}=urlencode(原始视频页URL)、{ref}/{referer}=guessPlatformReferer 推断平台Referer、{origin}=scheme://host[:port]/、{ts}=time()秒、{t}=毫秒时间戳；模板中无占位符时保留旧行为，100% 向后兼容老前缀式配置',
+        2 => '【D3 guessPlatformReferer 精准来源】新增私有方法 guessPlatformReferer($videoUrl) 针对优酷/爱奇艺/腾讯视频/芒果/乐视/B站/搜狐/PPTV 返回官方 Referer（例如 youku → https://v.youku.com/），其它站点按原 URL 返回 scheme://host/；同时被 buildApiUrl({ref}) 和 createCurlHandle(HTTP Referer 头) 两处复用',
+        3 => '【D3 extractVideoUrl wrapper：识别HTML播放器页直接返回整URL】原 extractVideoUrl 全部走 jiami 闭包抽 JSON，对新 jx.xmflv.cc（HTML 不含裸m3u8）永远失败；v5.13.3 在调用 jiami 前前置4类命中判断：① api.type=html_player/page/iframe 且响应含 HTML DOCTYPE；② <title>虾米播放器 命中；③ 含 id="Xmflv"/class=Xmflv；④ host=xmflv.cc/jmflv/jx.xm* + 页面含 Xmflv 特征；命中且请求URL合法时，直接把 buildApiUrl 拼好的 xmflv.cc URL 作为 play_url 返回；并发 curl_multi 与串行 callApiSingle 统一走同一入口',
+        4 => '【D4 5处默认配置替换为 jx.xmflv.cc enabled=true】xt/config.php：①sniffer.official_apis[] ②sniffer.official_api ③顶层 official_apis fallback 数组；xt/sniffer_config.php ④official_apis[] ⑤official_api：共5处，统一 url=https://jx.xmflv.cc/?url={url}&ref={ref} type=html_player headers含Accept/Accept-Language/sec-ch-ua/Upgrade-Insecure-Requests；name 字段明确标注 v5.13.3+html_player/302/iframe 直接播放',
+        5 => '【D4 Cloudflare 403 兼容 + UA 升级】createCurlHandle 对 host 含 xmflv.cc / jmflv / jx.* 自动补 Chrome126 完整请求头：Accept(HTML优先) / Origin / Referer(按平台) / sec-ch-ua三件套 / Upgrade-Insecure-Requests；配置中的 http.user_agent 默认 Chrome120 升级 Chrome126（Mozilla/5.0 或空会自动替换）；大幅降低 jx.xmflv.cc 受 Cloudflare WAF 返回 403 的概率',
+        6 => '【D4 requestContextByHandle 上下文】PerformanceOptimizer 新增成员变量 requestContextByHandle：每次 createCurlHandle 创建句柄时按 (int)$ch 存一份 {url,api,video_url}，并引用备份到 [last]；extractVideoUrl wrapper 直接取 requestContextByHandle[last][url] 作为HTML播放器接口最终返回，不修改 jiami 核心闭包（jiami v5.10.9 完全兼容，无需重新加密）',
+        7 => '【D4 parseVideoByOfficialChannel 完美承接】官解最终返回的整段 jx.xmflv.cc 链接没有 .m3u8 后缀，parseVideoByOfficialChannel 会走 else 分支：setCache + buildResult(200,解析成功,$playUrl,$videoLink,$startTime)，直接把链接作为 play_url 返回给客户端，不做任何广告处理（由虾米官方浏览器端播放器自行处理CDN/广告逻辑，与旧 iframe 方式一致）',
+        8 => '【PHP lint 0 错误通过 / 向后兼容】php -l 6 文件：xt/PerformanceOptimizer.php / xt/config.php / xt/sniffer_config.php / xt/server.php / mxadmin.php / version.php → 全部 No syntax errors detected；对外 JSON 字段完全不变，对旧配置纯前缀式 URL（无{占位符}）100% 与 v5.13.2 行为一致',
+      ),
+    ),
     'v5.13.2' =>
     array (
       'date' => '2026-08-14',

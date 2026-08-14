@@ -1,5 +1,79 @@
 # 更新日志
 
+## v5.13.3 (2026-08-14) — Hotfix
+
+### 虾米官解替换为新地址 https://jx.xmflv.cc/?url=&ref= + 新增 HTML播放器接口类型 + {url}/{ref}/{origin}/{ts}/{t} 占位符 + Cloudflare WAF 403 兼容
+
+**用户原始诉求**：
+> 虾米解析更换 `https://jx.xmflv.cc/?url=&ref=`，帮我修复（之前的 `114.134.184.91:9002` 2026-08-14 已加签名验证，必败）。
+
+---
+
+#### 1. D1 新接口探测定案（重要！与之前旧虾米 API 类型完全不同）
+
+直接 curl 3 种组合命中：
+- Case 1 裸UA：HTTP 200，`content-type:text/html`，`<title>虾米播放器-全网最稳定的视频播放器</title>`
+- Case 2 Chrome126 UA + `&ref=https://v.youku.com/`：同上 HTML
+- Case 3 禁止跳转：HTTP 200，没有重定向
+- 8 条传统 JSON 子路径：`api.php / mx.php?action=api/v2 / api/v1 / jx.php / parse.php` 全部 **404**
+- HTML 源码：`<div class="Xmflv" id="Xmflv"></div>` + 两段混淆 JS（base64+rot13+gzinflate 的 Xmflv 播放器构造器），无裸 `*.m3u8 / *.mp4` URL。
+
+→ **结论**：`jx.xmflv.cc` 是**「浏览器端 HTML 播放器页面接口」**（播放器自己在前端 runtime 拉流），后端 cURL **无法**再从响应里抽 JSON 的 `play_url` 字段；
+正确用法是：**把拼好的整段 URL（`https://jx.xmflv.cc/?url=ENC&ref=ENC`）本身作为最终 play_url 返回给客户端 → 客户端直接 302 跳转或 `<iframe src=>` 打开播放页即可**。
+
+---
+
+#### 2. D3 核心代码 3 项升级（[PerformanceOptimizer.php](file:///workspace/xt/PerformanceOptimizer.php)）
+
+| 功能 | 实现 |
+|------|------|
+| ① 接口 URL 支持 {占位符} | `buildApiUrl()` 扩展 6 个占位符：`{url}`=`urlencode(原视频页)`、`{ref}` / `{referer}`=`guessPlatformReferer()`、`{origin}`=去掉 path 的 Referer、`{ts}`=秒级时间戳、`{t}`=毫秒时间戳；模板**不含任何 `{`** 时保留旧的「直接后缀拼 urlencode」——老配置 100% 兼容 |
+| ② 精准 Referer 推断 | `guessPlatformReferer($videoUrl)`：优酷→`https://v.youku.com/`，爱奇艺→`https://www.iqiyi.com/`，腾讯视频→`https://v.qq.com/`，芒果→`https://www.mgtv.com/`，乐视→`https://www.le.com/`，B站→`https://www.bilibili.com/`，搜狐→`https://tv.sohu.com/`，PPTV→`https://v.pptv.com/`，其它→`scheme://host/`；被 `{ref}` 占位符 + HTTP `Referer` 头两处复用 |
+| ③ HTML 播放器页 wrapper 识别（**关键**） | `extractVideoUrl()` 调用 jiami 闭包前前置 4 类命中：<br>1. `api.type ∈ {html_player,page,iframe}` 且响应含 `<!doctype html>`；<br>2. `<title>虾米播放器…</title>` 命中；<br>3. 含 `id="Xmflv"` / `class="Xmflv"`；<br>4. host 含 `xmflv.cc/jmflv/jx.xm*/xmplayer` + Xmflv 签名 JS；<br>命中后**直接把 `buildApiUrl` 拼好的整段 URL 作为 play_url 返回**，不再把不含裸m3u8的 HTML 丢进 jiami 闭包（之前会静默失败）。并发与串行两条链路统一走同一入口。 |
+
+---
+
+#### 3. D4 Cloudflare 403 兼容 + 5 处配置替换 + UA 升级
+
+| 项 | 内容 |
+|----|------|
+| **请求头自动注入** | `createCurlHandle()` 检测 host 含 `xmflv.cc / jmflv / jx.*` 时自动追加：`Accept: text/html,application/xhtml+xml…`、`Origin: https://jx.xmflv.cc`、`Referer: <按平台>`、`sec-ch-ua` 三件套、`Upgrade-Insecure-Requests:1`（Cloudflare WAF 常见检测项） |
+| **UA 默认升级为 Chrome 126** | [config.php](file:///workspace/xt/config.php#L159-L167) `http.user_agent` 从 Chrome 120 → Chrome 126；代码内兜底：若配置仍是空或 `Mozilla/5.0`，自动再替换成 Chrome 126 |
+| **requestContextByHandle 上下文存盘** | 新增成员变量：每次 `createCurlHandle` 都把 `{url,api,video_url}` 存进 `$this->requestContextByHandle[(int)$ch]` + 引用备份到 `['last']`，wrapper 无需改 jiami 闭包签名就能拿到「我们请求 jx.xmflv.cc 时拼好的完整 URL」直接作为返回值 |
+| **5 处默认配置全部 enabled=true → jx.xmflv.cc** | ✅ [config.php sniffer.official_apis](file:///workspace/xt/config.php#L22-L45)<br>✅ [config.php sniffer.official_api 单接口兼容](file:///workspace/xt/config.php#L46-L59)<br>✅ [config.php 顶层 official_apis fallback](file:///workspace/xt/config.php#L98-L117)<br>✅ [sniffer_config.php official_apis](file:///workspace/xt/sniffer_config.php#L19-L38)<br>✅ [sniffer_config.php official_api 单接口兼容](file:///workspace/xt/sniffer_config.php#L40-L57)<br>统一：`url=https://jx.xmflv.cc/?url={url}&ref={ref} type=html_player + 完整 Chrome126 headers` |
+| **mxadmin banner 不变** | 仅对旧失效地址 `114.134.184.91 / :9002` 触发红色告警；`jx.xmflv.cc` 视作正常官解，**不会误弹 banner** |
+| **parseVideoByOfficialChannel 完美承接** | 最终 play_url 返回的是整段 `jx.xmflv.cc` 链接（无 `.m3u8` 后缀）→ `parseVideoByOfficialChannel` 走 **else 分支**：直接 `setCache + buildResult(200,'解析成功',$playUrl,…)` 原样返回给客户端；CDN/广告逻辑由 jx.xmflv.cc 官方前端播放器 runtime 处理（和早年 iframe 虾米解析的用法完全一致，后端不介入） |
+
+---
+
+#### 4. 用户端现在怎么用？（20 秒恢复）
+
+> **Option A：全新部署 / 没改过后台默认配置 → 无需任何操作**：
+> v5.13.3 默认官解接口已替换为 `jx.xmflv.cc` + enabled=true + `type=html_player`，
+> 进入首页直接解析你想要的 URL 即可（play_url 返回整段 jx.xmflv.cc 播放器链接，客户端直接 302/iframe 播放）。
+
+> **Option B：已升级但之前仍存旧 114.134.184.91 配置 → 一键修复仍可复用**：
+> 打开 `mxadmin.php → 🔍 嗅探设置` → 若顶部仍弹出红色 banner（说明旧配置还挂着）→ 点 **✅ 一键修复** → 底部保存 → 回到嗅探设置 → 点官解接口卡片 URL 改为 `https://jx.xmflv.cc/?url={url}&ref={ref}`、类型选 **html_player** → 保存即可。
+
+---
+
+#### 5. 回归 / 兼容性
+
+```bash
+php -l xt/PerformanceOptimizer.php  # No syntax errors ✅
+php -l xt/config.php                # ✅
+php -l xt/sniffer_config.php        # ✅
+php -l xt/server.php                # ✅
+php -l mxadmin.php                  # ✅
+php -l version.php                  # ✅（v5.13.3 / version_code=51303）
+```
+
+- 对外 JSON API **老字段未改**：`success/code/message/play_url/video_name/debug_info/step_trace` 完全兼容旧客户端；
+- 对纯前缀式旧官解 URL（无 `{xxx}` 占位符）→ 行为与 v5.13.2 **100% 一致**；
+- `type=html_player` 为 v5.13.3 新增，旧 `type=json/redirect/text` 全部保留逻辑不碰。
+
+---
+
 ## v5.13.2 (2026-08-14) — Hotfix
 
 ### 虾米官解 api/v2 「验证失败!」根因修复 + 官解静默失败可追溯 + 后台告警横幅一键修复

@@ -22,28 +22,40 @@ return [
         // 官解接口（支持多个，按优先级排列；后台可动态增删）
         // 注意：single_api 模式下也可只配置一条
         'official_apis' => [
-            // v5.13.2-C3: 第三方虾米官解(114.134.184.91:9002)已于 2026-08-14 改为签名/白名单校验，
-            // 任何请求都返回{"success":false,"message":"验证失败!"}，默认启用会让 fallback 一直等。
-            // 需要官解的用户可在后台「嗅探设置」里自己替换为可用的官解接口地址（或保持 false 走官替本地直调）。
+            // v5.13.3-D4：2026-08-14 替换虾米官解到新地址 https://jx.xmflv.cc/?url=（Cloudflare CDN 节点）
+            //   新接口是 HTML 播放器页面（<title>虾米播放器…</title> + <div id=Xmflv>），返回给
+            //   客户端 play_url = 「https://jx.xmflv.cc/?url=URLENCODED&ref=URLENCODED(平台Referer)」
+            //   整段链接，直接 302 跳转或 <iframe src=> 即可播放。无需再抽 play_url JSON。
             [
-                'enabled'    => false,
-                'name'       => '虾米官解(已失效，2026-08-14起需签名验证：请替换为可用的官解接口或直接使用官替本地直调)',
-                'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
-                'type'       => 'json',
+                'enabled'    => true,
+                'name'       => '虾米官解(jx.xmflv.cc新地址v5.13.3 HTML播放器，{url}/{ref}占位符，302/iframe直接播放)',
+                'url'        => 'https://jx.xmflv.cc/?url={url}&ref={ref}',
+                'type'       => 'html_player',
                 'url_field'  => 'play_url',
-                'headers'    => [],
+                'headers'    => [
+                    'Accept'                    => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'Accept-Language'           => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'sec-ch-ua'                 => '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+                    'sec-ch-ua-mobile'          => '?0',
+                    'sec-ch-ua-platform'        => '"Windows"',
+                    'Upgrade-Insecure-Requests' => '1',
+                ],
             ],
             // 可在后台添加更多官解接口...
         ],
         // 单接口兼容字段（保留，后台旧配置可能只有这一条）
         'official_api' => [
-            // v5.13.2-C3: 见上方 official_apis 注释，第三方服务器 2026-08-14 起需要签名验证，默认 false。
-            'enabled'    => false,
-            'name'       => '虾米官解(已失效，见注释)',
-            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
-            'type'       => 'json',
+            // v5.13.3-D4：单接口兼容配置，同样替换为 jx.xmflv.cc 新地址 + enabled=true
+            'enabled'    => true,
+            'name'       => '虾米官解(单接口兼容 jx.xmflv.cc HTML播放器)',
+            'url'        => 'https://jx.xmflv.cc/?url={url}&ref={ref}',
+            'type'       => 'html_player',
             'url_field'  => 'play_url',
-            'headers'    => [],
+            'headers'    => [
+                'Accept'                    => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language'           => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Upgrade-Insecure-Requests' => '1',
+            ],
         ],
         // 官替接口（开关 + 接口参数）
         // v5.10.9 默认开启官替：资源站搜索匹配 + AI 智能识别去广告/去插播/去水印
@@ -88,16 +100,20 @@ return [
     // 支持多个接口，按优先级依次尝试
     // 注意：新版本优先读取 sniffer.official_api，此数组仅在嗅探设置未启用官解时作为兜底
     'official_apis' => [
-        // v5.13.2-C3：兜底官解数组同样标记第三方服务器已失效。
-        // 若后台嗅探配置(sniffer_config.php)里官解接口全部未启用，会走到这里的兜底数组。
-        // 因为服务器已改成签名验证，此数组也留空，避免再尝试必败的请求。
-        // [
-        //     'name'       => '替换为你自己可用的官解接口',
-        //     'url'        => 'https://你的官解服务器/jx?url=',
-        //     'type'       => 'json',
-        //     'url_field'  => 'play_url',
-        //     'headers'    => [],
-        // ],
+        // v5.13.3-D4：fallback 官解数组同样替换为 jx.xmflv.cc 新 HTML 播放器接口，
+        //             保证即便后台 sniffer_config 里全关了官解，old getVideoLinkFromOfficialApi()
+        //             仍然能 fallback 到可用结果。
+        [
+            'name'       => '虾米官解(fallback:jx.xmflv.cc v5.13.3 HTML播放器，直接302跳转/iframe播放)',
+            'url'        => 'https://jx.xmflv.cc/?url={url}&ref={ref}',
+            'type'       => 'html_player',
+            'url_field'  => 'play_url',
+            'headers'    => [
+                'Accept'                    => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language'           => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Upgrade-Insecure-Requests' => '1',
+            ],
+        ],
     ],
 
     // ============ AI 大模型配置（辅助广告识别） ============
@@ -157,10 +173,11 @@ return [
     ],
 
     // ============ 网络请求配置 ============
+    // v5.13.3-D4：user_agent 默认升级 Chrome 126（Cloudflare/WAF 会检查 UA，老 Chrome120 / 极简 UA 容易被 403）
     'http' => [
         'timeout'        => 20,
         'connect_timeout'=> 10,
-        'user_agent'     => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'user_agent'     => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         // 是否验证 SSL 证书
         'ssl_verify'     => false,
     ],
