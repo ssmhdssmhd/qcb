@@ -1,13 +1,25 @@
 <?php
 return array (
-  'version' => 'v5.13.5',
+  'version' => 'v5.13.6',
   'branch' => 'main',
-  'build' => '20260814-hotfix-concurrent-no-http-loopback-plus-dual-channel-json-output',
-  'version_code' => 51305,
-  'commit' => 'v5.13.5-hotfix-concurrent-mode-replace-http-loopback-with-direct-call-plus-official-url-replace-url-in-json',
+  'build' => '20260814-add-xt-php-entrypoint-for-sniffer-setting-based-remote-api',
+  'version_code' => 51306,
+  'commit' => 'v5.13.6-new-entrypoint-xt-php-url-follows-mxadmin-sniffer-mode-plus-parse-list-updated',
   'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.6' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【新增：xt.php?url= 嗅探统一远程调用入口 + 解析列表接口升级】',
+      'changes' =>
+      array (
+        0 => '【H1 新建 xt.php 入口：完全遵循嗅探设置】文件路径 xt.php，调用格式 xt.php?url=视频链接，内部 require xt/server.php 后直接调用 parseVideo()：100% 走 mxadmin 嗅探设置的当前通道（concurrent / official / replace），无需改代码即可切换行为。同 jiexi.php 支持 5 种视频参数（url/wd/v/video/t）+ 4 种输出格式（json/302/api/xml）+ JSONP callback',
+        1 => '【H1 xt.php 同时调用模式输出双通道结果】读取 $GLOBALS[XT_CONCURRENT_RESULTS]，JSON/api/xml 三种格式下附加 official_url(官解通道独立URL) + replace_url(官替通道独立URL) 两个字段，和 jiexi.php G4 行为一致',
+        2 => '【H2 parse/list 升级：所有远程 API 格式清晰枚举】mx.php action=parse/list（即 mx.php?action=parse/list）的 usage 表从 4 条扩展到 9 条，首位新增【推荐】xt.php?url=，新增 jiexi.php / api/v2 / official_replace info 与 resolve / parse/list 自指；supported_types 保持不变',
+        3 => '【lint 0 错误通过】php -l xt.php + mx.php → 全部 No syntax errors detected',
+      ),
+    ),
     'v5.13.5' =>
     array (
       'date' => '2026-08-14',
