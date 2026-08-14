@@ -1,13 +1,27 @@
 <?php
 return array (
-  'version' => 'v5.13.4',
+  'version' => 'v5.13.5',
   'branch' => 'main',
-  'build' => '20260814-feature-concurrent-mode-and-html-player-type',
-  'version_code' => 51304,
-  'commit' => 'v5.13.4-add-concurrent-mode-to-sniffer-settings-ui-plus-html_player-type-option',
+  'build' => '20260814-hotfix-concurrent-no-http-loopback-plus-dual-channel-json-output',
+  'version_code' => 51305,
+  'commit' => 'v5.13.5-hotfix-concurrent-mode-replace-http-loopback-with-direct-call-plus-official-url-replace-url-in-json',
   'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.5' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【修复：同时调用模式不再返回 127.0.0.1 + 双通道独立结果输出 JSON】',
+      'changes' =>
+      array (
+        0 => '【G1 根因定位】getVideoLinkByConcurrentRace L885-905 原逻辑：replace_api.url 为空时自动生成 http://127.0.0.1/mx.php?action=official_replace/info&url= HTTP 回环地址→该 URL 被当成 play_url 返回给 jiexi.php。且 time=0s 说明是旧缓存命中（cacheKey=md5(videoUrl) 不含 mode，切换通道后旧缓存仍有效）',
+        1 => '【G2 重写 getVideoLinkByConcurrentRace：官解走 curl_multi，官替走 PHP 直调】彻底删除 L885-905 的 HTTP 回环 URL 生成逻辑。新流程：①官解接口→concurrentRaceRequest(curl_multi 并发)→official_url；②官替接口→callOfficialReplaceDirectV2(PHP 内部直调 OfficialReplaceManager::resolve)→replace_url。不再生成任何 127.0.0.1/localhost URL，消除 HTTP 回环问题',
+        2 => '【G3 双通道独立结果返回】getVideoLinkByConcurrentRace 返回值新增 official_url + replace_url + replace_orm 三个字段；同时写入 $GLOBALS[XT_CONCURRENT_RESULTS] 全局变量供 jiexi.php 读取。主 play_url 优先取官解（jx.xmflv.cc ~1s 响应快），官解失败 fallback 官替',
+        3 => '【G4 jiexi.php 输出双通道独立结果】outputSuccess 函数新增 $extraUrls 参数，JSON 输出新增 official_url 和 replace_url 两个字段。同时调用模式下返回示例：{"code":200,"url":"https://jx.xmflv.cc/?url=...","official_url":"https://jx.xmflv.cc/?url=...","replace_url":"http://resource-site.com/.../video.m3u8"}。api/xml 格式也支持附加字段',
+        4 => '【G5 缓存失效修复】cacheKey 从 md5($videoUrl) 改为 md5($videoUrl . | . sniffer.mode)，切换通道（official↔replace↔concurrent）时自动失效旧缓存，不再返回旧模式的缓存 URL',
+        5 => '【PHP lint 0 错误通过】php -l xt/server.php + jiexi.php → 全部 No syntax errors detected',
+      ),
+    ),
     'v5.13.4' =>
     array (
       'date' => '2026-08-14',

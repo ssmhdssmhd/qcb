@@ -51,12 +51,20 @@ $parseTime = isset($result['time']) ? $result['time'] : '0s';
 $kfz = isset($result['KFZ']) ? $result['KFZ'] : '超级嗅探|XT';
 $zt = isset($result['ZT']) ? $result['ZT'] : '';
 
+// v5.13.5-G4：同时调用模式下，读取双通道独立结果
+$extraUrls = [];
+if (!empty($GLOBALS['XT_CONCURRENT_RESULTS'])) {
+    $cr = $GLOBALS['XT_CONCURRENT_RESULTS'];
+    if (!empty($cr['official_url'])) $extraUrls['official_url'] = $cr['official_url'];
+    if (!empty($cr['replace_url']))  $extraUrls['replace_url']  = $cr['replace_url'];
+}
+
 if ($result['code'] !== 200 || empty($result['url'])) {
     outputError($result['msg'] ?: '解析失败', $format, $callback, $parseTime, $kfz, $zt);
     exit;
 }
 
-outputSuccess($result['url'], $format, $callback, $parseTime, $kfz, $zt);
+outputSuccess($result['url'], $format, $callback, $parseTime, $kfz, $zt, $extraUrls);
 
 /**
  * 获取视频链接参数，兼容多种参数名
@@ -98,7 +106,7 @@ function getFormat(): string
 /**
  * 输出成功结果
  */
-function outputSuccess(string $playUrl, string $format, ?string $callback, string $parseTime = '0s', string $kfz = '超级嗅探|XT', string $zt = '解析成功'): void
+function outputSuccess(string $playUrl, string $format, ?string $callback, string $parseTime = '0s', string $kfz = '超级嗅探|XT', string $zt = '解析成功', array $extraUrls = []): void
 {
     switch ($format) {
         case '302':
@@ -111,6 +119,9 @@ function outputSuccess(string $playUrl, string $format, ?string $callback, strin
                 'msg'  => '解析成功',
                 'url'  => $playUrl,
             ];
+            // v5.13.5-G4：同时调用模式下附加双通道独立结果
+            if (!empty($extraUrls['official_url'])) $data['official_url'] = $extraUrls['official_url'];
+            if (!empty($extraUrls['replace_url']))  $data['replace_url']  = $extraUrls['replace_url'];
             outputJson($data, $callback);
             break;
 
@@ -121,6 +132,8 @@ function outputSuccess(string $playUrl, string $format, ?string $callback, strin
             echo '  <code>1</code>' . "\n";
             echo '  <msg>解析成功</msg>' . "\n";
             echo '  <url><![CDATA[' . $playUrl . ']]></url>' . "\n";
+            if (!empty($extraUrls['official_url'])) echo '  <official_url><![CDATA[' . $extraUrls['official_url'] . ']]></official_url>' . "\n";
+            if (!empty($extraUrls['replace_url']))  echo '  <replace_url><![CDATA[' . $extraUrls['replace_url'] . ']]></replace_url>' . "\n";
             echo '</result>';
             break;
 
@@ -134,6 +147,9 @@ function outputSuccess(string $playUrl, string $format, ?string $callback, strin
                 'KFZ'  => $kfz,
                 'info' => 'TVBox影视专用解析',
             ];
+            // v5.13.5-G4：同时调用模式下附加双通道独立结果
+            if (!empty($extraUrls['official_url'])) $data['official_url'] = $extraUrls['official_url'];
+            if (!empty($extraUrls['replace_url']))  $data['replace_url']  = $extraUrls['replace_url'];
             outputJson($data, $callback);
     }
 }
