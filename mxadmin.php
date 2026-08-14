@@ -11974,7 +11974,110 @@ if (!$_mxGXSecret) {
                 const text = await res.text();
                 let data;
                 try { data = JSON.parse(text); } catch (e) {
-                    resultEl.innerHTML = '<div style="color:#f56c6c;padding:12px">返回非 JSON：<pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;margin-top:8px">' + escapeHtml(text.substring(0, 500)) + '</pre></div>';
+                    // ===== v5.13 B3 美化：非 JSON 不再裸贴整段 HTML =====
+                    // 先做人话诊断：按 HTTP 状态码 / 错误特征（502/504/500/403/空响应）
+                    const httpStatus = res.status || 0;
+                    const rawPreview = text.replace(/\s+/g, ' ').trim();
+                    let diagTitle = '响应格式异常';
+                    let diagLevel = 'danger';          // danger / warning / info
+                    let diagPrimary = '服务器返回了非 JSON 内容，可能是网关或 PHP 异常。';
+                    let diagCauses = [];
+                    let diagActions = [];
+                    const lowerText = text.toLowerCase();
+
+                    if (httpStatus === 502 || lowerText.indexOf('502 bad gateway') !== -1) {
+                        diagTitle = '502 Bad Gateway（网关/PHP-FPM 无响应）';
+                        diagPrimary = 'Nginx 等不到 PHP 进程响应或上游官解服务器挂了，返回了网关错误页。';
+                        diagLevel = 'danger';
+                        diagCauses.push('官替直调 CPU 过载，PHP-FPM 执行时间超过 Nginx 超时（默认 30s）');
+                        diagCauses.push('配置中的官解接口（如虾米官解 114.134.184.91:9002）本身宕机或限流');
+                        diagCauses.push('服务器 PHP 进程数被占满（并发高时的 FPM 队列阻塞）');
+                        diagActions.push('优先用官替通道：嗅探设置 → ① 切换为「官替接口 replace」 → ② 勾上「启用此接口（推荐作主路由）」');
+                        diagActions.push('临时禁用远端官解服务器：嗅探设置 → 官解解析接口 取消勾选「启用此接口」；官替不填 URL 就走本地直调（比 HTTP 回环快 30-70%）');
+                        diagActions.push('服务器运维侧：检查 PHP-FPM 慢日志 / Nginx error.log，必要时把 Nginx fastcgi_read_timeout 从 30s 调到 60s');
+                    } else if (httpStatus === 504 || lowerText.indexOf('504 gateway time-out') !== -1) {
+                        diagTitle = '504 Gateway Time-out（上游接口超时）';
+                        diagPrimary = '官解/官替接口请求超过 Nginx 设定的等待时间，网关主动掐断。';
+                        diagLevel = 'danger';
+                        diagCauses.push('资源站搜索引擎遍历太慢（站点数多或网络抖动）');
+                        diagCauses.push('外部官解服务器响应速度低于 15s（嗅探 performance.timeout 阈值）');
+                        diagActions.push('降低站点搜索规模：AI 自动学习 → 推荐采集里临时停用更新慢的资源站');
+                        diagActions.push('调大嗅探设置的超时阈值：performance.timeout 从 15s 改到 25s');
+                    } else if (httpStatus === 500 || lowerText.indexOf('<b>fatal error</b>') !== -1 || lowerText.indexOf('<b>parse error</b>') !== -1) {
+                        diagTitle = 'PHP 致命错误 / 500 Internal Server Error';
+                        diagPrimary = '解析脚本发生了致命错误。';
+                        diagLevel = 'danger';
+                        diagCauses.push('代码文件缺失 / 被篡改（加密核心 jiami_core.php 被修改会抛 HMAC 异常）');
+                        diagCauses.push('权限或配置文件损坏（sniffer_config.php / config.php 写入失败）');
+                        diagActions.push('立即执行「系统管理 → 在线更新 → 语法检查」看哪一行报错');
+                        diagActions.push('加密版用户：重新覆盖官方的 xt/jiami_core.php');
+                    } else if (httpStatus === 403 || lowerText.indexOf('403 forbidden') !== -1) {
+                        diagTitle = '403 Forbidden（被 WAF/防盗链拦截）';
+                        diagPrimary = '防火墙、CDN 或站点防盗链把请求判定为恶意请求。';
+                        diagLevel = 'warning';
+                        diagCauses.push('请求频率过高被 WAF 拉黑');
+                        diagCauses.push('服务器 IP 被目标视频平台或官解接口封了');
+                        diagActions.push('降低批量解析并发度，或为请求加上站点合法 UA/Referer');
+                    } else if (!text || text.length === 0) {
+                        diagTitle = '空响应（服务器无任何输出）';
+                        diagPrimary = '请求成功，但服务器没返回任何内容。';
+                        diagLevel = 'warning';
+                        diagCauses.push('PHP FPM worker 崩溃或被 OOM Killer 杀掉');
+                        diagActions.push('查看服务器 dmesg | 系统日志看 OOM，把 FPM 进程数调小');
+                    }
+
+                    if (diagCauses.length === 0) {
+                        diagCauses.push('接口临时返回了 HTML（如维护页、登录页、跳转页），嗅探 API 需要的是 application/json');
+                    }
+                    if (diagActions.length === 0) {
+                        diagActions.push('先刷新页面再试一次；如仍失败，切换嗅探设置通道：官解 ↔ 官替');
+                    }
+
+                    // ===== 用与 success/fail headerCard 同款的彩色卡片展示 =====
+                    const levelMap = {
+                        danger:  { border: '#f56c6c', bg: 'linear-gradient(135deg,#fef0f0 0%,#ffffff 100%)', text: '#f56c6c', pill:'danger',  pillText:'阻断级错误' },
+                        warning: { border: '#e6a23c', bg: 'linear-gradient(135deg,#fdf6ec 0%,#ffffff 100%)', text: '#e6a23c', pill:'warning', pillText:'需要排查' },
+                        info:    { border: '#409eff', bg: 'linear-gradient(135deg,#ecf5ff 0%,#ffffff 100%)', text: '#409eff', pill:'info',    pillText:'格式不对' },
+                    }[diagLevel];
+                    const rawId = 'raw_nonjson_' + (Date.now());
+                    const causesHtml = diagCauses.map(c => '<li style="margin:2px 0 2px 18px;line-height:1.8;color:#303133">• ' + escapeHtml(c) + '</li>').join('');
+                    const actionsHtml = diagActions.map(a => '<li style="margin:2px 0 2px 18px;line-height:1.8;color:#606266">💡 ' + escapeHtml(a) + '</li>').join('');
+                    resultEl.innerHTML =
+                        '<div style="padding:14px 16px;border:1px solid ' + levelMap.border + ';border-radius:10px;background:' + levelMap.bg + '">'
+                        + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
+                        +   '<div style="display:flex;align-items:center;gap:10px">'
+                        +     '<div style="color:' + levelMap.text + ';font-weight:600;font-size:15px">✗ ' + escapeHtml(diagTitle) + '</div>'
+                        +     '<span class="status-pill ' + levelMap.pill + '">' + levelMap.pillText + '</span>'
+                        +   '</div>'
+                        +   '<div style="font-size:12px;color:#909399">HTTP 状态：<b style="color:#303133">' + escapeHtml(String(httpStatus || '未知')) + '</b> · 响应长度：<b style="color:#303133">' + escapeHtml(String(text ? text.length : 0)) + 'B</b></div>'
+                        + '</div>'
+                        + '<div style="font-size:13px;color:#606266;margin:10px 0 12px">' + escapeHtml(diagPrimary) + '</div>'
+                        + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px 16px">'
+                        +   '<div>'
+                        +     '<div style="font-size:12px;font-weight:600;color:#303133;margin-bottom:4px">🕵 可能原因（按概率排序）</div>'
+                        +     '<ul style="margin:0;padding:0;list-style:none;font-size:12.5px">' + causesHtml + '</ul>'
+                        +   '</div>'
+                        +   '<div>'
+                        +     '<div style="font-size:12px;font-weight:600;color:#303133;margin-bottom:4px">🛠 建议修复操作</div>'
+                        +     '<ul style="margin:0;padding:0;list-style:none;font-size:12.5px">' + actionsHtml + '</ul>'
+                        +   '</div>'
+                        + '</div>'
+                        + '<div style="margin-top:14px;border:1px solid ' + levelMap.border + '40;border-radius:8px;background:#fff">'
+                        +   '<button type="button" id="' + rawId + '_toggle" style="width:100%;background:#fafafa;border:0;border-bottom:1px solid ' + levelMap.border + '33;padding:8px 12px;text-align:left;cursor:pointer;font-size:12.5px;color:#606266;display:flex;justify-content:space-between;align-items:center;border-radius:8px 8px 0 0">'
+                        +     '<span>📎 查看原始响应（非 JSON）</span><span id="' + rawId + '_chev">▸</span>'
+                        +   '</button>'
+                        +   '<pre id="' + rawId + '_body" style="display:none;white-space:pre-wrap;word-break:break-all;font-size:11.5px;margin:0;padding:10px 12px;color:#606266;max-height:220px;overflow:auto">' + escapeHtml(text.substring(0, 3000)) + '</pre>'
+                        + '</div></div>'
+                        + '<script>'
+                        + '(function(){'
+                        +   'var t=document.getElementById("' + rawId + '_toggle"),b=document.getElementById("' + rawId + '_body"),c=document.getElementById("' + rawId + '_chev");'
+                        +   'if(!t||!b)return;'
+                        +   't.addEventListener("click",function(){'
+                        +     'if(b.style.display==="none"){b.style.display="";c.textContent="▾";}'
+                        +     'else{b.style.display="none";c.textContent="▸";}'
+                        +   '});'
+                        + '})();'
+                        + '<\/script>';
                     return;
                 }
 

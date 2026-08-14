@@ -1,13 +1,29 @@
 <?php
 return array (
-  'version' => 'v5.13.0',
+  'version' => 'v5.13.1',
   'branch' => 'main',
-  'build' => '20260817-ui-beautify-unified-backend',
-  'version_code' => 51300,
-  'commit' => 'v5.13-ui-beautify-sniffer-style-unified-all-pages',
+  'build' => '20260817-hotfix-sniffer-502-ui-diagnostic',
+  'version_code' => 51301,
+  'commit' => 'v5.13.1-hotfix-sniffer-502-bad-gateway-ui-beautify-plus-diagnostic-trace',
   'updated_at' => '2026-08-17',
   'changelog' =>
   array (
+    'v5.13.1' =>
+    array (
+      'date' => '2026-08-17',
+      'title' => '【Hotfix：嗅探测试 502 Bad Gateway 根因修复 + 报错 UI 美化 + 通道诊断时间线】',
+      'changes' =>
+      array (
+        0 => '【根因链路还原 B1】用户截图「502 Bad Gateway nginx」真实触发点：嗅探测试请求 xt/api.php → 走官替直调 callOfficialReplaceDirectV2 CPU 过载超过 Nginx FPM 超时(默认30s) → nginx 直接吐 502 HTML → 前端 JSON.parse 失败后整段裸贴 HTML（虾米官解 114.134.184.91:9002 本身也宕机 502，双通道双 502 叠加）',
+        1 => '【B2 官替直调预算时间保护】xt/server.php 官替直调外层新增 $directBudget = min(performance.timeout, 25 秒)，直调前用 ini_set 收紧 max_execution_time，设置 $GLOBALS[\'XT_REPLACE_DIRECT_DEADLINE\'] 供 OfficialResolveManager 长循环感知；达到预算 99% 仍未成功立即软中断降级走 HTTP 官替，避免再触发 nginx 502',
+        2 => '【B3 非 JSON/502 报错 UI 全面美化】mxadmin.php testSniffer() 原「返回非 JSON：<pre>整段502 HTML」拆为 5 档分级诊断卡(502/504/500/403/空响应/默认异常)：彩色卡片顶部(大标题+status-pill+HTTP状态+响应长度) + 双栅格(左：按概率排序的可能原因 / 右：修复操作建议) + 可折叠「查看原始响应」面板，502 场景自动匹配「官替直调 CPU 过载 / 虾米官解宕机 / FPM 满」3 条原因和 3 条一键修复建议',
+        3 => '【B4 嗅探失败自动诊断时间线】xt/server.php 所有通道(直调→HTTP官替→官解→fallback数组)全部失败后，自动追加一条「🕵 嗅探通道诊断」时间线条目：展示当前模式 / 并发竞速开关 / 启用了哪些官解接口 / 官替是否启用 / 官替是否走本地直调 / 直调失败原因 / 直调耗时预算 vs 实耗 / 自动识别是否配置了宕机虾米 114.134.184.91:9002，附 fix_tips 数组，前端时间线默认展开失败条目可直接看到',
+        4 => '【B4 debug_info 补充字段】失败返回 JSON 的 debug_info 新增 sniffer_diagnostic 子结构：mode / official_apis_enabled / replace_enabled / replace_direct_fail_reason / fix_tips，旧版前端也能在失败摘要上读到',
+        5 => '【宕机服务器自动识别】后端 B4 诊断逻辑里检测到官解接口 URL 包含「114.134.184.91」或「:9002」时，fix_tips 首条明确提示「该服务器当前已宕机 502，请取消勾选官解接口的启用改走官替本地直调」，失败消息不再是泛泛的「当前通道未能解析」，直接替换为对该用户最有针对性的第一条 tip',
+        6 => '【PHP lint 0 错误通过】php -l xt/server.php / mxadmin.php / version.php → 全部 No syntax errors detected；B2/B4 只在 parseVideo 函数内部加变量与分支，不改任何对外 API 签名与字段结构，前后向兼容',
+        7 => '【版本元信息升级为 v5.13.1】version_code=51301 build=20260817-hotfix-sniffer-502-ui-diagnostic updated_at=2026-08-17；CHANGELOG 顶部追加 Hotfix 章节；README 附修复前后对比与用户可直接套用的 1 分钟修复操作清单',
+      ),
+    ),
     'v5.13.0' =>
     array (
       'date' => '2026-08-17',

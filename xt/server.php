@@ -89,9 +89,9 @@ function parseVideo(string $videoUrl): array
     //   当嗅探配置 replace_api.enabled=true 且未指定远端 url（或 replace_api 指向本地 mx.php），
     //   直接实例化 OfficialReplaceManager，调用 resolve 拿完整结果（含 step_trace）。
     //
-    //   注意：若已加载加密版 callOfficialReplaceDirect（jiami_core.php，签名只返回 ?string），
-    //        则跳过此直调路径（避免 HTTP 回环，由老 HTTP 官替接口兜底）；
-    //        等 jiami 分支把 jiami_core.php 重新生成升级为 V2 签名后，这里自动启用。
+    //   v5.13 加固（B2）：对直调增加「预算时间保护」——FPM/nginx 超时一般是 30s，
+    //   这里在 25s 处主动软中断，返回带 step_trace 的结构化失败 JSON，
+    //   由后续 HTTP 官替/官解兜底；避免 nginx 直接输出 502 Bad Gateway HTML 给前端。
     $replaceDirect = null;
     $sniffer = $config['sniffer'] ?? [];
     $replaceApi = $sniffer['replace_api'] ?? [];
@@ -103,13 +103,50 @@ function parseVideo(string $videoUrl): array
             $forceReplaceDirect = true;
         }
     }
+
+    // ===== v5.13 新增：官替直调时间预算保护（防止 PHP-FPM 超时导致 nginx 502）
+    //   预算时间 = min(嗅探 performance.timeout, 25 秒)，留至少 5 秒给后续 fallback 通道
+    $perfCfg = $config['performance'] ?? [];
+    $directBudget = (float)($perfCfg['timeout'] ?? 15.0);
+    if ($directBudget <= 0 || $directBudget > 25.0) $directBudget = 25.0;
+    $directDeadline = $startTime + $directBudget;
+    // 预先注入软超时到 OfficialReplaceManager（若它读取 ini_get('max_execution_time') 可感知）
+    if (function_exists('ini_set') && !ini_get('safe_mode')) {
+        $oldMaxExec = (int)ini_get('max_execution_time');
+        if ($oldMaxExec === 0 || $oldMaxExec > (int)ceil($directBudget) + 10) {
+            @ini_set('max_execution_time', (string)((int)ceil($directBudget) + 10));
+        }
+    }
+    $replaceDirectFailReason = null;  // 用于失败摘要带出去
+
     // 只有明文版 V2 callOfficialReplaceDirectV2 存在（jiami_core 还没覆盖到）时才走本地直调
     if ($forceReplaceDirect && function_exists('callOfficialReplaceDirectV2')) {
-        $replaceDirect = callOfficialReplaceDirectV2($videoUrl, $config);
+        try {
+            // 在全局空间声明 deadline，OfficialReplaceManager 内部若有长循环可读取并主动返回
+            $GLOBALS['XT_REPLACE_DIRECT_DEADLINE'] = $directDeadline;
+            $replaceDirect = callOfficialReplaceDirectV2($videoUrl, $config);
+        } catch (\Throwable $e) {
+            // 任何直调异常都不允许冒泡导致 FPM 崩溃 → 降级走 HTTP 官替
+            $replaceDirectFailReason = sprintf('直调异常: %s (line %d)', $e->getMessage() ?: get_class($e), $e->getLine());
+            $replaceDirect = ['direct' => false];
+        }
     }
 
-    if ($replaceDirect && !empty($replaceDirect['direct'])) {
+    $replaceDirectUsed = ($replaceDirect && !empty($replaceDirect['direct']));
+    if ($replaceDirectUsed) {
         $orm = $replaceDirect['orm']; // OfficialReplaceManager resolve 完整结果
+        $adSkipUrl = (string)($orm['ad_skip_url'] ?? '');
+        $elapsedDirect = microtime(true) - $startTime;
+        $directTimedOut = $elapsedDirect >= $directBudget - 0.5;  // 到达预算 99% 视为临近超时
+        if ($directTimedOut && (!$orm || empty($orm['success']))) {
+            // 直调超时，标记失败原因，继续 fallback 到 HTTP 官替通道
+            $replaceDirectFailReason = sprintf('官替直调临近超时(%.1fs ≥ 预算%.1fs)，已降级走 HTTP 官替', $elapsedDirect, $directBudget);
+            $replaceDirectUsed = false;
+        }
+    }
+
+    if ($replaceDirectUsed) {
+        $orm = $replaceDirect['orm'];
         $adSkipUrl = (string)($orm['ad_skip_url'] ?? '');
         if (!empty($orm['success']) && $adSkipUrl !== '') {
             // 写入解析缓存
@@ -131,6 +168,7 @@ function parseVideo(string $videoUrl): array
         }
         // 本地官替失败：把详细错误 + step_trace 带出去（供前端时间线 UI 显示哪一步错）
         $failMsg = (string)($orm['message'] ?? '官替解析失败');
+        if ($replaceDirectFailReason) $failMsg .= '；' . $replaceDirectFailReason;
         $extras = [
             'channel'      => 'replace_direct',
             'source'       => 'replace',
@@ -145,6 +183,8 @@ function parseVideo(string $videoUrl): array
                 'searched_sites'   => $orm['searched_sites'] ?? 0,
                 'matched_sites'    => $orm['matched_sites'] ?? 0,
                 'error_code'        => $orm['error_code'] ?? null,
+                'replace_direct_fail_reason' => $replaceDirectFailReason,
+                'replace_direct_elapsed'    => isset($elapsedDirect) ? round($elapsedDirect * 1000, 1) . 'ms' : null,
             ],
         ];
         return buildResult(500, '解析失败', $failMsg, null, $startTime, false, $extras);
@@ -166,10 +206,12 @@ function parseVideo(string $videoUrl): array
     $sniffSource = $sniffResult['source'];  // 'official' | 'replace' | null
 
     if (!$videoLink) {
-        // 有可用的嗅探 step_trace 时也一并带上（如果 sniffResult 里有 orm_full 的话）
+        // ===== v5.13 B4 修复：嗅探全部失败时，构造一条「嗅探诊断」时间线附加条目 =====
+        // 让前端时间线明确告诉用户：当前模式是啥 / 启用了哪些接口 / 有没有官替直调失败
         $extras = [];
+        $existingTrace = [];
         if (!empty($sniffResult['orm_full']['step_trace'])) {
-            $extras['step_trace'] = $sniffResult['orm_full']['step_trace'];
+            $existingTrace = $sniffResult['orm_full']['step_trace'];
             $extras['video_title'] = $sniffResult['orm_full']['video_title'] ?? '';
             $extras['platform']    = $sniffResult['orm_full']['platform'] ?? '';
             $extras['search_keywords'] = $sniffResult['orm_full']['search_keywords'] ?? [];
@@ -177,9 +219,97 @@ function parseVideo(string $videoUrl): array
                 'successful_sites' => $sniffResult['orm_full']['successful_sites'] ?? [],
                 'failed_sites'     => array_slice($sniffResult['orm_full']['failed_sites'] ?? [], 0, 20),
                 'searched_sites'   => $sniffResult['orm_full']['searched_sites'] ?? 0,
+                'matched_sites'    => $sniffResult['orm_full']['matched_sites'] ?? 0,
             ];
+        } else {
+            $extras['debug_info'] = [];
         }
-        return buildResult(500, '解析失败', '嗅探设置中当前通道未能解析出视频地址', null, $startTime, false, $extras);
+
+        // 收集当前嗅探配置 + 通道状态，作为时间线新增的最后一条展示
+        $sniffer = $config['sniffer'] ?? [];
+        $mode    = $sniffer['mode'] ?? 'official';
+        $officialApisEnabled = [];
+        if (!empty($sniffer['official_apis']) && is_array($sniffer['official_apis'])) {
+            foreach ($sniffer['official_apis'] as $a) {
+                if (!empty($a['enabled'])) $officialApisEnabled[] = ($a['name'] ?: '未命名官解') . '→' . (strlen($a['url'] ?? '') > 48 ? substr($a['url'],0,48).'…' : ($a['url'] ?? '无URL'));
+            }
+        }
+        $offApiSingle = $sniffer['official_api'] ?? [];
+        if (!empty($offApiSingle['enabled'])) $officialApisEnabled[] = ($offApiSingle['name'] ?: '默认官解') . '→' . (strlen($offApiSingle['url'] ?? '') > 48 ? substr($offApiSingle['url'],0,48).'…' : ($offApiSingle['url'] ?? '无URL'));
+
+        $replaceApi = $sniffer['replace_api'] ?? [];
+        $replaceEnabled = !empty($replaceApi['enabled']);
+        $replaceUrl    = (string)($replaceApi['url'] ?? '');
+        $replaceIsLocal = ($replaceUrl === '' || stripos($replaceUrl, 'official_replace/info') !== false || stripos($replaceUrl, 'official_replace/resolve') !== false);
+
+        $perf = $config['performance'] ?? [];
+        $overallStatus = 'fail';
+        $overallTitle = '🕵 嗅探通道诊断（全部失败，点击展开详情）';
+        $summaryLines = [];
+        $summaryLines[] = '当前嗅探模式：' . ($mode === 'replace' ? '官替接口(replace) ✅推荐' : '官解解析(official)');
+        $summaryLines[] = '并发竞速模式：' . (empty($perf['concurrent_race_enabled']) ? '关（串行 fallback）' : '开（官解+官替同时请求）');
+        $summaryLines[] = '官解解析接口已启用 ' . count($officialApisEnabled) . ' 条：' . (count($officialApisEnabled) ? implode('；', $officialApisEnabled) : '⚠ 全部未启用——请在嗅探设置里至少勾一条「启用此接口」');
+        $summaryLines[] = '官替接口：' . ($replaceEnabled ? ($replaceIsLocal ? '✅启用，未填 URL → 走本地直调 OfficialReplaceManager（比 HTTP 回环快 30-70%）' : '启用，走远端：' . (strlen($replaceUrl) > 48 ? substr($replaceUrl,0,48).'…' : $replaceUrl)) : '⚠ 未启用 → 官替通道不会被尝试');
+        if (!empty($replaceDirectFailReason)) {
+            $summaryLines[] = '官替直调失败原因：' . $replaceDirectFailReason;
+        }
+        if (isset($elapsedDirect)) {
+            $summaryLines[] = '官替直调用时：' . round($elapsedDirect * 1000, 1) . 'ms（预算 ' . round(($directBudget ?? 0) * 1000, 0) . 'ms）';
+        }
+        $summaryLines[] = '最终返回通道：嗅探所有通道均未得到有效播放地址（见下）';
+
+        // 最后：给出可执行修复建议（与前端 B3 的建议一致但后端也给一份）
+        $fixTips = [];
+        if ($mode === 'official' && count($officialApisEnabled) === 0) $fixTips[] = '当前模式=官解但没启用任何官解接口 → 请切到官替 replace 模式（v5.11 推荐）';
+        if ($mode === 'official' && !$replaceEnabled) $fixTips[] = '同时启用官替接口（即使不用也可作为 fallback 兜底）';
+        if (count($officialApisEnabled) > 0) {
+            foreach ($officialApisEnabled as $oe) {
+                if (stripos($oe, '114.134.184.91') !== false || stripos($oe, ':9002') !== false) {
+                    $fixTips[] = '⚠ 检测到配置了虾米官解（114.134.184.91:9002），该服务器当前已宕机 502，请取消勾选该官解接口的「启用」改走官替本地直调';
+                }
+            }
+        }
+        if ($mode === 'replace' && !$replaceIsLocal) $fixTips[] = '官替接口不要填远端地址，留空=本地直调（跳过 HTTP 回环，速度更快 + 避免再遇到 502/超时）';
+        if (empty($fixTips)) $fixTips[] = '建议：把嗅探设置 → 官替接口 URL 留空（本地直调）+ 临时取消所有外部官解接口的启用，避免请求宕机服务器。';
+        $summaryLines[] = '修复建议：' . implode('；', $fixTips);
+
+        $diagnosticStep = [
+            'title'      => $overallTitle,
+            'status'     => $overallStatus,
+            'summary'    => implode("\n", $summaryLines),
+            'elapsed_ms' => (microtime(true) - $startTime) * 1000,
+            'detail'     => [
+                'sniffer_mode'              => $mode,
+                'concurrent_race_enabled'   => !empty($perf['concurrent_race_enabled']),
+                'official_apis_enabled'     => $officialApisEnabled,
+                'replace_enabled'           => $replaceEnabled,
+                'replace_url'               => $replaceUrl,
+                'replace_url_is_local'      => $replaceIsLocal,
+                'replace_direct_fail_reason' => $replaceDirectFailReason ?? null,
+                'replace_direct_elapsed_ms' => isset($elapsedDirect) ? round($elapsedDirect * 1000, 1) : null,
+                'direct_budget_ms'          => isset($directBudget) ? round($directBudget * 1000, 0) : null,
+                'fix_tips'                  => $fixTips,
+                'sniffer_source'            => $sniffSource,
+                'fallback_channel_tried'    => $concurrentRace ? 'concurrent_race' : 'serial_fallback',
+            ],
+        ];
+        $existingTrace[] = $diagnosticStep;
+        $extras['step_trace']  = $existingTrace;
+
+        // debug_info 也带上 B4 的失败摘要（旧的前端逻辑也能在失败摘要上看到）
+        if (empty($extras['debug_info'])) $extras['debug_info'] = [];
+        $extras['debug_info']['sniffer_diagnostic'] = [
+            'mode'                      => $mode,
+            'official_apis_enabled'     => count($officialApisEnabled),
+            'replace_enabled'           => $replaceEnabled,
+            'replace_direct_fail_reason' => $replaceDirectFailReason ?? null,
+            'fix_tips'                  => $fixTips,
+        ];
+
+        // 失败消息用更具体的第一条 fix tip 替换默认的"当前通道未能解析"
+        $failMsg = '嗅探设置中当前通道未能解析出视频地址';
+        if (!empty($fixTips)) $failMsg = $fixTips[0];
+        return buildResult(500, '解析失败', $failMsg, null, $startTime, false, $extras);
     }
 
     // ============ 官替通道：从资源站匹配 + AI 去广告/去插播/去水印 ============
