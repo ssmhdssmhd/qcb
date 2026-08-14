@@ -256,6 +256,21 @@ function parseVideo(string $videoUrl): array
         if (isset($elapsedDirect)) {
             $summaryLines[] = '官替直调用时：' . round($elapsedDirect * 1000, 1) . 'ms（预算 ' . round(($directBudget ?? 0) * 1000, 0) . 'ms）';
         }
+
+        // v5.13.2-C4 新增：从 PerformanceOptimizer::recordFailedApi 写入的全局变量读取每条官解接口的失败明细
+        $failedApiReqs = [];
+        if (!empty($GLOBALS['XT_FAILED_API_REQUESTS']) && is_array($GLOBALS['XT_FAILED_API_REQUESTS'])) {
+            $failedApiReqs = $GLOBALS['XT_FAILED_API_REQUESTS'];
+        }
+        if (!empty($failedApiReqs)) {
+            $summaryLines[] = '官解接口失败明细(' . count($failedApiReqs) . ' 条)：';
+            foreach ($failedApiReqs as $i => $fr) {
+                $one = '  ' . ($i + 1) . '. ' . ($fr['name'] ?? '未命名官解') . ' → ' . ($fr['reason'] ?? '未知原因') . '；HTTP=' . ($fr['http_code'] ?? 0) . '；resp_len=' . ($fr['response_len'] ?? 0);
+                if (!empty($fr['biz_message'])) $one .= '；上游原消息=' . $fr['biz_message'];
+                if (strlen($one) > 200) $one = substr($one, 0, 200) . '…';
+                $summaryLines[] = $one;
+            }
+        }
         $summaryLines[] = '最终返回通道：嗅探所有通道均未得到有效播放地址（见下）';
 
         // 最后：给出可执行修复建议（与前端 B3 的建议一致但后端也给一份）
@@ -265,7 +280,21 @@ function parseVideo(string $videoUrl): array
         if (count($officialApisEnabled) > 0) {
             foreach ($officialApisEnabled as $oe) {
                 if (stripos($oe, '114.134.184.91') !== false || stripos($oe, ':9002') !== false) {
-                    $fixTips[] = '⚠ 检测到配置了虾米官解（114.134.184.91:9002），该服务器当前已宕机 502，请取消勾选该官解接口的「启用」改走官替本地直调';
+                    $fixTips[] = '⚠ 检测到配置了虾米官解（114.134.184.91:9002），该服务器 2026-08-14 起已加签名验证，任意请求都返回「验证失败!」→ 请取消勾选该官解接口的「启用」改走官替本地直调';
+                }
+            }
+        }
+        // v5.13.2-C4：按上游业务级错误自动出建议
+        if (!empty($failedApiReqs)) {
+            foreach ($failedApiReqs as $fr) {
+                $bm = $fr['biz_message'] ?? '';
+                if (stripos($bm, '验证失败') !== false && empty($fixTips)) {
+                    $fixTips[] = '官解上游返回「验证失败!」，说明此服务器需要签名/白名单，未授权IP无法使用 → 切到官替 replace 模式 + 官替URL留空走本地直调即可。';
+                    break;
+                }
+                if (($fr['http_code'] ?? 0) === 0 && empty($fixTips)) {
+                    $fixTips[] = '官解 curl 连接失败（超时/连接被拒绝/IP不通）→ 请取消该外部官解接口启用，改走官替本地直调。';
+                    break;
                 }
             }
         }
@@ -288,6 +317,7 @@ function parseVideo(string $videoUrl): array
                 'replace_direct_fail_reason' => $replaceDirectFailReason ?? null,
                 'replace_direct_elapsed_ms' => isset($elapsedDirect) ? round($elapsedDirect * 1000, 1) : null,
                 'direct_budget_ms'          => isset($directBudget) ? round($directBudget * 1000, 0) : null,
+                'failed_api_requests'       => $failedApiReqs,
                 'fix_tips'                  => $fixTips,
                 'sniffer_source'            => $sniffSource,
                 'fallback_channel_tried'    => $concurrentRace ? 'concurrent_race' : 'serial_fallback',
@@ -303,6 +333,7 @@ function parseVideo(string $videoUrl): array
             'official_apis_enabled'     => count($officialApisEnabled),
             'replace_enabled'           => $replaceEnabled,
             'replace_direct_fail_reason' => $replaceDirectFailReason ?? null,
+            'failed_api_requests'       => $failedApiReqs,
             'fix_tips'                  => $fixTips,
         ];
 

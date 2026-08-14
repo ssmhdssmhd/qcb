@@ -277,30 +277,59 @@ class PerformanceOptimizer
                 $response = curl_multi_getcontent($done['handle']);
 
                 if ($httpCode === 200 && $response) {
-                    $link = $this->extractVideoUrl($response, $api, $videoUrl);
-                    if ($link && filter_var($link, FILTER_VALIDATE_URL)) {
-                        // 成功！立即记录并返回
-                        $resultUrl = $link;
-                        $resultApi = $api;
-                        $this->recordApiResult($apiName, $callDuration, true);
-
-                        // 记录其他未完成的接口为失败（但不扣分太重，因为是被取消的）
-                        foreach ($handles as $otherIdx => $otherCh) {
-                            if ($otherIdx !== $foundIdx) {
-                                $otherApi = $handleMap[$otherIdx];
-                                $otherName = $otherApi['name'] ?? md5($otherApi['url'] ?? 'unknown');
-                                // 竞速中被取消的，不给连续失败惩罚
-                                if (isset($this->stats['apis'][$otherName])) {
-                                    $this->stats['apis'][$otherName]['consecutive_fail'] = max(
-                                        0,
-                                        $this->stats['apis'][$otherName]['consecutive_fail'] - 1
-                                    );
-                                }
+                    // v5.13.2-C3：并发路径同样识别 HTTP 200 业务级 success=false:{message:"验证失败!"}，
+                    //            先记录错误原因再 recordApiResult(false)，避免之前并发失败没进入 recordFailedApi。
+                    $first = substr(ltrim($response), 0, 1);
+                    $bizOk = true;
+                    if ($first === '{' || $first === '[') {
+                        $data = json_decode($response, true);
+                        if (is_array($data)) {
+                            $bizOk = false;
+                            if (isset($data['code'])    && (int)$data['code'] === 200) $bizOk = true;
+                            if (isset($data['success']) && $data['success'] === true) $bizOk = true;
+                            if (isset($data['status'])  && (int)$data['status'] === 1) $bizOk = true;
+                            if (!$bizOk) {
+                                $this->recordFailedApi($api, 200, $response, '并发-业务级错误（success=false/code!=200）');
                             }
                         }
-
-                        break 2; // 跳出所有循环
                     }
+
+                    if ($bizOk) {
+                        $link = $this->extractVideoUrl($response, $api, $videoUrl);
+                        if ($link && filter_var($link, FILTER_VALIDATE_URL)) {
+                            // 成功！立即记录并返回
+                            $resultUrl = $link;
+                            $resultApi = $api;
+                            $this->recordApiResult($apiName, $callDuration, true);
+
+                            // 记录其他未完成的接口为失败（但不扣分太重，因为是被取消的）
+                            foreach ($handles as $otherIdx => $otherCh) {
+                                if ($otherIdx !== $foundIdx) {
+                                    $otherApi = $handleMap[$otherIdx];
+                                    $otherName = $otherApi['name'] ?? md5($otherApi['url'] ?? 'unknown');
+                                    // 竞速中被取消的，不给连续失败惩罚
+                                    if (isset($this->stats['apis'][$otherName])) {
+                                        $this->stats['apis'][$otherName]['consecutive_fail'] = max(
+                                            0,
+                                            $this->stats['apis'][$otherName]['consecutive_fail'] - 1
+                                        );
+                                    }
+                                }
+                            }
+
+                            break 2; // 跳出所有循环
+                        }
+                        // 到这里说明 HTTP 200 + 业务 status=ok，但 extractVideoUrl 拿不到视频
+                        $this->recordFailedApi($api, 200, $response, '并发-HTTP 200 & 业务成功，但无法提取视频URL（字段='.($api['url_field'] ?? '未指定').'）');
+                    }
+                } else {
+                    // HTTP 非200 / 空响应
+                    $this->recordFailedApi(
+                        $api,
+                        (int)$httpCode,
+                        is_string($response) ? $response : null,
+                        $response ? '' : '并发-空响应或curl错误('.(curl_error($done['handle']) ?: '无错误信息').')'
+                    );
                 }
 
                 // 这个接口失败了，记录下来
@@ -430,28 +459,104 @@ class PerformanceOptimizer
     }
 
     /**
+     * v5.13.2-C3：把一条官解接口的失败原因（HTTP 状态码 / 业务级错误消息 / 响应长度）写入全局变量，
+     * 供 xt/server.php B4 嗅探诊断时间线读取并展示给用户，避免之前「静默失败」。
+     */
+    private function recordFailedApi(array $api, int $httpCode, ?string $response, string $extraReason = ''): void {
+        // 初始化全局变量（xt/server.php 的 B4 嗅探诊断会读取）
+        if (!isset($GLOBALS['XT_FAILED_API_REQUESTS']) || !is_array($GLOBALS['XT_FAILED_API_REQUESTS'])) {
+            $GLOBALS['XT_FAILED_API_REQUESTS'] = [];
+        }
+        $name = (string)($api['name'] ?? '未命名官解');
+        $url  = (string)($api['url'] ?? '');
+        $shortUrl = strlen($url) > 64 ? substr($url, 0, 64).'…' : $url;
+
+        // 【关键】识别业务级错误：HTTP 200 但响应是 JSON {success:false, message:"验证失败!"} 等
+        $bizMsg = '';
+        if ($httpCode === 200 && $response && is_string($response)) {
+            $first = substr(ltrim($response), 0, 1);
+            if ($first === '{' || $first === '[') {
+                $data = json_decode($response, true);
+                if (is_array($data)) {
+                    $ok = false;
+                    if (isset($data['code'])  && (int)$data['code'] === 200) $ok = true;
+                    if (isset($data['success']) && $data['success'] === true) $ok = true;
+                    if (isset($data['status'])  && (int)$data['status'] === 1) $ok = true;
+                    if (!$ok) {
+                        $bizMsg = (string)($data['message'] ?? $data['msg'] ?? $data['ZT'] ?? '');
+                        if ($bizMsg !== '' && strlen($bizMsg) > 128) $bizMsg = substr($bizMsg, 0, 128).'…';
+                    }
+                }
+            }
+        }
+
+        if ($httpCode !== 200) {
+            $reason = "HTTP {$httpCode}";
+        } elseif (!$response) {
+            $reason = '空响应(curl_exec返回false或空串，可能是连接超时/上游502/服务器主动断开)';
+        } elseif ($bizMsg !== '') {
+            $reason = '业务级错误：' . $bizMsg;
+        } else {
+            $reason = $extraReason !== '' ? $extraReason : '响应无法解析出有效视频地址';
+        }
+        $GLOBALS['XT_FAILED_API_REQUESTS'][] = [
+            'name'         => $name,
+            'url_prefix'   => $shortUrl,
+            'http_code'    => $httpCode,
+            'response_len' => $response ? strlen($response) : 0,
+            'reason'       => $reason,
+            'biz_message'  => $bizMsg,
+            'ts_ms'        => (int)(microtime(true) * 1000),
+        ];
+    }
+
+    /**
      * 单个接口串行请求（fallback 用）
      *
-     * @param string $videoUrl
-     * @param array  $api
-     * @return string|null
+     * v5.13.2-C3：在此处增加对「HTTP 200 但业务 success=false」的识别，
+     *             不再像以前把 {"success":false,"message":"验证失败!"} 当作「无法解析视频URL」的静默失败。
      */
     private function callApiSingle(string $videoUrl, array $api): ?string
     {
         $ch = $this->createCurlHandle($videoUrl, $api);
         if (!$ch) {
+            $this->recordFailedApi($api, 0, null, '无法创建 curl 句柄');
             return null;
         }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
         curl_close($ch);
 
-        if ($httpCode !== 200 || !$response) {
+        if ($httpCode !== 200 || $response === false || $response === '') {
+            $extra = $curlErr ? ('curl 错误: ' . $curlErr) : '';
+            $this->recordFailedApi($api, (int)$httpCode, is_string($response) ? $response : null, $extra);
             return null;
         }
 
-        return $this->extractVideoUrl($response, $api, $videoUrl);
+        // v5.13.2-C3：HTTP 200 但业务级错误（success=false / code=500）→ 记录错误原因 + 返回 null
+        $first = substr(ltrim($response), 0, 1);
+        if ($first === '{' || $first === '[') {
+            $data = json_decode($response, true);
+            if (is_array($data)) {
+                $ok = false;
+                if (isset($data['code'])    && (int)$data['code'] === 200) $ok = true;
+                if (isset($data['success']) && $data['success'] === true) $ok = true;
+                if (isset($data['status'])  && (int)$data['status'] === 1) $ok = true;
+                if (!$ok) {
+                    $this->recordFailedApi($api, 200, $response, '业务级错误（success=false / code!=200）');
+                    return null;
+                }
+            }
+        }
+
+        $link = $this->extractVideoUrl($response, $api, $videoUrl);
+        if ($link === null) {
+            $this->recordFailedApi($api, 200, $response, 'HTTP 200 & 业务成功，但视频字段（' . ($api['url_field'] ?? '未指定') . '）为空/格式非法');
+            return null;
+        }
+        return $link;
     }
 
     /**

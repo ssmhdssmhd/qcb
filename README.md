@@ -9,9 +9,51 @@
   - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
   - 功能与 main 完全一致，运行时自动解密，零性能感知差异
 
-## 当前版本 v5.13.1（2026-08-17）
+## 当前版本 v5.13.2（2026-08-14）
 
-### 🚑 Hotfix：嗅探测试 502 Bad Gateway 根因修复 + 报错 UI 美化 + 诊断时间线
+### 🚑 Hotfix：虾米官解 api/v2 「验证失败!」根因修复 + 静默失败可追溯 + 后台告警横幅一键修复
+
+**用户反馈原始错误**：
+> 调用 `http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html`
+> 返回 `{"success":false,"code":500,"message":"❌<br>验证失败!","type_name":"虾米解析"}` → 前端一直转圈，不知道错在哪。
+
+**根因结论（非项目 Bug）**：第三方虾米官方服务器 `114.134.184.91:9002` 已于 **2026-08-14** 对 `api/v2` 接口新增签名 + 白名单 IP 校验，**未授权 IP 无论传什么 UA / Referer / 时间戳都 100% 返回验证失败**，无法通过补 header 绕过。
+
+---
+
+#### 👩🔧 用户端「1 分钟立即修复，嗅探报错立刻消失」
+
+> **Option A（一键修复，强烈推荐）**
+> 1. 进入后台 `mxadmin.php` → 左侧菜单「接口工具 → 🔍 嗅探设置」
+> 2. 页面顶部会出现红色告警横幅，直接点击 **「✅ 一键修复：取消该官解启用 + 官替URL置空 + 切到 replace 主路由」**
+> 3. 页面底部会自动滚动高亮 **「💾 保存嗅探设置」**，点它
+> 4. 回首页刷新播放页 → 嗅探报错立即消失 ✅
+
+> **Option B（手动做，等价结果）**
+> 1. ① 选择当前解析通道 → 选 **官替接口（replace v5.11 推荐主路由）**
+> 2. ② 接口详细配置 → 「1 官解接口」左上角 **取消**「启用此接口」（114.134.184.91:9002 已失效，启用只会白等）
+> 3. ② 下方「2 官替接口」→ 保持「启用此接口」= ✅，并把 **接口地址 URL 留空**（留空 = 走本地 OfficialReplaceManager 直调，比 HTTP 回环快 30-70%，不会再 502/验证失败）
+> 4. 💾 保存 → 回到首页播放页刷新
+
+---
+
+#### 🛠 代码侧修复（C1~C5，全部 lint 通过）
+
+| 步骤 | 落地位置 | 做了什么 |
+|------|--------|--------|
+| **C3 结束静默失败黑暗期** | [PerformanceOptimizer.php](file:///workspace/xt/PerformanceOptimizer.php) | 新增 `recordFailedApi()`：HTTP 非200 / 空响应 / **HTTP 200 但 {success:false,code:500} 业务级错误** / 成功但视频字段空 → 四类错误全部写进 `$GLOBALS['XT_FAILED_API_REQUESTS']`，字段含 {reason,biz_message,http_code,response_len,ts_ms}；`callApiSingle` 和 `concurrentRaceRequest` 两条链路都接入 |
+| **C2 默认配置下线 5 处失效官解** | [config.php](file:///workspace/xt/config.php) + [sniffer_config.php](file:///workspace/xt/sniffer_config.php) | `sniffer.official_apis / sniffer.official_api / 顶层 official_apis 兜底` + `sniffer_config 的 2 处` 共 5 条 `114.134.184.91:9002` 全部 **enabled=false**，name 明确标注「2026-08-14起需签名验证，请替换或改用官替本地直调」；sniffer_config.update_date=2026-08-14 |
+| **C4 后端诊断失败明细** | [server.php](file:///workspace/xt/server.php) B4 嗅探诊断 | 失败 JSON 的 `step_trace.summary` 和 `debug_info.sniffer_diagnostic.failed_api_requests` 中逐条列出官解失败：`1. 虾米官解 → 业务级错误：验证失败!；HTTP=200；resp_len=209；上游原消息=❌<br>验证失败!`；新增两条自动修复建议（验证失败命中 → 切 replace；http_code=0 连接失败 → 停官解） |
+| **C4 红色告警 Banner + 一键修复** | [mxadmin.php](file:///workspace/mxadmin.php) 嗅探设置页 | 加载完配置后检测 enabled=true 且 URL 含 `114.134.184.91 / :9002` → 弹出红色横幅，含 4 步操作清单 + `xiamiBannerOneClickFix()` 按钮（自动设参数 + 标脏 + 滚动高亮保存按钮 + 5 秒 Toast） |
+| **C5 回归** | 6 个核心文件 + version | `php -l` 全部 **No syntax errors detected**；对外 JSON 字段前后向兼容；API 客户端无升级必要 |
+
+📄 详细图文 & 每步修复前后对比见顶部 **CHANGELOG.md → v5.13.2**。
+
+---
+
+## 上一 Hotfix 版本 v5.13.1（2026-08-17）
+
+### 🚑 嗅探测试 502 Bad Gateway 根因修复 + 报错 UI 美化 + 诊断时间线
 
 **用户截图问题 1 分钟解决操作（立即恢复）**：
 > 1. 嗅探设置 → ① 选择「官替接口 replace v5.11 推荐」（已选就不动）

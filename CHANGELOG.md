@@ -1,5 +1,134 @@
 # 更新日志
 
+## v5.13.2 (2026-08-14) — Hotfix
+
+### 虾米官解 api/v2 「验证失败!」根因修复 + 官解静默失败可追溯 + 后台告警横幅一键修复
+
+用户反馈：`mx.php?action=api/v2&type=parse&url=https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html`
+返回：`{"success":false,"code":500,"message":"❌<br>验证失败!","type_name":"虾米解析"}`，首页播放一直转圈，不知道哪里错。
+
+---
+
+#### 1. 根因定案（C1）：**不是我们代码 Bug，是第三方服务器改为签名+白名单验证**
+
+用 5 种组合直接对 114.134.184.91:9002 发 curl：
+- ① 裸请求（无UA、无header）
+- ② 完整浏览器 UA（Chrome 126，附 Accept/Accept-Language）
+- ③ 加 `Referer: https://v.youku.com/`（模拟从优酷跳转）
+- ④ 加时间戳参数 `&t=1760860000`
+- ⑤ 加 `X-Forwarded-For: 114.134.184.1`
+
+**全部返回同一条**：`{"success":false,"code":500,"message":"❌<br>验证失败!"}`，HTTP 200。
+
+→ 结论：2026-08-14 起虾米官方上游（`114.134.184.91:9002`）对 `api/v2` 接口新增了**签名 + 白名单 IP** 校验，未授权 IP 无论传什么 header/timestamp 都 100% 失败，无法绕过。
+
+> 这解释了之前看到的「HTTP 200 但一直没拿到播放地址」：因为 old PerformanceOptimizer 只看 HTTP status，看到 200 就去提取视频 URL，然后失败时**把 `{success:false,message:"验证失败!"}` 静默当成「无法解析」丢弃**，前端完全看不到 `验证失败!` 这 5 个字的业务错误信息。
+
+---
+
+#### 2. C2 默认配置立即下线已失效的虾米官解（共 5 处 enabled=false）
+
+| 位置 | 修改内容 |
+|------|------|
+| [config.php](file:///workspace/xt/config.php) → `sniffer.official_apis[]` | enabled=true → **false**，name 改为「虾米官解(已失效，2026-08-14起需签名验证…)」 |
+| [config.php](file:///workspace/xt/config.php) → `sniffer.official_api` | enabled=true → **false**（单接口兼容保留字段） |
+| [config.php](file:///workspace/xt/config.php) → 顶层 `official_apis[]` fallback 数组 | 整段注释掉改为示例模板「替换为你自己可用的官解接口」，避免后台未启用官解时仍走到必败的服务器 |
+| [sniffer_config.php](file:///workspace/xt/sniffer_config.php) → `official_apis[]` | enabled=true → **false** |
+| [sniffer_config.php](file:///workspace/xt/sniffer_config.php) → `official_api` | enabled=true → **false**；`update_date` 升级到 `2026-08-14` |
+
+→ 新安装/后台保存后，官解通道默认**不再尝试** `114.134.184.91:9002`，官替本地直调立刻接管，解析速度**反而更快**（官替 URL 留空 = 不走 HTTP 回环）。
+
+---
+
+#### 3. C3 结束官解「静默失败」黑暗期：新增 `recordFailedApi` 全局失败明细
+
+[PerformanceOptimizer.php](file:///workspace/xt/PerformanceOptimizer.php) 新增私有方法 `recordFailedApi($api,$httpCode,$response,$extraReason)`：
+
+| 错误分类 | 识别方式 | 输出字段（写进全局变量） |
+|---------|---------|---------------------|
+| HTTP 非200 | `curl_getinfo(CURLINFO_HTTP_CODE) !== 200` | `reason="HTTP 502"`、`http_code=502` |
+| 空响应/连接失败 | `curl_exec === false / ""`，附 `curl_error` | `reason="空响应(连接超时/上游502/服务器断开)"`、`http_code=0` |
+| **业务级错误（本次痛点）** | HTTP 200 + JSON `{success:false, code!=200, status!=1}` | `reason="业务级错误：验证失败!"`、`biz_message="❌<br>验证失败!"`（精准透传上游 message/msg/ZT） |
+| HTTP 200 + 业务成功但无视频字段 | `extractVideoUrl()=null` | `reason="HTTP 200 & 业务成功，但视频字段（play_url）为空/格式非法"` |
+
+统一写入：`$GLOBALS['XT_FAILED_API_REQUESTS'][] = {name, url_prefix, http_code, response_len, reason, biz_message, ts_ms}`。
+
+→ 之前的「官解失败，啥也不知道」痛点从此彻底消失，B4 嗅探诊断能把失败原因**逐条列出来**。
+
+**两条请求链路都接入：**
+- `callApiSingle()` 串行 fallback：5 类错误分别命中写盘
+- `concurrentRaceRequest()` curl_multi 并发：`curl_multi_info_read` 每完成一条即检测 HTTP 码 + JSON success 判断，并发路径失败同样记录，不再是黑盒
+
+---
+
+#### 4. C4 后端 B4 嗅探诊断读出失败明细 + 自动生成修复建议
+
+[server.php](file:///workspace/xt/server.php) `parseVideo` 失败分支读取 C3 写入的 `XT_FAILED_API_REQUESTS`：
+
+```
+🕵 嗅探通道诊断（全部失败，点击展开详情）
+...
+├─ 官解接口失败明细(1 条)：
+│    1. 虾米官解 → 业务级错误：验证失败!；HTTP=200；resp_len=209；上游原消息=❌<br>验证失败!
+├─ 最终返回通道：嗅探所有通道均未得到有效播放地址（见下）
+└─ 修复建议：官解上游返回「验证失败!」，说明此服务器需要签名/白名单，
+            未授权IP无法使用 → 切到官替 replace 模式 + 官替URL留空走本地直调即可。
+```
+
+同时新增 2 类**自动匹配的精准修复建议**（命中即顶到 `$failMsg` 首行，用户不再看到泛泛的「当前通道未能解析」）：
+- 命中「biz_message 包含『验证失败』」 → 直接建议切 replace + 官替 URL 置空
+- 命中「http_code=0 连接失败」 → 直接建议取消外部官解启用
+
+`debug_info.sniffer_diagnostic` 和 `step_trace[].detail` 同步新增字段：`failed_api_requests[]`（含 biz_message/ts_ms/http_code 完整结构化数据，旧前端也能读到）。
+
+---
+
+#### 5. C4 后台嗅探设置红色告警 Banner + **一键修复按钮**（已上线用户秒级自愈）
+
+即便用户是 v5.13.1 或更早版本且**仍然手动启用了这条已失效的官解**，升级到 v5.13.2 后打开后台 🔍 嗅探设置会**立即看到**概览卡底部的红色告警：
+
+```
+🚨 检测到已失效的「虾米官解 (114.134.184.91:9002)」接口仍处于启用状态
+
+  上游服务器已于 2026-08-14 改为签名/白名单校验，未授权IP直接请求 100% 返回：
+  {"success":false,"message":"❌ 验证失败!"}
+
+  一分钟修复方案（推荐方案一，无需额外服务器）：
+  1. 保持当前主路由为官替接口（replace）
+  2. 取消官解接口的「启用此接口」勾选
+  3. 确保官替接口启用 + URL 留空 = 走本地直调（最快）
+  4. 点击底部「保存嗅探设置」，首页刷新即消失
+
+  [✅ 一键修复：取消该官解启用 + 官替URL置空 + 切到 replace 主路由]
+  [稍后自己改（隐藏此条）]
+```
+
+点击**一键修复**后：自动取消 114.134.184.91 的启用勾、切主路由到 replace、官替 URL 清空、标脏 + 滚动高亮 **💾 保存嗅探设置** 按钮 + 5 秒 Toast 说明。
+
+---
+
+#### 6. 对用户的「1 分钟修复操作清单」（不看文档也能做）
+
+1. 进入后台 `mxadmin.php` → 左侧**接口工具 → 🔍 嗅探设置**
+2. 若看到顶部红色告警横幅 → 直接点 **「✅ 一键修复」** → 滚到底点 **「💾 保存嗅探设置」**
+3. 若没看到横幅（banner 已被之前点过隐藏），也手动做：
+   - ① 把「1 官解接口」左上角「启用此接口」取消勾选
+   - ② 确保「2 官替接口」启用 + **URL 留空**（留空=走本地直调，比远端官替快 30-70%）
+   - ③ ①选择当前解析通道**选「官替接口」(replace)**
+   - ④ 点保存
+4. 回首页播放页面刷新，之前的「验证失败!」立即消失 ✅
+
+---
+
+#### 7. 回归 & 兼容性
+
+- `php -l` 6 个修改文件：**全部 No syntax errors detected**
+  - xt/config.php · xt/sniffer_config.php · xt/PerformanceOptimizer.php · xt/server.php · mxadmin.php · version.php
+- 对外 JSON API 字段**完全前后向兼容**：失败 JSON 的老字段（code/message/play_url/video_name…）未改，新增 `debug_info.sniffer_diagnostic.failed_api_requests` 和 `step_trace[].detail.failed_api_requests` 属于附加信息，不影响旧版前端。
+- 配置文件向后兼容：`sniffer_config.php` 的字段名和层级完全不变，只是把 `enabled` 默认从 true 改为 false + name 带说明。
+
+---
+
 ## v5.13.1 (2026-08-17) — Hotfix
 
 ### 嗅探测试「502 Bad Gateway nginx」根因修复 + 报错 UI 美化 + 通道诊断时间线

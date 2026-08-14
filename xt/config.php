@@ -22,9 +22,12 @@ return [
         // 官解接口（支持多个，按优先级排列；后台可动态增删）
         // 注意：single_api 模式下也可只配置一条
         'official_apis' => [
+            // v5.13.2-C3: 第三方虾米官解(114.134.184.91:9002)已于 2026-08-14 改为签名/白名单校验，
+            // 任何请求都返回{"success":false,"message":"验证失败!"}，默认启用会让 fallback 一直等。
+            // 需要官解的用户可在后台「嗅探设置」里自己替换为可用的官解接口地址（或保持 false 走官替本地直调）。
             [
-                'enabled'    => true,
-                'name'       => '虾米官解',
+                'enabled'    => false,
+                'name'       => '虾米官解(已失效，2026-08-14起需签名验证：请替换为可用的官解接口或直接使用官替本地直调)',
                 'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
                 'type'       => 'json',
                 'url_field'  => 'play_url',
@@ -34,8 +37,9 @@ return [
         ],
         // 单接口兼容字段（保留，后台旧配置可能只有这一条）
         'official_api' => [
-            'enabled'    => true,
-            'name'       => '虾米官解',
+            // v5.13.2-C3: 见上方 official_apis 注释，第三方服务器 2026-08-14 起需要签名验证，默认 false。
+            'enabled'    => false,
+            'name'       => '虾米官解(已失效，见注释)',
             'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
             'type'       => 'json',
             'url_field'  => 'play_url',
@@ -84,20 +88,15 @@ return [
     // 支持多个接口，按优先级依次尝试
     // 注意：新版本优先读取 sniffer.official_api，此数组仅在嗅探设置未启用官解时作为兜底
     'official_apis' => [
-        [
-            'name'       => '虾米官解',
-            'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
-            'type'       => 'json',
-            'url_field'  => 'play_url',  // JSON 中视频地址的字段名
-            'headers'    => [],
-        ],
-        // 可添加更多官解接口...
+        // v5.13.2-C3：兜底官解数组同样标记第三方服务器已失效。
+        // 若后台嗅探配置(sniffer_config.php)里官解接口全部未启用，会走到这里的兜底数组。
+        // 因为服务器已改成签名验证，此数组也留空，避免再尝试必败的请求。
         // [
-        //     'name'      => '官解接口-2',
-        //     'url'       => 'https://api2.example.com/jiexi?url=',
-        //     'type'      => 'json',
-        //     'url_field' => 'url',
-        //     'headers'   => [],
+        //     'name'       => '替换为你自己可用的官解接口',
+        //     'url'        => 'https://你的官解服务器/jx?url=',
+        //     'type'       => 'json',
+        //     'url_field'  => 'play_url',
+        //     'headers'    => [],
         // ],
     ],
 

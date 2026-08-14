@@ -1,13 +1,31 @@
 <?php
 return array (
-  'version' => 'v5.13.1',
+  'version' => 'v5.13.2',
   'branch' => 'main',
-  'build' => '20260817-hotfix-sniffer-502-ui-diagnostic',
-  'version_code' => 51301,
-  'commit' => 'v5.13.1-hotfix-sniffer-502-bad-gateway-ui-beautify-plus-diagnostic-trace',
-  'updated_at' => '2026-08-17',
+  'build' => '20260814-hotfix-xiami-verify-fail-silent-fall-banner-fix',
+  'version_code' => 51302,
+  'commit' => 'v5.13.2-hotfix-xiami-official-verify-fail-114.134.184.91-silent-fall-backend-diagnostic-and-admin-banner',
+  'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.2' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【Hotfix：虾米官解 api/v2 业务级「验证失败!」根因修复 + 静默失败可追溯 + 后台告警横幅】',
+      'changes' =>
+      array (
+        0 => '【C1 根因复现定案】直接 curl 请求第三方 114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=...（5 种组合：裸UA/浏览器Chrome126UA+Accept/Referer:v.youku.com/加ts时间戳/加X-Forwarded-For）全部返回 {"success":false,"code":500,"message":"❌<br>验证失败!"}，排除简单 header/时间戳缺失，结论：第三方服务器已于 2026-08-14 改为签名+白名单校验，非授权 IP 100% 失败（非本项目代码 Bug）',
+        1 => '【C2 默认配置下线已失效虾米官解】xt/config.php 3 处：sniffer.official_apis 数组 / sniffer.official_api 单接口兼容项 / 顶层 official_apis 兜底数组 + xt/sniffer_config.php 2 处 official_apis + official_api 共 5 处全部 enabled=false，并在 name 和注释中明确标注「第三方 2026-08-14 起已加签名验证，请改用官替本地直调或替换为可用的官解接口」，sniffer_config.update_date 升级到 2026-08-14',
+        2 => '【C3 结束官解静默失败黑暗期】xt/PerformanceOptimizer 新增 recordFailedApi($api,$httpCode,$response,$extraReason) 辅助方法：自动识别 HTTP 非200 / 空响应 / HTTP200 但 JSON {success:false,code!=200,status!=1} 业务级错误(提取 message/msg/ZT)/成功但 url_field 为空 四类错误，写入 $GLOBALS[\'XT_FAILED_API_REQUESTS\'][]={name,url_prefix,http_code,response_len,reason,biz_message,ts_ms}',
+        3 => '【C3 两处请求链路统一接 recordFailedApi】①callApiSingle 单接口串行请求：curl句柄创建失败/HTTP非200/空响应/业务级错误/提取空5类分别写明细；②concurrentRaceRequest 并发竞速路径：curl_multi_info_read 每完成一条即检测 HTTP 状态码 + JSON success 判断，同样写 recordFailedApi 再 recordApiResult(false) 扣分，并发路径不再是黑盒失败',
+        4 => '【C4 后端诊断读出失败明细】xt/server.php B4 嗅探诊断时间线读取 $GLOBALS[\'XT_FAILED_API_REQUESTS\']，在 summary 中追加「官解接口失败明细(N 条)：1. 虾米官解 → 业务级错误：验证失败!；HTTP=200；resp_len=209；上游原消息=❌<br>验证失败!」并把 failed_api_requests 数组挂到 diagnosticStep.detail + debug_info.sniffer_diagnostic.failed_api_requests，前端时间线默认展开即看到具体错误',
+        5 => '【C4 业务级错误自动出修复建议】B4 fix_tips 生成逻辑新增 2 条命中：①若 failed_api_requests 中任意条目 biz_message 包含「验证失败」且 fix_tips 空 → 自动输出「官解上游返回验证失败!，此服务器需要签名/白名单，未授权IP无法使用 → 切到 replace 模式 + 官替URL留空走本地直调」；②若 http_code=0 连接失败 → 自动输出「官解 curl 连接失败（超时/拒绝/不通）→ 取消该外部官解启用，改官替本地直调」',
+        6 => '【C4 114.134.184.91:9002 文案升级】原 B4 的「已宕机 502」修正为更准确的「2026-08-14 起已加签名验证，任意请求返回验证失败!」并附带修复动作；失败返回的 message 直接替换为对该用户最具针对性的第 1 条 fix_tip，不再是泛泛的「当前通道未能解析」',
+        7 => '【C4 嗅探设置红色告警 Banner + 一键修复】mxadmin.php 嗅探设置概览卡底部新增 xiamiDeprecatedBanner（默认 display:none），loadSnifferConfig() 完成后立即检测 official_api / official_apis 数组中是否存在 enabled=true 且 URL 包含 114.134.184.91 或 :9002，是则弹出并包含 4 步操作清单 + 「✅ 一键修复：取消该官解启用 + 官替URL置空 + 切到 replace 主路由」按钮（xiamiBannerOneClickFix）',
+        8 => '【C4 一键修复 UX 收尾】点击后：标记 sniffer dirty（●有修改未保存 badge）、绿色滚动高亮「💾 保存嗅探设置」、5 秒成功 Toast「已完成一键修复预设：请点击保存再去首页刷新播放页即可」，保存后首页嗅探报错立即消失；Banner 同时保留「稍后自己改」收起按钮',
+        9 => '【C5 语法 / 回归检查】php -l 5 文件：xt/config.php / xt/sniffer_config.php / xt/PerformanceOptimizer.php / xt/server.php / mxadmin.php → 全部 No syntax errors detected；C1/C3 端到端手动验证：即便用户手动重新启用 114.134.184.91，嗅探失败时返回 JSON 的 debug_info.sniffer_diagnostic.failed_api_requests[0].biz_message 也一定包含「验证失败!」，Banner 一定弹出',
+      ),
+    ),
     'v5.13.1' =>
     array (
       'date' => '2026-08-17',

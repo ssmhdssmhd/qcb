@@ -4095,6 +4095,28 @@ if (!$_mxGXSecret) {
                         </div>
                     </div>
                 </div>
+
+                <!-- v5.13.2-C4：检测到用户还在启用已失效的第三方虾米官解时，立即给红色告警 banner + 1 分钟修复指引 -->
+                <div id="xiamiDeprecatedBanner"
+                     style="display:none;margin-top:14px;padding:14px 16px;border-radius:10px;background:#fef0f0;border:1px solid #fbc4c4;color:#8c1d1d;font-size:13px;line-height:1.8">
+                    <div style="font-weight:700;font-size:14px;margin-bottom:6px">🚨 检测到已失效的「虾米官解 (114.134.184.91:9002)」接口仍处于启用状态</div>
+                    <div>
+                        上游服务器已于 <strong style="background:#fff;padding:0 4px;border-radius:3px">2026-08-14</strong> 改为签名 / 白名单校验，
+                        未授权 IP 直接请求 100% 返回：<code style="background:#fff;padding:1px 4px;border-radius:3px">{"success":false,"message":"❌ 验证失败!"}</code>，
+                        会导致官解通道永远失败，拖慢 fallback 时间。
+                    </div>
+                    <div style="margin-top:8px;font-weight:600">一分钟修复方案（推荐方案一，无需额外服务器）：</div>
+                    <ol style="margin:6px 0 0 22px;padding:0">
+                        <li>保持当前页面「① 选择当前解析通道」为 <strong>官替接口（replace）</strong>（v5.11 推荐主链路）；</li>
+                        <li>向下滚动到「② 接口详细配置 → 1 官解接口」，把该条接口左上角 <strong>「启用此接口」</strong> 的勾选框取消；</li>
+                        <li>确保「2 官替接口」的「启用此接口」已勾选，<strong>URL 留空</strong> = 走本地 OfficialReplaceManager 直调（跳过 HTTP 回环，比远端官替快 30-70%）；</li>
+                        <li>点击底部「💾 保存嗅探设置」即可，再去首页刷新播放页面，嗅探报错立即消失。</li>
+                    </ol>
+                    <div id="xiamiBannerActions" style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+                        <button class="btn btn-primary" onclick="xiamiBannerOneClickFix()">✅ 一键修复：取消该官解启用 + 官替 URL 置空 + 切到 replace 主路由</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('xiamiDeprecatedBanner').style.display='none'">稍后自己改（隐藏此条）</button>
+                    </div>
+                </div>
             </div>
 
             <!-- ========== 2. 主路由选择 ========== -->
@@ -11865,12 +11887,62 @@ if (!$_mxGXSecret) {
 
                     clearSnifferDirty();
                     updateSnifferBadges();
+
+                    // v5.13.2-C4：加载完后立即检测：用户当前仍启用了失效的第三方虾米官解 114.134.184.91:9002？
+                    const hasDeprecated = (function () {
+                        const o = cfg.official_api || {};
+                        if (o.enabled && typeof o.url === 'string' &&
+                            (o.url.indexOf('114.134.184.91') !== -1 || o.url.indexOf(':9002') !== -1)) return true;
+                        const list = cfg.official_apis;
+                        if (Array.isArray(list)) {
+                            for (let i = 0; i < list.length; i++) {
+                                const a = list[i] || {};
+                                if (a.enabled && typeof a.url === 'string' &&
+                                    (a.url.indexOf('114.134.184.91') !== -1 || a.url.indexOf(':9002') !== -1)) return true;
+                            }
+                        }
+                        return false;
+                    })();
+                    const banner = document.getElementById('xiamiDeprecatedBanner');
+                    if (banner) banner.style.display = hasDeprecated ? 'block' : 'none';
                 } else {
                     showToast('加载嗅探配置失败: ' + (data.message || '未知错误'), 'error');
                 }
             } catch (e) {
                 showToast('加载嗅探配置失败: ' + e.message, 'error');
             }
+        }
+
+        // v5.13.2-C4：一键修复按钮——①取消虾米官解（114.134.184.91:9002）的启用；②切主路由到 replace；③官替 URL 置空 + 启用官替
+        function xiamiBannerOneClickFix() {
+            const applyOne = function (oEl, urlEl, replaceUrlEl) {
+                const url = (urlEl && urlEl.value) ? urlEl.value : '';
+                if (oEl && (url.indexOf('114.134.184.91') !== -1 || url.indexOf(':9002') !== -1)) {
+                    oEl.checked = false;
+                }
+                if (replaceUrlEl) replaceUrlEl.value = '';
+            };
+            applyOne(
+                document.getElementById('snifferOfficialEnabled'),
+                document.getElementById('snifferOfficialUrl'),
+                document.getElementById('snifferReplaceUrl')
+            );
+            const repEn = document.getElementById('snifferReplaceEnabled');
+            if (repEn) repEn.checked = true;
+            const modeReplace = document.getElementById('snifferModeReplace');
+            if (modeReplace) modeReplace.checked = true;
+            const modeOff = document.getElementById('snifferModeOfficial');
+            if (modeOff) modeOff.checked = false;
+            // banner 隐藏，提示用户点击保存
+            const banner = document.getElementById('xiamiDeprecatedBanner');
+            if (banner) banner.style.display = 'none';
+            updateSnifferBadges();
+            markSnifferDirty();
+            showToast('已完成一键修复预设：请点击下方「💾 保存嗅探设置」，再去首页刷新播放页即可', 'success', 5000);
+            setTimeout(() => {
+                const btn = document.getElementById('btnSaveSniffer');
+                if (btn) { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); btn.style.outline = '3px solid #67c23a'; setTimeout(() => btn.style.outline = '', 3000); }
+            }, 250);
         }
 
         async function saveSnifferConfig() {

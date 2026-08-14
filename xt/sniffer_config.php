@@ -17,10 +17,12 @@ return [
     'mode' => 'replace',
 
     // ============ 官解接口（支持多个，AI 学习自动排序） ============
+    // v5.13.2-C3：第三方虾米官解 114.134.184.91:9002 已于 2026-08-14 改为签名/白名单校验，
+    // 任何请求都返回 {"success":false,"message":"验证失败!"}，故默认关闭。
     'official_apis' => [
         [
-            'enabled'    => true,
-            'name'       => '虾米官解',
+            'enabled'    => false,
+            'name'       => '虾米官解(第三方服务器2026-08-14起需签名验证：请改为官替本地直调或替换为可用的官解地址)',
             'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
             'type'       => 'json',
             'url_field'  => 'play_url',
@@ -30,9 +32,9 @@ return [
 
     // ============ 官解接口（单接口兼容，保留旧结构） ============
     'official_api' => [
-        // 总开关：false 时即便 mode=official 也不会调用此接口
-        'enabled'    => true,
-        'name'       => '虾米官解',
+        // v5.13.2-C3：总开关默认 false。第三方服务器已加签名验证，不再作为默认通道。
+        'enabled'    => false,
+        'name'       => '虾米官解(2026-08-14已失效，见上方注释)',
         // 接口地址，使用时会自动拼接 urlencode($videoUrl)
         'url'        => 'http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=',
         // 接口类型：redirect / json / text
@@ -61,5 +63,5 @@ return [
     ],
 
     // ============ 更新时间 ============
-    'update_date' => '2026-08-13',
+    'update_date' => '2026-08-14',
 ];
