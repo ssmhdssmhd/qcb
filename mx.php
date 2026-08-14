@@ -3743,7 +3743,7 @@ try {
             ];
 
             $defaultConfig = [
-                'mode'         => 'official',
+                'mode'         => 'concurrent',
                 'official_apis' => [
                     $defaultOfficialApi,
                 ],
@@ -3797,7 +3797,8 @@ try {
             $input = getInputJson();
             $snifferConfigFile = $rootDir . '/xt/sniffer_config.php';
 
-            $mode = ($input['mode'] ?? 'official') === 'replace' ? 'replace' : 'official';
+            $mode = in_array($input['mode'] ?? '', ['official', 'replace', 'concurrent'], true)
+                ? $input['mode'] : 'concurrent';
 
             $buildApiConfig = function ($src) {
                 if (!is_array($src)) {
@@ -3807,7 +3808,7 @@ try {
                     'enabled'    => !empty($src['enabled']),
                     'name'       => trim((string)($src['name'] ?? '')),
                     'url'        => trim((string)($src['url'] ?? '')),
-                    'type'       => in_array($src['type'] ?? '', ['redirect', 'json', 'text'], true)
+                    'type'       => in_array($src['type'] ?? '', ['redirect', 'json', 'text', 'html_player'], true)
                                     ? $src['type'] : 'json',
                     'url_field'  => trim((string)($src['url_field'] ?? '')),
                     'headers'    => is_array($src['headers'] ?? null) ? $src['headers'] : [],
@@ -3848,7 +3849,7 @@ try {
                 . ' * 更新时间: ' . $newConfig['update_date'] . "\n"
                 . ' *' . "\n"
                 . ' * 配置项说明：' . "\n"
-                . ' *   - mode:          当前解析通道（official=官解 / replace=官替）' . "\n"
+                . ' *   - mode:          当前解析通道（concurrent=同时调用 / official=官解 / replace=官替）' . "\n"
                 . ' *   - official_apis: 官解接口列表（支持多个，AI 学习自动排序）' . "\n"
                 . ' *   - official_api:  单官解接口（兼容旧版本）' . "\n"
                 . ' *   - replace_api:   官替接口配置' . "\n"

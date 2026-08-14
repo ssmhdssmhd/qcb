@@ -193,10 +193,18 @@ function parseVideo(string $videoUrl): array
     // 步骤1：根据嗅探设置选择走官解解析还是官替接口
     //   - 官解通道 (official)：调用虾米官解接口，返回原始 m3u8/mp4 直链，需 xt 去广告
     //   - 官替通道 (replace) ：从资源站匹配 + AI 去广告/去插播/去水印，输出最终链接
+    //   - 同时调用 (concurrent)：官解 + 官替同时并发请求，最快成功的立即返回（v5.13.4）
     //
     // v5.7.5 新增：concurrent_race_enabled 开启时，同时并发调用官解 + 官替，
     //              最快成功的接口立即返回，自动识别通道（official/replace）
-    $concurrentRace = !empty($config['performance']['concurrent_race_enabled']);
+    // v5.13.4 新增：mode=concurrent 作为第三选项，由后台嗅探设置直接选择，
+    //               兼容旧配置：concurrent_race_enabled=true 且 mode=replace 时自动升级为 concurrent
+    $snifferMode = $config['sniffer']['mode'] ?? 'concurrent';
+    if ($snifferMode === 'replace' && !empty($config['performance']['concurrent_race_enabled'])) {
+        // 旧配置兼容：mode=replace + concurrent_race_enabled=true → 自动升级为 concurrent
+        $snifferMode = 'concurrent';
+    }
+    $concurrentRace = ($snifferMode === 'concurrent');
     if ($concurrentRace) {
         $sniffResult = getVideoLinkByConcurrentRace($videoUrl, $config);
     } else {

@@ -12,9 +12,10 @@
 
 return [
     // ============ 当前解析通道 ============
-    // official = 走官解解析（调用官方解析 API 获取直链）
-    // replace  = 走官替接口（调用官替 API 获取资源站匹配后的 m3u8）
-    'mode' => 'replace',
+    // concurrent = 同时调用官解+官替（curl_multi 并发，最快成功的立即返回）v5.13.4
+    // official   = 走官解解析（调用官方解析 API 获取直链）
+    // replace    = 走官替接口（调用官替 API 获取资源站匹配后的 m3u8）
+    'mode' => 'concurrent',
 
     // ============ 官解接口（支持多个，AI 学习自动排序） ============
     // v5.13.3-D4：2026-08-14 替换虾米官解到 https://jx.xmflv.cc/?url=（新 HTML 播放器）

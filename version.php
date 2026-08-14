@@ -1,13 +1,28 @@
 <?php
 return array (
-  'version' => 'v5.13.3',
+  'version' => 'v5.13.4',
   'branch' => 'main',
-  'build' => '20260814-hotfix-replace-xiami-official-to-jx-xmflv-cc-html-player',
-  'version_code' => 51303,
-  'commit' => 'v5.13.3-hotfix-xiami-official-url-switched-to-jx-xmflv-cc-html-player-plus-placeholder-ref-origin',
+  'build' => '20260814-feature-concurrent-mode-and-html-player-type',
+  'version_code' => 51304,
+  'commit' => 'v5.13.4-add-concurrent-mode-to-sniffer-settings-ui-plus-html_player-type-option',
   'updated_at' => '2026-08-14',
   'changelog' =>
   array (
+    'v5.13.4' =>
+    array (
+      'date' => '2026-08-14',
+      'title' => '【新增：嗅探设置「同时调用」模式 + html_player 接口类型 + jiexi.php 多通道输出】',
+      'changes' =>
+      array (
+        0 => '【F1 后台 UI 新增第三个通道选项「同时调用(concurrent)」】mxadmin.php 嗅探设置页主路由选择区，在原有「官解解析(official)」「官替接口(replace)」两个 radio 卡片之后新增第三个 radio「同时调用(concurrent)⚡v5.13.4」：选中后官解+官替同时发起 curl_multi 并发请求，最快成功的立即返回 play_url 给 jiexi.php；卡片描述明确标注"同时并发请求，最快成功的立即返回结果给 jiexi.php"',
+        1 => '【F1 官解/官替接口类型下拉新增 html_player 选项】mxadmin.php 两处 <select>（snifferOfficialType / snifferReplaceType）新增 <option value="html_player">html_player（HTML播放器页面，直接返回URL给iframe/302）</option>，jx.xmflv.cc 等HTML播放器接口选 html_player；同时 html_player 类型时 url_field 非必填（saveSnifferConfig 校验逻辑跳过），解决虾米新接口不需要 JSON 字段名的问题',
+        2 => '【F2 loadSnifferConfig/saveSnifferConfig/updateSnifferBadges 全面支持 concurrent】①loadSnifferConfig：默认 mode 从 official 改为 concurrent，新增 snifferModeConcurrent.checked 赋值；②saveSnifferConfig：mode 默认值改 concurrent，html_player 类型跳过 url_field 必填校验，concurrent 模式软校验提示"需要官解和官替都启用"；③updateSnifferBadges：concurrent 模式下两个通道卡片都标"并发中"且高亮 is-current，红色警告检测条件改为"concurrent 需两通道都启用"',
+        3 => '【F3 mx.php 后端 save handler 接受 concurrent + html_player】①mode 白名单从 [official,replace] 扩展为 [official,replace,concurrent]，默认值改 concurrent；②type 白名单从 [redirect,json,text] 扩展为 [redirect,json,text,html_player]；③sniffer/config GET handler 默认 mode 从 official 改为 concurrent；④保存生成的 sniffer_config.php 注释更新为"concurrent=同时调用 / official=官解 / replace=官替"',
+        4 => '【F4 server.php parseVideo 支持 mode=concurrent】原逻辑 $concurrentRace = !empty(concurrent_race_enabled) 改为：$snifferMode = mode ?? concurrent；若 mode=replace 且旧 concurrent_race_enabled=true 则自动升级为 concurrent（向后兼容）；$concurrentRace = (snifferMode === concurrent)；mode=concurrent → getVideoLinkByConcurrentRace 同时并发，mode=official/replace → getVideoLinkBySnifferMode 单通道+fallback',
+        5 => '【F5 默认配置升级】①config.php sniffer.mode 默认从 replace 改为 concurrent；②config.php performance.concurrent_race_enabled 注释更新为"v5.13.4 已被 mode=concurrent 取代，仅作旧配置兼容"（值保持 true 确保向后兼容）；③sniffer_config.php mode 从 replace 改为 concurrent；官解接口 type=html_player 已在 v5.13.3 设好，本次确认无需改',
+        6 => '【PHP lint 0 错误通过】php -l 5 文件：mxadmin.php / mx.php / xt/server.php / xt/config.php / xt/sniffer_config.php → 全部 No syntax errors detected',
+      ),
+    ),
     'v5.13.3' =>
     array (
       'date' => '2026-08-14',

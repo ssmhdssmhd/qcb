@@ -4138,9 +4138,17 @@ if (!$_mxGXSecret) {
                         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
                             <input type="radio" name="snifferMode" value="replace" id="snifferModeReplace" style="transform:scale(1.1)">
                             <span style="font-weight:600;color:#303133">官替接口（replace）</span>
-                            <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:#f0f9eb;color:#67c23a">✅ v5.11 推荐</span>
+                            <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:#f0f9eb;color:#67c23a">推荐</span>
                         </div>
                         <div style="font-size:12px;color:#909399;margin-left:26px">官方页面识别 + 资源站精准搜索 + AI+MD5 占位，不会中断播放。</div>
+                    </label>
+                    <label for="snifferModeConcurrent" style="position:relative;display:block;border:2px solid #dcdfe6;background:#fff;border-radius:10px;padding:14px 16px;cursor:pointer;transition:.15s" data-sniffer-mode-card="concurrent">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                            <input type="radio" name="snifferMode" value="concurrent" id="snifferModeConcurrent" style="transform:scale(1.1)">
+                            <span style="font-weight:600;color:#303133">同时调用（concurrent）</span>
+                            <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:#fdf6ec;color:#e6a23c">⚡ v5.13.4</span>
+                        </div>
+                        <div style="font-size:12px;color:#909399;margin-left:26px">官解 + 官替同时并发请求，最快成功的立即返回结果给 jiexi.php。</div>
                     </label>
                 </div>
             </div>
@@ -4178,8 +4186,9 @@ if (!$_mxGXSecret) {
                                 <option value="json">json（返回 JSON，最常用）</option>
                                 <option value="redirect">redirect（302 跳转直链）</option>
                                 <option value="text">text（响应体只有纯 URL）</option>
+                                <option value="html_player">html_player（HTML播放器页面，直接返回URL给iframe/302）</option>
                             </select>
-                            <div class="form-tip">和上游接口返回格式保持一致</div>
+                            <div class="form-tip">jx.xmflv.cc 等HTML播放器接口选 html_player；和上游接口返回格式保持一致</div>
                         </div>
                         <div class="form-group">
                             <label>URL 字段名（json 类型）<span class="req-flag">★</span></label>
@@ -4226,6 +4235,7 @@ if (!$_mxGXSecret) {
                                 <option value="json">json（返回 JSON，最常用）</option>
                                 <option value="redirect">redirect（302 跳转直链）</option>
                                 <option value="text">text（响应体只有纯 URL）</option>
+                                <option value="html_player">html_player（HTML播放器页面）</option>
                             </select>
                             <div class="form-tip">本项目官替返回 JSON，一般不要改</div>
                         </div>
@@ -11789,7 +11799,7 @@ if (!$_mxGXSecret) {
             const rEnabled = document.getElementById('snifferReplaceEnabled').checked;
             const oBadge = document.getElementById('snifferOfficialBadge');
             const rBadge = document.getElementById('snifferReplaceBadge');
-            const mode = document.querySelector('input[name="snifferMode"]:checked')?.value || 'official';
+            const mode = document.querySelector('input[name="snifferMode"]:checked')?.value || 'concurrent';
 
             // 1) 接口卡片上的状态徽章
             oBadge.textContent = oEnabled ? '已启用' : '未启用';
@@ -11805,15 +11815,20 @@ if (!$_mxGXSecret) {
             const rCurrent = document.getElementById('snifferReplaceCurrentBadge');
             const oCard = document.getElementById('snifferOfficialCard');
             const rCard = document.getElementById('snifferReplaceCard');
-            if (oCurrent) oCurrent.style.display = mode === 'official' ? '' : 'none';
-            if (rCurrent) rCurrent.style.display = mode === 'replace' ? '' : 'none';
+            // concurrent 模式下两个通道都标记为"并发中"
+            if (oCurrent) oCurrent.style.display = (mode === 'official' || mode === 'concurrent') ? '' : 'none';
+            if (rCurrent) rCurrent.style.display = (mode === 'replace' || mode === 'concurrent') ? '' : 'none';
+            if (oCurrent && mode === 'concurrent') oCurrent.textContent = '并发中';
+            else if (oCurrent) oCurrent.textContent = '当前主路由';
+            if (rCurrent && mode === 'concurrent') rCurrent.textContent = '并发中';
+            else if (rCurrent) rCurrent.textContent = '当前主路由';
             if (oCard) {
-                oCard.classList.toggle('is-current', mode === 'official');
+                oCard.classList.toggle('is-current', mode === 'official' || mode === 'concurrent');
                 oCard.classList.toggle('is-enabled', oEnabled);
                 oCard.classList.toggle('is-disabled', !oEnabled);
             }
             if (rCard) {
-                rCard.classList.toggle('is-current', mode === 'replace');
+                rCard.classList.toggle('is-current', mode === 'replace' || mode === 'concurrent');
                 rCard.classList.toggle('is-enabled', rEnabled);
                 rCard.classList.toggle('is-disabled', !rEnabled);
             }
@@ -11824,9 +11839,27 @@ if (!$_mxGXSecret) {
             });
 
             // 4) 「当前选择的通道未启用」红色联动警告
+            //    concurrent 模式需要两个通道都启用；official/replace 只需对应通道启用
             const alertEl = document.getElementById('snifferModeAlert');
-            const activeEnabled = mode === 'replace' ? rEnabled : oEnabled;
-            if (alertEl) alertEl.style.display = activeEnabled ? 'none' : '';
+            let activeEnabled;
+            if (mode === 'concurrent') {
+                activeEnabled = oEnabled && rEnabled;
+            } else if (mode === 'replace') {
+                activeEnabled = rEnabled;
+            } else {
+                activeEnabled = oEnabled;
+            }
+            if (alertEl) {
+                if (mode === 'concurrent' && (!oEnabled || !rEnabled)) {
+                    alertEl.textContent = '⚠️ 同时调用模式需要官解和官替都启用，请在下方勾选「启用此接口」后再保存。';
+                    alertEl.style.display = '';
+                } else if (!activeEnabled) {
+                    alertEl.textContent = '⚠️ 当前选择的通道还没启用，请在下方对应卡片勾选「启用此接口」后再保存。';
+                    alertEl.style.display = '';
+                } else {
+                    alertEl.style.display = 'none';
+                }
+            }
         }
 
         function bindSnifferDirtyListeners() {
@@ -11859,9 +11892,10 @@ if (!$_mxGXSecret) {
                     const cfg = data.config;
 
                     // 当前通道
-                    const mode = cfg.mode || 'official';
+                    const mode = cfg.mode || 'concurrent';
                     document.getElementById('snifferModeOfficial').checked = (mode === 'official');
                     document.getElementById('snifferModeReplace').checked = (mode === 'replace');
+                    document.getElementById('snifferModeConcurrent').checked = (mode === 'concurrent');
 
                     // 官解接口
                     const o = cfg.official_api || {};
@@ -11952,7 +11986,7 @@ if (!$_mxGXSecret) {
                 if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 保存中...'; }
 
                 const newConfig = {
-                    mode: document.querySelector('input[name="snifferMode"]:checked')?.value || 'official',
+                    mode: document.querySelector('input[name="snifferMode"]:checked')?.value || 'concurrent',
                     official_api: {
                         enabled:   document.getElementById('snifferOfficialEnabled').checked,
                         name:      document.getElementById('snifferOfficialName').value.trim(),
@@ -11971,16 +12005,17 @@ if (!$_mxGXSecret) {
                     }
                 };
 
-                // 强校验：必填项不能空（官替 URL 可空）
+                // 强校验：必填项不能空（官替 URL 可空；html_player 类型 url_field 非必填）
                 const mustChecks = [];
+                const oType = newConfig.official_api.type;
                 if (newConfig.official_api.enabled) {
                     if (!newConfig.official_api.name) mustChecks.push('官解接口 · 接口名称');
                     if (!newConfig.official_api.url) mustChecks.push('官解接口 · 接口地址');
-                    if (!newConfig.official_api.url_field) mustChecks.push('官解接口 · URL 字段名');
+                    if (oType !== 'html_player' && !newConfig.official_api.url_field) mustChecks.push('官解接口 · URL 字段名');
                 }
                 if (newConfig.replace_api.enabled) {
                     if (!newConfig.replace_api.name) mustChecks.push('官替接口 · 接口名称');
-                    if (!newConfig.replace_api.url_field) mustChecks.push('官替接口 · URL 字段名');
+                    if (newConfig.replace_api.type !== 'html_player' && !newConfig.replace_api.url_field) mustChecks.push('官替接口 · URL 字段名');
                 }
                 if (mustChecks.length) {
                     showToast('请补全必填项：' + mustChecks.join('、'), 'error');
@@ -11988,10 +12023,17 @@ if (!$_mxGXSecret) {
                 }
 
                 // 软校验：主路由未启用，给出提示但仍允许保存
-                const activeKey = newConfig.mode === 'replace' ? 'replace_api' : 'official_api';
-                const allowSave = newConfig[activeKey].enabled
-                    ? true
-                    : confirm('当前选择的通道未启用，保存后将自动 fallback 到另一通道。是否继续保存？');
+                let allowSave = true;
+                if (newConfig.mode === 'concurrent') {
+                    if (!newConfig.official_api.enabled || !newConfig.replace_api.enabled) {
+                        allowSave = confirm('同时调用模式需要官解和官替都启用，当前有通道未启用，将自动 fallback 到已启用的通道。是否继续保存？');
+                    }
+                } else {
+                    const activeKey = newConfig.mode === 'replace' ? 'replace_api' : 'official_api';
+                    allowSave = newConfig[activeKey].enabled
+                        ? true
+                        : confirm('当前选择的通道未启用，保存后将自动 fallback 到另一通道。是否继续保存？');
+                }
                 if (!allowSave) return;
 
                 const res = await fetch(API_BASE + '?action=sniffer/config/save', {

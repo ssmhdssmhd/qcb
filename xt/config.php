@@ -15,10 +15,12 @@ return [
     // sniffer_config.php 由后台写入，此处作为兜底默认值
     // 合并优先级：sniffer_config.php > 此处默认值
     'sniffer' => [
-        // 当前解析通道：official=官解解析 / replace=官替接口
-        // v5.10.9 默认改为 replace 优先：先识别平台 → 资源站官替匹配 → AI 去广告/去插播
-        //   官替(资源站)相比官解(虾米)更稳定，不受上游加密验证影响
-        'mode' => 'replace',
+        // 当前解析通道：concurrent=同时调用(官解+官替并发) / official=官解解析 / replace=官替接口
+    // v5.13.4 新增 concurrent 模式：取代旧 concurrent_race_enabled 开关，由后台嗅探设置直接选择
+    //   - concurrent：官解 + 官替同时发起 curl_multi 请求，最快成功的立即返回
+    //   - official  ：仅官解，失败 fallback 官替
+    //   - replace   ：仅官替，失败 fallback 官解
+    'mode' => 'concurrent',
         // 官解接口（支持多个，按优先级排列；后台可动态增删）
         // 注意：single_api 模式下也可只配置一条
         'official_apis' => [
@@ -83,9 +85,10 @@ return [
         // 开启后：根据每个接口的成功率、平均耗时自动调整调用优先级
         'ai_sort_enabled'   => true,
         // v5.7.5 新增：是否同时调用官解和官替（curl_multi 并发，最快成功的立即返回）
-        // 开启后：忽略 sniffer.mode 通道选择，把所有已启用的官解接口 + 官替接口
-        //         合并到同一个并发池，谁先返回有效结果就用谁
-        // 关闭后：按 sniffer.mode 选择的通道优先，失败再 fallback 到另一通道（旧逻辑）
+        // v5.13.4 变更：已被 sniffer.mode=concurrent 取代，此开关仅作旧配置兼容
+        //   - mode=concurrent 时自动走并发（此开关无效）
+        //   - mode=official/replace 时此开关=true 会自动升级为 concurrent（向后兼容）
+        //   - 全新安装建议保持 true + mode=concurrent
         'concurrent_race_enabled' => true,
         // AI 评分权重配置
         'ai_score_weights' => [
