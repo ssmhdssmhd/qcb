@@ -617,8 +617,37 @@ class PerformanceOptimizer
         }
 
         $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $info     = curl_getinfo($ch);
+        $httpCode = (int)($info['http_code'] ?? 0);
         $curlErr  = curl_error($ch);
+
+        // v5.13.3-E4：把 curl 调试信息写入 requestContext，供 wrapper 排错 / 测试脚本验证
+        $key = (int)$ch;
+        if (isset($this->requestContextByHandle[$key]) && is_array($this->requestContextByHandle[$key])) {
+            $sample = is_string($response) ? substr($response, 0, 8192) : '';
+            $fakeHead = '';
+            $statuses = [
+                200=>'OK',301=>'Moved Permanently',302=>'Found',400=>'Bad Request',401=>'Unauthorized',
+                403=>'Forbidden',404=>'Not Found',500=>'Internal Server Error',502=>'Bad Gateway',503=>'Service Unavailable',504=>'Gateway Timeout'
+            ];
+            if ($httpCode > 0) $fakeHead .= 'HTTP/1.1 ' . $httpCode . ' ' . ($statuses[$httpCode] ?? '') . "\r\n";
+            foreach (['content_type','size_download','request_size','total_time','namelookup_time','connect_time','ssl_verify_result','redirect_count','primary_ip'] as $k) {
+                if (isset($info[$k]) && $info[$k] !== '' && $info[$k] !== null) {
+                    $fakeHead .= ucwords(str_replace('_','-',$k)) . ': ' . (is_scalar($info[$k]) ? (string)$info[$k] : json_encode($info[$k], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) . "\r\n";
+                }
+            }
+            $this->requestContextByHandle[$key] = $this->requestContextByHandle[$key] + [
+                'http_code'           => $httpCode,
+                'content_type'        => (string)($info['content_type'] ?? ''),
+                'size_download'       => $info['size_download'] ?? null,
+                'request_size'        => $info['request_size'] ?? null,
+                'total_time_ms'       => isset($info['total_time']) ? round($info['total_time'] * 1000, 2) : null,
+                'curl_error'          => $curlErr ?: null,
+                'response_head'       => $fakeHead,
+                'response_body_sample'=> $sample,
+            ];
+        }
+
         curl_close($ch);
 
         if ($httpCode !== 200 || $response === false || $response === '') {

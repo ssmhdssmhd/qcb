@@ -23,6 +23,8 @@ return array (
         6 => '【D4 requestContextByHandle 上下文】PerformanceOptimizer 新增成员变量 requestContextByHandle：每次 createCurlHandle 创建句柄时按 (int)$ch 存一份 {url,api,video_url}，并引用备份到 [last]；extractVideoUrl wrapper 直接取 requestContextByHandle[last][url] 作为HTML播放器接口最终返回，不修改 jiami 核心闭包（jiami v5.10.9 完全兼容，无需重新加密）',
         7 => '【D4 parseVideoByOfficialChannel 完美承接】官解最终返回的整段 jx.xmflv.cc 链接没有 .m3u8 后缀，parseVideoByOfficialChannel 会走 else 分支：setCache + buildResult(200,解析成功,$playUrl,$videoLink,$startTime)，直接把链接作为 play_url 返回给客户端，不做任何广告处理（由虾米官方浏览器端播放器自行处理CDN/广告逻辑，与旧 iframe 方式一致）',
         8 => '【PHP lint 0 错误通过 / 向后兼容】php -l 6 文件：xt/PerformanceOptimizer.php / xt/config.php / xt/sniffer_config.php / xt/server.php / mxadmin.php / version.php → 全部 No syntax errors detected；对外 JSON 字段完全不变，对旧配置纯前缀式 URL（无{占位符}）100% 与 v5.13.2 行为一致',
+        9 => '【E4 验证加固：callApiSingle requestContext debug 落盘】callApiSingle curl_exec 后立即把 curl_getinfo + 响应体前 8KB 样本写入 requestContextByHandle[(int)$ch]，包含 http_code / content_type / size_download / request_size / total_time_ms / curl_error / 伪响应头（含状态行+主要header摘要）/ response_body_sample；前端时间线/调试脚本可直接读出 HTTP200 + <title>虾米播放器 + id=\"Xmflv\" 命中，证明接口真正被正确调用（绕过 jiami 黑盒 parseVideo 的 mode/replace 强制直调干扰）',
+        10 => '【E3 端到端调用验证通过】E2 buildApiUrl 占位符 PASS(youku→https://jx.xmflv.cc/?url=URLENC&ref=https%3A%2F%2Fv.youku.com%2F) + E3 callApiSingle HTTP 200 text/html 响应4.8KB(虾米播放器)返回 play_url=jx.xmflv.cc 完整链接 PASS，最终汇总断言 EXIT=0',
       ),
     ),
     'v5.13.2' =>
