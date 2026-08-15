@@ -4324,6 +4324,209 @@ if (!$_mxGXSecret) {
             </div>
         </div>
 
+        <!-- ============ URL 转 JSON 专区 v5.13.9（page-url2json） ============ -->
+        <div class="page" id="page-url2json">
+            <!-- ① 概览卡 + API 快速入口 -->
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:18px">🔗 URL 转 JSON 专区</span>
+                        <span class="status-pill green">v5.13.9 NEW</span>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-sm btn-secondary" onclick="window.open('url2json.php', '_blank')">🚀 独立入口 url2json.php</button>
+                        <button class="btn btn-sm btn-outline" onclick="navToPage('sniffer')">🔧 去嗅探设置配置通道</button>
+                    </div>
+                </div>
+                <div style="background:#f4f9ff;border:1px solid #d9e8ff;border-radius:10px;padding:14px 16px;margin:10px 0 18px">
+                    <div style="font-weight:600;color:#2c6ef7;margin-bottom:6px">功能说明</div>
+                    <div style="font-size:13px;color:#606266;line-height:1.7">
+                        输入网页播放器URL（如 <code>https://jx.xmflv.cc/?url=…</code>、虾米播放器URL、VIP 平台视频页URL 等），
+                        自动走当前嗅探设置（官解/官替/同时调用），将解析结果以结构化 JSON 输出；
+                        支持单条转换 / 批量转换 / 参数解析器 / 远程调用 API 四种模式。
+                        所有转换与 <code>jiexi.php / xt.php / mx.php?action=parse</code> 使用同一套解析引擎与缓存。
+                    </div>
+                </div>
+                <div class="overview-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+                    <div class="overview-item success">
+                        <div class="overview-title">📦 远程调用 API</div>
+                        <div class="overview-value" style="font-size:13px;word-break:break-all">mx.php?action=url2json&url=链接</div>
+                        <div class="overview-tip">兼容 <code>&type=json|302|api|xml</code> / <code>&callback=xxx</code></div>
+                    </div>
+                    <div class="overview-item info">
+                        <div class="overview-title">🎯 单条转换</div>
+                        <div class="overview-value">实时解析 + 预览</div>
+                        <div class="overview-tip">粘贴一个URL，一键输出标准 JSON</div>
+                    </div>
+                    <div class="overview-item warn">
+                        <div class="overview-title">📚 批量转换</div>
+                        <div class="overview-value">一行一个 URL</div>
+                        <div class="overview-tip">批量粘贴链接，批量导出 JSON 列表</div>
+                    </div>
+                    <div class="overview-item blue">
+                        <div class="overview-title">🧪 URL 参数解析器</div>
+                        <div class="overview-value">url/ref/origin/ts/t</div>
+                        <div class="overview-tip">拆解网页播放器 URL 的占位符与原始目标</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 单条转换 -->
+            <div class="card">
+                <div class="card-title">🎯 单条 URL 转 JSON</div>
+                <div style="display:grid;gap:12px">
+                    <div>
+                        <label class="form-label">视频 URL 或 网页播放器 URL <span style="color:#f56c6c">* 必填</span></label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <input type="text" id="url2json_singleUrl" class="form-input" style="flex:1;min-width:260px"
+                                placeholder="示例：https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html  或  https://jx.xmflv.cc/?url=…&ref=…">
+                            <button class="btn btn-primary" id="url2json_singleRunBtn" onclick="url2jsonRunSingle()">🚀 开始转换</button>
+                            <button class="btn btn-outline" onclick="navToPage('play');setTimeout(()=>{const u=document.getElementById('url2json_singleUrl').value;if(u){document.getElementById('playUrlInput').value=u;startPlay();}},80)">▶️ 到在线播放测试</button>
+                        </div>
+                        <div class="form-tip">支持：优酷/爱奇艺/腾讯视频/芒果TV/B站等官方视频页 URL；虾米 jx.xmflv.cc 等 HTML 播放器 URL；官替资源站 m3u8 直链（直链会直接原样透传）</div>
+                    </div>
+                    <div>
+                        <label class="form-label">输出格式</label>
+                        <div style="display:flex;gap:12px;flex-wrap:wrap">
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="url2json_singleFmt" value="json" checked> 标准 JSON (code=200)</label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="url2json_singleFmt" value="api"> CMS API (code=1)</label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="url2json_singleFmt" value="xml"> XML</label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="url2json_singleFmt" value="302"> 302 跳转直链</label>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                        <div>
+                            <span id="url2json_singleStatus" style="font-size:12px;color:#909399">等待执行</span>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-sm btn-outline" onclick="copyText(document.getElementById('url2json_singleResult').innerText)">📋 复制结果</button>
+                            <button class="btn btn-sm btn-outline" onclick="url2jsonOpenApi(false)">🔌 查看等价 API 调用</button>
+                            <button class="btn btn-sm btn-outline" onclick="url2jsonOpenApi(true)">🌐 新窗口打开 API</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">转换结果（JSON / XML / 错误信息）</label>
+                        <pre id="url2json_singleResult" class="code-block" style="min-height:180px;white-space:pre-wrap;word-break:break-all">// 点击上方「开始转换」，此处将输出结构化 JSON：
+// {
+//   "code": 200,
+//   "ZT": "解析成功",
+//   "msg": "...m3u8 或 jx.xmflv.cc 网页播放器 URL",
+//   "url": "...",
+//   "official_url": "https://jx.xmflv.cc/?url=...",
+//   "replace_url":  "https://资源站/xxx.m3u8",
+//   "type": "m3u8 | html_player | mp4 | other",
+//   "is_m3u8": true,
+//   "source": "replace | official",
+//   "time": "2.34s",
+//   "KFZ": "超级嗅探|XT"
+// }</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ③ 批量转换 -->
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                    📚 批量 URL 转 JSON
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-sm btn-outline" onclick="url2jsonFillBatchExample()">📎 填充示例</button>
+                        <button class="btn btn-sm btn-outline" onclick="document.getElementById('url2json_batchInput').value=''">🧹 清空</button>
+                        <button class="btn btn-primary" onclick="url2jsonRunBatch()">🚀 批量转换</button>
+                    </div>
+                </div>
+                <div style="display:grid;gap:12px">
+                    <div>
+                        <label class="form-label">输入 URL 列表（一行一个）</label>
+                        <textarea id="url2json_batchInput" class="form-input" rows="7" placeholder="https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html
+https://www.iqiyi.com/v_19rrcu990o.html
+https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng%3D%3D.html"></textarea>
+                    </div>
+                    <div>
+                        <label class="form-label">批量参数</label>
+                        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                <input type="checkbox" id="url2json_batchSkipFailed" checked> 跳过失败项（默认勾选，失败仍写入 code!=200）
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                并发数：
+                                <input type="number" id="url2json_batchConcurrency" value="3" min="1" max="10" style="width:72px" class="form-input">
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <div id="url2json_batchProgress" style="font-size:12px;color:#909399;margin-bottom:6px">等待执行</div>
+                        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px">
+                            <button class="btn btn-sm btn-outline" onclick="copyText(document.getElementById('url2json_batchResult').innerText)">📋 复制全部 JSON</button>
+                        </div>
+                        <pre id="url2json_batchResult" class="code-block" style="min-height:220px;white-space:pre-wrap;word-break:break-all">// 批量转换结果将是一个 JSON 数组：
+// [
+//   {"index":1,"code":200,"url":"...m3u8","source":"replace",...},
+//   {"index":2,"code":500,"msg":"解析失败",...}
+// ]</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ④ URL 参数解析器 -->
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                    🧪 URL 参数解析器（网页播放器 URL 拆解）
+                    <button class="btn btn-sm btn-outline" onclick="url2jsonRunParams()">🔬 解析 URL</button>
+                </div>
+                <div style="display:grid;gap:12px">
+                    <div>
+                        <label class="form-label">输入任意 URL（网页播放器模板、API 模板、完整视频页 URL 均可）</label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <input type="text" id="url2json_paramsUrl" class="form-input" style="flex:1;min-width:260px"
+                                value="https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng%3D%3D.html&amp;ref=https%3A%2F%2Fv.youku.com%2F">
+                            <button class="btn btn-outline" onclick="url2jsonFillParamsExample()">📎 示例模板</button>
+                        </div>
+                    </div>
+                    <pre id="url2json_paramsResult" class="code-block" style="min-height:200px;white-space:pre-wrap;word-break:break-all">// 解析后将拆解出：
+// {
+//   "scheme": "https",
+//   "host":   "jx.xmflv.cc",
+//   "path":   "/",
+//   "has_placeholder": { "{url}":false,"{ref}":false,... },
+//   "query_params": {
+//      "url": "https://v.youku.com/...",     // urlencode 解码后
+//      "ref": "https://v.youku.com/"          // urlencode 解码后
+//   },
+//   "original_url": "...",
+//   "platform": "youku"
+// }</pre>
+                </div>
+            </div>
+
+            <!-- ⑤ 远程调用 API 文档 -->
+            <div class="card">
+                <div class="card-title">📡 远程调用 API（可被外部服务 / APK 直接调用）</div>
+                <div style="display:grid;gap:12px">
+                    <div>
+                        <label class="form-label">独立入口（推荐）</label>
+                        <div class="code-block" style="padding:10px 14px;margin-top:6px">url2json.php?url=视频链接&amp;type=json</div>
+                        <div class="form-tip">与 jiexi.php 等价，独立文件直接入口，无需 action 参数。兼容 <code>&wd=&v=&video=&t=</code> 五种视频参数。</div>
+                    </div>
+                    <div>
+                        <label class="form-label">mx.php 路由入口（老项目兼容）</label>
+                        <div class="code-block" style="padding:10px 14px;margin-top:6px">mx.php?action=url2json&amp;url=视频链接&amp;type=json</div>
+                        <div class="form-tip">与 <code>mx.php?action=parse/list</code> 同一套路由。</div>
+                    </div>
+                    <div>
+                        <label class="form-label">type / callback 参数说明</label>
+                        <table class="data-table" style="margin-top:6px;font-size:13px">
+                            <thead><tr><th>参数</th><th>可选值</th><th>说明</th></tr></thead>
+                            <tbody>
+                                <tr><td>type</td><td>json (默认) / api / xml / 302</td><td>标准 JSON 200；CMS 标准 (code=1)；XML (老盒子)；302 跳转直链</td></tr>
+                                <tr><td>callback</td><td>任意字符串</td><td>JSONP 回调包装，仅 json / api 生效</td></tr>
+                                <tr><td>url/wd/v/video/t</td><td>URL 编码后的视频链接</td><td>五种参数名都可使用，自动归一</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="page" id="page-moxi_api">
             <!-- ① 概览卡 -->
             <div class="card">
@@ -5952,6 +6155,7 @@ if (!$_mxGXSecret) {
                 items: [
                     { page: 'moxi_api', icon: '⚡', text: '沫兮API' },
                     { page: 'sniffer', icon: '🔍', text: '嗅探设置' },
+                    { page: 'url2json', icon: '🔗', text: 'URL转JSON', badge: 'NEW' },
                     { icon: '📚', text: 'API文档', action: "window.open('api_doc.php', '_blank')" },
                     { icon: '🔌', text: '代理池管理', action: "location.href='proxy/proxy_admin.php'" },
                 ]
@@ -13845,6 +14049,200 @@ if (!$_mxGXSecret) {
                 renderTopDomains();
             }
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ============ URL 转 JSON 专区 JS（v5.13.9） ============
+        function navToPage(pageName){ try{ navigateTo(pageName); }catch(e){ console.warn(e); } }
+
+        function url2jsonGetFormat(){
+            const r=document.querySelector('input[name="url2json_singleFmt"]:checked');
+            return r? r.value : 'json';
+        }
+        function url2jsonBuildApiUrl(url,fmt){
+            const base='mx.php?action=url2json';
+            const qs=[];
+            qs.push('url='+encodeURIComponent(url));
+            if(fmt) qs.push('type='+encodeURIComponent(fmt));
+            return base+'&'+qs.join('&');
+        }
+        function url2jsonOpenApi(newWin){
+            const u=document.getElementById('url2json_singleUrl').value.trim();
+            if(!u){ showToast('请先填写 URL','error'); return; }
+            const full=url2jsonBuildApiUrl(u,url2jsonGetFormat());
+            if(newWin) window.open(full,'_blank');
+            else {
+                const box=document.getElementById('url2json_singleResult');
+                if(box) box.textContent='等价 API 调用：\n  '+window.location.origin+window.location.pathname.replace(/[^/]*$/,'')+full;
+            }
+        }
+        function url2jsonFillBatchExample(){
+            const ta=document.getElementById('url2json_batchInput');
+            if(!ta) return;
+            ta.value=[
+                'https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html',
+                'https://www.iqiyi.com/v_19rrcu990o.html',
+                'https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng%3D%3D.html&ref=https%3A%2F%2Fv.youku.com%2F'
+            ].join('\n');
+            showToast('示例已填充','success');
+        }
+        function url2jsonFillParamsExample(){
+            const i=document.getElementById('url2json_paramsUrl');
+            if(i){
+                i.value='https://jx.xmflv.cc/?url={url}&ref={ref}&ts={ts}&origin={origin}&t={t}';
+                url2jsonRunParams();
+            }
+        }
+        async function url2jsonRunSingle(){
+            const urlBox=document.getElementById('url2json_singleUrl');
+            const status=document.getElementById('url2json_singleStatus');
+            const out=document.getElementById('url2json_singleResult');
+            const runBtn=document.getElementById('url2json_singleRunBtn');
+            if(!urlBox||!status||!out) return;
+            const url=urlBox.value.trim();
+            if(!url){ showToast('请填写 URL','error'); return; }
+            const fmt=url2jsonGetFormat();
+            if(runBtn){ runBtn.disabled=true; runBtn.style.opacity='0.6'; }
+            status.textContent='转换中…（1-20s，嗅探模式=同时调用时官替最多等待 replace_direct_timeout）';
+            status.style.color='#409eff';
+            out.textContent='';
+            const t0=performance.now();
+            try{
+                const r=await fetch(url2jsonBuildApiUrl(url,fmt),{method:'GET',credentials:'same-origin'});
+                const txt=await r.text();
+                let pretty=txt;
+                try{
+                    const j=JSON.parse(txt);
+                    pretty=JSON.stringify(j,null,2);
+                }catch(_){}
+                out.textContent=pretty;
+                const ms=(performance.now()-t0).toFixed(0);
+                status.textContent='✅ 转换完成，耗时 '+ms+'ms（HTTP '+r.status+'）';
+                status.style.color='#67c23a';
+            }catch(err){
+                out.textContent='请求失败: '+err.message;
+                status.textContent='❌ 请求失败';
+                status.style.color='#f56c6c';
+                showToast(err.message,'error');
+            }finally{
+                if(runBtn){ runBtn.disabled=false; runBtn.style.opacity=''; }
+            }
+        }
+        async function url2jsonRunBatch(){
+            const ta=document.getElementById('url2json_batchInput');
+            const prog=document.getElementById('url2json_batchProgress');
+            const out=document.getElementById('url2json_batchResult');
+            if(!ta||!prog||!out) return;
+            const rawLines=ta.value.split(/\r?\n/).map(s=>s.trim()).filter(s=>s.length>0);
+            if(rawLines.length===0){ showToast('请先输入至少一行 URL','error'); return; }
+            let concur=parseInt(document.getElementById('url2json_batchConcurrency').value,10);
+            if(!concur||concur<1) concur=3;
+            if(concur>10) concur=10;
+            prog.textContent='准备 '+rawLines.length+' 条，并发 '+concur+'…';
+            prog.style.color='#409eff';
+            out.textContent='';
+            const t0=performance.now();
+            const results=new Array(rawLines.length);
+            let cursor=0, done=0;
+            async function worker(){
+                while(cursor<rawLines.length){
+                    const idx=cursor++;
+                    const u=rawLines[idx];
+                    let res={index:idx+1,input:u,code:500,msg:'',url:''};
+                    try{
+                        const r=await fetch(url2jsonBuildApiUrl(u,'json'),{method:'GET',credentials:'same-origin'});
+                        const t=await r.text();
+                        try{
+                            const j=JSON.parse(t);
+                            res=Object.assign(res,{
+                                code: j.code??(r.ok?200:500),
+                                msg:  j.msg ?? j.ZT ?? '',
+                                url:  j.url ?? '',
+                                official_url: j.official_url ?? null,
+                                replace_url:  j.replace_url  ?? null,
+                                source: j.source ?? (j.replace_url?'replace':(j.official_url?'official':null)),
+                                type: j.type ?? null,
+                                is_m3u8: j.is_m3u8 ?? null,
+                                time: j.time ?? null
+                            });
+                            if(j.KFZ) res.KFZ=j.KFZ;
+                        }catch(_){
+                            res.code=r.ok?200:500;
+                            res.msg='非JSON响应，前200字符';
+                            res.url=t.substring(0,200);
+                        }
+                    }catch(e){
+                        res.code=500;
+                        res.msg=e.message;
+                    }
+                    results[idx]=res;
+                    done++;
+                    prog.textContent='进度 '+done+'/'+rawLines.length+'  ('+((done/rawLines.length)*100|0)+'%)';
+                }
+            }
+            const workers=[];
+            for(let i=0;i<concur;i++) workers.push(worker());
+            await Promise.all(workers);
+            const skipFail=document.getElementById('url2json_batchSkipFailed').checked;
+            const filtered=skipFail? results.filter(x=>x && x.code===200) : results.filter(x=>x);
+            out.textContent=JSON.stringify(filtered,null,2);
+            const ms=(performance.now()-t0).toFixed(0);
+            prog.textContent='✅ 完成 '+done+' 条，总耗时 '+ms+'ms，成功 '+filtered.filter(x=>x.code===200).length+' / '+rawLines.length;
+            prog.style.color='#67c23a';
+            showToast('批量转换完成，共 '+rawLines.length+' 条','success');
+        }
+        function url2jsonRunParams(){
+            const inp=document.getElementById('url2json_paramsUrl');
+            const out=document.getElementById('url2json_paramsResult');
+            if(!inp||!out) return;
+            const raw=inp.value.trim();
+            const res={input:raw};
+            if(!raw){ out.textContent='// 请填写 URL'; return; }
+            try{
+                const u=new URL(raw);
+                res.scheme=u.protocol.replace(':','');
+                res.host=u.hostname;
+                res.port=u.port || null;
+                res.path=u.pathname;
+                res.query={};
+                const paramsRaw={};
+                u.searchParams.forEach((v,k)=>{ paramsRaw[k]=v; });
+                // urlencode 解码后的 query_params
+                const decoded={};
+                Object.keys(paramsRaw).sort().forEach(k=>{
+                    let v=paramsRaw[k];
+                    try{ v=decodeURIComponent(v); }catch(_){}
+                    decoded[k]=v;
+                });
+                res.query_params=decoded;
+                // 占位符检测
+                const placeholders=['{url}','{ref}','{origin}','{ts}','{t}','{vid}','{id}'];
+                res.has_placeholder={};
+                placeholders.forEach(p=>{ res.has_placeholder[p]=(raw.indexOf(p)!==-1); });
+                // original_url：优先从 query 里找 url/video/wd/v/t 字段
+                const candidates=['url','video','wd','v','t'];
+                let orig='';
+                for(const k of candidates){ if(decoded[k] && /^https?:\/\//i.test(decoded[k])){ orig=decoded[k]; break; } }
+                if(!orig && /^https?:\/\//i.test(raw) && !Object.keys(decoded).length) orig=raw;
+                res.original_url=orig || null;
+                // platform 检测
+                if(orig){
+                    let h='';
+                    try{ h=(new URL(orig)).hostname; }catch(_){}
+                    const map={
+                        'youku.com':'youku','iqiyi.com':'iqiyi','qiyi.com':'iqiyi',
+                        'v.qq.com':'tencent','mgtv.com':'mgtv','bilibili.com':'bilibili',
+                        'sohu.com':'sohu','le.com':'le','pptv.com':'pptv','m.iqiyi.com':'iqiyi'
+                    };
+                    res.platform=null;
+                    for(const k of Object.keys(map)){ if(h.indexOf(k)!==-1){ res.platform=map[k]; break; } }
+                    if(!res.platform) res.platform='unknown';
+                }else{
+                    res.platform=null;
+                }
+                out.textContent=JSON.stringify(res,null,2);
+            }catch(e){
+                out.textContent='URL 解析失败: '+e.message+'\n\n可能是相对路径或缺少协议前缀。';
+            }
         }
 
         function updateMobileNav(pageName) {

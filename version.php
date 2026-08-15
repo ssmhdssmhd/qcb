@@ -1,13 +1,31 @@
 <?php
 return array (
-  'version' => 'v5.13.8',
+  'version' => 'v5.13.9',
   'branch' => 'main',
-  'build' => '20260814-apk-playable-optimization-replace-first-m3u8-plus-xmflv-htmlplayer-apk-fallback',
-  'version_code' => 51308,
-  'commit' => 'v5.13.8-apk-playable-optimization-concurrent-mode-prioritize-replace-m3u8-with-direct-budget-plus-replace_direct_timeout-config',
-  'updated_at' => '2026-08-14',
+  'build' => '20260815-url2json-zone-ui-plus-standalone-entry-plus-mx-routing',
+  'version_code' => 51309,
+  'commit' => 'v5.13.9-url2json-zone-mxadmin-page-url2json-single-batch-param-parser-remote-api-plus-url2json-php-plus-mx-action',
+  'updated_at' => '2026-08-15',
   'changelog' =>
   array (
+    'v5.13.9' =>
+    array (
+      'date' => '2026-08-15',
+      'title' => '【新增：后台 URL 转 JSON 专区 + 独立入口 url2json.php + mx.php 路由 url2json】',
+      'changes' =>
+      array (
+        0 => '【后台页面】mxadmin.php 侧边栏「接口工具」分组新增「🔗 URL转JSON」菜单（NEW 徽章），对应页面 id=page-url2json',
+        1 => '【页面①-概览卡】功能说明 + 4 宫格（远程调用 API / 单条转换 / 批量转换 / 参数解析器）+ 两个快捷按钮（独立入口新窗口、去嗅探设置）',
+        2 => '【页面②-单条转换】输入框 + 单选输出格式（json/api/xml/302）+ 状态条 + 开始转换/复制结果/查看等价API/新窗口打开API/跳转到在线播放测试；结果框自动 JSON pretty（能 parse 的美化，否则保留原文本）',
+        3 => '【页面③-批量转换】一行一个 URL 输入框 + 并发数 1-10（默认 3）+ worker 池并发执行 + 进度条（完成 N/总数 + 百分比）+ 跳过失败项开关 + 填充示例按钮 + 输出 JSON 数组',
+        4 => '【页面④-URL 参数解析器】拆解 URL scheme/host/port/path + urlencode 解码后的 query_params + {url}/{ref}/{origin}/{ts}/{t}/{vid}/{id} 占位符检测 + original_url（自动从 url/video/wd/v/t 字段取）+ platform（youku/iqiyi/tencent/mgtv/bilibili/sohu/pptv 等）',
+        5 => '【页面⑤-远程调用 API 文档】独立入口 url2json.php + mx.php action=url2json + 参数表（type/callback/url/wd/v/video/t）',
+        6 => '【JS 辅助】url2jsonRunSingle/RunBatch/RunParams/BuildApiUrl/OpenApi/FillBatchExample/FillParamsExample/navToPage 共 8 个函数，copyText/showToast/escapeHtml 复用全局已有',
+        7 => '【独立入口 url2json.php】与 jiexi.php 同一套 parseVideo + concurrent 双通道（官解/官替）+ 缓存；额外 enrich 字段：type/is_m3u8/is_html_player/source/video_url/platform；5 种参数名（url/wd/v/video/t）+ 4 种输出格式（json/api/xml/302）+ JSONP callback',
+        8 => '【mx.php 路由】case url2json / url2json/parse / api/url2json：直接 require url2json.php exit；带 fallback（文件缺失时本地 parseVideo + sendJsonResponse）；parse/list usage 页新增两条 URL 转 JSON 使用示例',
+        9 => '【lint】php -l url2json.php + mx.php + mxadmin.php + version.php → 4/4 全部 No syntax errors detected',
+      ),
+    ),
     'v5.13.8' =>
     array (
       'date' => '2026-08-14',

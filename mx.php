@@ -4959,6 +4959,8 @@ try {
                 'usage' => [
                     '【推荐】XT 嗅探入口(按嗅探设置)' => 'xt.php?url=视频链接',
                     'TVBox 专用解析入口'              => 'jiexi.php?url=视频链接',
+                    '【NEW】URL 转 JSON 专区(独立入口)' => 'url2json.php?url=视频链接&type=json',
+                    '【NEW】URL 转 JSON 专区(mx路由)' => 'mx.php?action=url2json&url=视频链接&type=json',
                     '智能解析(mx.php)'               => 'mx.php?action=parse&url=视频链接',
                     '指定类型'                       => 'mx.php?action=parse&type=xiami&url=视频链接',
                     '获取详情'                       => 'mx.php?action=parse/info&url=视频链接',
@@ -5027,6 +5029,48 @@ try {
                 $siteManager ?? null
             );
             sendJsonResponse($result);
+            break;
+
+        // ========== v5.13.9 NEW：URL 转 JSON 专区（复用 url2json.php 完整解析引擎 + output 函数） ==========
+        case 'url2json':
+        case 'url2json/parse':
+        case 'api/url2json':
+            // 直接 require 独立入口；里面自带 header + parse + output，然后 exit()
+            $mx_url2json_file = __DIR__ . '/url2json.php';
+            if (is_file($mx_url2json_file)) {
+                require_once $mx_url2json_file;
+                exit;
+            }
+            // 兜底（文件被删时）
+            $mx_url2json_fallback_url = $_GET['url'] ?? '';
+            if ($mx_url2json_fallback_url === '') {
+                sendJsonResponse(['success'=>false,'code'=>400,'message'=>'缺少 url 参数（支持 url/wd/v/video/t）']);
+                break;
+            }
+            $selfUrl = (isset($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off'?'https':'http').'://'.($_SERVER['HTTP_HOST']??'localhost');
+            $reqUri = parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH);
+            $bp = dirname($reqUri); if($bp==='/' || $bp==='\\') $bp='';
+            $selfUrl .= $bp;
+            require_once __DIR__ . '/xt/server.php';
+            $mx_res = parseVideo($mx_url2json_fallback_url);
+            $mx_code = (int)($mx_res['code'] ?? 500);
+            $mx_url  = (string)($mx_res['url'] ?? '');
+            $mx_out  = [
+                'code' => $mx_code === 200 && $mx_url !== '' ? 200 : $mx_code,
+                'ZT'   => (string)($mx_res['ZT'] ?? ($mx_code===200?'解析成功':'解析失败')),
+                'msg'  => $mx_url !== '' ? $mx_url : (string)($mx_res['msg'] ?? ''),
+                'url'  => $mx_url,
+                'time' => (string)($mx_res['time'] ?? '0s'),
+                'KFZ'  => (string)($mx_res['KFZ'] ?? '超级嗅探|XT'),
+                'info' => 'URL转JSON专用解析(fallback)',
+                'video_url' => $mx_url2json_fallback_url,
+            ];
+            if (!empty($GLOBALS['XT_CONCURRENT_RESULTS']) && is_array($GLOBALS['XT_CONCURRENT_RESULTS'])) {
+                $cr = $GLOBALS['XT_CONCURRENT_RESULTS'];
+                if (!empty($cr['official_url'])) $mx_out['official_url'] = (string)$cr['official_url'];
+                if (!empty($cr['replace_url']))  $mx_out['replace_url']  = (string)$cr['replace_url'];
+            }
+            sendJsonResponse($mx_out, $mx_out['code'] === 200 ? 200 : $mx_out['code']);
             break;
 
         case 'proxies/list':
