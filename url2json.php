@@ -36,14 +36,28 @@
  * }
  */
 
+// HOTFIX5：提前检测 CLI 模式（用于 CORS header / OPTIONS 退出 / 同步主流程 的分段守卫）
+//          普通 CLI 下 require url2json.php 不发 header、不读 $_SERVER、不 exit，
+//          只加载 u2j_* 函数与异步逻辑，方便第三方脚本与单元测试复用。
+$u2j_isCLI = (PHP_SAPI === 'cli');
+$u2j_isWorker = false;
+if ($u2j_isCLI && !empty($argv) && is_array($argv)) {
+    foreach ($argv as $a) {
+        if (is_string($a) && strpos($a, '_task_worker=') === 0) { $u2j_isWorker = true; break; }
+    }
+}
+
+// CORS header 和 OPTIONS 预检只在 HTTP 请求/CLI worker 时发出
+if (!$u2j_isCLI || $u2j_isWorker):
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Range');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
+endif;
 
 // -------- 工具函数 --------
 if (!function_exists('u2j_getVideoUrl')) {
@@ -165,11 +179,263 @@ if (!function_exists('u2j_outputError')) {
         }
     }
 }
+if (!function_exists('u2j_currentBaseUrl')) {
+    function u2j_currentBaseUrl(): string {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? (($_SERVER['SERVER_NAME'] ?? 'localhost') . (isset($_SERVER['SERVER_PORT']) ? ':' . $_SERVER['SERVER_PORT'] : ''));
+        $script = $_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? '/url2json.php';
+        $dir = rtrim(dirname($script), '/\\');
+        return $scheme . '://' . $host . $dir . '/url2json.php';
+    }
+}
 
 // -------- 主流程 --------
-$videoUrl = u2j_getVideoUrl();
-$format   = u2j_getFormat();
-$callback = isset($_GET['callback']) ? trim((string)$_GET['callback']) : null;
+// HOTFIX5：CLI 模式下如果不是 _task_worker 子进程，跳过同步主流程（不读 $_GET/$_POST 也不输出/exit），
+// 这样第三方脚本可以直接 `require url2json.php` 复用 u2j_* 函数，不会触发 Warning/Exit
+// 注：$u2j_isCLI / $u2j_isWorker 已在文件开头 CORS 守卫处定义
+$videoUrl = !$u2j_isCLI ? u2j_getVideoUrl() : '';
+$format   = !$u2j_isCLI ? u2j_getFormat() : 'json';
+$callback = !$u2j_isCLI && isset($_GET['callback']) ? trim((string)$_GET['callback']) : null;
+
+// v5.13.10-HOTFIX5（终极防 502）：异步任务模型
+//   _async=1              : 快速返回 {_async:true, task_id}，然后后台运行 parseVideo → 写到 cache/tasks/{task_id}.json
+//   _task=<id>            : 轮询任务状态 → 返回 {_async:true, task_id, status:"pending|running|done|fail", result: {...}, ...}
+//   _task_clean=1         : 删除该 _task 对应的结果文件
+if (!function_exists('u2j_getTaskDir')) {
+    function u2j_getTaskDir(): string {
+        static $dir = null;
+        if ($dir !== null) return $dir;
+        $c = require __DIR__ . '/xt/config.php';
+        $base = $c['cache']['dir'] ?? (__DIR__ . '/xt/cache');
+        $dir = rtrim($base, '/\\') . '/tasks';
+        @mkdir($dir, 0775, true);
+        // 防下载：写入空 .htaccess (Apache) + index.html
+        @file_put_contents($dir . '/.htaccess', "Require all denied\n");
+        @file_put_contents($dir . '/index.html', '');
+        return $dir;
+    }
+}
+if (!function_exists('u2j_cleanupOldTasks')) {
+    function u2j_cleanupOldTasks(string $dir): void {
+        static $lastRun = 0;
+        $now = time();
+        if ($now - $lastRun < 60) return;
+        $lastRun = $now;
+        $files = glob($dir . '/*.json');
+        if (!$files) return;
+        foreach ($files as $f) {
+            if ($now - @filemtime($f) > 86400) @unlink($f);
+        }
+    }
+}
+if (!function_exists('u2j_buildTaskPayload')) {
+    function u2j_buildTaskPayload(string $status, array $extra = []): array {
+        return array_merge([
+            '_xt_async' => true,
+            'task_id' => $extra['task_id'] ?? null,
+            'status'  => $status,   // pending | running | done | fail | unknown
+            'created_at' => $extra['created_at'] ?? null,
+            'updated_at' => date('Y-m-d H:i:s'),
+            'note'    => 'HOTFIX5 异步任务（避免 nginx 502 Bad Gateway 中断响应）。前端轮询 ?_task=<task_id> 直到 status=done/fail。',
+        ], $extra);
+    }
+}
+
+// 1) ?_task=id：直接返回/轮询任务
+if (!empty($_GET['_task']) || !empty($_POST['_task'])) {
+    $taskId = trim((string)($_GET['_task'] ?? $_POST['_task'] ?? ''));
+    if ($taskId === '' || !preg_match('/^[a-f0-9]{16,64}$/i', $taskId)) {
+        u2j_outputError('非法 _task id（必须是 16-64 位 十六进制）', $format, $callback);
+    }
+    $taskDir = u2j_getTaskDir();
+    u2j_cleanupOldTasks($taskDir);
+    $taskFile = $taskDir . '/' . $taskId . '.json';
+    if (!empty($_GET['_task_clean'])) {
+        if (file_exists($taskFile)) @unlink($taskFile);
+        u2j_outputJson(u2j_buildTaskPayload('cleaned', ['task_id'=>$taskId]), $callback);
+        exit;
+    }
+    if (!file_exists($taskFile)) {
+        u2j_outputJson(u2j_buildTaskPayload('unknown', ['task_id'=>$taskId, 'message'=>'任务不存在（可能已过期，请重新提交 _async=1）']), $callback);
+        exit;
+    }
+    $payload = @json_decode(file_get_contents($taskFile), true);
+    if (!is_array($payload)) {
+        u2j_outputJson(u2j_buildTaskPayload('fail', ['task_id'=>$taskId, 'message'=>'任务文件损坏']), $callback);
+        exit;
+    }
+    u2j_outputJson($payload, $callback);
+    exit;
+}
+
+// 2) ?_async=1：创建任务，后台 shell 启动解析子进程，立即返回 task_id（100ms 内）
+if (!empty($_GET['_async']) || !empty($_POST['_async'])) {
+    if ($videoUrl === '') {
+        u2j_outputError('请提供视频链接（支持 url/wd/v/video/t 参数）', $format, $callback);
+    }
+    if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
+        u2j_outputError('链接格式不正确，必须是以 http:// 或 https:// 开头的完整 URL', $format, $callback, ['video_url' => $videoUrl]);
+    }
+    $taskDir = u2j_getTaskDir();
+    u2j_cleanupOldTasks($taskDir);
+    $taskId = hash('sha256', $videoUrl . '|' . microtime(true) . '|' . random_bytes(16));
+    $taskFile = $taskDir . '/' . $taskId . '.json';
+    $createdAt = date('Y-m-d H:i:s');
+    $pending = u2j_buildTaskPayload('pending', [
+        'task_id'      => $taskId,
+        'created_at'   => $createdAt,
+        'input' => [
+            'video_url' => $videoUrl,
+            'format'    => $format,
+            'callback'  => $callback,
+            '_mode'     => (string)($_GET['_mode'] ?? $_POST['_mode'] ?? ''),
+            '_no_direct'=> (string)($_GET['_no_direct'] ?? $_POST['_no_direct'] ?? ''),
+            '_timeout'  => (string)($_GET['_timeout'] ?? $_POST['_timeout'] ?? ''),
+            '_type'     => (string)($_GET['type']    ?? $_POST['type']    ?? ''),
+        ],
+        'poll_interval_ms' => 1500,
+        'poll_endpoint' => (function_exists('u2j_currentBaseUrl') ? u2j_currentBaseUrl() : '') . '?_task=' . $taskId,
+        'ttl_seconds' => 300,
+    ]);
+    @file_put_contents($taskFile, json_encode($pending, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+    // 后台 worker：PHP-CLI 执行 /workspace/url2json.php _task_worker=<taskId>（不占用当前 FPM）
+    $self = __FILE__;
+    $phpBin = defined('PHP_BINARY') ? PHP_BINARY : 'php';
+    $cmdArgs = [
+        escapeshellarg($phpBin),
+        escapeshellarg($self),
+        escapeshellarg('_task_worker=' . $taskId),
+        escapeshellarg('_video=' . $videoUrl),
+        escapeshellarg('_format=' . $format),
+        $callback !== null ? escapeshellarg('_callback=' . $callback) : '',
+        !empty($_GET['_mode'])     ? escapeshellarg('_mode='.$_GET['_mode'])         : '',
+        !empty($_GET['_no_direct'])? escapeshellarg('_no_direct='.$_GET['_no_direct']): '',
+        !empty($_GET['_timeout'])  ? escapeshellarg('_timeout='.$_GET['_timeout'])   : '',
+    ];
+    $cmd = implode(' ', array_filter($cmdArgs, fn($s)=>$s!==''));
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $shellCmd = 'start /B "" cmd /C "' . $cmd . ' >NUL 2>NUL"';
+    } else {
+        $shellCmd = 'nohup ' . $cmd . ' >/dev/null 2>&1 & echo $!';
+    }
+    $workerPid = null;
+    @exec($shellCmd, $_, $exitCode);
+    u2j_outputJson($pending, $callback);
+    exit;
+}
+
+// 3) _task_worker=id：CLI worker（由 nohup/shell 启动），运行 parseVideo，写 running → done/fail
+if (!empty($argv) && is_array($argv)) {
+    $workerId = null; $workerVideo=''; $workerFormat='json'; $workerCb=null;
+    $wMode=''; $wNoDirect=''; $wTimeout='';
+    foreach ($argv as $arg) {
+        if (strpos($arg, '_task_worker=') === 0) $workerId = substr($arg, strlen('_task_worker='));
+        elseif (strpos($arg, '_video=') === 0) $workerVideo = substr($arg, strlen('_video='));
+        elseif (strpos($arg, '_format=') === 0) $workerFormat = substr($arg, strlen('_format='));
+        elseif (strpos($arg, '_callback=') === 0) $workerCb = substr($arg, strlen('_callback='));
+        elseif (strpos($arg, '_mode=') === 0) $wMode = substr($arg, strlen('_mode='));
+        elseif (strpos($arg, '_no_direct=') === 0) $wNoDirect = substr($arg, strlen('_no_direct='));
+        elseif (strpos($arg, '_timeout=') === 0) $wTimeout = substr($arg, strlen('_timeout='));
+    }
+    if ($workerId !== null) {
+        // 作为后台 CLI worker 运行：不再发 HTTP 头/body（因为 FPM 已经返回 task_id 了）
+        $_SERVER["HTTPS"] = $_SERVER["HTTPS"] ?? "off";
+        $_SERVER["HTTP_HOST"] = $_SERVER["HTTP_HOST"] ?? "localhost";
+        $_SERVER["REQUEST_METHOD"] = "GET";
+        $_GET = []; $_POST = [];
+        if ($workerVideo !== '') $_GET['url'] = $workerVideo;
+        if ($workerFormat !== '') $_GET['type'] = $workerFormat;
+        if ($workerCb !== null) $_GET['callback'] = $workerCb;
+        if ($wMode !== '') $_GET['_mode'] = $wMode;
+        if ($wNoDirect !== '') $_GET['_no_direct'] = $wNoDirect;
+        if ($wTimeout !== '') $_GET['_timeout'] = $wTimeout;
+        $taskDir = u2j_getTaskDir();
+        $taskFile = $taskDir . '/' . $workerId . '.json';
+        $pending = @json_decode(@file_get_contents($taskFile) ?: '[]', true) ?: [];
+        if (!is_array($pending)) $pending = [];
+        $pending['status'] = 'running';
+        $pending['pid'] = getmypid();
+        $pending['updated_at'] = date('Y-m-d H:i:s');
+        @file_put_contents($taskFile, json_encode($pending, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+        // 走原本的解析主流程，但把结果写入 taskFile 而不是 echo
+        $videoUrl = u2j_getVideoUrl();
+        $format   = $workerFormat ?: u2j_getFormat();
+        $callback = $workerCb;
+        if ($videoUrl === '' || !filter_var($videoUrl, FILTER_VALIDATE_URL)) {
+            $pending['status'] = 'fail';
+            $pending['error'] = 'URL 非法';
+            @file_put_contents($taskFile, json_encode($pending, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+        if (!defined('XT_SERVER_PHP_V1') && !function_exists('parseVideo')) {
+            require_once __DIR__ . '/xt/server.php';
+        }
+        if (function_exists('u2j_apply_runtime_config_overrides')) {
+            global $config;
+            if (is_array($config)) u2j_apply_runtime_config_overrides($config);
+        }
+        try {
+            $result = parseVideo($videoUrl);
+        } catch (Throwable $e) {
+            $pending['status'] = 'fail';
+            $pending['error'] = $e->getMessage();
+            $pending['error_file'] = $e->getFile() . ':' . $e->getLine();
+            $pending['updated_at'] = date('Y-m-d H:i:s');
+            @file_put_contents($taskFile, json_encode($pending, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+        // 复制 url2json 原本的 enrich 逻辑封装最终结果，存为 data
+        $parseTime = (string)($result['time'] ?? '0s');
+        $kfz = (string)($result['KFZ'] ?? '超级嗅探|XT');
+        $officialUrl = null; $replaceUrl = null;
+        if (!empty($GLOBALS['XT_CONCURRENT_RESULTS']) && is_array($GLOBALS['XT_CONCURRENT_RESULTS'])) {
+            $cr = $GLOBALS['XT_CONCURRENT_RESULTS'];
+            if (!empty($cr['official_url'])) $officialUrl = (string)$cr['official_url'];
+            if (!empty($cr['replace_url']))  $replaceUrl  = (string)$cr['replace_url'];
+        }
+        $code = (int)($result['code'] ?? 500);
+        if ($code !== 200 || empty($result['url'])) {
+            $pending['status'] = 'fail';
+            $pending['error'] = (string)($result['msg'] ?? '解析失败');
+            $pending['result'] = $result;
+            $pending['updated_at'] = date('Y-m-d H:i:s');
+            @file_put_contents($taskFile, json_encode($pending, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+        $playUrl = (string)$result['url'];
+        $source = 'unknown';
+        if (!empty($result['from_cache'])) $source = 'cache';
+        elseif ($replaceUrl !== null && $playUrl === $replaceUrl) $source = 'replace';
+        elseif ($officialUrl !== null && $playUrl === $officialUrl) $source = 'official';
+        else {
+            $t = u2j_guessUrlType($playUrl);
+            if ($t['is_html_player']) $source = 'official';
+            elseif ($t['is_m3u8'] || in_array($t['type'], ['mp4','flv','mkv','ts'], true)) $source = 'direct';
+        }
+        $ut = u2j_guessUrlType($playUrl);
+        $enrich = $result;
+        $enrich['info'] = 'URL转JSON专用解析（HOTFIX5 异步任务 worker）';
+        if ($officialUrl !== null && !isset($enrich['official_url'])) $enrich['official_url'] = $officialUrl;
+        if ($replaceUrl  !== null && !isset($enrich['replace_url']))  $enrich['replace_url']  = $replaceUrl;
+        $enrich['source'] = $source;
+        $enrich['type']   = $ut['type'];
+        $enrich['is_m3u8'] = $ut['is_m3u8'];
+        $enrich['is_html_player'] = $ut['is_html_player'];
+        $enrich['video_url'] = $videoUrl;
+        if (!isset($enrich['platform']) || $enrich['platform'] === null) {
+            $enrich['platform'] = u2j_guessPlatform($videoUrl);
+        }
+        if (empty($enrich['ZT'])) $enrich['ZT'] = '解析成功';
+        $pending['status'] = 'done';
+        $pending['result'] = $enrich;
+        $pending['http_code'] = 200;
+        $pending['parse_time'] = $parseTime;
+        $pending['kfz'] = $kfz;
+        $pending['updated_at'] = date('Y-m-d H:i:s');
+        @file_put_contents($taskFile, json_encode($pending, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+        exit(0);
+    }
+}
 
 // v5.13.10-HOTFIX4：HTTP 级「单次请求覆盖参数」用于前端 502 自动重试时强制单通道
 //   _mode=official|replace|concurrent    → 临时覆盖 xt/sniffer_config.php 的 mode
@@ -198,6 +464,10 @@ if (!function_exists('u2j_apply_runtime_config_overrides')) {
         }
     }
 }
+
+// HOTFIX5：同步主流程只在「HTTP 请求模式」或「CLI _task_worker 子进程」下执行
+//          普通 CLI（require 验证脚本 / 单元测试）只加载函数，不触发输出/exit
+if (!$u2j_isCLI || $u2j_isWorker):
 
 if ($videoUrl === '') {
     u2j_outputError('请提供视频链接（支持 url/wd/v/video/t 参数）', $format, $callback);
@@ -328,3 +598,5 @@ switch ($format) {
         u2j_outputJson($out, $callback);
         exit;
 }
+
+endif; // HOTFIX5 同步主流程 CLI 跳过 guard 结束

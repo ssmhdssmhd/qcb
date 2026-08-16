@@ -14102,22 +14102,23 @@ https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng
             if(!url){ showToast('请填写 URL','error'); return; }
             const fmt=url2jsonGetFormat();
             if(runBtn){ runBtn.disabled=true; runBtn.style.opacity='0.6'; }
-            status.textContent='转换中…（1-20s，嗅探模式=同时调用时官替最多等待 replace_direct_timeout）';
-            status.style.color='#409eff';
             out.textContent='';
             const t0=performance.now();
-            // v5.13.10-HOTFIX4 - 502/非 JSON 响应自动提取诊断块 + 自动重试 official 单通道一次
+            // ===== v5.13.10-HOTFIX5：默认走异步任务模型（彻底绕开 nginx 502 Bad Gateway）=====
+            //   流程：① GET url2json.php?_async=1 → 100ms 内返回 task_id
+            //         ② 每 1.5s GET url2json.php?_task=<id> 轮询 → status=pending/running/done/fail
+            //         ③ 到达 done → parse result；到达 fail → 展示 error
+            //         ④ 若 _async 入口本身返回 502/异常 → fallback 到 HOTFIX4 的「同步 + 自动重试官解单通道」
             function xtExtractDiagFromBody(txt){
                 try{
                     const m=txt.match(/<!--\s*LAST_502_DIAG_JSON_BEGIN\s*-->\s*(\{.*?\})\s*<!--\s*LAST_502_DIAG_JSON_END\s*-->/s);
                     if(m) return JSON.parse(m[1]);
                 }catch(_){}
-                // 传统 nginx 502 HTML
                 if(/<title>\s*502\s+Bad\s+Gateway\s*<\/title>/i.test(txt) || /<title>\s*504\s+Gateway\s+Time-out/i.test(txt)){
                     return {
                         _xt_502_diag: true, code: (txt.indexOf('504')>=0?504:502),
                         message: '网关 502/504：后端 PHP-FPM 超时或已崩溃（见诊断建议）',
-                        diagnostic: { suggestion: '服务器 nginx 返回 502/504。建议：①后台嗅探设置把 mode 临时切为「官解 official」单通道；②关闭需签名/CF 拦截的外部官解；③把 performance.timeout 调为 ≤12s；④再按「开始转换」重试。若仍 502 请把该页面的响应贴给开发者。' }
+                        diagnostic: { suggestion: '服务器 nginx 返回 502/504。HOTFIX5 已默认启用异步任务模型，若仍命中说明 _async 入口也超时 → ①把 performance.timeout 调 ≤12s；②后台切 mode=official 单通道；③检查 Nginx fastcgi_read_timeout ≥180s + FPM request_terminate_timeout ≥150s' }
                     };
                 }
                 return null;
@@ -14125,7 +14126,7 @@ https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng
             function buildPrettyDiagnosticBlock(diagObj){
                 const d=diagObj.diagnostic||{};
                 let s='';
-                s+='========= ⚠️  解析诊断 (HOTFIX4) =========\n';
+                s+='========= ⚠️  解析诊断 (HOTFIX5) =========\n';
                 s+='  code        : '+ (diagObj.code ?? 502)+'\n';
                 s+='  message     : '+ (diagObj.message ?? '未知网关错误') + '\n';
                 s+='  wall_ms     : '+ (d.wall_ms ?? '?') + 'ms  budget_ms='+ (d.global_budget_ms ?? '?') + 'ms  budget_hit=' + (d.budget_hit?'YES':'NO') + '\n';
@@ -14146,57 +14147,118 @@ https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng
                 s+='================================================\n\n';
                 return s;
             }
-            try{
-                let apiUrl = url2jsonBuildApiUrl(url,fmt);
-                const r=await fetch(apiUrl,{method:'GET',credentials:'same-origin'});
-                let txt=await r.text();
-                let pretty=txt;
-                let diagMsgShown=false;
-                // --- 诊断块抽取 + 自动重试一次 official 单通道 ---
-                const diag = xtExtractDiagFromBody(txt);
-                if(diag && diag._xt_502_diag){
-                    const prettyDiag = buildPrettyDiagnosticBlock(diag);
-                    pretty = prettyDiag + txt;
-                    out.textContent = pretty;
-                    status.textContent = '⚠️  收到 502/致命错误，自动切换到官解单通道重试…（HTTP '+r.status+'）';
-                    status.style.color = '#e6a23c';
-                    // 自动重试：强制追加参数 _mode=official（url2json/mx.php 会读取并临时覆盖嗅探 mode）
-                    showToast('检测到 502/致命错误，自动切换官解单通道重试…','warning');
-                    try{
-                        const retryUrl = apiUrl + (apiUrl.indexOf('?')>=0 ? '&' : '?') + '_mode=official&_no_direct=1&_t='+Date.now();
-                        const r2 = await fetch(retryUrl,{method:'GET',credentials:'same-origin'});
-                        const txt2 = await r2.text();
-                        const diag2 = xtExtractDiagFromBody(txt2);
-                        try{
-                            const j = JSON.parse(txt2);
-                            pretty = JSON.stringify(j,null,2);
-                            status.textContent = '✅ 自动重试（官解单通道）成功，总耗时 ' + (performance.now()-t0).toFixed(0) + 'ms（HTTP '+r2.status+'）';
-                            status.style.color = '#67c23a';
-                        }catch(_){
-                            if(diag2 && diag2._xt_502_diag){
-                                pretty = '【自动重试官解单通道仍然失败】\n\n' + buildPrettyDiagnosticBlock(diag2) + '\n【第一次响应原文（前2KB）】\n' + pretty.substring(0,2048) + '\n\n【重试响应全文】\n' + txt2;
-                                status.textContent = '❌ 两次均失败（并发+官解），请查看下方诊断并按修复建议操作';
-                                status.style.color = '#f56c6c';
-                            }else{
-                                pretty = txt2;
-                            }
-                        }
-                        out.textContent = pretty;
-                    }catch(err2){
-                        status.textContent='❌ 自动重试失败: '+err2.message;
-                        status.style.color='#f56c6c';
+            // ---- 异步任务：提交 + 轮询 ----
+            async function runAsyncFlow(extraParamsStr){
+                // step 1: 提交异步任务
+                const submitUrl = url2jsonBuildApiUrl(url,fmt) + (url2jsonBuildApiUrl(url,fmt).indexOf('?')>=0?'&':'?') + '_async=1' + (extraParamsStr||'');
+                status.textContent='🚀 提交异步任务（HOTFIX5 防 502 模式）…';
+                status.style.color='#409eff';
+                const s1 = await fetch(submitUrl,{method:'GET',credentials:'same-origin'});
+                const s1txt = await s1.text();
+                let taskId=null; let pollEndpoint=null; let pollMs=1500; let ttl=300;
+                try{
+                    const j=JSON.parse(s1txt);
+                    if(j && j._xt_async && j.task_id){
+                        taskId = j.task_id;
+                        pollMs = parseInt(j.poll_interval_ms||'1500',10) || 1500;
+                        ttl = parseInt(j.ttl_seconds||'300',10) || 300;
+                        pollEndpoint = j.poll_endpoint || ('url2json.php?_task='+taskId);
                     }
-                    diagMsgShown=true;
+                }catch(_){}
+                if(!taskId){
+                    // _async 失败（比如 502）→ 返回 {fallback:true, body:s1txt, status:s1.status}
+                    return { ok:false, fallback:true, body:s1txt, httpStatus:s1.status };
                 }
-                if(!diagMsgShown){
-                    try{
-                        const j=JSON.parse(txt);
-                        pretty=JSON.stringify(j,null,2);
-                    }catch(_){}
-                    out.textContent=pretty;
-                    const ms=(performance.now()-t0).toFixed(0);
-                    status.textContent='✅ 转换完成，耗时 '+ms+'ms（HTTP '+r.status+'）';
+                // step 2: 轮询直到 done/fail/unknown 或 ttl 耗尽
+                const pollDeadline = t0 + ttl*1000;
+                let pollCount=0;
+                while(performance.now() < pollDeadline){
+                    pollCount++;
+                    await new Promise(res=>setTimeout(res, pollMs));
+                    // poll endpoint 可能是相对 url2json.php?_task=…，也可能是绝对
+                    let pUrl = pollEndpoint;
+                    if(pUrl.indexOf('://')<0){
+                        // 转为绝对：用当前页面 host + 当前路径拼
+                        const base = location.pathname.substring(0,location.pathname.lastIndexOf('/')+1);
+                        pUrl = base + pUrl;
+                    }
+                    if(pUrl.indexOf('_t=')<0) pUrl += (pUrl.indexOf('?')>=0?'&':'?') + '_t='+Date.now();
+                    const pr = await fetch(pUrl,{method:'GET',credentials:'same-origin'});
+                    const pTxt = await pr.text();
+                    let pj=null;
+                    try{ pj = JSON.parse(pTxt); }catch(_){}
+                    if(!pj || !pj._xt_async){
+                        // 轮询接口返回非 JSON → 异常，fallback 同步
+                        return { ok:false, fallback:true, body:pTxt, httpStatus:pr.status };
+                    }
+                    const st = pj.status || 'unknown';
+                    const waited = (performance.now()-t0).toFixed(0);
+                    if(st==='pending'){
+                        status.textContent = '⏳ 任务排队中（已 '+waited+'ms，第 '+pollCount+' 次轮询，task_id='+taskId.substring(0,8)+'…）';
+                        status.style.color = '#909399';
+                        continue;
+                    }
+                    if(st==='running'){
+                        status.textContent = '⚙️  后台解析中（已 '+waited+'ms，第 '+pollCount+' 次轮询，PID='+(pj.pid||'?')+'）——此模式不会触发 nginx 502';
+                        status.style.color = '#409eff';
+                        continue;
+                    }
+                    if(st==='done'){
+                        const enrich = pj.result || {};
+                        return { ok:true, isAsync:true, enrich, task: pj, total_ms: waited, asyncPollCount: pollCount };
+                    }
+                    if(st==='fail'){
+                        return { ok:false, isAsync:true, task: pj, error: pj.error || '后台 worker 失败', total_ms: waited };
+                    }
+                    if(st==='unknown'){
+                        return { ok:false, isAsync:true, task: pj, error: pj.message || '任务不存在或已过期（请重试）', total_ms: waited };
+                    }
+                    // cleaned 或其他 → 异常
+                    return { ok:false, isAsync:true, task: pj, error: '未知任务状态='+st, total_ms: waited };
+                }
+                return { ok:false, isAsync:true, error: '异步任务超过 '+ttl+'s 未完成（TTL 耗尽），请检查后台 PHP-FPM / CLI 是否可执行 nohup', total_ms:(performance.now()-t0).toFixed(0) };
+            }
+            try{
+                // 首次：尝试异步模式
+                let res = await runAsyncFlow('');
+                if(res.ok){
+                    // 异步完成，输出 enrich
+                    const j = res.enrich;
+                    const pretty = JSON.stringify(j,null,2);
+                    out.textContent = pretty;
+                    status.textContent = '✅ 异步模式解析成功，总耗时 '+res.total_ms+'ms（轮询 '+res.asyncPollCount+' 次）✅ 零 502 风险';
                     status.style.color='#67c23a';
+                }else if(res.fallback){
+                    // _async 入口本身返回 502/非 JSON → fallback 到 HOTFIX4 同步+重试
+                    status.textContent = '⚠️  异步入口不可用（HTTP '+res.httpStatus+'），回退同步模式+自动重试…';
+                    status.style.color = '#e6a23c';
+                    showToast('异步入口返回非 JSON，回退同步模式（可能触发 502，已启用自动重试）','warning');
+                    const pretty = await runSyncWithRetry(res.body, res.httpStatus);
+                    out.textContent = pretty.out;
+                    status.textContent = pretty.statusText;
+                    status.style.color = pretty.statusColor;
+                }else{
+                    // 异步任务 fail/unknown/超时
+                    let prettyOut = '';
+                    if(res.task){
+                        prettyOut += '========= 异步任务失败 (HOTFIX5) =========\n';
+                        prettyOut += '  task_id     : ' + (res.task.task_id || '?') + '\n';
+                        prettyOut += '  status      : ' + (res.task.status || '?') + '\n';
+                        prettyOut += '  错误        : ' + (res.error || '') + '\n';
+                        if(res.task.error_file) prettyOut += '  PHP 报错位置: ' + res.task.error_file + '\n';
+                        if(res.task.created_at) prettyOut += '  创建时间    : ' + res.task.created_at + '\n';
+                        if(res.task.updated_at) prettyOut += '  最后更新    : ' + res.task.updated_at + '\n';
+                        if(res.total_ms)   prettyOut += '  前端等待    : ' + res.total_ms + 'ms\n';
+                        prettyOut += '==========================================\n\n';
+                        if(res.task.result) prettyOut += JSON.stringify(res.task.result,null,2) + '\n\n【原始任务文件】\n' + JSON.stringify(res.task,null,2);
+                        else prettyOut += JSON.stringify(res.task,null,2);
+                    }else{
+                        prettyOut = '异步任务失败：' + (res.error||'未知错误') + '（耗时 '+res.total_ms+'ms）';
+                    }
+                    out.textContent = prettyOut;
+                    status.textContent = '❌ 异步任务失败：' + (res.error||'').substring(0,60);
+                    status.style.color = '#f56c6c';
+                    showToast('异步任务失败：'+(res.error||'请检查 url2json.php?action=_diag 或联系开发者'),'error');
                 }
             }catch(err){
                 out.textContent='请求失败: '+err.message;
@@ -14205,6 +14267,54 @@ https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng
                 showToast(err.message,'error');
             }finally{
                 if(runBtn){ runBtn.disabled=false; runBtn.style.opacity=''; }
+            }
+            // ---- helper：同步模式 + 502 自动重试（HOTFIX4 逻辑），用作异步模式 fallback ----
+            async function runSyncWithRetry(firstBody, firstStatus){
+                let pretty = firstBody || '';
+                let diagMsgShown=false;
+                const diag = xtExtractDiagFromBody(firstBody||'');
+                if(diag && diag._xt_502_diag){
+                    const prettyDiag = buildPrettyDiagnosticBlock(diag);
+                    pretty = prettyDiag + firstBody;
+                    diagMsgShown = true;
+                    // 自动重试：强制 _mode=official&_no_direct=1
+                    showToast('同步模式命中 502，自动切换官解单通道重试…','warning');
+                    try{
+                        const retryUrl = url2jsonBuildApiUrl(url,fmt) + (url2jsonBuildApiUrl(url,fmt).indexOf('?')>=0?'&':'?') + '_mode=official&_no_direct=1&_t='+Date.now();
+                        const r2 = await fetch(retryUrl,{method:'GET',credentials:'same-origin'});
+                        const txt2 = await r2.text();
+                        const diag2 = xtExtractDiagFromBody(txt2);
+                        let statusText='', statusColor='';
+                        try{
+                            const j = JSON.parse(txt2);
+                            pretty = JSON.stringify(j,null,2);
+                            statusText = '✅ 自动重试（官解单通道，同步 fallback）成功，总耗时 ' + (performance.now()-t0).toFixed(0) + 'ms（HTTP '+r2.status+'）';
+                            statusColor = '#67c23a';
+                        }catch(_){
+                            if(diag2 && diag2._xt_502_diag){
+                                pretty = '【自动重试官解单通道仍然失败】\n\n' + buildPrettyDiagnosticBlock(diag2) + '\n【第一次响应（前2KB）】\n' + (firstBody||'').substring(0,2048) + '\n\n【重试响应全文】\n' + txt2;
+                                statusText = '❌ 两次均失败（并发+官解），建议：①启用异步模式勾选 ②去嗅探设置改单通道 ③调运维 Nginx/FPM 超时';
+                                statusColor = '#f56c6c';
+                            }else{
+                                pretty = txt2;
+                                statusText = '✅ 同步重试成功（非 JSON），总耗时 ' + (performance.now()-t0).toFixed(0) + 'ms';
+                                statusColor = '#67c23a';
+                            }
+                        }
+                        return { out:pretty, statusText, statusColor };
+                    }catch(err2){
+                        return { out:pretty, statusText:'❌ 自动重试失败: '+err2.message, statusColor:'#f56c6c' };
+                    }
+                }
+                if(!diagMsgShown){
+                    try{
+                        const j=JSON.parse(firstBody||'');
+                        pretty=JSON.stringify(j,null,2);
+                    }catch(_){}
+                    const ms=(performance.now()-t0).toFixed(0);
+                    return { out:pretty, statusText:'✅ 同步模式完成（fallback），耗时 '+ms+'ms（HTTP '+(firstStatus||0)+'），建议优先走异步模式避免 502', statusColor:'#67c23a' };
+                }
+                return { out:pretty, statusText:'✅ 同步模式（fallback）', statusColor:'#67c23a' };
             }
         }
         async function url2jsonRunBatch(){

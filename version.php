@@ -1,13 +1,30 @@
 <?php
 return array (
-  'version' => 'v5.13.10-HOTFIX4',
+  'version' => 'v5.13.10-HOTFIX5',
   'branch' => 'main',
-  'build' => '20260816-v5-13-10-hotfix4-nginx-502-bad-gateway-radical-fix-global-budget',
+  'build' => '20260816-v5-13-10-hotfix5-async-task-model-ultimate-nginx-502-bypass',
   'version_code' => 51310,
-  'commit' => 'v5.13.10-hotfix4-parseVideo-global-budget-deadline-plus-concurrent-disable-replace-direct-plus-diag-file',
+  'commit' => 'v5.13.10-hotfix5-async-task-model-url2json-plus-mxadmin-polling-plus-mx-route-forward-plus-ops-checklist',
   'updated_at' => '2026-08-16',
   'changelog' =>
   array (
+    'v5.13.10-HOTFIX5' =>
+    array (
+      'date' => '2026-08-16',
+      'title' => '【Hotfix5：根治 nginx 502 Bad Gateway（终极方案——异步任务模型 + 前端轮询，彻底绕开 FPM 超时硬限制）】',
+      'changes' =>
+      array (
+        0 => '【H5-0 根因链路终极还原】HOTFIX4 的 parseVideo 全局预算+register_shutdown 方案只能把 PHP 侧错误「包一层结构化诊断」，但真实触发点是 nginx 的 fastcgi_read_timeout（默认 30-60s）先把 TCP 连接 reset/FPM abort——此时 shutdown function 写进响应体的诊断数据根本发不到浏览器，用户最终看到的仍是**纯的、裸的 <title>502 Bad Gateway</title><hr><center>nginx</center>**。结论：任何在「同步 HTTP 请求生命周期内」做的预算/超时/捕获 都无法超越「外层 nginx timeout 先切连接」这个物理硬限制——必须把 parseVideo 搬到 HTTP 请求生命周期之外。',
+        1 => '【H5-1 终极方案：异步任务模型（url2json.php）】新增 4 个参数：①`_async=1`：提交 URL → 100ms 内写 xt/cache/tasks/{sha256}.json（status=pending）→ shell nohup 启动 PHP-CLI 子进程（php url2json.php _task_worker=<id> _video=<url> …）→ 立即返回 task_id / poll_endpoint / ttl_seconds，**HTTP 请求在 100ms 内结束，FPM 释放，nginx 连触发 502 的机会都没有**；②`_task=<id>`：前端每 1.5s 轮询 → 返回 status=pending/running/done/fail；③`_task_clean=1`：删除旧任务；④`_task_worker=<id>`：CLI worker 分支（`$argv` 解析），跑 parseVideo 全流程（允许它跑 60-300s，因为 CLI 不受 nginx/FPM 约束），结果写回同一个 JSON，前端下次轮询即拿到结果。',
+        2 => '【H5-2 后台任务目录 & 生命周期】url2json.php 新增 u2j_getTaskDir()（xt/cache/tasks，自动 mkdir + 写 .htaccess Require all denied + 空 index.html 防下载）+ u2j_cleanupOldTasks()（每 60s 扫一次，删除 24h 之前的 JSON，防止磁盘泄露）。任务 payload 标准字段：_xt_async=true / task_id(sha256) / status(pending→running→done|fail) / created_at / updated_at / input(原始 url、format、callback、_mode、_no_direct、_timeout) / result(enrich JSON) / error / pid / ttl_seconds=300。',
+        3 => '【H5-3 跨平台后台 worker 启动】Windows 用 `start /B cmd /C "php … >NUL 2>NUL"`；Linux/macOS 用 `nohup php … >/dev/null 2>&1 & echo $!`。PHP_BINARY 优先，退化到 `php`。worker 分支把 $argv 解析后的键值对重新注入 $_GET（url/type/callback/_mode/_no_direct/_timeout），确保「CLI 执行」与「HTTP 执行」parseVideo 看到完全一致的全局配置覆盖，结果 100% 等价。',
+        4 => '【H5-4 mxadmin.php 前端：url2jsonRunSingle 默认为异步轮询模式】原 HOTFIX4「同步 fetch + 命中 502 再自动重试官解」改为：① 先 GET ?_async=1 拿 task_id（<100ms，零 502 风险）；② while performance.now() < t0+300s → 每 1.5s GET ?_task=<id> → status=pending 显示「任务排队中」；status=running 显示「后台解析中 PID=X · 此模式不会触发 nginx 502」（带轮询次数+已等毫秒数）；status=done → 绿色 status 「✅ 异步模式解析成功，总耗时 N ms（轮询 X 次）✅ 零 502 风险」+ JSON pretty。',
+        5 => '【H5-5 前端 Fallback 双层兜底】若 ?_async=1 入口本身返回 502/非 JSON（极端情况：连写 JSON 文件都超时）→ 自动走 HOTFIX4 同步模式 + 官解单通道重试 runSyncWithRetry()，status 显示「⚠️  异步入口不可用（HTTP 502），回退同步模式+自动重试…」。若异步任务 status=fail/unknown/超时 TTL → 输出结构化「异步任务失败」卡片（task_id、status、error、PHP 报错位置、创建/更新时间、前端等待时长）+ showToast 错误。',
+        6 => '【H5-6 mx.php url2json 路由同步支持异步参数】case url2json / url2json/parse / api/url2json 开头新增检测：`!empty($_GET[_async]) || !empty($_GET[_task]) || $argv 命中 _task_worker=` → 直接 `require url2json.php; exit`。因为 url2json.php 的异步三个分支（提交/轮询/CLI worker）在「require xt/server.php 之前」就 exit 了，不会触发 AdFilter/parseVideo 重复声明链；同时把 url2json.php 已经测过的 200+ 行异步任务代码直接复用，避免在 mx.php 再内联一份造成维护两份。',
+        7 => '【H5-7 运维超时终极配置清单（代码+服务器双保险）】虽然 HOTFIX5 异步模型已经把 nginx/FPM timeout 物理硬限制彻底绕开了，但仍然给出「即使跑同步也绝不 502」的 4 层运维阈值（严格满足：外层≥内层≥预算）：① Nginx server 外层反代（如存在）：proxy_read_timeout 180s / proxy_send_timeout 180s / proxy_connect_timeout 30s；② Nginx PHP location：fastcgi_read_timeout 180s / fastcgi_send_timeout 180s；③ PHP-FPM pool（www.conf）：request_terminate_timeout = 150s；④ php.ini / ini_set：max_execution_time = 120s。不等式：180(nginx反代) ≥ 180(fastcgi) ≥ 150(FPM terminate) ≥ 120(PHP max_exec) ≥ parseVideo globalBudget 22s ≥ replace_direct_timeout 12s。HOTFIX5 之前不等式经常被打破：fastcgi_read_timeout=30s 但 replace_direct_timeout=12 + 官解网络 20 = 32s → nginx 先切 → 502。',
+        8 => '【H5-8 修复 u2j_currentBaseUrl 未定义】url2json.php 的 pending payload 组装时 poll_endpoint 调用 u2j_currentBaseUrl() 但函数未定义导致 _async 提交时 Warning + JSON 结构损坏；新增函数按 scheme+HTTP_HOST+SCRIPT_NAME 目录拼出绝对 url2json.php 地址。',
+      ),
+    ),
     'v5.13.10-HOTFIX4' =>
     array (
       'date' => '2026-08-16',

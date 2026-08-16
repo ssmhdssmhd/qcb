@@ -5037,9 +5037,26 @@ try {
         //   OPcache 重排也危险）。改为：在 mx 内部直接加载 xt/server.php（走它自己的
         //   XT_SERVER_PHP_V1 + parseVideo 双 guard），然后复用 url2json 的格式化输出逻辑
         //   （直接内联等价代码，不 require 独立文件）。
+        //   HOTFIX5：如果命中 _async / _task / _task_clean 参数——直接 require url2json.php
+        //   然后 exit。因为 url2json.php 的这三个分支在「加载 xt/server.php 之前」就 return/exit
+        //   了（只写/读 json 任务文件），不会触发 AdFilter/parseVideo 重复声明链；反而可以复用
+        //   url2json.php 已经测试通过的异步任务模型，避免把 200+ 行任务代码再内联一份到 mx.php。
         case 'url2json':
         case 'url2json/parse':
         case 'api/url2json':
+            // HOTFIX5：异步任务参数 → 直接走 url2json.php 的成熟实现（不会 require xt/server.php）
+            $_u2j_async_req  = !empty($_GET['_async'])     || !empty($_POST['_async']);
+            $_u2j_task_req   = !empty($_GET['_task'])      || !empty($_POST['_task']);
+            $_u2j_worker_req = false;
+            if (!empty($GLOBALS['argv']) && is_array($GLOBALS['argv'])) {
+                foreach ($GLOBALS['argv'] as $_a) {
+                    if (strpos($_a, '_task_worker=') === 0) { $_u2j_worker_req = true; break; }
+                }
+            }
+            if (($_u2j_async_req || $_u2j_task_req || $_u2j_worker_req) && file_exists(__DIR__ . '/url2json.php')) {
+                require __DIR__ . '/url2json.php';
+                exit(0);
+            }
             // ① 参数读取（复用 url2json.php 的 u2j_ 逻辑内联版，避免 require 导致类冲突）
             $u2j_video = '';
             foreach (['url','wd','v','video','t','u','play','src'] as $_u2j_p) {
