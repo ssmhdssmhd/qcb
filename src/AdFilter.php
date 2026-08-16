@@ -1,5 +1,28 @@
 <?php
 
+/**
+ * v5.13.10-HOTFIX：与 xt/AdFilter.php 同名类冲突防护。
+ *   xt/AdFilter.php 是「完整版」（AI+规则+配置）由 xt/server.php（jiexi/url2json/xt 等核心解析链路）引入。
+ *   src/AdFilter.php 是老版「简版」（仅 ruleEngine 构造 + filter(playlist)），由 src/M3U8AdSkipper / gz/AiSmartProcessor 等辅助链路引入。
+ *   PHP 不允许同名类声明两次，因此两边都加 class_exists guard。
+ *   注意：两份 AdFilter 的构造函数签名不一样——完整版签名 (array $config, ?callable $aiClient = null)，
+ *   简版签名 ($ruleEngine)。如果调用方代码已经 new AdFilter($ruleEngine) 但加载到了完整版，会 TypeError。
+ *   所以本简版：加载时若发现 AdFilter 类已存在，做 2 件事：
+ *     1. 定义 class_alias('AdFilter', 'LegacyAdFilter_Src', false) 失败忽略；
+ *     2. 调用方如果使用 `M3U8AdSkipper` 路径（在本文件之前 require M3U8AdSkipper 的话，它的 require_once 本文件也失效），
+ *        → 需要 M3U8AdSkipper 本身也改用检测签名；详见 M3U8AdSkipper 的修复。
+ *   为了避免这种签名错位，以下策略：优先允许 xt/AdFilter 先加载（完整版 覆盖 简版），
+ *   如果是 src 先加载，就保留 src 简版，xt/AdFilter.php 检测到已存在就 return 不覆盖。
+ */
+
+if (class_exists('AdFilter', false)) {
+    // 已经加载过一份（不管是 xt 完整版 还是 这里的简版被 require_once 两次），都不再重复声明。
+    if (function_exists('error_log')) {
+        @error_log('[AdFilter 冲突-skipped-src] 检测到 AdFilter 类已存在，src/AdFilter.php 简版跳过（v5.13.10-HOTFIX）。');
+    }
+    return;
+}
+
 class AdFilter {
     private $ruleEngine;
 

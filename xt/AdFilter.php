@@ -7,7 +7,22 @@
  *   2. AI 辅助  - 规则引擎置信度不足时，调用大模型分析
  *
  * 生成去广告 m3u8 文件，返回广告详情和清洁播放地址
+ *
+ * v5.13.10-HOTFIX：与 src/AdFilter.php 同名类冲突防护。
+ *   xt/server.php 引入的是完整版 AdFilter（本文件）；src/AdFilter.php 是老版简版。
+ *   两边都加上 class_exists guard，避免 mx.php 不同路由 require 顺序导致 Fatal。
+ *   如果先加载了 src 简版，则此处会直接 return（不声明第二个同名类），
+ *   但强烈建议在 PHP 启动时统一只加载一份——本文件作为推荐版本。
  */
+
+if (class_exists('AdFilter', false)) {
+    // 已经存在简版 AdFilter。做一个软告警（不抛 Exception，避免 FPM 崩溃）：
+    // 写进 error_log 让运维知道顺序不对；但为了兼容不直接抛错。
+    if (function_exists('error_log')) {
+        @error_log('[AdFilter 冲突] 检测到已存在 AdFilter 类声明（很可能来自 src/AdFilter.php），xt/AdFilter.php 完整版被跳过（v5.13.10-HOTFIX）。建议统一 require 顺序，避免先加载 src 简版。');
+    }
+    return;
+}
 
 class AdFilter
 {
