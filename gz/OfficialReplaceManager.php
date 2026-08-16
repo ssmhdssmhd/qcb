@@ -4,6 +4,7 @@
  * 负责将官方视频平台链接（腾讯、爱奇艺、优酷等）替换为资源站 M3U8 地址
  */
 
+require_once __DIR__ . '/../src/UrlPath.php';
 require_once __DIR__ . '/ResourceSiteManager.php';
 require_once __DIR__ . '/TitleNormalizer.php';
 require_once __DIR__ . '/../pt/PtManager.php';
@@ -565,23 +566,8 @@ class OfficialReplaceManager {
     }
 
     private function buildAdSkipUrl($m3u8Url) {
-        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $rootDir = dirname(__DIR__);
-        $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
-        $relativePath = '';
-        if (!empty($documentRoot)) {
-            $rootDirReal = realpath($rootDir);
-            $docRootReal = realpath($documentRoot);
-            if ($rootDirReal && $docRootReal && strpos($rootDirReal, $docRootReal) === 0) {
-                $relativePath = substr($rootDirReal, strlen($docRootReal));
-            }
-        }
-        if (empty($relativePath)) {
-            $relativePath = '';
-        }
-        $selfUrl = $scheme . '://' . $host . $relativePath;
-        return $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
+        $selfUrl = UrlPath::buildAbsoluteBase();
+        return UrlPath::join($selfUrl, '/mx.php?action=mxjx&deep=1&url=') . urlencode($m3u8Url);
     }
 
     private function logResolve($url, $platform, $title, $score, $site, $m3u8Url, $success) {

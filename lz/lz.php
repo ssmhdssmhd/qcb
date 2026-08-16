@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../src/UrlPath.php';
 @ini_set('display_errors', 0);
 @ini_set('html_errors', 0);
 error_reporting(0);
@@ -301,13 +303,8 @@ try {
             $stats = $result['stats'] ?? [];
             $processTime = round((microtime(true) - $startTime) * 1000);
 
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
-            $m3u8Url = $selfUrl . '/lz.php?action=m3u8&url=' . urlencode($url);
+            $selfUrl = UrlPath::buildAbsoluteBase();
+            $m3u8Url = UrlPath::join($selfUrl, '/lz.php?action=m3u8&url=') . urlencode($url);
 
             $adSegments = [];
             foreach ($result['filtered']['removedSegments'] ?? [] as $s) {

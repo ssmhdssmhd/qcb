@@ -4,6 +4,7 @@
  * 使用数据库存储配置，完全兼容原 OfficialReplaceManager 接口
  */
 
+require_once __DIR__ . '/../src/UrlPath.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/DbOfficialReplaceCache.php';
 require_once __DIR__ . '/DbResourceSiteManager.php';
@@ -542,13 +543,8 @@ class DbOfficialReplaceManager {
     }
 
     private function buildAdSkipUrl($m3u8Url) {
-        $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
-        $basePath = dirname($requestUri);
-        $basePath = $basePath === '/' ? '' : $basePath;
-        $selfUrl = $scheme . '://' . $host . $basePath;
-        return $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
+        $selfUrl = UrlPath::buildAbsoluteBase();
+        return UrlPath::join($selfUrl, '/mx.php?action=mxjx&deep=1&url=') . urlencode($m3u8Url);
     }
 
     private function logResolve($url, $platform, $title, $score, $site, $m3u8Url, $success) {

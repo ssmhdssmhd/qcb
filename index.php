@@ -41,6 +41,7 @@ function sendIndexJson($data, $code = 200) {
 try {
     $rootDir = __DIR__;
     $requiredFiles = [
+        $rootDir . '/src/UrlPath.php',
         $rootDir . '/src/M3U8AdSkipper.php',
         $rootDir . '/src/M3U8Parser.php',
         $rootDir . '/src/CryptoUtil.php',
@@ -192,13 +193,8 @@ if ($relativePath === '/parse' || $relativePath === '/api/parse' || $relativePat
             $result = $officialReplaceMgr->resolve($url);
 
             if ($result['success'] && !empty($result['m3u8_url'])) {
-                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-                $host_name = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                $requestUriPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-                $basePath = dirname($requestUriPath);
-                $basePath = $basePath === '/' ? '' : $basePath;
-                $selfUrl = $scheme . '://' . $host_name . $basePath;
-                $mxjxUrl = $selfUrl . '/mxjx?url=' . urlencode($result['m3u8_url']);
+                $selfUrl = UrlPath::buildAbsoluteBase();
+                $mxjxUrl = UrlPath::join($selfUrl, '/mxjx?url=' . urlencode($result['m3u8_url']));
 
                 sendIndexJson([
                     'code' => 200,
@@ -222,13 +218,8 @@ if ($relativePath === '/parse' || $relativePath === '/api/parse' || $relativePat
             $m3u8Result = $skipper->process($url);
 
             if ($m3u8Result['success'] || !empty($m3u8Result['output'])) {
-                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-                $host_name = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                $requestUriPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-                $basePath = dirname($requestUriPath);
-                $basePath = $basePath === '/' ? '' : $basePath;
-                $selfUrl = $scheme . '://' . $host_name . $basePath;
-                $mxjxUrl = $selfUrl . '/mxjx?url=' . urlencode($url);
+                $selfUrl = UrlPath::buildAbsoluteBase();
+                $mxjxUrl = UrlPath::join($selfUrl, '/mxjx?url=' . urlencode($url));
 
                 sendIndexJson([
                     'code' => 200,

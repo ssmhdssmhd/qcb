@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/src/UrlPath.php';
 @ini_set('display_errors', 0);
 @ini_set('html_errors', 0);
 @ini_set('log_errors', 1);
@@ -370,19 +372,19 @@ function parse_internal_moxi($url, $selfUrl, $officialReplaceMgr = null, $siteMa
         $result = $officialReplaceMgr->resolve($url);
         if ($result['success']) {
             $m3u8Url = $result['m3u8_url'] ?? '';
-            $playUrl = $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
+            $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&deep=1&url=') . urlencode($m3u8Url);
             $juMing = $result['video_title'] ?? '';
             $jiShu = $result['target_episode'] ?? ($result['episode'] ?? '');
             if (empty($jiShu)) $jiShu = '正片';
         } else {
-            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+            $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($url);
             $juMing = $result['video_title'] ?? '';
             if (empty($juMing)) $juMing = $extractTitleFromUrl($url);
             $jiShu = $result['episode'] ?? '';
             if (empty($jiShu)) $jiShu = $extractEpisodeFromUrl($url);
         }
     } else {
-        $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+        $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($url);
         $juMing = $extractTitleFromUrl($url);
         $jiShu = $extractEpisodeFromUrl($url);
 
@@ -498,7 +500,7 @@ function parse_internal_unified($url, $selfUrl, $parseType = 'parse', $officialR
         case 'mxjx':
         case 'adskip':
         case '去广告':
-            $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+            $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($url);
             $msg = '去广告解析';
             $typeName = '去广告解析';
             break;
@@ -804,13 +806,8 @@ try {
                         $domainStats->recordAnalyze($domain, $cached['total_segments'], $cached['ad_segments'], $cached['ad_percentage']);
                     }
 
-                    $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                    $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-                    $basePath = dirname($requestUri);
-                    $basePath = $basePath === '/' ? '' : $basePath;
-                    $selfUrl = $scheme . '://' . $host . $basePath;
-                    $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($cached['media_url']);
+                    $selfUrl = UrlPath::buildAbsoluteBase();
+                    $mxjxUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($cached['media_url']);
 
                     sendJsonResponse([
                         'success' => true,
@@ -879,13 +876,8 @@ try {
                 $safeguardReason = $result['safeguardReason'] ?? '';
                 $safeguardMethod = $result['safeguardMethod'] ?? '';
 
-                $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-                $basePath = dirname($requestUri);
-                $basePath = $basePath === '/' ? '' : $basePath;
-                $selfUrl = $scheme . '://' . $host . $basePath;
-                $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($mediaUrl);
+                $selfUrl = UrlPath::buildAbsoluteBase();
+                $mxjxUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($mediaUrl);
 
                 if ($safeguardTriggered && $safeguardMethod === 'none') {
                     $fallbackToFull = true;
@@ -1322,13 +1314,8 @@ try {
 
             $result = $skipper->process($url);
 
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
-            $mxjxUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+            $selfUrl = UrlPath::buildAbsoluteBase();
+            $mxjxUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($url);
 
             sendJsonResponse([
                 'success' => true,
@@ -3994,13 +3981,8 @@ try {
                 $adSkipUrl = $result['ad_skip_url'] ?? '';
                 
                 if (empty($adSkipUrl) && !empty($m3u8Url)) {
-                    $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                    $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-                    $basePath = dirname($requestUri);
-                    $basePath = $basePath === '/' ? '' : $basePath;
-                    $selfUrl = $scheme . '://' . $host . $basePath;
-                    $adSkipUrl = $selfUrl . '/mx.php?action=mxjx&deep=1&url=' . urlencode($m3u8Url);
+                    $selfUrl = UrlPath::buildAbsoluteBase();
+                    $adSkipUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&deep=1&url=') . urlencode($m3u8Url);
                 }
                 
                 sendJsonResponse([
@@ -4276,12 +4258,7 @@ try {
                 ], 400);
             }
             
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
+            $selfUrl = UrlPath::buildAbsoluteBase();
             
             $officialDomains = ['v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'bilibili.com', 'sohu.com', 'pptv.com'];
             $parsedUrl = parse_url($url);
@@ -4444,14 +4421,14 @@ try {
                 $result = $officialReplaceMgr->resolve($url);
                 if ($result['success']) {
                     $m3u8Url = $result['m3u8_url'] ?? '';
-                    $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($m3u8Url);
+                    $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($m3u8Url);
                     $juMing = $result['video_title'] ?? '';
                     $jiShu = $result['target_episode'] ?? ($result['episode'] ?? '');
                     if (empty($jiShu)) {
                         $jiShu = '正片';
                     }
                 } else {
-                    $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+                    $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($url);
                     $juMing = $result['video_title'] ?? '';
                     if (empty($juMing)) {
                         $juMing = $extractTitleFromUrl($url);
@@ -4464,7 +4441,7 @@ try {
                     $msg = '解析成功';
                 }
             } else {
-                $playUrl = $selfUrl . '/mx.php?action=mxjx&url=' . urlencode($url);
+                $playUrl = UrlPath::join($selfUrl, '/mx.php?action=mxjx&url=') . urlencode($url);
                 $juMing = $extractTitleFromUrl($url);
                 $jiShu = $extractEpisodeFromUrl($url);
                 
@@ -4944,18 +4921,13 @@ try {
 
         case 'parse/list':
         case 'jx/list':
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
+            $selfUrl = UrlPath::buildAbsoluteBase();
             sendJsonResponse([
                 'success' => true,
                 'message' => '统一视频解析接口',
                 'name' => 'Parse API - 统一解析接口',
                 'version' => 'v1.0.0',
-                'base_url' => $selfUrl . '/mx.php',
+                'base_url' => UrlPath::join($selfUrl, '/mx.php'),
                 'usage' => [
                     '【推荐】XT 嗅探入口(按嗅探设置)' => 'xt.php?url=视频链接',
                     'TVBox 专用解析入口'              => 'jiexi.php?url=视频链接',
@@ -4987,12 +4959,7 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
 
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
+            $selfUrl = UrlPath::buildAbsoluteBase();
 
             $result = parse_internal_unified(
                 $parseUrl,
@@ -5012,12 +4979,7 @@ try {
                 sendJsonResponse(['success' => false, 'message' => '缺少 url 参数'], 400);
             }
 
-            $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-            $basePath = dirname($requestUri);
-            $basePath = $basePath === '/' ? '' : $basePath;
-            $selfUrl = $scheme . '://' . $host . $basePath;
+            $selfUrl = UrlPath::buildAbsoluteBase();
 
             $result = parse_internal_unified(
                 $parseUrl,

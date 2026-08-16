@@ -1,13 +1,31 @@
 <?php
 return array (
-  'version' => 'v5.14.0',
+  'version' => 'v5.14.1',
   'branch' => 'main',
-  'build' => '20260816-v5-14-0-integrity-guard-perf-boost-concurrency',
-  'version_code' => 51400,
-  'commit' => 'v5.14.0-integrity-guard-3layer+apcu-cache-3tier+curl-multi-optimized+pcntl-zombie-proof+gcm-auth-crypto',
-  'updated_at' => '2026-08-16',
+  'build' => '20260817-v5-14-1-urlpath-fix-doubleslash',
+  'version_code' => 51401,
+  'commit' => 'v5.14.1-UrlPath-normalize-all-mxjx-playback-urls-100pct-no-doubleslash',
+  'updated_at' => '2026-08-17',
   'changelog' =>
   array (
+    'v5.14.1' =>
+    array (
+      'date' => '2026-08-17',
+      'title' => '【Hotfix：外部播放 //mx.php 双斜杠根因修复 + URL 路径规范化工具类上线】',
+      'changes' =>
+      array (
+        0 => '【P0 根因定位 & 修复】URL 生成出现 http://host:port//mx.php?action=mxjx&url= 双斜杠根因：入口文件 mx.php / index.php / lz/lz.php / OfficialReplaceManager / DbOfficialReplaceManager 中，使用 dirname(REQUEST_URI/SCRIPT_NAME) 推导 $basePath 时，当项目部署在根目录（SCRIPT_NAME=/mx.php）会得到 $basePath 为 \'\' 或 \'.\'，直接 $selfUrl . \'/mx.php?\' 会拼接出 \'scheme://host\' + \'/mx.php?\' = \'scheme://host//mx.php?\'；浏览器/播放端把 host 后「//」识别为协议相对 URL 前缀，导致跳转/请求错误',
+        1 => '【P0 统一方案：UrlPath 工具类上线】新增 src/UrlPath.php 112 行纯静态类，暴露 3 个方法：① buildAbsoluteBase(?array $server=null) 严格按 SCRIPT_NAME 推导 scheme://host[/项目子目录]，结尾绝不带 /；② join(base,path) 安全拼接路径段，任何 base/path 斜杠组合都恰好得到单 \'/\'；③ normalize(urlOrPath) 保留 scheme://host 原样，仅压缩 path 段 /// 为 /、消除 ./ 与 ../ 回溯',
+        2 => '【P0 mx.php 主入口：8 处 scheme/host 块 + 12 处 $selfUrl 拼接全部替换】原来每行手写 $scheme=... $host=... requestUri=... basePath=dirname ... $selfUrl=scheme://host.basePath 块（共 8 处，含 cache hit / safeguard / mxjx / official / adSkip / parse/list / unified_parse 两个分支），全部改为一行 UrlPath::buildAbsoluteBase()；后续 $selfUrl . \'/mx.php?...\' 改为 UrlPath::join($selfUrl, \'/mx.php?...\') 彻底消灭 //',
+        3 => '【P0 index.php：首页生成 mxjx 播放链接规范化】替换原有 $scheme.$host_name.$basePath 三行拼接，统一走 UrlPath::buildAbsoluteBase() + UrlPath::join()，首页返回的 mxjx URL 不再带 //',
+        4 => '【P0 lz/lz.php ：量子脚本入口规范化】顶部注入 require ../src/UrlPath.php，scheme/host 块 + selfUrl 拼接 2 处全替换，量子通道生成的 play 链接无 //',
+        5 => '【P0 OfficialReplaceManager / DbOfficialReplaceManager 官替直调 URL 规范化】两文件 buildAdSkipUrl() 方法内 16 行手写路径推导（DOCUMENT_ROOT + realpath 差值 / REQUEST_URI dirname 2 种旧版写法）全改为单一行 UrlPath::buildAbsoluteBase()；return $selfUrl.\'/mx.php?...\' 改为 UrlPath::join()，官替直调返回的 ad_skip_url 也不带 //',
+        6 => '【防御性修复：UrlPath::normalize 保留 scheme://host 双斜杠不动】normalize() 先正则把 https?://[^/]* 整段 host 前缀抽走，只对后面的 path+query 段做 /// 压缩与 ./ ../ 处理，再拼回前缀，不会把 http://host 压缩成 http:/host（避免引入新 Bug）',
+        7 => '【防御性修复：UrlPath::buildAbsoluteBase() 处理 dirname() 的三个边角】dirname(\'/mx.php\') 返回 \'.\'；dirname(\'/\') 返回 \'/\'；Windows 反斜杠 dirname 返回 \'\\\'，这三种情况都强制 basePath=\'\'；其余路径统一加首 /、去掉尾 /，与 join() 配合不产生 //',
+        8 => '【测试：端到端 6×4=24 项全通过】①join() 用 6 组 base/path 组合（根/子路径/多斜杠/无斜杠开头）全输出单斜杠；②模拟用户真实环境 HTTP_HOST=114.134.184.91:9002 SCRIPT_NAME=[/mx.php|/index.php|/index] 三种，生成 mxjx URL 的 path 段 0 处连续斜杠；③子路径部署 vip/ 场景生成 /vip/mx.php? 单斜杠正确',
+        9 => '【部署】核心入口 8 文件 php -l 0 语法错误（mx.php / index.php / lz/lz.php / gz/OfficialReplaceManager.php / db/DbOfficialReplaceManager.php / src/UrlPath.php / router.php / jiexi.php）；UrlPath 参数签名已显式 ?array 可空类型，PHP 8.x 无 Deprecated',
+      ),
+    ),
     'v5.14.0' =>
     array (
       'date' => '2026-08-16',
