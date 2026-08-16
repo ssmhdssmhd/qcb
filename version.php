@@ -1,84 +1,13 @@
 <?php
 return array (
-  'version' => 'v5.13.10-HOTFIX5',
+  'version' => 'v5.13.8',
   'branch' => 'main',
-  'build' => '20260816-v5-13-10-hotfix5-async-task-model-ultimate-nginx-502-bypass',
-  'version_code' => 51310,
-  'commit' => 'v5.13.10-hotfix5-async-task-model-url2json-plus-mxadmin-polling-plus-mx-route-forward-plus-ops-checklist',
-  'updated_at' => '2026-08-16',
+  'build' => '20260814-v5-13-8-apk-playback-optimization',
+  'version_code' => 51308,
+  'commit' => 'v5.13.8-apk-m3u8-direct-link-replace-priority-plus-xmflv-html-player-fail-doc',
+  'updated_at' => '2026-08-14',
   'changelog' =>
   array (
-    'v5.13.10-HOTFIX5' =>
-    array (
-      'date' => '2026-08-16',
-      'title' => '【Hotfix5：根治 nginx 502 Bad Gateway（终极方案——异步任务模型 + 前端轮询，彻底绕开 FPM 超时硬限制）】',
-      'changes' =>
-      array (
-        0 => '【H5-0 根因链路终极还原】HOTFIX4 的 parseVideo 全局预算+register_shutdown 方案只能把 PHP 侧错误「包一层结构化诊断」，但真实触发点是 nginx 的 fastcgi_read_timeout（默认 30-60s）先把 TCP 连接 reset/FPM abort——此时 shutdown function 写进响应体的诊断数据根本发不到浏览器，用户最终看到的仍是**纯的、裸的 <title>502 Bad Gateway</title><hr><center>nginx</center>**。结论：任何在「同步 HTTP 请求生命周期内」做的预算/超时/捕获 都无法超越「外层 nginx timeout 先切连接」这个物理硬限制——必须把 parseVideo 搬到 HTTP 请求生命周期之外。',
-        1 => '【H5-1 终极方案：异步任务模型（url2json.php）】新增 4 个参数：①`_async=1`：提交 URL → 100ms 内写 xt/cache/tasks/{sha256}.json（status=pending）→ shell nohup 启动 PHP-CLI 子进程（php url2json.php _task_worker=<id> _video=<url> …）→ 立即返回 task_id / poll_endpoint / ttl_seconds，**HTTP 请求在 100ms 内结束，FPM 释放，nginx 连触发 502 的机会都没有**；②`_task=<id>`：前端每 1.5s 轮询 → 返回 status=pending/running/done/fail；③`_task_clean=1`：删除旧任务；④`_task_worker=<id>`：CLI worker 分支（`$argv` 解析），跑 parseVideo 全流程（允许它跑 60-300s，因为 CLI 不受 nginx/FPM 约束），结果写回同一个 JSON，前端下次轮询即拿到结果。',
-        2 => '【H5-2 后台任务目录 & 生命周期】url2json.php 新增 u2j_getTaskDir()（xt/cache/tasks，自动 mkdir + 写 .htaccess Require all denied + 空 index.html 防下载）+ u2j_cleanupOldTasks()（每 60s 扫一次，删除 24h 之前的 JSON，防止磁盘泄露）。任务 payload 标准字段：_xt_async=true / task_id(sha256) / status(pending→running→done|fail) / created_at / updated_at / input(原始 url、format、callback、_mode、_no_direct、_timeout) / result(enrich JSON) / error / pid / ttl_seconds=300。',
-        3 => '【H5-3 跨平台后台 worker 启动】Windows 用 `start /B cmd /C "php … >NUL 2>NUL"`；Linux/macOS 用 `nohup php … >/dev/null 2>&1 & echo $!`。PHP_BINARY 优先，退化到 `php`。worker 分支把 $argv 解析后的键值对重新注入 $_GET（url/type/callback/_mode/_no_direct/_timeout），确保「CLI 执行」与「HTTP 执行」parseVideo 看到完全一致的全局配置覆盖，结果 100% 等价。',
-        4 => '【H5-4 mxadmin.php 前端：url2jsonRunSingle 默认为异步轮询模式】原 HOTFIX4「同步 fetch + 命中 502 再自动重试官解」改为：① 先 GET ?_async=1 拿 task_id（<100ms，零 502 风险）；② while performance.now() < t0+300s → 每 1.5s GET ?_task=<id> → status=pending 显示「任务排队中」；status=running 显示「后台解析中 PID=X · 此模式不会触发 nginx 502」（带轮询次数+已等毫秒数）；status=done → 绿色 status 「✅ 异步模式解析成功，总耗时 N ms（轮询 X 次）✅ 零 502 风险」+ JSON pretty。',
-        5 => '【H5-5 前端 Fallback 双层兜底】若 ?_async=1 入口本身返回 502/非 JSON（极端情况：连写 JSON 文件都超时）→ 自动走 HOTFIX4 同步模式 + 官解单通道重试 runSyncWithRetry()，status 显示「⚠️  异步入口不可用（HTTP 502），回退同步模式+自动重试…」。若异步任务 status=fail/unknown/超时 TTL → 输出结构化「异步任务失败」卡片（task_id、status、error、PHP 报错位置、创建/更新时间、前端等待时长）+ showToast 错误。',
-        6 => '【H5-6 mx.php url2json 路由同步支持异步参数】case url2json / url2json/parse / api/url2json 开头新增检测：`!empty($_GET[_async]) || !empty($_GET[_task]) || $argv 命中 _task_worker=` → 直接 `require url2json.php; exit`。因为 url2json.php 的异步三个分支（提交/轮询/CLI worker）在「require xt/server.php 之前」就 exit 了，不会触发 AdFilter/parseVideo 重复声明链；同时把 url2json.php 已经测过的 200+ 行异步任务代码直接复用，避免在 mx.php 再内联一份造成维护两份。',
-        7 => '【H5-7 运维超时终极配置清单（代码+服务器双保险）】虽然 HOTFIX5 异步模型已经把 nginx/FPM timeout 物理硬限制彻底绕开了，但仍然给出「即使跑同步也绝不 502」的 4 层运维阈值（严格满足：外层≥内层≥预算）：① Nginx server 外层反代（如存在）：proxy_read_timeout 180s / proxy_send_timeout 180s / proxy_connect_timeout 30s；② Nginx PHP location：fastcgi_read_timeout 180s / fastcgi_send_timeout 180s；③ PHP-FPM pool（www.conf）：request_terminate_timeout = 150s；④ php.ini / ini_set：max_execution_time = 120s。不等式：180(nginx反代) ≥ 180(fastcgi) ≥ 150(FPM terminate) ≥ 120(PHP max_exec) ≥ parseVideo globalBudget 22s ≥ replace_direct_timeout 12s。HOTFIX5 之前不等式经常被打破：fastcgi_read_timeout=30s 但 replace_direct_timeout=12 + 官解网络 20 = 32s → nginx 先切 → 502。',
-        8 => '【H5-8 修复 u2j_currentBaseUrl 未定义】url2json.php 的 pending payload 组装时 poll_endpoint 调用 u2j_currentBaseUrl() 但函数未定义导致 _async 提交时 Warning + JSON 结构损坏；新增函数按 scheme+HTTP_HOST+SCRIPT_NAME 目录拼出绝对 url2json.php 地址。',
-      ),
-    ),
-    'v5.13.10-HOTFIX4' =>
-    array (
-      'date' => '2026-08-16',
-      'title' => '【Hotfix4：根治 nginx 502 Bad Gateway（URL 转 JSON 专区/独立入口反复触发 FPM 超时）】',
-      'changes' =>
-      array (
-        0 => '【H3-1 根因链路还原】用户粘贴优酷 URL 点击开始转换 → 并发(concurrent)模式下先触发官替直调 callOfficialReplaceDirectV2 (OfficialReplaceManager) → 资源站搜索/AI 匹配/JSON 清洗 CPU 过载 + jiami_core.php 里 findUrlInArray 对 jx.xmflv.cc HTML 页正则扫描（HTML 不是 JSON play_url，导致大量正则失败重试）→ 整包解析 22-66s 超过 PHP max_execution_time(30s) 或 nginx fastcgi_read_timeout(30s) → FPM 子进程被 kill / reset → nginx 直接输出裸的 502 Bad Gateway HTML 给前端，前端 JSON.parse 失败就整段裸贴（用户看到的正是这段 <title>502 Bad Gateway</title><hr><center>nginx</center>）',
-        1 => '【H3-2 parseVideo 全局预算保护】xt/server.php parseVideo 函数开头强制：globalBudget = min(performance.timeout, 22s) → @ini_set(max_execution_time, budget+3s) → register_shutdown_function 捕获 E_ERROR/E_CORE_ERROR/E_PARSE/E_RECOVERABLE_ERROR 或 wall_ms≥budget_hit → 写入 xt/cache/last_502_diag.json 结构化诊断（wall_ms、sniffer_config_hash、failed_api_requests、last_error、budget_hit、用户可读 suggestion）+ 在响应体末追加 HTML 注释包裹的 <!-- LAST_502_DIAG_JSON_BEGIN -->{JSON}<!-- LAST_502_DIAG_JSON_END -->，避免纯 502 HTML',
-        2 => '【H3-3 concurrent 模式默认禁用本地官替直调】forceReplaceDirect 原本只要 mode==replace 且 enabled 就直调；HOTFIX4 新增 $concurrentRaceGuard：mode==concurrent 或 (mode=replace 且 performance.concurrent_race_enabled=true) 时，强制把 forceReplaceDirect 覆盖为 false → concurrent 模式下「官解 HTTP + 官替 HTTP 」两条都走 curl_multi 并行请求（3-4s 就能完成），把宝贵的 CPU/预算全给 HTTP 通道，不再 PHP 内官替直调耗 CPU',
-        3 => '【H3-4 官替直调预算分层】replace-only 单通道模式下预算仍保留，但从默认 15s 砍到 max(performance.replace_direct_timeout, 12s)；concurrent 或 fallback 下预算为 min(performance.timeout, 5-8s)，直调失败后立即降级走 HTTP 官替回环，不再占满全局预算',
-        4 => '【H3-5 URL 转 JSON 支持单次请求级临时覆盖参数】_mode=official|replace|concurrent（强制切通道）；_no_direct=1（禁用本地官替直调）；_timeout=N（单次请求 performance.timeout 秒 1-22）。url2json.php 入口新增 u2j_apply_runtime_config_overrides() 在加载完 xt/server.php 后改写 global $config；mx.php 的 url2json / url2json/parse / api/url2json handler 同步内联实现相同覆盖。前端自动重试自动把这些参数拼到 URL 里。',
-        5 => '【H3-6 mxadmin 前端 502 HTML 自愈 & 诊断 UI 展示】url2jsonRunSingle 新增：(a) xtExtractDiagFromBody() 正则从响应体中取 LAST_502_DIAG_JSON_BEGIN…END 结构化块或识别裸 nginx <title>502/504 Gateway</title> → 走 buildPrettyDiagnosticBlock() 生成人类可读诊断块（code/wall_ms/budget_ms/mode/官解启用列表/failed_api_requests/🎯修复建议）；(b) 命中后自动 toast「检测到 502/致命错误，自动切换官解单通道重试…」→ 拼 _mode=official&_no_direct=1&_t=ts 再次 fetch；(c) 两次都失败则下方展示：自动重试官解单通道仍然失败 + 诊断块 + 原文；(d) 官解重试 JSON.parse 成功 → 绿色 status 「✅ 自动重试（官解单通道）成功，总耗时 N ms」。',
-        6 => '【H3-7 PHP lint 8 核心文件全部 No syntax errors】mxadmin.php / mx.php / url2json.php / xt/server.php / xt/AdFilter.php / src/AdFilter.php / xt/PerformanceOptimizer.php / gz/Md5AdPlaceholderEngine.php → 8/8 全部通过',
-        7 => '【H3-8 压力测试 10 轮 × 5 文件 plain require × 随机顺序 = 50 requires 全 PASS】AdFilter 三重 guard 依旧稳定，parseVideo/register_shutdown 外层新增的 if (!function_exists) 包裹也没引入重复声明。',
-      ),
-    ),
-    'v5.13.10-HOTFIX3' =>
-    array (
-      'date' => '2026-08-15',
-      'title' => '【Hotfix3：根治「Cannot declare class AdFilter, name already in use」+ 所有 19 个 parseVideo/buildResult 等顶层函数二次 require Fatal（PHP 编译期函数注册机制绕过）】',
-      'changes' =>
-      array (
-        0 => '【PHP 编译器机制根因】顶层 function/class 即使放在 defined-guard 之后，PHP 编译器仍在「require 的编译阶段」把它们直接注册到全局符号表（OPcache 指令重排会放大这个特征），defined+return 在运行时根本没机会执行 → Fatal Cannot redeclare',
-        1 => '【AdFilter 同名类冲突】xt/AdFilter.php 与 src/AdFilter.php 两份独立文件都声明「class AdFilter」，且两处加载链（mxadmin/url2json/mx/jiexi）不同，require_once/require 顺序随机 → 必然命中重复声明',
-        2 => '【F3-1 修复：xt/AdFilter.php 三重 guard】defined(XT_ADFILTER_PHP_V1) 防同文件二次加载 + class_exists(AdFilter,false) 防另一份 AdFilter 类已存在 + error_log 留痕；三者任一命中立即 return；最终 AdFilter 类写入也加 if (!class_exists) 包裹',
-        3 => '【F3-2 修复：src/AdFilter.php 三重 guard】完全相同的三重 guard（常量名 XT_SRC_ADFILTER_PHP_V1 + class_exists + error_log），两份文件互为镜像，谁先加载谁赢，后加载方 100% 跳过重声明',
-        4 => '【F3-3 修复：xt/PerformanceOptimizer.php + gz/Md5AdPlaceholderEngine.php 也补 defined + class_exists + !class_exists 包裹】全面防御所有跨入口的类重复声明',
-        5 => '【F3-4 修复：xt/server.php 每一个顶层函数改为「独立 if (!function_exists) 包裹」】19 个函数 parseVideo/buildResult/getCache/setCache/resolveMultiLevelM3u8/extractVideoUrl... 全部被包在 if (!function_exists(\'fnName\')) { function fnName(...) { ... } } 内，把「顶层注册」改成「运行时条件注册」，只有第一次 require 时注册；PHP 编译器不再提前注册它们',
-        6 => '【F3-4 副作用修正：callOfficialReplaceDirectV2 原本就是手动 if 包裹，自动化脚本再次包装多一个 { → 文件尾部追加一个闭合 } 并注释明确用途，最终括号平衡 diff=0',
-        7 => '【F3-5 修复：xt/server.php 追加文件级 guard】defined(XT_SERVER_PHP_V1_HOTFIX3) return / define / function_exists(parseVideo) return 三道闸，同文件二次 require 立即退出（与独立包裹形成双重保险）',
-        8 => '【F3-6 修复：url2json.php 加载 xt/server.php】defined(XT_SERVER_PHP_V1) + !function_exists(parseVideo) 双条件 require_once，保证独立入口无论与 mx.php 的加载顺序都不会多注册',
-        9 => '【F3-7 修复：mx.php action=url2json 不再 require url2json.php 做转发】改为内联完整的 url2json 逻辑（参数读取/类型路由/输出封装），不再引入新的 require 链，从源头消除一条风险路径',
-        10 => '【压力测试通过 10 轮 × 5 文件 plain require = 50 次全过】随机顺序（AdFilter 先后/ server 在前 / PerformanceOptimizer 在前）全部无 Fatal，关键符号 AdFilter/PerformanceOptimizer/Md5AdPlaceholderEngine/parseVideo 全部正确存在',
-        11 => '【PHP lint 7 文件 0 错误】xt/server.php / xt/AdFilter.php / src/AdFilter.php / xt/PerformanceOptimizer.php / gz/Md5AdPlaceholderEngine.php / url2json.php / mx.php → No syntax errors detected',
-      ),
-    ),
-    'v5.13.9' =>
-    array (
-      'date' => '2026-08-15',
-      'title' => '【新增：后台 URL 转 JSON 专区 + 独立入口 url2json.php + mx.php 路由 url2json】',
-      'changes' =>
-      array (
-        0 => '【后台页面】mxadmin.php 侧边栏「接口工具」分组新增「🔗 URL转JSON」菜单（NEW 徽章），对应页面 id=page-url2json',
-        1 => '【页面①-概览卡】功能说明 + 4 宫格（远程调用 API / 单条转换 / 批量转换 / 参数解析器）+ 两个快捷按钮（独立入口新窗口、去嗅探设置）',
-        2 => '【页面②-单条转换】输入框 + 单选输出格式（json/api/xml/302）+ 状态条 + 开始转换/复制结果/查看等价API/新窗口打开API/跳转到在线播放测试；结果框自动 JSON pretty（能 parse 的美化，否则保留原文本）',
-        3 => '【页面③-批量转换】一行一个 URL 输入框 + 并发数 1-10（默认 3）+ worker 池并发执行 + 进度条（完成 N/总数 + 百分比）+ 跳过失败项开关 + 填充示例按钮 + 输出 JSON 数组',
-        4 => '【页面④-URL 参数解析器】拆解 URL scheme/host/port/path + urlencode 解码后的 query_params + {url}/{ref}/{origin}/{ts}/{t}/{vid}/{id} 占位符检测 + original_url（自动从 url/video/wd/v/t 字段取）+ platform（youku/iqiyi/tencent/mgtv/bilibili/sohu/pptv 等）',
-        5 => '【页面⑤-远程调用 API 文档】独立入口 url2json.php + mx.php action=url2json + 参数表（type/callback/url/wd/v/video/t）',
-        6 => '【JS 辅助】url2jsonRunSingle/RunBatch/RunParams/BuildApiUrl/OpenApi/FillBatchExample/FillParamsExample/navToPage 共 8 个函数，copyText/showToast/escapeHtml 复用全局已有',
-        7 => '【独立入口 url2json.php】与 jiexi.php 同一套 parseVideo + concurrent 双通道（官解/官替）+ 缓存；额外 enrich 字段：type/is_m3u8/is_html_player/source/video_url/platform；5 种参数名（url/wd/v/video/t）+ 4 种输出格式（json/api/xml/302）+ JSONP callback',
-        8 => '【mx.php 路由】case url2json / url2json/parse / api/url2json：直接 require url2json.php exit；带 fallback（文件缺失时本地 parseVideo + sendJsonResponse）；parse/list usage 页新增两条 URL 转 JSON 使用示例',
-        9 => '【lint】php -l url2json.php + mx.php + mxadmin.php + version.php → 4/4 全部 No syntax errors detected',
-      ),
-    ),
     'v5.13.8' =>
     array (
       'date' => '2026-08-14',
@@ -198,7 +127,7 @@ return array (
         2 => '【B3 非 JSON/502 报错 UI 全面美化】mxadmin.php testSniffer() 原「返回非 JSON：<pre>整段502 HTML」拆为 5 档分级诊断卡(502/504/500/403/空响应/默认异常)：彩色卡片顶部(大标题+status-pill+HTTP状态+响应长度) + 双栅格(左：按概率排序的可能原因 / 右：修复操作建议) + 可折叠「查看原始响应」面板，502 场景自动匹配「官替直调 CPU 过载 / 虾米官解宕机 / FPM 满」3 条原因和 3 条一键修复建议',
         3 => '【B4 嗅探失败自动诊断时间线】xt/server.php 所有通道(直调→HTTP官替→官解→fallback数组)全部失败后，自动追加一条「🕵 嗅探通道诊断」时间线条目：展示当前模式 / 并发竞速开关 / 启用了哪些官解接口 / 官替是否启用 / 官替是否走本地直调 / 直调失败原因 / 直调耗时预算 vs 实耗 / 自动识别是否配置了宕机虾米 114.134.184.91:9002，附 fix_tips 数组，前端时间线默认展开失败条目可直接看到',
         4 => '【B4 debug_info 补充字段】失败返回 JSON 的 debug_info 新增 sniffer_diagnostic 子结构：mode / official_apis_enabled / replace_enabled / replace_direct_fail_reason / fix_tips，旧版前端也能在失败摘要上读到',
-        5 => '【宕机服务器自动识别】后端 B4 诊断逻辑里检测到官解接口 URL 包含「114.134.184.91」或「:9002」时，fix_tips 首条明确提示「该服务器当前已宕机 502，请取消勾选官解接口的启用改走官替本地直调」，失败消息不再是泛泛的「当前通道未能解析」，直接替换为对该用户最有针对性的第一条 tip',
+        5 => '【宕机服务器自动识别】后端 B4 诊断逻辑里检测到官解接口 URL 包含「114.134.184.91」或「:9002」时，fix_tips 首条明确提示「该服务器当前已宕机 502，请取消勾选官解接口的启用改走官替本地直调」，失败消息不再是泛泛的「当前通道未能解析」，直接替换为对该用户最具针对性的第一条 tip',
         6 => '【PHP lint 0 错误通过】php -l xt/server.php / mxadmin.php / version.php → 全部 No syntax errors detected；B2/B4 只在 parseVideo 函数内部加变量与分支，不改任何对外 API 签名与字段结构，前后向兼容',
         7 => '【版本元信息升级为 v5.13.1】version_code=51301 build=20260817-hotfix-sniffer-502-ui-diagnostic updated_at=2026-08-17；CHANGELOG 顶部追加 Hotfix 章节；README 附修复前后对比与用户可直接套用的 1 分钟修复操作清单',
       ),
@@ -298,7 +227,7 @@ return array (
     'v5.10.8' => 
     array (
       'date' => '2026-08-10',
-      'title' => '【进度条卡住问题彻底修复 v2】site_check 轻量探测 + 每站独立推进 + 前端卡住自愈',
+      'title' => '【进度条卡住问题彻底修复 v2】site_check 轻量探测 + 每站独立推进 + 前端卡住自愈】',
       'changes' => 
       array (
         0 => '【重点修复】资源站巡检 task_site_check 彻底重构：从 searchVideos(30s×3重试×5策略=最坏几十分钟/站) 改为轻量两阶段探测',
@@ -315,7 +244,7 @@ return array (
     'v5.10.7' => 
     array (
       'date' => '2026-08-10',
-      'title' => '【后台自动更新进度条可视化】一键操作+进度跟踪+彩色日志',
+      'title' => '【后台自动更新进度条可视化】一键操作+进度跟踪+彩色日志】',
       'changes' => 
       array (
         0 => '后台「系统管理」分组新增「🔄 自动更新/维护」菜单项（page-autoupdate），进度条徽章标识',
@@ -338,7 +267,7 @@ return array (
     'v5.10.6' => 
     array (
       'date' => '2026-08-10',
-      'title' => '【gx.php 线上错误修复 v2】check/migrate/official_refresh 三大任务修复',
+      'title' => '【gx.php 线上错误修复 v2】check/migrate/official_refresh 三大任务修复】',
       'changes' => 
       array (
         0 => '修复 check 任务 exec() 被禁用报错：禁用时改为 tokenizer 软校验（token_get_all），避免 Call to undefined function exec()',
@@ -376,7 +305,7 @@ return array (
     'v5.10.4' => 
     array (
       'date' => '2026-08-09',
-      'title' => '【官替识别大优化 v2】全链路修复识别不准、漏配、搜索无结果问题',
+      'title' => '【官替识别大优化 v2】全链路修复识别不准、漏配、搜索无结果问题】',
       'changes' => 
       array (
         0 => 'resolve() 短链重定向解析：b23.tv/微信跳转/快手短链自动走 resolveRedirectChain 最多5跳重定向',
@@ -401,7 +330,7 @@ return array (
     'v5.10.3' => 
     array (
       'date' => '2026-08-10',
-      'title' => '【官替升级】新增抖剧TV 默认官替资源站 + 官替优先度 1-2000+',
+      'title' => '【官替升级】新增抖剧TV 默认官替资源站 + 官替优先度 1-2000+】',
       'changes' => 
       array (
         0 => '新增官替资源站：抖剧TV（采集接口 https://www.douju.tv/api.php/provide/vod/，根源来源 www.360kan.com）',
