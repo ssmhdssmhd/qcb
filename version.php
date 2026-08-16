@@ -1,13 +1,29 @@
 <?php
 return array (
-  'version' => 'v5.13.10-HOTFIX3',
+  'version' => 'v5.13.10-HOTFIX4',
   'branch' => 'main',
-  'build' => '20260815-v5-13-10-hotfix3-adfilter-class-redeclare-plus-19-functions-if-wrap',
+  'build' => '20260816-v5-13-10-hotfix4-nginx-502-bad-gateway-radical-fix-global-budget',
   'version_code' => 51310,
-  'commit' => 'v5.13.10-hotfix3-AdFilter-class-dup-plus-19-top-level-function-if-not-function-exists-wrap',
-  'updated_at' => '2026-08-15',
+  'commit' => 'v5.13.10-hotfix4-parseVideo-global-budget-deadline-plus-concurrent-disable-replace-direct-plus-diag-file',
+  'updated_at' => '2026-08-16',
   'changelog' =>
   array (
+    'v5.13.10-HOTFIX4' =>
+    array (
+      'date' => '2026-08-16',
+      'title' => '【Hotfix4：根治 nginx 502 Bad Gateway（URL 转 JSON 专区/独立入口反复触发 FPM 超时）】',
+      'changes' =>
+      array (
+        0 => '【H3-1 根因链路还原】用户粘贴优酷 URL 点击开始转换 → 并发(concurrent)模式下先触发官替直调 callOfficialReplaceDirectV2 (OfficialReplaceManager) → 资源站搜索/AI 匹配/JSON 清洗 CPU 过载 + jiami_core.php 里 findUrlInArray 对 jx.xmflv.cc HTML 页正则扫描（HTML 不是 JSON play_url，导致大量正则失败重试）→ 整包解析 22-66s 超过 PHP max_execution_time(30s) 或 nginx fastcgi_read_timeout(30s) → FPM 子进程被 kill / reset → nginx 直接输出裸的 502 Bad Gateway HTML 给前端，前端 JSON.parse 失败就整段裸贴（用户看到的正是这段 <title>502 Bad Gateway</title><hr><center>nginx</center>）',
+        1 => '【H3-2 parseVideo 全局预算保护】xt/server.php parseVideo 函数开头强制：globalBudget = min(performance.timeout, 22s) → @ini_set(max_execution_time, budget+3s) → register_shutdown_function 捕获 E_ERROR/E_CORE_ERROR/E_PARSE/E_RECOVERABLE_ERROR 或 wall_ms≥budget_hit → 写入 xt/cache/last_502_diag.json 结构化诊断（wall_ms、sniffer_config_hash、failed_api_requests、last_error、budget_hit、用户可读 suggestion）+ 在响应体末追加 HTML 注释包裹的 <!-- LAST_502_DIAG_JSON_BEGIN -->{JSON}<!-- LAST_502_DIAG_JSON_END -->，避免纯 502 HTML',
+        2 => '【H3-3 concurrent 模式默认禁用本地官替直调】forceReplaceDirect 原本只要 mode==replace 且 enabled 就直调；HOTFIX4 新增 $concurrentRaceGuard：mode==concurrent 或 (mode=replace 且 performance.concurrent_race_enabled=true) 时，强制把 forceReplaceDirect 覆盖为 false → concurrent 模式下「官解 HTTP + 官替 HTTP 」两条都走 curl_multi 并行请求（3-4s 就能完成），把宝贵的 CPU/预算全给 HTTP 通道，不再 PHP 内官替直调耗 CPU',
+        3 => '【H3-4 官替直调预算分层】replace-only 单通道模式下预算仍保留，但从默认 15s 砍到 max(performance.replace_direct_timeout, 12s)；concurrent 或 fallback 下预算为 min(performance.timeout, 5-8s)，直调失败后立即降级走 HTTP 官替回环，不再占满全局预算',
+        4 => '【H3-5 URL 转 JSON 支持单次请求级临时覆盖参数】_mode=official|replace|concurrent（强制切通道）；_no_direct=1（禁用本地官替直调）；_timeout=N（单次请求 performance.timeout 秒 1-22）。url2json.php 入口新增 u2j_apply_runtime_config_overrides() 在加载完 xt/server.php 后改写 global $config；mx.php 的 url2json / url2json/parse / api/url2json handler 同步内联实现相同覆盖。前端自动重试自动把这些参数拼到 URL 里。',
+        5 => '【H3-6 mxadmin 前端 502 HTML 自愈 & 诊断 UI 展示】url2jsonRunSingle 新增：(a) xtExtractDiagFromBody() 正则从响应体中取 LAST_502_DIAG_JSON_BEGIN…END 结构化块或识别裸 nginx <title>502/504 Gateway</title> → 走 buildPrettyDiagnosticBlock() 生成人类可读诊断块（code/wall_ms/budget_ms/mode/官解启用列表/failed_api_requests/🎯修复建议）；(b) 命中后自动 toast「检测到 502/致命错误，自动切换官解单通道重试…」→ 拼 _mode=official&_no_direct=1&_t=ts 再次 fetch；(c) 两次都失败则下方展示：自动重试官解单通道仍然失败 + 诊断块 + 原文；(d) 官解重试 JSON.parse 成功 → 绿色 status 「✅ 自动重试（官解单通道）成功，总耗时 N ms」。',
+        6 => '【H3-7 PHP lint 8 核心文件全部 No syntax errors】mxadmin.php / mx.php / url2json.php / xt/server.php / xt/AdFilter.php / src/AdFilter.php / xt/PerformanceOptimizer.php / gz/Md5AdPlaceholderEngine.php → 8/8 全部通过',
+        7 => '【H3-8 压力测试 10 轮 × 5 文件 plain require × 随机顺序 = 50 requires 全 PASS】AdFilter 三重 guard 依旧稳定，parseVideo/register_shutdown 外层新增的 if (!function_exists) 包裹也没引入重复声明。',
+      ),
+    ),
     'v5.13.10-HOTFIX3' =>
     array (
       'date' => '2026-08-15',

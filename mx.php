@@ -5128,6 +5128,25 @@ try {
             if (!defined('XT_SERVER_PHP_V1') && !function_exists('parseVideo')) {
                 require_once __DIR__ . '/xt/server.php';
             }
+            // v5.13.10-HOTFIX4：mx.php url2json handler 也支持单次请求 _mode / _no_direct / _timeout 覆盖
+            global $config;
+            $_u2j_newMode = isset($_GET['_mode']) ? trim((string)$_GET['_mode']) : (isset($_POST['_mode']) ? trim((string)$_POST['_mode']) : '');
+            if (in_array($_u2j_newMode, ['official','replace','concurrent'], true)) {
+                if (!isset($config['sniffer']) || !is_array($config['sniffer'])) $config['sniffer'] = [];
+                $config['sniffer']['mode'] = $_u2j_newMode;
+            }
+            $_u2j_noDirect = isset($_GET['_no_direct']) ? (bool)$_GET['_no_direct'] : (isset($_POST['_no_direct']) ? (bool)$_POST['_no_direct'] : false);
+            if ($_u2j_noDirect) {
+                if (!isset($config['sniffer']['replace_api']) || !is_array($config['sniffer']['replace_api'])) $config['sniffer']['replace_api'] = [];
+                $config['sniffer']['replace_api']['enabled'] = true;
+                if (empty($config['sniffer']['replace_api']['url'])) $config['sniffer']['replace_api']['url'] = 'official_replace/info';
+            }
+            $_u2j_timeout = isset($_GET['_timeout']) ? (float)$_GET['_timeout'] : (isset($_POST['_timeout']) ? (float)$_POST['_timeout'] : null);
+            if ($_u2j_timeout !== null) {
+                $t = max(1.0, min(22.0, $_u2j_timeout));
+                if (!isset($config['performance']) || !is_array($config['performance'])) $config['performance'] = [];
+                $config['performance']['timeout'] = $t;
+            }
             $_u2j_result = parseVideo($u2j_video);
             $_u2j_code = (int)($_u2j_result['code'] ?? 500);
             $_u2j_url  = (string)($_u2j_result['url'] ?? '');

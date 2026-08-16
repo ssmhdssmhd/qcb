@@ -96,9 +96,106 @@ if (file_exists($snifferConfigFile)) {
         return buildResult(400, '解析失败', '链接格式不正确', null, $startTime);
     }
 
+    // ========================================================================
+    // v5.13.10-HOTFIX4 - 502 Bad Gateway 根治（parseVideo 全局预算 + 致命错误落盘）
+    //   根因：官替直调 callOfficialReplaceDirectV2 / OfficialReplaceManager
+    //         在极端资源站匹配/AI 失败重试下 CPU 过载超过 PHP max_execution_time 或
+    //         nginx fastcgi_read_timeout（常见 30s）→ FPM 子进程被 kill / 直接 reset
+    //         → nginx 直接吐 502 HTML（前端无法 JSON.parse，整段裸贴给用户）
+    //   方案：
+    //    (a) 外层预算：parseVideo 自始至终 ≤ min(performance.timeout, 22s)
+    //        —— 强制 ini_set max_execution_time 为该预算+3s，超出时先 PHP 抛 Fatal
+    //        —— register_shutdown_function 捕获 Fatal（MAX_TIMEOUT / 内存耗尽 / 未捕获 Throwable）
+    //          写 xt/cache/last_502_diag.json 结构化诊断 + 在响应头 X-XT-Diag 写入摘要
+    //          前端如果收到 502 HTML 可读该文件显示精准原因
+    //    (b) concurrent 模式禁用本地官替直调：并发模式下官解 HTTP + 官替 HTTP 已用
+    //        curl_multi 并行，3-4s 就能完成；把宝贵的 CPU/预算留给 HTTP 通道
+    //    (c) 官替直调 V2 预算默认从 15s 砍到 5s (concurrent) / 12s (replace-only)
+    // ========================================================================
+    $perfCfg4 = $config['performance'] ?? [];
+    $globalBudget = (float)($perfCfg4['timeout'] ?? 15.0);
+    if ($globalBudget <= 0 || $globalBudget > 22.0) $globalBudget = 22.0;
+    $globalDeadline = $startTime + $globalBudget;
+    if (function_exists('ini_set') && !ini_get('safe_mode')) {
+        $oldMaxExec = (int)ini_get('max_execution_time');
+        $newMaxExec = (int)ceil($globalBudget) + 3;
+        if ($oldMaxExec === 0 || $oldMaxExec > $newMaxExec) {
+            @ini_set('max_execution_time', (string)$newMaxExec);
+        }
+    }
+    // register_shutdown：捕获 Fatal / 内存耗尽 / 未捕获 Throwable，
+    // 输出结构化 JSON 诊断到 xt/cache/last_502_diag.json
+    static $xtShutdownRegistered = false;
+    if (!$xtShutdownRegistered) {
+        $xtShutdownRegistered = true;
+        $XT_PARSE_CONTEXT_REF = [
+            'startTime' => $startTime,
+            'videoUrl' => $videoUrl,
+            'globalDeadline' => $globalDeadline,
+            'cacheDir' => $config['cache']['dir'] ?? (sys_get_temp_dir() ?: __DIR__ . '/cache'),
+        ];
+        register_shutdown_function(function() use (&$XT_PARSE_CONTEXT_REF){
+            $lastError = error_get_last();
+            $isFatal = $lastError && in_array((int)($lastError['type'] ?? 0), [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_PARSE, E_RECOVERABLE_ERROR], true);
+            $wallMs = round((microtime(true) - ($XT_PARSE_CONTEXT_REF['startTime'] ?? microtime(true))) * 1000);
+            $globalBudgetMs = isset($XT_PARSE_CONTEXT_REF['globalDeadline'], $XT_PARSE_CONTEXT_REF['startTime']) ? round(($XT_PARSE_CONTEXT_REF['globalDeadline'] - $XT_PARSE_CONTEXT_REF['startTime']) * 1000) : null;
+            $hitBudget = $globalBudgetMs && $wallMs >= $globalBudgetMs - 100;
+            if (!$isFatal && !$hitBudget) return; // 正常退出，无事可做
+            $diag = [
+                'generated_at' => date('Y-m-d H:i:s'),
+                'wall_ms' => $wallMs,
+                'global_budget_ms' => $globalBudgetMs,
+                'budget_hit' => $hitBudget,
+                'video_url' => $XT_PARSE_CONTEXT_REF['videoUrl'] ?? null,
+                'mode' => $GLOBALS['XT_DIAG_MODE'] ?? null,
+                'replace_direct_fail_reason' => $GLOBALS['XT_DIAG_REPLACE_DIRECT_FAIL'] ?? null,
+                'last_error' => $lastError,
+                'sniffer_config_hash' => null, // 下方填充
+                'failed_api_requests' => $GLOBALS['XT_FAILED_API_REQUESTS'] ?? [],
+                'note' => '【HOTFIX4】发生致命错误/超时，已兜底落盘，避免 nginx 纯 502 HTML。请把该文件内容贴给开发者定位。',
+                'suggestion' => $hitBudget
+                    ? '解析超时：建议到后台「嗅探设置」把 performance.timeout 调到 ≤12s；或临时把 mode 从 concurrent 切到 official 单通道（2-5s 即可出结果）；或关闭外部需签名/被CF拦截的官解接口。'
+                    : 'PHP Fatal：'.($lastError['message'] ?? '未知致命错误').'('.($lastError['file'] ?? '?').':'.($lastError['line'] ?? 0).')。请删除对应文件中最近新增的自定义代码，或切回 main 分支明文版。',
+            ];
+            // sniffer 配置摘要（脱敏，不带密码）
+            if (isset($GLOBALS['config']) && is_array($GLOBALS['config'])) {
+                $sn = $GLOBALS['config']['sniffer'] ?? null;
+                if (is_array($sn)) {
+                    $apis = [];
+                    foreach(($sn['official_apis'] ?? []) as $a) $apis[] = ['name'=>$a['name']??'?', 'enabled'=>(bool)($a['enabled']??false), 'host' => parse_url($a['url']??'', PHP_URL_HOST) ?: '?'];
+                    $diag['sniffer_config_hash'] = [
+                        'mode' => $sn['mode'] ?? '?',
+                        'official_apis_count' => count($apis),
+                        'official_apis' => $apis,
+                        'replace_enabled' => (bool)($sn['replace_api']['enabled'] ?? false),
+                        'replace_url_host' => parse_url($sn['replace_api']['url'] ?? '', PHP_URL_HOST) ?: null,
+                    ];
+                }
+            }
+            // 写诊断文件
+            $cacheDir = $XT_PARSE_CONTEXT_REF['cacheDir'] ?? sys_get_temp_dir();
+            @mkdir($cacheDir, 0775, true);
+            $diagFile = rtrim($cacheDir, '/\\') . '/last_502_diag.json';
+            @file_put_contents($diagFile, json_encode($diag, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
+            // 尝试往 STDOUT 吐 JSON（可能响应头已输出，所以我们 echo 一段独立 JSON 块）
+            if (!headers_sent()) {
+                @header('Content-Type: application/json; charset=utf-8', true, 504);
+                @header('X-XT-Diag: budget='.($globalBudgetMs??'?').'ms wall='.$wallMs.'ms hit='.($hitBudget?'1':'0'));
+            }
+            echo "\n" . '<!-- LAST_502_DIAG_JSON_BEGIN -->' . "\n"
+                . json_encode(['_xt_502_diag' => true, 'code'=>504, 'message'=>'解析超时/发生致命错误（见诊断文件 last_502_diag.json）', 'diagnostic'=>$diag], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n"
+                . '<!-- LAST_502_DIAG_JSON_END -->' . "\n";
+        });
+    }
+    // (b) concurrent 模式禁用本地官替直调（并发模式下官解 HTTP + 官替 HTTP 已走 curl_multi）
+    $snifferModeForDirectGuard = $config['sniffer']['mode'] ?? 'concurrent';
+    $concurrentRaceGuard = ($snifferModeForDirectGuard === 'concurrent')
+        || (($snifferModeForDirectGuard === 'replace') && !empty($config['performance']['concurrent_race_enabled']));
+    $GLOBALS['XT_DIAG_MODE'] = $snifferModeForDirectGuard;
+
     // 检查缓存命中
     // v5.13.5-G5：cacheKey 加入 sniffer.mode，切换通道时自动失效旧缓存（避免旧 127.0.0.1 URL 残留）
-    $snifferModeForCache = $config['sniffer']['mode'] ?? 'concurrent';
+    $snifferModeForCache = $snifferModeForDirectGuard;
     $cacheKey = md5($videoUrl . '|' . $snifferModeForCache);
     $cached = getCache($cacheKey, $config);
     if ($cached) {
@@ -115,11 +212,15 @@ if (file_exists($snifferConfigFile)) {
     //   v5.13 加固（B2）：对直调增加「预算时间保护」——FPM/nginx 超时一般是 30s，
     //   这里在 25s 处主动软中断，返回带 step_trace 的结构化失败 JSON，
     //   由后续 HTTP 官替/官解兜底；避免 nginx 直接输出 502 Bad Gateway HTML 给前端。
+    //
+    //   v5.13.10-HOTFIX4：concurrent 模式默认禁用本地官替直调（$forceReplaceDirect=false 覆盖），
+    //     把预算留给「官解 HTTP curl_multi + 官替 HTTP curl_multi」并发请求；
+    //     replace-only 模式官替直调预算砍到 12s；默认 15s → 5s（concurrent）/ 12s（replace-only）
     $replaceDirect = null;
     $sniffer = $config['sniffer'] ?? [];
     $replaceApi = $sniffer['replace_api'] ?? [];
     $forceReplaceDirect = false;
-    if (!empty($sniffer['mode']) && $sniffer['mode'] === 'replace' && !empty($replaceApi['enabled'])) {
+    if (!$concurrentRaceGuard && !empty($sniffer['mode']) && $sniffer['mode'] === 'replace' && !empty($replaceApi['enabled'])) {
         $replaceUrl = (string)($replaceApi['url'] ?? '');
         // 没填 URL 或填的就是本地 mx.php action，都判定为本地官替
         if ($replaceUrl === '' || (strpos($replaceUrl, 'official_replace/info') !== false) || (strpos($replaceUrl, 'official_replace/resolve') !== false)) {
@@ -128,10 +229,18 @@ if (file_exists($snifferConfigFile)) {
     }
 
     // ===== v5.13 新增：官替直调时间预算保护（防止 PHP-FPM 超时导致 nginx 502）
-    //   预算时间 = min(嗅探 performance.timeout, 25 秒)，留至少 5 秒给后续 fallback 通道
+    //   HOTFIX4:
+    //     - replace-only（非并发）：预算=min(performance.timeout, 12s)
+    //     - concurrent（并发 HTTP 通道优先）：直接跳过官替直调，forceReplaceDirect=false
+    //     - 其它降级路径：max(performance.timeout, 5s) but ≤ 8s
     $perfCfg = $config['performance'] ?? [];
-    $directBudget = (float)($perfCfg['timeout'] ?? 15.0);
-    if ($directBudget <= 0 || $directBudget > 25.0) $directBudget = 25.0;
+    if ($forceReplaceDirect) {
+        $directBudget = (float)($perfCfg['replace_direct_timeout'] ?? 12.0);
+        if ($directBudget <= 0 || $directBudget > 12.0) $directBudget = 12.0;
+    } else {
+        $directBudget = (float)($perfCfg['timeout'] ?? 5.0);
+        if ($directBudget <= 0 || $directBudget > 8.0) $directBudget = 5.0;
+    }
     $directDeadline = $startTime + $directBudget;
     // 预先注入软超时到 OfficialReplaceManager（若它读取 ini_get('max_execution_time') 可感知）
     if (function_exists('ini_set') && !ini_get('safe_mode')) {

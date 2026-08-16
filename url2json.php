@@ -171,6 +171,34 @@ $videoUrl = u2j_getVideoUrl();
 $format   = u2j_getFormat();
 $callback = isset($_GET['callback']) ? trim((string)$_GET['callback']) : null;
 
+// v5.13.10-HOTFIX4：HTTP 级「单次请求覆盖参数」用于前端 502 自动重试时强制单通道
+//   _mode=official|replace|concurrent    → 临时覆盖 xt/sniffer_config.php 的 mode
+//   _no_direct=1                         → 禁用本地官替直调（走 HTTP 官替），避免 PHP CPU 过载 502
+//   _timeout=10                          → 单次请求 performance.timeout (秒，1-22)
+if (!function_exists('u2j_apply_runtime_config_overrides')) {
+    function u2j_apply_runtime_config_overrides(array &$config): void {
+        $newMode = isset($_GET['_mode']) ? trim((string)$_GET['_mode']) : (isset($_POST['_mode']) ? trim((string)$_POST['_mode']) : '');
+        $noDirect = isset($_GET['_no_direct']) ? (bool)$_GET['_no_direct'] : (isset($_POST['_no_direct']) ? (bool)$_POST['_no_direct'] : false);
+        $timeout  = isset($_GET['_timeout']) ? (float)$_GET['_timeout'] : (isset($_POST['_timeout']) ? (float)$_POST['_timeout'] : null);
+        if (in_array($newMode, ['official','replace','concurrent'], true)) {
+            if (!isset($config['sniffer']) || !is_array($config['sniffer'])) $config['sniffer'] = [];
+            $config['sniffer']['mode'] = $newMode;
+        }
+        if ($noDirect) {
+            if (!isset($config['sniffer']['replace_api']) || !is_array($config['sniffer']['replace_api'])) $config['sniffer']['replace_api'] = [];
+            // 远端填一个非空的本地动作标识，parseVideo 会判定 !forceReplaceDirect → 不走本地直调
+            $config['sniffer']['replace_api']['enabled'] = true;
+            $config['sniffer']['replace_api']['url'] = (string)($config['sniffer']['replace_api']['url'] ?? '') === ''
+                ? 'official_replace/info' : (string)$config['sniffer']['replace_api']['url'];
+        }
+        if ($timeout !== null) {
+            $t = max(1.0, min(22.0, $timeout));
+            if (!isset($config['performance']) || !is_array($config['performance'])) $config['performance'] = [];
+            $config['performance']['timeout'] = $t;
+        }
+    }
+}
+
 if ($videoUrl === '') {
     u2j_outputError('请提供视频链接（支持 url/wd/v/video/t 参数）', $format, $callback);
 }
@@ -183,6 +211,11 @@ if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
 //   2. function_exists('parseVideo')：即使 guard 因为 OPcache 未生效，parseVideo 已存在也跳过
 if (!defined('XT_SERVER_PHP_V1') && !function_exists('parseVideo')) {
     require_once __DIR__ . '/xt/server.php';
+}
+// HOTFIX4：加载后根据 _mode / _no_direct 覆盖 global $config（parseVideo 内部读 global）
+if (function_exists('u2j_apply_runtime_config_overrides')) {
+    global $config;
+    if (is_array($config)) u2j_apply_runtime_config_overrides($config);
 }
 
 $result = parseVideo($videoUrl);

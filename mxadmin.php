@@ -14106,18 +14106,98 @@ https://jx.xmflv.cc/?url=https%3A%2F%2Fv.youku.com%2Fv_show%2Fid_XNjU0MjcxNTM1Ng
             status.style.color='#409eff';
             out.textContent='';
             const t0=performance.now();
-            try{
-                const r=await fetch(url2jsonBuildApiUrl(url,fmt),{method:'GET',credentials:'same-origin'});
-                const txt=await r.text();
-                let pretty=txt;
+            // v5.13.10-HOTFIX4 - 502/非 JSON 响应自动提取诊断块 + 自动重试 official 单通道一次
+            function xtExtractDiagFromBody(txt){
                 try{
-                    const j=JSON.parse(txt);
-                    pretty=JSON.stringify(j,null,2);
+                    const m=txt.match(/<!--\s*LAST_502_DIAG_JSON_BEGIN\s*-->\s*(\{.*?\})\s*<!--\s*LAST_502_DIAG_JSON_END\s*-->/s);
+                    if(m) return JSON.parse(m[1]);
                 }catch(_){}
-                out.textContent=pretty;
-                const ms=(performance.now()-t0).toFixed(0);
-                status.textContent='✅ 转换完成，耗时 '+ms+'ms（HTTP '+r.status+'）';
-                status.style.color='#67c23a';
+                // 传统 nginx 502 HTML
+                if(/<title>\s*502\s+Bad\s+Gateway\s*<\/title>/i.test(txt) || /<title>\s*504\s+Gateway\s+Time-out/i.test(txt)){
+                    return {
+                        _xt_502_diag: true, code: (txt.indexOf('504')>=0?504:502),
+                        message: '网关 502/504：后端 PHP-FPM 超时或已崩溃（见诊断建议）',
+                        diagnostic: { suggestion: '服务器 nginx 返回 502/504。建议：①后台嗅探设置把 mode 临时切为「官解 official」单通道；②关闭需签名/CF 拦截的外部官解；③把 performance.timeout 调为 ≤12s；④再按「开始转换」重试。若仍 502 请把该页面的响应贴给开发者。' }
+                    };
+                }
+                return null;
+            }
+            function buildPrettyDiagnosticBlock(diagObj){
+                const d=diagObj.diagnostic||{};
+                let s='';
+                s+='========= ⚠️  解析诊断 (HOTFIX4) =========\n';
+                s+='  code        : '+ (diagObj.code ?? 502)+'\n';
+                s+='  message     : '+ (diagObj.message ?? '未知网关错误') + '\n';
+                s+='  wall_ms     : '+ (d.wall_ms ?? '?') + 'ms  budget_ms='+ (d.global_budget_ms ?? '?') + 'ms  budget_hit=' + (d.budget_hit?'YES':'NO') + '\n';
+                s+='  mode        : '+ (d.mode ?? '?') + '\n';
+                if(d.video_url) s+='  video_url   : '+ d.video_url + '\n';
+                if(d.replace_direct_fail_reason) s+='  官替直调失败  : '+ d.replace_direct_fail_reason + '\n';
+                if(d.last_error && d.last_error.message){ s+='  PHP Fatal  : '+d.last_error.message+' @ '+(d.last_error.file??'?')+':'+(d.last_error.line??0)+'\n'; }
+                if(d.sniffer_config_hash){
+                    s+='  嗅探配置 hash:\n    - mode=' + d.sniffer_config_hash.mode + '  官解启用=' + (d.sniffer_config_hash.official_apis_count||0) + '  官替启用=' + (d.sniffer_config_hash.replace_enabled?'YES':'NO') + '\n';
+                    if(Array.isArray(d.sniffer_config_hash.official_apis)) for(const a of d.sniffer_config_hash.official_apis){ if(a.enabled) s+='      • 启用官解: '+(a.name||'?')+' host='+(a.host||'?')+'\n'; }
+                }
+                if(Array.isArray(d.failed_api_requests) && d.failed_api_requests.length){
+                    s+='  官解请求失败('+d.failed_api_requests.length+')：\n';
+                    for(const f of d.failed_api_requests.slice(0,5)) s+='      • '+(f.name||'?')+' HTTP='+(f.http_code||0)+' '+(f.reason||'')+' '+(f.biz_message||'')+'\n';
+                }
+                if(d.suggestion) s+='\n  🎯 修复建议: '+ d.suggestion + '\n';
+                if(d.note) s+='  note: '+ d.note + '\n';
+                s+='================================================\n\n';
+                return s;
+            }
+            try{
+                let apiUrl = url2jsonBuildApiUrl(url,fmt);
+                const r=await fetch(apiUrl,{method:'GET',credentials:'same-origin'});
+                let txt=await r.text();
+                let pretty=txt;
+                let diagMsgShown=false;
+                // --- 诊断块抽取 + 自动重试一次 official 单通道 ---
+                const diag = xtExtractDiagFromBody(txt);
+                if(diag && diag._xt_502_diag){
+                    const prettyDiag = buildPrettyDiagnosticBlock(diag);
+                    pretty = prettyDiag + txt;
+                    out.textContent = pretty;
+                    status.textContent = '⚠️  收到 502/致命错误，自动切换到官解单通道重试…（HTTP '+r.status+'）';
+                    status.style.color = '#e6a23c';
+                    // 自动重试：强制追加参数 _mode=official（url2json/mx.php 会读取并临时覆盖嗅探 mode）
+                    showToast('检测到 502/致命错误，自动切换官解单通道重试…','warning');
+                    try{
+                        const retryUrl = apiUrl + (apiUrl.indexOf('?')>=0 ? '&' : '?') + '_mode=official&_no_direct=1&_t='+Date.now();
+                        const r2 = await fetch(retryUrl,{method:'GET',credentials:'same-origin'});
+                        const txt2 = await r2.text();
+                        const diag2 = xtExtractDiagFromBody(txt2);
+                        try{
+                            const j = JSON.parse(txt2);
+                            pretty = JSON.stringify(j,null,2);
+                            status.textContent = '✅ 自动重试（官解单通道）成功，总耗时 ' + (performance.now()-t0).toFixed(0) + 'ms（HTTP '+r2.status+'）';
+                            status.style.color = '#67c23a';
+                        }catch(_){
+                            if(diag2 && diag2._xt_502_diag){
+                                pretty = '【自动重试官解单通道仍然失败】\n\n' + buildPrettyDiagnosticBlock(diag2) + '\n【第一次响应原文（前2KB）】\n' + pretty.substring(0,2048) + '\n\n【重试响应全文】\n' + txt2;
+                                status.textContent = '❌ 两次均失败（并发+官解），请查看下方诊断并按修复建议操作';
+                                status.style.color = '#f56c6c';
+                            }else{
+                                pretty = txt2;
+                            }
+                        }
+                        out.textContent = pretty;
+                    }catch(err2){
+                        status.textContent='❌ 自动重试失败: '+err2.message;
+                        status.style.color='#f56c6c';
+                    }
+                    diagMsgShown=true;
+                }
+                if(!diagMsgShown){
+                    try{
+                        const j=JSON.parse(txt);
+                        pretty=JSON.stringify(j,null,2);
+                    }catch(_){}
+                    out.textContent=pretty;
+                    const ms=(performance.now()-t0).toFixed(0);
+                    status.textContent='✅ 转换完成，耗时 '+ms+'ms（HTTP '+r.status+'）';
+                    status.style.color='#67c23a';
+                }
             }catch(err){
                 out.textContent='请求失败: '+err.message;
                 status.textContent='❌ 请求失败';
