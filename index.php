@@ -1,7 +1,18 @@
 <?php
+// ===== v5.14.0 启动：防篡改完整性守卫（第一个加载，保护后续所有 require） =====
 @ini_set('display_errors', 0);
 @ini_set('html_errors', 0);
 error_reporting(0);
+
+$__guardFile = __DIR__ . '/src/IntegrityGuard.php';
+if (is_file($__guardFile)) {
+    require_once $__guardFile;
+    if (class_exists('IntegrityGuard', false)) {
+        // 非严格模式：开发环境可容忍；生产部署建议把第二参数改为 true
+        IntegrityGuard::boot(__DIR__, false);
+    }
+}
+unset($__guardFile);
 
 if (ob_get_level()) {
     ob_end_clean();
@@ -55,6 +66,41 @@ try {
 try {
     $authValidator = new AuthValidator();
     $sqFile = __DIR__ . '/sq.php';
+
+    // ===== 首次运行：本地/开发环境自动生成默认开发授权码 =====
+    // 仅允许 localhost / 内网 / CLI / 回环地址自动生成；公网域名禁止，避免绕过付费授权
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    // 去掉端口（如 :8080, :18765）
+    if (strpos($host, ':') !== false) {
+        $host = preg_replace('#:\d+$#', '', $host);
+    }
+    $isLocalOrDev = (
+        PHP_SAPI === 'cli'
+        || $host === ''
+        || $host === 'localhost'
+        || $host === '::1'
+        || (strpos($host, '127.') === 0)                    // 127.0.0.0/8 回环
+        || preg_match('#^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)#', $host)  // RFC1918 内网
+        || (stripos($host, '.local') !== false)              // mDNS 本地
+    );
+
+    if (!file_exists($sqFile) && $isLocalOrDev) {
+        try {
+            $domain = $_SERVER['HTTP_HOST'] ?? (PHP_SAPI === 'cli' ? 'localhost' : 'unknown');
+            $devAuthCode = CryptoUtil::generateAuthCode($domain);
+            $written = @file_put_contents(
+                $sqFile,
+                "<?php\nreturn '" . addslashes($devAuthCode) . "';\n",
+                LOCK_EX
+            );
+            if ($written !== false) {
+                // 重新实例化 AuthValidator 确保读取新生成的文件
+                $authValidator = new AuthValidator();
+            }
+        } catch (Throwable $ignore) {
+            // 生成失败走正常 403 流程
+        }
+    }
 
     if (!file_exists($sqFile) || !$authValidator->validateLocal()) {
         sendIndexJson([

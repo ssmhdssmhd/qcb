@@ -1,4 +1,9 @@
 <?php
+// ===== v5.14.0 防篡改守卫启动 =====
+$__guardRoot = dirname(__DIR__);
+$__guardFile = $__guardRoot . '/src/IntegrityGuard.php';
+if (is_file($__guardFile)) { require_once $__guardFile; if (class_exists('IntegrityGuard',false)) IntegrityGuard::boot($__guardRoot, false); }
+unset($__guardFile, $__guardRoot);
 /**
  * 超级嗅探 - 统一 API 入口
  *

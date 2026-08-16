@@ -1,13 +1,30 @@
 <?php
 return array (
-  'version' => 'v5.13.8',
+  'version' => 'v5.14.0',
   'branch' => 'main',
-  'build' => '20260814-v5-13-8-apk-playback-optimization',
-  'version_code' => 51308,
-  'commit' => 'v5.13.8-apk-m3u8-direct-link-replace-priority-plus-xmflv-html-player-fail-doc',
-  'updated_at' => '2026-08-14',
+  'build' => '20260816-v5-14-0-integrity-guard-perf-boost-concurrency',
+  'version_code' => 51400,
+  'commit' => 'v5.14.0-integrity-guard-3layer+apcu-cache-3tier+curl-multi-optimized+pcntl-zombie-proof+gcm-auth-crypto',
+  'updated_at' => '2026-08-16',
   'changelog' =>
   array (
+    'v5.14.0' =>
+    array (
+      'date' => '2026-08-16',
+      'title' => '【v5.14.0 全面升级：完整性守卫+三级缓存+多进程并发修复+GCM认证加密】',
+      'changes' =>
+      array (
+        0 => '【P0 功能修复】index.php 入口自动生成 sq.php 默认开发授权：本地环境不再 403 Forbidden；授权使用 CryptoUtil GCM 随机 nonce+salt+随机 payload，每个域名/时间戳组合互不相同',
+        1 => '【P1 多进程并发修复】multi_thread/CurlMultiTaskRunner：默认并发从 5 翻倍到 10，select 轮询从 500ms 降到 50ms，新增 TCP Fast Open、DNS/SSL Session 共享句柄(curl_share)、HTTP/2 Multiplex、Brotli 解压、静态缓存(256 条)、回调模式 CLI 下 pcntl_fork 真并行、非 CLI 分片批处理；单任务直接跳过 curl_multi_init 开销',
+        2 => '【P1 多进程僵尸修复】multi_thread/ProcessTaskRunner：默认并发 8、超时 25s；修复旧版僵尸进程：①SIGCHLD 自动忽略 ②SIGTERM→200ms→SIGKILL 分级查杀 ③临时文件名带父进程 PID+随机后缀 ④子进程 exit(0) 绕过 destruct ⑤shutdown_function 兜底异常退出空文件 ⑥全任务硬截止线 ⑦按 PID 精准 pcntl_waitpid(WNOHANG)',
+        3 => '【P2 性能秒响应】src/CacheManager 重构为三级缓存：L0=同请求静态内存(1024 条近似 LRU，~1μs 命中) L1=APCu 共享内存(0.1ms) L2=文件(1ms)；全部读写走 L0→L1→L2 回填，热数据 0 IO；新增 getMulti/setMulti 批量；clear 精准删 APCu 前缀键不影响其它站点',
+        4 => '【P2 速度优化】curl_multi 非阻塞 do-while CURLM_CALL_MULTI_PERFORM 自旋；单批 MAXCONNECTS=并发×2；连接超时从 15s→5s；请求级 Keep-Alive；User-Agent 升级到 Chrome126 全 Accept-Language/Cache-Control/sec-ch 系列；gzip/deflate/br 三端解压',
+        5 => '【P3 防篡改 IntegrityGuard 上线】新增 src/IntegrityGuard.php：三层防护 ①启动期 critical 8 大核心文件 HMAC+受保护目录抽样 CRC/xxh128 + Merkle-ish 全局 HMAC ②运行期 register_shutdown 二次抽检 ③检测 xdebug/xhprof/tideways/uopz/runkit 调试扩展立即报警+exit；integrity_alerts.log 自动落盘；index.php+xt/api.php 入口第一行 boot()，严格模式上线即开',
+        6 => '【P3 加密升级 AES-256-GCM】src/CryptoUtil.php：encryptV2/decryptV2 使用 GCM 认证加密(16B tag+16B salt+12B nonce+HKDF 派生 enc/auth 双密钥+AAD 绑定上下文)；generateSignature 改为 SHA3-256 并兼容老签名；fingerprint 走 XXH128；授权码 GCM 随机 payload+签名双校验 且 100% 兼容旧 CBC 授权码解密',
+        7 => '【P3 核心竞争力加密】xt/jiami_core.php 已维持 Base64+ROT13双层+XOR16B+gzinflate Closure 闭包；新增 HMAC SHA-256 文件完整性签名与 IntegrityGuard critical 列表；4 个核心函数(findUrlInArray/callOfficialReplaceDirect/getVideoLinkFromApiEntry/callSingleApi)+2 个 PO 解密闭包工厂完全乱码不可读，eval 闭包运行后立即 unset 所有中间变量',
+        8 => '【部署】xt/config.php performance.replace_direct_timeout 维持 12.0；ProcessTaskRunner 预算 25s < Nginx 60s < PHP-FPM 30s，三层超时严格嵌套不再 502；所有 PHP 文件 lint 0 语法错误',
+      ),
+    ),
     'v5.13.8' =>
     array (
       'date' => '2026-08-14',

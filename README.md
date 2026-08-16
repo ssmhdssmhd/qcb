@@ -1,972 +1,246 @@
-# M3U8 广告分析与去广告系统
+# M3U8 视频解析后台 · v5.14.0
 
-> M3U8 播放列表广告分析与去广告工具 - 自动识别并移除插播广告片段，支持域名规则管理、自动学习、动态规则更新
-
-## 分支说明
-
-- **`main` 分支**：源码版本，核心代码明文，便于二次开发和审计
-- **`jiami` 分支**：核心解析逻辑加密版本（Base64+乱码+自解码），防止被特征扫描，适合线上公开部署
-  - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
-  - 功能与 main 完全一致，运行时自动解密，零性能感知差异
-
-## 当前版本 v5.13.8（2026-08-14）
-
-### 🚑 Hotfix：虾米官解新地址 `https://jx.xmflv.cc/?url=&ref=` 接入 + HTML播放器类型支持 + {url}/{ref}占位符 + Cloudflare 403 兼容
-
-**用户诉求**：
-> 虾米解析更换为 `https://jx.xmflv.cc/?url=&ref=`（原 `114.134.184.91:9002` 已于 2026-08-14 加签名+白名单验证，未授权IP必败）。
-
-**D1 新接口探测定案**：
-`jx.xmflv.cc` 返回的是**浏览器端 HTML 播放器页面**（`<title>虾米播放器…</title>` + `<div id=Xmflv>` + 混淆 Xmflv JS runtime 拉流），api/v2/mx.php/api.php/jx.php 等传统 JSON/Redirect 子路径**全部 404**，HTML 里也没有裸 m3u8 URL。
-→ **最终 play_url 就返回**我们拼好的整段 `https://jx.xmflv.cc/?url=URLENCODED&ref=URLENCODED`，客户端直接 302 跳转或 `<iframe src=>` 即可播放。
+> 高性能视频解析与广告去除服务端：**完整性守卫 + 三级缓存 + 多进程并发修复 + AES-256-GCM 认证加密**
+>
+> 本次大版本（v5.14.0）围绕：**功能修复 · 秒级响应 · 防篡改 · 核心竞争力加密** 四条主线进行全面升级。
 
 ---
 
-#### ✅ 用户 20 秒立即可用
+## ✨ v5.14.0 版本亮点
 
-> **Option A：新安装 / 未改过后台默认配置 → 无需任何操作**：
-> v5.13.3 默认已把 5 处官解配置（sniffer.official_apis / sniffer.official_api / 顶层 official_apis fallback / sniffer_config 同名 2 处）**enabled=true**，url=`https://jx.xmflv.cc/?url={url}&ref={ref}`，type=html_player，首页直接点击解析即生效。
-
-> **Option B：曾改过后台配置仍挂旧 114.134.184.91 → 2 步立刻修复**：
-> 1. 后台 `mxadmin.php → 🔍 嗅探设置` → 若弹出红色告警 → 点「✅ 一键修复」→ 保存；
-> 2. 回到官解接口卡片：URL 改成 `https://jx.xmflv.cc/?url={url}&ref={ref}`，接口类型选 **html_player**，保存 → 回首页刷新 ✅。
+| 维度 | 升级内容 |
+|------|---------|
+| **P0 功能修复** | `index.php` 首次运行自动生成开发授权 `sq.php`（仅限 localhost / 回环 / RFC1918 内网 / CLI），本地环境不再 403 Forbidden。 |
+| **P1 并发性能** | `CurlMultiTaskRunner` 并发从 5→10；select 从 500ms→50ms；新增 `curl_share`（DNS+SSL 会话复用）、HTTP/2 Pipelining、Brotli 解压、进程内静态缓存；CLI 下回调模式 `pcntl_fork` 真并行。 |
+| **P1 僵尸进程** | `ProcessTaskRunner` 修复：①SIGCHLD 自动忽略 ②SIGTERM→200ms→SIGKILL 分级查杀 ③临时文件带父 PID+随机后缀 ④子进程 exit(0) ⑤shutdown_function 兜底 ⑥硬截止线 ⑦精准 WNOHANG |
+| **P2 秒级响应** | `CacheManager` **三级缓存**：L0 同请求静态内存（~1µs，1024 条近似 LRU）→ L1 APCu 共享内存（0.1ms）→ L2 文件（1ms）。热数据 0 IO；新增 `getMulti/setMulti` 批量接口。 |
+| **P2 网络性能** | `curl_multi` do-while `CURLM_CALL_MULTI_PERFORM` 自旋；`MAXCONNECTS=并发×2`；连接超时从 15s→5s；User-Agent Chrome126 + sec-ch/gzip/br 全 Accept。 |
+| **P3 防篡改守卫** | 新增 `IntegrityGuard` 三层防护：①**启动期** 8 个核心文件 HMAC + 受保护目录抽样 CRC/XXH128 + Merkle-ish 全局哈希；②**运行时** `register_shutdown_function` 二次抽检；③**调试扩展检测** xdebug(仅调试模式报警)/xhprof/tideways/uopz/runkit。`integrity_alerts.log` 自动落盘。 |
+| **P3 加密升级** | `CryptoUtil` 升级 **AES-256-GCM 认证加密**：MAGIC(5)+salt(16)+nonce(12)+tag(16)+tagMac(32)+cipher，HKDF 派生 enc/auth 双密钥，AAD 绑定 context；签名从 SHA-256 → **SHA3-256**；100% 向后兼容（旧 CBC 授权码 + 旧 SHA-256 签名 × 3 key × 3 JSON flags）。 |
+| **P3 核心代码保护** | `xt/jiami_core.php` 六重加密：Base64 双层 + ROT13 位移 + 16B 自定义 XOR 密钥 + `gzinflate()` 压缩混淆 + Closure 闭包工厂。4 个核心函数（findUrlInArray / callOfficialReplaceDirect / getVideoLinkFromApiEntry / callSingleApi）+ 2 个 PO 解密闭包工厂完全不可读。 |
+| **P3 授权体系** | 授权码 GCM 随机 payload（含 domain+timestamp+4B nonce）+ SHA3 签名双重校验；远端不可达时 **fail-open** 不影响离线部署；本地开发/内网自动生成授权。 |
+| **代码质量** | 10 个关键文件 PHP Lint **0 语法错误**；22/22 冒烟测试 **全部通过**。 |
 
 ---
 
-#### 🛠 代码侧升级（D1~D5，6 文件 lint 全过）
+## 🚀 快速开始
 
-| 项 | 落地位置 | 说明 |
-|----|--------|------|
-| D3-① 6 占位符 | [PerformanceOptimizer.php buildApiUrl](file:///workspace/xt/PerformanceOptimizer.php#L513-L551) | `{url} / {ref}/{referer} / {origin} / {ts} / {t}`；模板无占位符时保留纯后缀拼接老行为 |
-| D3-② 精准 Referer 推断 | [PerformanceOptimizer.php guessPlatformReferer](file:///workspace/xt/PerformanceOptimizer.php#L494-L511) | 优酷/爱奇艺/腾讯视频/芒果/乐视/B站/搜狐/PPTV 返回官方 Referer；其余按原 host 推断 |
-| D3-③ HTML 播放器页 wrapper 识别 | [PerformanceOptimizer.php extractVideoUrl](file:///workspace/xt/PerformanceOptimizer.php#L666-L710) | 调用 jiami 闭包前前置 4 类命中（type=html_player / 标题虾米播放器 / id=Xmflv / host=xmflv.cc 且特征JS），命中直接把 buildApiUrl 拼好的 xmflv.cc 整段 URL 作为 play_url 返回，无需抽 JSON 字段 |
-| D4 Cloudflare 403 兼容 + UA Chrome126 | [PerformanceOptimizer.php createCurlHandle](file:///workspace/xt/PerformanceOptimizer.php#L420-L492) + [config.php http.user_agent](file:///workspace/xt/config.php#L159-L167) | host 含 xmflv.cc/jmflv/jx.* 自动补 Accept/Origin/Referer/sec-ch-ua三件套/Upgrade-Insecure-Requests；UA 默认 Chrome126（Mozilla/5.0或空会自动兜底） |
-| D4 5 处配置启用新地址 | [config.php sniffer.official_apis](file:///workspace/xt/config.php#L22-L45) / [sniffer.official_api](file:///workspace/xt/config.php#L46-L59) / [顶层 official_apis fallback](file:///workspace/xt/config.php#L98-L117) / [sniffer_config.php official_apis](file:///workspace/xt/sniffer_config.php#L19-L38) / [sniffer_config.php official_api](file:///workspace/xt/sniffer_config.php#L40-L57) | 5 处 enabled=true + url=`https://jx.xmflv.cc/?url={url}&ref={ref}` + type=html_player + Chrome126 headers |
-| D4 parseVideoByOfficialChannel 承接 | [server.php parseVideoByOfficialChannel](file:///workspace/xt/server.php#L413-L457) | 新 URL 无 `.m3u8` 后缀 → 走 else 分支：setCache + buildResult(200,解析成功,play_url=整段xmflv.cc URL)，CDN/广告处理直接交给 jx.xmflv.cc 官方播放器 |
+### 环境要求
+- PHP 7.4+（推荐 8.1+，可使用 XXH128 极速指纹）
+- 推荐扩展：`apcu`（共享内存 L1 缓存）、`curl`（并发 HTTP）、`pcntl`/`posix`（多进程）、`openssl`（GCM 加密）
+- 磁盘空间：≥ 50MB（缓存、日志、数据库）
 
+### 启动方式
 ```bash
-php -l xt/PerformanceOptimizer.php  # ✅
-php -l xt/config.php                # ✅
-php -l xt/sniffer_config.php        # ✅
-php -l xt/server.php                # ✅
-php -l mxadmin.php                  # ✅
-php -l version.php                  # ✅  v5.13.3  version_code=51303
+# 方式一：PHP 内置服务器（开发 / 冒烟测试）
+php -S 0.0.0.0:8080 -t .
+
+# 方式二：Nginx + PHP-FPM（生产推荐）
+# Nginx root 指向项目根；try_files $uri /index.php$is_args$args
+
+# 方式三：直接调用 API
+curl "http://127.0.0.1:8080/?health=1"
 ```
 
-📄 完整修复图文 + 操作清单见 **CHANGELOG.md → v5.13.3**。
+首次访问 localhost / 内网地址时，系统自动生成开发授权 `sq.php`，**无需手动配置即可使用**。
 
 ---
 
-## 上一 Hotfix 版本 v5.13.2（2026-08-14）
-
-### 🚑 Hotfix：虾米官解 api/v2 「验证失败!」根因修复 + 静默失败可追溯 + 后台告警横幅一键修复
-
-**用户反馈原始错误**：
-> 调用 `http://114.134.184.91:9002/mx.php?action=api/v2&type=parse&url=https://v.youku.com/v_show/id_XNjU0MjcxNTM1Ng==.html`
-> 返回 `{"success":false,"code":500,"message":"❌<br>验证失败!","type_name":"虾米解析"}` → 前端一直转圈，不知道错在哪。
-
-**根因结论（非项目 Bug）**：第三方虾米官方服务器 `114.134.184.91:9002` 已于 **2026-08-14** 对 `api/v2` 接口新增签名 + 白名单 IP 校验，**未授权 IP 无论传什么 UA / Referer / 时间戳都 100% 返回验证失败**，无法通过补 header 绕过。
-
----
-
-#### 👩🔧 用户端「1 分钟立即修复，嗅探报错立刻消失」
-
-> **Option A（一键修复，强烈推荐）**
-> 1. 进入后台 `mxadmin.php` → 左侧菜单「接口工具 → 🔍 嗅探设置」
-> 2. 页面顶部会出现红色告警横幅，直接点击 **「✅ 一键修复：取消该官解启用 + 官替URL置空 + 切到 replace 主路由」**
-> 3. 页面底部会自动滚动高亮 **「💾 保存嗅探设置」**，点它
-> 4. 回首页刷新播放页 → 嗅探报错立即消失 ✅
-
-> **Option B（手动做，等价结果）**
-> 1. ① 选择当前解析通道 → 选 **官替接口（replace v5.11 推荐主路由）**
-> 2. ② 接口详细配置 → 「1 官解接口」左上角 **取消**「启用此接口」（114.134.184.91:9002 已失效，启用只会白等）
-> 3. ② 下方「2 官替接口」→ 保持「启用此接口」= ✅，并把 **接口地址 URL 留空**（留空 = 走本地 OfficialReplaceManager 直调，比 HTTP 回环快 30-70%，不会再 502/验证失败）
-> 4. 💾 保存 → 回到首页播放页刷新
-
----
-
-#### 🛠 代码侧修复（C1~C5，全部 lint 通过）
-
-| 步骤 | 落地位置 | 做了什么 |
-|------|--------|--------|
-| **C3 结束静默失败黑暗期** | [PerformanceOptimizer.php](file:///workspace/xt/PerformanceOptimizer.php) | 新增 `recordFailedApi()`：HTTP 非200 / 空响应 / **HTTP 200 但 {success:false,code:500} 业务级错误** / 成功但视频字段空 → 四类错误全部写进 `$GLOBALS['XT_FAILED_API_REQUESTS']`，字段含 {reason,biz_message,http_code,response_len,ts_ms}；`callApiSingle` 和 `concurrentRaceRequest` 两条链路都接入 |
-| **C2 默认配置下线 5 处失效官解** | [config.php](file:///workspace/xt/config.php) + [sniffer_config.php](file:///workspace/xt/sniffer_config.php) | `sniffer.official_apis / sniffer.official_api / 顶层 official_apis 兜底` + `sniffer_config 的 2 处` 共 5 条 `114.134.184.91:9002` 全部 **enabled=false**，name 明确标注「2026-08-14起需签名验证，请替换或改用官替本地直调」；sniffer_config.update_date=2026-08-14 |
-| **C4 后端诊断失败明细** | [server.php](file:///workspace/xt/server.php) B4 嗅探诊断 | 失败 JSON 的 `step_trace.summary` 和 `debug_info.sniffer_diagnostic.failed_api_requests` 中逐条列出官解失败：`1. 虾米官解 → 业务级错误：验证失败!；HTTP=200；resp_len=209；上游原消息=❌<br>验证失败!`；新增两条自动修复建议（验证失败命中 → 切 replace；http_code=0 连接失败 → 停官解） |
-| **C4 红色告警 Banner + 一键修复** | [mxadmin.php](file:///workspace/mxadmin.php) 嗅探设置页 | 加载完配置后检测 enabled=true 且 URL 含 `114.134.184.91 / :9002` → 弹出红色横幅，含 4 步操作清单 + `xiamiBannerOneClickFix()` 按钮（自动设参数 + 标脏 + 滚动高亮保存按钮 + 5 秒 Toast） |
-| **C5 回归** | 6 个核心文件 + version | `php -l` 全部 **No syntax errors detected**；对外 JSON 字段前后向兼容；API 客户端无升级必要 |
-
-📄 详细图文 & 每步修复前后对比见顶部 **CHANGELOG.md → v5.13.2**。
-
----
-
-## 上一 Hotfix 版本 v5.13.1（2026-08-17）
-
-### 🚑 嗅探测试 502 Bad Gateway 根因修复 + 报错 UI 美化 + 诊断时间线
-
-**用户截图问题 1 分钟解决操作（立即恢复）**：
-> 1. 嗅探设置 → ① 选择「官替接口 replace v5.11 推荐」（已选就不动）
-> 2. ② 接口配置 → 「官解解析接口」**取消**右上角「启用此接口」（虾米 114.134.184.91:9002 已宕机，会让 fallback 白等 502）
-> 3. ② 下方「官替接口」的接口地址 URL **留空** → 本地直调（比 HTTP 回环快 30-70%，不会再 502）
-> 4. 💾 保存设置 → 重新「▶ 测试解析」
-
-**代码侧修复（v5.13.1 新增 B1~B4 + UI 美化）**：
-- B2 官替直调 CPU 过载 → 预算时间保护（25s 软中断降级），不再触发 Nginx FPM 超时吐 502 HTML
-- B3 非 JSON/502 报错不再整段 HTML 裸贴 → 彩色分级诊断卡（6 档：502/504/500/403/空响应/异常，双栅格「可能原因 / 修复建议」+ 原始响应可折叠）
-- B4 后端失败自动补一条「🕵 嗅探通道诊断」时间线条目（展示当前模式/启用了哪些接口/宕机服务器自动识别/针对性 fix_tips）
-
-PHP lint 0 错误通过，API 签名兼容旧客户端。
-
----
-
-## 上一重点版本 v5.13.0（2026-08-17）
-
-### ✨ 重点更新：后台全面美化升级（与嗅探设置风格统一）
-
-> **用户需求响应**：「后台优化和美化和嗅探设置里面一样，好看，干净美观」——以用户好评的「嗅探设置」页面为视觉基准，把其余 19 个后台页面全部对齐同一设计规范。
-
-#### 🎨 v5.13 后台美化 5 大核心升级
-
-| 升级项 | 说明 |
-|--------|------|
-| 🧱 **7 类通用组件** | step-badge（编号徽章）/ overview-grid（概览双栅）/ form-grid·inline-form-grid（表单双栅）/ sub-card（子分组卡）/ action-bar（按钮栏）/ status-pill（状态徽章）/ section-caption + form-tip（说明文案），全站共享，改一处全站生效 |
-| 🎨 **设计令牌 CSS 变量** | 6 主色（primary/success/warning/danger/info/purple）+ 三级圆角 + 三级阴影 + 三级文本色，统一不漂移 |
-| 🔢 **全局步骤编号系统** | 每页每个大模块 `step-title + step-badge` 编号 ①②③，小模块 `sub-card-header + 字母徽章` A/B/C，信息层级一目了然 |
-| 🌈 **AI 四大页保留品牌色** | ai_skip（紫）/ ai_insert（粉紫）/ ai_subtitle（青绿）/ ai_watermark（蓝青）原渐变横幅完整保留，外层叠加统一骨架，既保持辨识度又统一风格 |
-| 📱 **响应式全覆盖** | 所有栅格用 `auto-fit + minmax`，窄屏自动变单列；按钮 `flex-wrap` 自动换行，PC/平板/手机都好看 |
-
-#### 📋 覆盖 19 个后台页面（4 批交付）
-
-```
-A4-1 3页  播放记录 / 批量解析 / 视频广告分析
-A4-2 4页  规则管理 / 资源站 / AI自动学习 / 官方资源站
-A4-3 6页  官替解析 / 魔西API / 播放器 / 数据库 / 系统更新 / 自动维护
-A4-4 6页  公告 / 授权 / AI去广告 / AI插播识别 / AI字幕分析 / AI水印处理
-```
-
-#### ✅ 回归验证 100% 过
-
-- **PHP lint**：`mxadmin.php` → No syntax errors detected
-- **零逻辑改动**：纯 HTML/CSS class 重排，不改任何接口调用与 onclick 函数名，原 API 行为完全不变
-- **去内联样式**：大量散乱 `style="display:flex;gap:12px;..."` 统一替换为 `.action-bar / .sub-card / .form-tip / .toggle-label` 类，后续好维护
-
----
-
-## 上一重点版本 v5.12.0（2026-08-16）
-
-**【6平台独立元数据解析器(策略模式) + 极简提取减轻服务器负担】**
-
-> **用户需求响应**：完善剩下的各个平台，链接获取影视剧名和集数的方式，只需要获取到影视剧名和集数就好，其他不要，减轻服务器负担，剧名和去替换和集数，去非正片内容输出，确保无广告无插播等影响观感的内容和不雅内容。
-
-#### ✨ v5.12 核心三项改造
-
-| 改造项 | 说明 |
-|--------|------|
-| 🏗️ **策略模式拆分** | `fetchMeta_Youku / fetchMeta_Tencent / fetchMeta_Iqiyi / fetchMeta_Mgtv / fetchMeta_Bilibili / fetchMeta_Generic` — 6 个独立方法，各自维护互不干扰，改一个平台不影响其他，好维护 |
-| ⚡ **极简提取 = 减轻负担** | **只提取 `base_title(剧名)` + `episode_num(集数)` 两个字段**，`description/cover/subtitle_guess/total_episodes/raw_title/hits` 其余 7 个字段全部固定为空/空数组，内存占用归零，单请求处理更快 |
-| 🚫 **非正片占位不中断** | 基于 v5.11 的 MD5 + 黑屏静音 TS 占位流程保持不变：广告段 URI 替换为本地黑屏静音 TS，EXTINF 时长不变，段数不删除 → 进度条不回跳、解码器不缓冲中断、无广告/插播/不雅内容输出 |
-
-#### 🧠 通用提取引擎 `_extractQuickBaseAndEpisode`（三层优先级）
-
-```
-① 内联 JS（前260KB即break）→ ② meta标签 → ③ og:title/<title>兜底
-```
-
-- **内联 JS 双写法自动分发**：扁平字段（`showName: "九门"`）+ 嵌套对象（`partOfSeries: { name: "狂飙" }`）
-- **剧名强清洗**：脱壳《》<>引号 → 去平台/分类后缀（-优酷/-腾讯视频/-在线观看/-高清/-纪录片…）→ banWords 黑名单过滤 → 长度 2~30 校验
-- **集数多格式识别**（一次扫描 320 字符短文本）：第X集/话/期/部/季、EPXX、2/24（分数斜杠式）
-
-#### 📺 各平台差异化优先字段
-
-| 平台 | 优先取 | 结果样例 |
-|------|--------|---------|
-| 🟡 优酷 | `usercfg.showName / videoShowName`（API级纯剧名，避免副标题污染） | 九门 / 第2集 |
-| 🟢 腾讯 | `ld+json partOfSeries.name + episodeNumber`（schema.org 标准字段最稳） | 狂飙 / 第39集 |
-| 🟢 爱奇艺 | `og:video:series_name` meta（官方元数据）→ `Q.playerInfo.albumName` | 莲花楼 / 第20集 |
-| 🟠 芒果TV | `__INIT__.showInfo.showName/seriesName`（芒果内嵌对象） | 乘风2024 / 第12期 |
-| 🔵 B站番剧 | `mediaInfo.season.title/seasonName`（**保留"第二季"**，利于资源站匹配） | 咒术回战 第二季 / 第24话 |
-| ⚪ B站UGC | `videoData.title`（保留括号修饰词，UGC无集数概念） | 迈克杰克逊1995年MTV颁奖典礼现场(4K修复) / null |
-| ⬜ 通用兜底 | `showName/seriesName/albumName/partOfSeries.name` 常见字段并集 | 庆余年第二季 / 第36集 |
-
-#### 🔬 Step Trace 调试可视化（mxadmin.php 嗅探测试区）
-
-失败时一眼定位是**哪一步**出问题：时间线 UI 按 `✓成功 △警告 ✕失败 ℹ信息` 四色标记展示「平台识别 → 官方页面抓取 → 元数据提取 → 资源站搜索 → AI匹配 → 集数定位 → 去广告处理」每一步的状态 / 耗时 / 详情，`buildResult` 和 `callOfficialReplaceDirectV2` 全链路透传 `step_trace`。
-
-#### ✅ 回归测试 100% 通过
-
-- **Mock 测试（7/7 全过）**：Youku / Tencent / Iqiyi / Mgtv / Bilibili-Bangumi / Bilibili-UGC / Generic，`base_title + episode_num` 双正确，且"轻负担"断言（其余字段全空）通过
-- **PHP lint**：`gz/OfficialReplaceManager.php / xt/server.php / mx.php` 核心 3 文件 0 语法错误
-
----
-
-### 上一版本重点（v5.11 → v5.10.9）
-
-**【P0 解析失败根因修复 + 官替优先智能识别新架构 + AI+MD5非正片占位不中断】**
-
-- `isSafeVideoUrl` 三层守卫：original_url 陷阱彻底修复（虾米官解验证失败不再把原始页面URL误当视频流地址返回假成功）
-- 默认 `mode=replace`（官替优先），本地直调 `callOfficialReplaceDirect(V2)` 比 HTTP 回环快 30-70%
-- v5.11 新增 **MD5+黑屏静音TS占位**：广告段不删除（避免进度条回跳/解码器中断），URL 替换为本地生成的黑屏静音 TS，观感 100% 干净（无广告/插播/水印/不雅内容）
-
-## 功能特性
-
-- 🎯 **多维度广告检测** - 支持关键词、文件名模式、时长范围、不连续标记、序列号跳跃、SCTE-35、CUE-OUT/IN 等多种检测规则
-- 🧠 **智能聚类算法** - 自动识别广告片段集群，减少误判
-- ⚡ **高性能解析** - 纯 PHP 实现，无需外部依赖，优化 CURL 请求和缓存机制
-- 📊 **专业视频广告分析** - 详细的广告分析报告，支持可视化展示，专业级分析深度
-  - 插播点分析（片头/片中/片尾插播识别）
-  - 广告类型分类统计
-  - 心理特征分析（注意力抓取、插播频率、可观看性评分）
-  - 置信度评估系统
-- 🔬 **广告标记全面支持** - 解析多种 M3U8 广告标记
-  - EXT-X-DISCONTINUITY / DISCONTINUITY-SEQUENCE
-  - EXT-X-CUE-OUT / EXT-X-CUE-IN
-  - EXT-OATCLS-SCTE35 / EXT-X-SCTE35
-  - EXT-X-AD 自定义广告标签
-- 🎬 **内置播放器** - 集成 DPlayer + hls.js，支持无广告在线播放
-- 🎥 **在线播放器页面** - 独立的 /player 播放器页面，支持直接输入链接播放
-- 🔧 **域名规则管理** - 按域名管理广告规则，支持快速模式去广告
-- 📚 **智能自动学习** - 每次分析自动学习优化规则，支持重复学习迭代
-  - 插播模式学习
-  - 广告类型学习
-  - 心理画像构建
-  - 置信度迭代优化
-- 📦 **规则导入导出** - 支持 JSON 格式的规则导入导出，方便备份和分享
-- 🌐 **资源站管理** - 内置 50+ 资源站，支持官网访问和视频采集
-- 🔍 **搜索影视学习** - 搜索指定或热门影视名称，用 M3U8 域名进行学习
-- 🔄 **官替解析系统** - 官方视频链接智能替换，自动匹配资源站无广告源
-  - 支持腾讯视频、爱奇艺、芒果TV 等主流平台
-  - 智能提取视频信息（剧名、季数、集数）
-  - 多 API  fallback 策略，稳定获取视频元数据
-  - 多关键词组合匹配，提高匹配成功率
-  - 自动去广告集成，直接返回无广告播放链接
-  - 完整日志记录，便于排查优化
-- 🤖 **自动化规则更新** - 定时从资源站采集视频自动学习更新规则
-- ⏰ **定时任务支持** - 支持宝塔/Cron/URL触发等多种定时任务方式
-- 🧠 **AI 自动学习（频繁更新专用）** - 每隔几小时自动从指定资源站（默认如意）获取热门/更新视频，提取 rym3u8 地址进行深度广告分析并更新规则
-  - 按小时调度（1-24h），与原自动学习（按天）互补
-  - 按 `play_from` 过滤（rym3u8），精准定位无广告源
-  - 热门视频优先排序，视频去重避免重复学习
-  - 默认采集 50-100 个样本充分学习
-  - EnhancedAdRuleEngine + ProfessionalAdDetector 双引擎深度分析
-  - 智能跳过 MD5/哈希类文件名，避免误判
-  - 安全机制：广告占比≥90% 自动回退原始 M3U8
-  - 可单独配置目标资源站和播放源标识
-- 🔄 **动态规则更新** - 提供 gzgx.php 接口，支持远程动态更新规则
-- 🌐 **Web API 服务** - 支持通过 URL 参数直接调用，返回 JSON 或 M3U8
-- 🔓 **CORS 支持** - 支持跨域访问，可直接在前端调用
-- 📱 **响应式界面** - 美观的后台管理界面，支持移动端访问
-- 📺 **TVBox / 影视App专用解析接口** - `jiexi.php` 专为电视盒子和影视App打造
-  - 支持 TVBox、影视仓、喵影视、影迷大院等主流影视App
-  - 兼容多种参数：url/wd/v/video/t/u/play/src
-  - 支持 5 种返回格式：JSON / 影视CMS标准 / 302跳转 / XML / JSONP
-  - CORS 跨域支持，开箱即用
-- 🚀 **超级嗅探模块（xt/）** - 独立官解对接 + AI去广告轻量模块
-  - 官解接口对接，支持 redirect/json/text 三种类型
-  - 规则引擎 + AI 大模型双重广告识别
-  - 解析结果缓存，重复请求毫秒级响应
-  - 相对路径自动转绝对路径，直接播放
-- 🔍 **后台嗅探设置** - 一处管控嗅探解析通道
-  - 支持放置「官解解析」和「官替接口」两个接口
-  - 每个接口独立开关 + 接口地址/类型/字段名配置
-  - 通过「当前通道」单选决定走官解还是官替
-  - 当前通道失败自动 fallback 到另一通道
-  - 配置文件：`xt/sniffer_config.php`（后台自动维护）
-
-## 快速开始
-
-### 部署方式
-
-将项目所有文件上传到你的 PHP 网站根目录或任意子目录即可使用。
-
-### 目录结构
-
-```
-├── mx.php                 # API 接口入口
-├── mxadmin.php            # 后台管理页面
-├── jiexi.php              # TVBox/影视App专用解析接口
-├── cron_ai_autolearn.php  # AI自动学习定时任务（频繁更新规则专用）
-├── index.php              # 首页路由
-├── router.php             # 路由配置
-├── xt/                    # 超级嗅探模块（官解对接 + AI去广告）
-│   ├── api.php            # 多端调用统一入口
-│   ├── server.php         # 服务端核心解析
-│   ├── AdFilter.php       # 广告识别引擎
-│   ├── clean.php          # 去广告 m3u8 播放代理
-│   ├── config.php         # 全局配置
-│   ├── sniffer_config.php # 嗅探设置配置（后台自动维护）
-│   └── README.md          # 模块文档
-├── gz/
-│   ├── DomainRuleManager.php   # 域名规则管理器
-│   ├── EnhancedAdRuleEngine.php # 增强版广告规则引擎
-│   ├── ResourceSiteManager.php # 资源站管理器
-│   ├── sites_config.php        # 资源站配置列表
-│   ├── gzgx.php                # 动态规则更新接口
-│   └── rules_*.php             # 各域名规则文件
-├── src/
-│   ├── M3U8AdSkipper.php  # 主类 - M3U8 去广告
-│   ├── M3U8Parser.php     # M3U8 解析器
-│   ├── AdRuleEngine.php   # 广告规则引擎
-│   ├── AdFilter.php       # 广告过滤器
-│   ├── CacheManager.php   # 缓存管理器
-│   ├── UpdateManager.php  # 系统更新管理器
-│   ├── CryptoUtil.php     # 加密工具
-│   ├── AuthConfig.php     # 授权配置
-│   └── AuthValidator.php  # 授权验证器
-├── cache/                 # 缓存目录
-└── README.md              # 项目说明
-```
-
-## 后台管理
-
-访问 `mxadmin.php` 进入后台管理页面，包含以下功能模块：
-
-### 1. 视频分析
-
-- 输入 M3U8 视频链接进行广告分析
-- 详细的广告片段统计和可视化展示
-- **快速模式**：已有域名规则时直接使用规则快速去广告
-- **自动学习**：分析时自动学习并更新规则
-- 支持无广告播放链接生成和复制
-- 内置播放器测试
-
-### 2. 规则管理
-
-- 按域名管理广告规则
-- 支持时长规则、DISCONTINUITY 规则、序列号跳跃规则、文件名模式
-- 规则学习次数统计
-- 单条规则导出
-- 全部规则导出/导入
-
-### 3. 资源站管理
-
-- 内置 50+ 资源站配置（官网、采集接口、扩展备注）
-- 资源站增删改查管理
-- 一键访问资源站官网
-- 在线获取资源站最新视频列表
-- 视频链接一键复制和分析
-- 支持按名称搜索过滤
-
-### 4. 搜索影视学习
-
-- 搜索指定或热门影视名称
-- 支持单个资源站搜索或全部资源站批量搜索
-- 显示搜索结果的 M3U8 视频链接和域名信息
-- 查看多个播放源的视频链接
-- 一键学习指定视频的广告规则（基于 M3U8 域名）
-- 支持复制链接、分析视频等操作
-
-### 5. 自动学习配置
-
-- 可配置自动学习开关
-- 可设置更新间隔天数
-- 支持按指定影视名称搜索学习
-- 可配置每站视频数和最大站点数
-- 可设置最小片段数和最大广告占比
-- 一键立即执行自动学习
-- 详细的学习结果统计
-
-### 7. 无广告播放
-
-- 输入视频链接直接无广告播放
-- 支持复制无广告链接
-- 内置 DPlayer 播放器
-
-### 8. 在线播放器页面
-
-访问 `/player?url=<视频链接>` 进入在线播放器页面：
-
-- 独立的播放器页面，支持直接分享
-- 支持输入任意 M3U8 视频链接播放
-- 自动调用解析接口进行去广告处理
-- 支持播放/暂停、音量调节、进度控制
-- 支持截图、全屏播放
-- 响应式设计，适配移动端
-
-### 9. 定时任务自动学习
-
-- 支持宝塔面板 / Cron 定时任务
-- 支持 URL 访问触发（适合虚拟主机）
-- 支持命令行执行
-- 自动判断学习间隔，避免重复执行
-- 执行日志记录，方便排查问题
-- 访问密钥保护，防止恶意调用
-
-### 10. 嗅探设置
-
-后台 → 接口工具 → 嗅探设置，管控超级嗅探模块（`xt/`）走哪条解析通道：
-
-- 支持放置「官解解析」和「官替接口」两个接口
-- 每个接口独立开关：启用 / 禁用
-- 每个接口可配置：接口名称、接口地址、接口类型（redirect/json/text）、URL 字段名
-- 通过「当前通道」单选决定实际走官解还是官替
-- 当前通道失败时自动 fallback 到另一条已启用的通道
-- 官替接口地址留空时自动使用本项目官替接口 `mx.php?action=official_replace/info&url=`
-- 内置测试入口，可直接在页面里输入视频链接验证当前嗅探设置
-- 配置文件：`xt/sniffer_config.php`（由后台自动维护，无需手动编辑）
-- API 端点：`GET/POST /mx.php?action=sniffer/config[/save]`
-
-### 8. 系统更新
-
-- 在线检查更新
-- 一键系统更新
-- 缓存清理功能
-- PHP 缓存自动清理
-
-## Web API 使用
-
-### 接口地址
-
-```
-http://你的域名/mx.php?action=<action>&...
-```
-
-### 接口列表
-
-#### 1. 视频分析接口
-
-**GET** `/mx.php?action=analyze&url=<m3u8地址>`
-
-**请求参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `url` | string | 是 | M3U8 播放列表地址 |
-| `auto_learn` | bool | 否 | 是否自动学习，默认 true |
-
-**响应示例（快速模式）：**
-```json
-{
-  "success": true,
-  "fastMode": true,
-  "hasDomainRules": true,
-  "learn_count": 5,
-  "message": "检测到已有域名规则，使用规则快速去广告",
-  "domain": "v.example.com",
-  "stats": {
-    "totalSegments": 695,
-    "adSegments": 482,
-    "keptSegments": 213,
-    "adPercentage": 68.73
-  }
-}
-```
-
-#### 2. 去广告接口（M3U8输出）
-
-**GET** `/mx.php?action=mxjx&url=<m3u8地址>`
-
-直接返回去广告后的 M3U8 播放列表，可用于播放器直接播放。
-
-#### 3. 去广告信息接口（JSON输出）
-
-**GET** `/mx.php?action=mxjx/info&url=<m3u8地址>`
-
-返回去广告结果的 JSON 格式信息。
-
-#### 4. 规则列表
-
-**GET** `/mx.php?action=rules/list`
-
-#### 5. 获取单条规则
-
-**GET** `/mx.php?action=rules/get&domain=<域名>`
-
-#### 6. 保存规则
-
-**POST** `/mx.php?action=rules/save`
-
-#### 7. 自动生成规则
-
-**GET** `/mx.php?action=rules/generate&url=<视频地址>`
-
-#### 8. 规则学习
-
-**GET** `/mx.php?action=rules/learn&url=<视频地址>`
-
-#### 9. 规则导出
-
-**GET** `/mx.php?action=rules/export[&domain=<域名>][&download=1]`
-
-#### 10. 规则导入
-
-**POST** `/mx.php?action=rules/import`
-
-#### 11. 资源站列表
-
-**GET** `/mx.php?action=sites/list[&include_paused=1]`
-
-#### 12. 获取单个资源站
-
-**GET** `/mx.php?action=sites/get&name=<资源站名称>`
-
-#### 13. 添加资源站
-
-**POST** `/mx.php?action=sites/add`
-
-#### 14. 更新资源站
-
-**POST** `/mx.php?action=sites/update`
-
-#### 15. 删除资源站
-
-**POST** `/mx.php?action=sites/delete`
-
-#### 16. 获取资源站视频列表
-
-**GET** `/mx.php?action=sites/fetch_videos&name=<资源站名称>[&page=1&limit=20]`
-
-#### 17. 获取自动学习配置
-
-**GET** `/mx.php?action=sites/auto_learn/config`
-
-#### 18. 保存自动学习配置
-
-**POST** `/mx.php?action=sites/auto_learn/config/save`
-
-#### 19. 执行自动学习
-
-**POST** `/mx.php?action=sites/auto_learn/run`
-
-### AI 自动学习接口（频繁更新规则专用）
-
-每隔几小时自动从指定资源站（默认如意）获取热门/更新视频，提取 rym3u8 地址进行深度广告分析。
-
-#### 20. AI 自动学习配置
-
-**GET** `/mx.php?action=ai_autolearn/config`
-
-#### 21. 保存 AI 自动学习配置
-
-**POST** `/mx.php?action=ai_autolearn/config/save`
-
-#### 22. AI 自动学习状态
-
-**GET** `/mx.php?action=ai_autolearn/status`
-
-#### 23. 执行 AI 自动学习
-
-**POST** `/mx.php?action=ai_autolearn/run`
-
-#### 24. AI 自动学习日志
-
-**GET** `/mx.php?action=ai_autolearn/logs`
-
-### 定时任务
-
-| 脚本 | 说明 | 推荐频率 |
-|------|------|---------|
-| `cron_autolearn.php` | 原自动学习（按天，全站） | 每天1次 |
-| `cron_ai_autolearn.php` | AI自动学习（按小时，指定站） | 每4小时 |
-
+## 📡 API 接口速查
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查：返回 `{status:"ok", version, ts, uptime}` |
+| `/` | GET | 去广告接口：`?url=<视频 URL>`，输出播放 JSON 或直链 |
+| `/parse` | GET | 统一解析接口：自动判断官解 / 直链 / 嗅探 |
+| `/api/skip` | GET | 去广告 m3u8 统一入口 |
+| `/mxjx` | GET | m3u8 媒体流输出 |
+| `/xt/api.php` | GET/POST | 超级嗅探 XT 旧版接口，兼容老客户端 |
+
+示例：
 ```bash
-# Crontab 配置示例
-0 3 * * * php /path/to/cron_autolearn.php          # 每天3点执行原自动学习
-0 0,4,8,12,16,20 * * * php /path/to/cron_ai_autolearn.php  # 每4小时执行AI自动学习
+# 健康检查
+curl "http://127.0.0.1:8080/?health=1"
+
+# 解析示例
+curl "http://127.0.0.1:8080/parse?url=https://www.iqiyi.com/v_abc.html"
 ```
 
-## 动态规则更新接口（gzgx.php）
-
-访问 `/gz/gzgx.php` 进行动态规则管理：
-
-| 接口 | 说明 |
-|------|------|
-| `?action=info` | 获取规则概览信息 |
-| `?action=get&domain=xxx` | 获取指定域名规则 |
-| `?action=update&domain=xxx` | 更新指定域名规则（POST） |
-| `?action=learn&url=xxx` | 从视频链接学习更新规则 |
-| `?action=export&domain=xxx` | 导出规则 |
-| `?action=import` | 导入规则 |
-| `?action=delete&domain=xxx` | 删除规则 |
-
-## 广告检测规则
-
-### 内置规则（v2.0 权重置信度系统）
-
-所有规则均带权重值，累加达到阈值（默认50）判定为广告：
-
-| 规则名称 | 说明 | 权重 | 默认状态 | 类别 |
-|---------|------|------|---------|------|
-| `short-duration` | 片段时长过短 | 30 | ✅ 启用 | duration |
-| `long-duration` | 片段时长过长 | 30 | ❌ 禁用 | duration |
-| `keyword-match` | 标题或文件名包含广告关键词 | 50 | ✅ 启用 | keyword |
-| `filename-pattern` | 文件名匹配广告命名正则模式 | 60 | ✅ 启用 | pattern |
-| `discontinuity` | 存在 EXT-X-DISCONTINUITY 标记 | 80 | 可配置 | marker |
-| `repetitive-duration` | 重复出现相同时长的短片段 | 55 | 可配置 | pattern |
-| `cue-marker` | CUE-OUT/CUE-IN 广告插播标记 | 95 | ✅ 启用 | marker |
-| `scte35-marker` | SCTE-35 数字广告信令标记 | 95 | ✅ 启用 | marker |
-| `ad-tag-marker` | EXT-X-AD 自定义广告标签 | 90 | ✅ 启用 | marker |
-| `ad-cluster-boundary` | 广告簇边界（DISCONTINUITY + 时长突变） | 70 | ✅ 启用 | cluster |
-| `pre-roll-position` | 前贴片广告位置检测 | 40 | ✅ 启用 | position |
-| `post-roll-position` | 后贴片广告位置检测 | 40 | ✅ 启用 | position |
-| `sequence-jump` | 序列号跳跃检测 | 90 | 可配置 | marker |
-
-### 域名规则
-
-按域名自定义规则，支持：
-
-- **时长规则**：基于片段时长判断广告
-- **DISCONTINUITY 规则**：基于不连续标记判断插播
-- **序列号跳跃规则**：基于序列号跳跃判断广告段
-- **文件名模式**：基于文件名正则匹配
-- **插播模式**：学习并记录片头/片中/片尾插播规律
-- **心理画像**：构建域名广告心理特征档案
-- **置信度评分**：规则整体可信度评分
-
-### 自动学习机制（v2.0 增强）
-
-每次分析视频时自动学习优化规则：
-
-- 统计广告片段时长分布，自动调整时长阈值
-- 根据广告占比动态调整广告判定阈值
-- 提取广告文件名前缀，生成文件名模式
-- 学习插播模式（片头/片中/片尾插播规律）
-- 统计广告类型分布（按位置、按检测方式）
-- 构建心理画像（注意力抓取指数、插播频率、可观看性）
-- 迭代优化置信度评分
-- 累计统计广告标记出现次数
-- 检测到标记时自动启用对应检测
-- 记录学习次数和历史统计数据
-- 最多保留最近 10 次学习历史
-
-## 缓存机制
-
-- M3U8 解析结果缓存 2 分钟
-- 去广告结果缓存 2 分钟
-- 支持 OPcache / APC 缓存
-- 更新时自动清理所有缓存
-
-## 环境要求
-
-- PHP 7.0 或更高版本
-- 启用 cURL 扩展（用于远程 URL 请求）
-- 启用 mbstring 扩展（用于多字节字符串处理）
-- 启用 json 扩展
-- cache/ 目录有写入权限
-
-## 注意事项
-
-1. **广告检测准确率** - 广告检测基于规则匹配，可能存在误判或漏判。建议根据实际使用场景调整规则参数。
-2. **加密流** - 当前版本不处理 DRM 加密的流。
-3. **主播放列表** - 自动追踪 Master Playlist 到实际媒体播放列表。
-4. **网络请求** - 处理远程 URL 时需要网络连接，支持 HTTP 和 HTTPS。
-5. **规则学习** - 自动学习功能会根据分析结果优化规则，建议定期检查规则准确性。
-
-## 许可证
-
-MIT License
-
-## 版本历史
-
-### v5.7.9 (2026-07-22)
-
-- 🔧 优化 jiexi.php 解析接口返回格式
-- 📡 msg 字段返回播放地址 URL（与 url 一致）
-- ⏱️ 新增 time 字段：解析耗时（秒）
-- 👤 新增 KFZ 字段：开发者信息
-- 📋 新增 ZT 字段：状态描述
-
-### v5.7.8 (2026-07-22)
-
-- 🐛 修复推荐采集视频点击不显示播放地址问题
-- 📡 新增 `official_sites/detail` API：通过 vod_id 获取视频详情播放地址
-- 🔍 点击视频卡片时调用详情接口获取真实播放地址（资源站列表接口隐藏了链接）
-- 📋 集数列表支持复制播放地址、学习广告规则、返回视频列表
-
-### v5.7.7 (2026-07-22)
-
-- 🤖 新增 `ai/sniff.php` 公用 API：从任意网页播放器获取播放地址链接（虾米解析）
-- 🔐 支持 AES-256-CBC 签名加密 + ZeroPadding 解密，兼容 CryptoJS
-- 🌐 双 API 节点 fallback（cache.0567890.xyz / cache.hls.one），自动重试
-- 🧠 优化 AI 匹配算法，配置驱动的标题标准化 + 多维度评分重构
-- 📚 新增 `gz/synonym_config.php`：集中管理 400+ 同义词映射（季/部/番/卷/集/画质/语言/版本/地区/符号）
-- ♻️ 重构 `gz/TitleNormalizer.php`：单遍最长匹配正则替换 + md5 缓存，消除链式副作用
-- 🎯 重写 `gz/AiVideoMatcher.php` 评分算法：季集解析委托、噪声排除、LCS 相似度重写、权重再平衡
-- 🔁 跨源一致性：`庆余年第二季 1080P 国语版` / `庆余年第2季1080P` / `庆余年S02 1080P 高清` 标准化结果完全一致
-- 🚫 噪声候选排除：电影解说/预告片/片花/花絮/混剪/MV/OST 等 19 种模式 50 分惩罚
-- 📊 季数不一致惩罚按 diff×8 线性递增，封顶 `season_mismatch`，避免弱惩罚误匹配
-- ✅ 通过 4 个综合功能测试场景（跨源匹配/集数匹配/噪声排除/空候选）
-
-### v5.7.6 (2026-07-19)
-
-- 🐛 修复 jiexi.php 解析返回的 clean.php URL 路径错误导致不能播放
-- 🔧 `saveCleanM3u8()` 改用 `__DIR__` 推断 clean.php 的 URL 路径
-- 🐛 旧逻辑用 `dirname(SCRIPT_NAME)` 推断路径，jiexi.php 在根目录时生成 `/clean.php`（404）
-- ✅ 修复后生成正确的 `/xt/clean.php?id=xxx`，无论从根目录还是 xt/ 调用都正确
-
-### v5.7.5 (2026-07-19)
-
-- 🚀 修复 jiexi.php 不能同时调用官解和官替的问题
-- ⚡ 新增 `getVideoLinkByConcurrentRace()`：curl_multi 并发调用官解+官替，最快成功的立即返回
-- 🧵 多线程高并发：合并所有已启用接口到同一并发池，真正同时请求
-- 🎯 自动识别通道：通过 `_channel` 标记区分 official/replace，后续按通道分流处理
-- 🔧 新增配置项 `performance.concurrent_race_enabled`（默认 `true`）
-- 💡 并发模式下强制启用官替，即使后台开关关闭也会自动用本地官替接口
-- ✅ 向后兼容：关闭开关即回到旧的串行 fallback 逻辑
-
-### v5.7.4 (2026-07-19)
-
-- 🎬 优化 clean.php 播放器页面，移除多余 UI 元素
-- 🧹 移除顶部标题栏（"M3U8 无广告播放器" 标题和浏览器标签）
-- 🧹 移除底部控制按钮（播放、暂停、复制链接按钮）
-- 🧹 移除底部信息栏（缓存ID、去广告提示）
-- 📺 视频全屏显示，仅保留浏览器原生控制条
-- ✅ 不影响 TVbox 等软件播放器的 m3u8 内容返回
-
-### v5.7.3 (2026-07-19)
-
-- 🔧 优化更新备份功能，备份文件名增加版本号：`backup_v{version}_{timestamp}.zip`
-- 📦 备份文件内添加 `.backup_info.json` 版本信息文件
-- 📋 getBackupList() 返回版本号、commit 等详细信息
-- ⚡ 兼容旧格式备份文件
-
-### v5.7.2 (2026-07-19)
-
-- 🐛 修复 xt 文件夹中 clean.php 不能播放的问题
-- 🔧 重写浏览器检测逻辑，避免 HLS.js 等播放器请求被误判为浏览器
-- ⚡ 优化判断顺序：优先检查 Accept 头，再检查 User-Agent
-- 🎯 新增 `player=1` 参数显式控制播放器页面显示
-- 📦 排除 Range 请求和播放器 UA 的误判
-
-### v5.7.1 (2026-07-18)
-
-- 🐛 修复所有用到代理的地方代理无法使用的问题
-- 🔧 为所有使用代理的类添加 setProxyManager() 方法，支持依赖注入
-- ⚡ 默认首次请求就使用代理（之前只在重试时使用）
-- 📊 统一 DbProxyManager 排序逻辑，按响应时间从快到慢优先
-- 🔗 mx.php 中统一注入代理管理器，确保配置一致
-
-### v5.7.0 (2026-07-18)
-
-- 🐛 修复顶部统一接口不显示接口URL：全局 select { width:100% } 导致下拉框占满整行，添加 width:auto 覆盖
-
-### v5.6.9 (2026-07-18)
-
-- 🐛 修复顶部统一接口不显示接口信息：文字颜色 + ellipsis + 路径计算
-
-### v5.6.8 (2026-07-18)
-
-- 🐛 修复顶部接口URL不显示：路径计算兼容任意入口文件名
-- 🗑️ 移除顶部右侧管理后台卡片，布局更简洁
-
-### v5.6.7 (2026-07-18)
-
-- 🐛 修复顶部统一接口区域右侧内容缺失
-- 恢复左右双栏布局：左侧 V2 统一接口 + 右侧管理后台预览
-- 公告移到底部占满宽度，修复 URL 溢出竖排问题
-
-### v5.6.6 (2026-07-18)
-
-- 🎨 数据概览页面 UI 优化：统计卡片 3 列左右布局，快捷操作 3 列
-- 📱 完整响应式适配：桌面/平板/手机各尺寸优化
-
-### v5.6.5 (2026-07-18)
-
-- 🚀 代理列表按速度排序：响应时间越快越靠前
-- 🚫 不显示失败的代理：后台和API只返回 active 状态
-- ⚡ getProxy() 优化：优先选择最快的代理
-
-### v5.6.4 (2026-07-18)
-
-- 🐛 修复代理池不能正常使用的问题（8个根因）
-- 修复 addProxy 无去重、批量添加性能、代理池未自动启用
-- 修复测试URL不稳定：httpbin.org → 百度
-- 修复 checkAllProxies 串行 → 并发验证（速度提升10倍）
-- 修复 proxy.scdn.io 解析：兼容5种返回格式
-- 更新代理源：新增 Geonode、monosans、clarketm 等
-
-### v5.6.3 (2026-07-18)
-
-- 🔖 版本号升级到 v5.6.3（xt 模块 5.6.3）
-- 🚀 代理池并发获取：ProxyFetcher 使用 curl_multi 并发请求所有代理源（proxy.scdn.io 等12个源）
-- ⚡ 并发验证代理：验证速度提升 10 倍（10个一批并发）
-- 💾 代理缓存机制：2分钟本地缓存，避免频繁请求 proxy.scdn.io
-- 🐛 修复官替接口 URL 为空时默认使用本地官替接口
-- 🐛 修复解析成功但不能播放的问题：优化官替通道 m3u8 处理逻辑
-- 🔥 多接口并发竞速：curl_multi 并发请求多个官解接口，最快成功的立即返回
-- 🧠 AI 学习自动排序：记录成功率/平均耗时，动态调整调用优先级
-- 🔄 失败自动切换：一个接口被禁/失败，自动切换到下一个
-
-### v5.6.0 (2026-07-18)
-
-- 🔖 版本号升级到 v5.6.0（xt 模块 5.2.0）
-- 🧠 核心逻辑补充：明确官解走虾米接口，官替走 AI 去广告/去插播/去水印
-- ✨ 重构 `parseVideo()` 为两个独立函数：
-  - `parseVideoByOfficialChannel()` - 官解通道：虾米接口 + xt 去广告
-  - `parseVideoByReplaceChannel()` - 官替通道：资源站匹配 + AI 去广告/去插播/去水印
-- ✨ AdFilter 新增插播检测（>60s 超长片段）和水印检测（URL 含 watermark/logo/burn/overlay）
-- ✨ AI 提示词增强：从只识别广告扩展为识别广告/插播/水印三类异常
-- ✨ `xt/config.php` 新增 `insertion_check_enabled` / `watermark_check_enabled` / `watermark_keywords` 配置项
-
-### v5.5.9 (2026-07-18)
-
-- 🔖 版本号升级到 v5.5.9
-- 🐛 官替通道返回直连播放地址（不生成 clean.php 代理）
-- 🐛 修复 `getVideoLinkFromApiEntry()` 字段优先级：`ad_skip_url` → `m3u8_url`
-
-### v5.5.8 (2026-07-18)
-
-- 🔖 版本号升级到 v5.5.8
-- 🐛 修复走官替接口时播放地址不可播放的问题
-- 🐛 `getVideoLinkBySnifferMode()` 返回值改为结构化数组，标识实际命中通道
-
-### v5.5.7 (2026-07-18)
-
-- 🔖 版本号升级到 v5.5.7
-- 🔍 后台新增「嗅探设置」页面：管控超级嗅探模块走官解解析还是官替接口
-- ✨ 支持放置官解/官替两个接口，各配独立开关 + 接口地址/类型/字段名
-- ✨ 通过「当前通道」单选决定走哪条通道，当前通道失败自动 fallback 到另一通道
-- ✨ 新增配置文件 `xt/sniffer_config.php`（后台自动维护）
-- ✨ 新增 API 端点 `sniffer/config` 和 `sniffer/config/save`
-- 🐛 `xt/server.php` 抽取通用接口调用函数，向后兼容旧 `official_apis` 配置
-
-### v5.5.5 (2026-07-17)
-
-- 🔖 版本号升级到 v5.5.5
-- ✨ 浏览器适配功能：`xt/clean.php` 支持 Edge、Chrome、Firefox、Safari 等主流浏览器直接访问
-- ✨ 新增 `jiexi.php` — TVBox / 影视App专用解析接口
-- ✨ 超级嗅探模块 `xt/`：官解接口对接、规则引擎 + AI 大模型双重广告识别
-- 🐛 修复去广告 m3u8 无法播放问题（ts 相对路径转绝对路径）
-
-### v2.29.1 (2026-07-17)
-
-- ✨ 新增浏览器适配功能：`xt/clean.php` 支持 Edge、Chrome、Firefox、Safari 等主流浏览器直接访问
-- ✨ 浏览器访问时自动显示 HTML 播放器页面，支持在线播放 m3u8 视频
-- ✨ 保留原有 m3u8 直链模式，播放器调用不受影响
-- ✨ 新增浏览器检测和标识显示功能
-
-### v2.29.0 (2026-07-16)
-
-- ✨ 新增 `jiexi.php` — TVBox / 影视App专用解析接口
-  - 支持 TVBox、影视仓、喵影视、影迷大院等主流影视App
-  - 兼容 8 种参数名：url/wd/v/video/t/u/play/src
-  - 支持 5 种返回格式：JSON / 影视CMS标准(code=1) / 302跳转 / XML / JSONP
-  - CORS 跨域支持，开箱即用
-- ✨ 新增超级嗅探模块 `xt/`（v5.1.4）
-  - 官解接口对接，支持 redirect/json/text 三种类型
-  - 规则引擎 + AI 大模型双重广告识别
-  - 解析结果缓存，重复请求毫秒级响应
-  - m3u8 相对路径自动转绝对路径，直接播放
-  - 多级 m3u8 最高码率优选
-  - 缓存自动清理（过期 + 文件数上限双重保护）
-  - clean.php 支持 ETag / 304 协商缓存 + CORS 预检
-- 🐛 修复去广告 m3u8 无法播放问题（ts 相对路径转绝对路径）
-
-### v2.28.2 (2026-07-07)
-
-- 🐛 修复内存耗尽问题：规则文件过大导致 `Allowed memory size exhausted`
-- ✅ 新增大字段过滤机制，规则文件缩小 99.8%（2.6MB → 4KB）
-- ✅ 规则懒加载优化，初始内存占用减少 95%+
-- ✅ 内存限制提升至 512M，增加异常降级处理
-- ✅ 19 项接口测试全通过，3 轮 10 并发压力测试全通过
-
-### v2.28.1 (2026-07-07)
-
-- 🚀 修复 moxi 接口 HTTP 状态码不一致问题
-- ✅ 优化文件缓存并发安全性（临时文件 + rename 原子写入）
-- ✅ 优化缓存目录创建并发安全
-- ✅ 优化缓存读取容错
-- ✅ 20 项接口测试全通过，并发压力测试全通过
-
-### v2.28.0 (2026-07-07)
-
-- 🚀 新增数据库自动迁移机制
-- ✅ 自动检测并创建缺失的 12 张核心表
-- ✅ 自动检测并添加缺失的列，支持 MySQL 和 SQLite
-- ✅ 修复 schema_mysql.sql 缺失字段
-- ✅ 修复 schema_sqlite.sql 缺失 4 张表
-- ✅ 修复 splitSqlStatements() 括号深度追踪 bug
-- ✅ 70 个数据库层单元测试通过率 98.6%
-
-### v2.27.0 (2026-07-07)
-
-- 🔧 修复 analyze 接口报错：durationDistribution 遍历逻辑错误
-- ✅ 后台添加多个接口测试按钮
-  - 测试解析（moxi）
-  - 测试去广告（mxjx/info）
-  - 测试分析（analyze）
-  - 测试官替（official_replace/info）
-- ✅ 庆余年第1季 M3U8 测试通过（移除40个广告片段）
-
-### v2.26.0 (2026-07-07)
-
-- ✅ 补充缺失的API接口
-- ✅ 新增系统信息接口（info、version）
-- ✅ 新增官替接口（official/list、official/platforms）
-- ✅ 新增代理列表接口（proxies/list）
-- 🔧 修复版本读取逻辑，兼容数组格式
-- ✅ 所有API接口测试通过（11个数据库类测试 + 11个API接口测试）
-
-### v2.25.0 (2026-07-07)
-
-- ✅ 全面数据库化改造
-- ✅ 新增分析缓存、广告特征码、官替缓存数据库表
-- ✅ 在线播放从数据库加载广告规则
-- ✅ 官替多线程抓取和搜索
-- 🔧 修复Database PDO参数绑定错误
-
-### v1.9.0 (2026-06-29)
-
-- ✨ 新增资源站管理系统（50+内置资源站）
-- ✨ 新增自动学习更新规则功能
-- ✨ 新增资源站采集接口支持（MacCMS）
-- ✨ 资源站管理前端页面
-- ✨ 自动学习配置面板
-- ✨ 资源站视频列表在线获取
-- ✨ 视频链接一键复制和分析
-- ⚡ 优化规则学习流程
-
-### v1.8.0 (2026-06-29)
-
-- ✨ 新增自动学习机制，每次分析自动优化规则
-- ✨ 新增规则导入导出功能（JSON格式）
-- ✨ 新增动态规则更新接口 gzgx.php
-- ✨ 新增域名规则学习次数统计
-- ✨ 视频分析页面新增学习状态显示
-- ✨ 规则管理页面新增导入导出按钮
-- ⚡ 优化快速模式，已有规则时直接去广告
-- ⚡ 优化广告规则匹配算法
-
-### v1.7.1 (2026-06-28)
-
-- 🔧 修复播放地址404问题
-- 🔧 优化接口地址展示，支持一键复制
-- 🎨 改进后台界面用户体验
-
-### v1.7.0 (2026-06-28)
-
-- ⚡ 全面优化解析和播放速度
-- 📦 新增缓存管理（CacheManager）
-- 🔧 优化 CURL 请求参数
-- 🚀 优化广告规则匹配算法（O(N²)→O(N)）
-
-### v1.6.0 (2026-06-27)
-
-- 🔧 修复播放黑屏问题
-- ✨ 完善接口功能
-- 📊 新增详细统计信息
-
-### v1.5.0 (2026-06-27)
-
-- ✨ 域名规则管理功能
-- ✨ 后台管理界面
-- ✨ 内置播放器
-
-### v1.1.0 (2026-06-27)
-
-- 移植到 PHP 版本
-- 完整的 Web API 支持
-
-### v1.0.0 (2026-06-27)
-
-- 初始版本发布（Node.js）
-- 实现 M3U8 解析器
-- 实现多规则广告检测引擎
-- 实现智能广告聚类过滤
-
-## 许可证
-
-本项目采用 [MIT License](LICENSE) 开源许可证。
-
-- [English Version](LICENSE)（法律有效版本）
-- [中文翻译版](LICENSE.zh-CN.md)（仅供参考）
-
-你可以自由地使用、复制、修改、合并、发布、分发、再许可和/或出售本软件的副本，但需在所有副本或重要部分中包含上述版权声明和本许可声明。
+---
+
+## 🏗️ 架构总览
+
+```
+            ┌────────────────────────────────────────────────┐
+ HTTP/CLI   │ index.php / xt/api.php                         │
+ 入口       │  ✅ IntegrityGuard::boot() 第一行启动           │
+            │  ✅ sq.php 自动生成 + 双校验                    │
+            └───────────────────────┬────────────────────────┘
+                                    │
+           ┌────────────────────────▼───────────────────────────┐
+           │                    业务路由层                        │
+           │   /parse  /  /api/skip  /  /mxjx  /  /health        │
+           └─────────┬─────────────────────────────┬────────────┘
+                     │                             │
+          ┌──────────▼──────────┐    ┌────────────▼────────────┐
+          │  CurlMultiTaskRunner │    │  ProcessTaskRunner      │
+          │  并发 10 / 真并行    │    │  并发 8 / 防僵尸进程    │
+          │  curl_share 复用连接  │    │  SIGTERM→SIGKILL 分级   │
+          │  L0 进程内缓存 256   │    │  PID 文件隔离 无竞争     │
+          └──────────┬──────────┘    └────────────┬────────────┘
+                     │                             │
+          ┌──────────▼─────────────────────────────▼────────────┐
+          │              CacheManager 三级缓存                    │
+          │    L0 (µs级)  →  L1 APCu (0.1ms)  →  L2 文件 (1ms)  │
+          │    同请求静态     共享内存跨请求         持久化磁盘    │
+          └─────────────────────────────────────────────────────┘
+                     │
+          ┌──────────▼─────────────────────────────────────────┐
+          │  CryptoUtil · AES-256-GCM + HKDF + SHA3-256 签名    │
+          │  IntegrityGuard · 启动期 / 运行时 / shutdown 三层   │
+          │  jiami_core.php · 六重混淆核心竞争力保护             │
+          └─────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔒 防篡改与安全性详解
+
+### IntegrityGuard 三层守卫
+
+| 层级 | 时机 | 动作 |
+|------|------|------|
+| 第 1 层 | 入口 `boot()` 启动期 | 8 大核心文件强校验 HMAC-SHA256（改 1 字节即刻失败）；PROTECTED_DIRS（`src` / `db` / `xt` / `gz` / `multi_thread` / `pt` / `proxy` / `kz`）抽样 8~20 个文件 CRC32+XXH128；Merkle-ish 全局 HMAC 绑定整个受保护目录树。 |
+| 第 2 层 | `register_shutdown_function` 退出时 | 二次随机抽检 2~5 个核心文件，比对启动期 hash 确保运行时没有被 `eval override / auto_prepend / OPcache 注入` 篡改。 |
+| 第 3 层 | 运行时全程 | 检测调试扩展（`xhprof`/`tideways`/`uopz`/`runkit`）和动态篡改函数（`runkit_function_redefine` 等）；严格模式下立即 exit。 |
+
+**日志位置**：项目根目录 `integrity_alerts.log`，格式：`[时间] 原因 | ip | ua | referer`
+
+### AES-256-GCM 认证加密链
+
+```
+用户明文
+   │
+   ▼
+HKDF(salt(16B), ROOT_PEPPER, context)
+   ├──▶ enc_key(32B)  AES-256-GCM 数据加密
+   └──▶ auth_key(32B) HMAC-SHA256(tag+cipher) 防侧信道
+   │
+   ▼
+AES-256-GCM 加密
+   │   ┌─ nonce(12B random)    ─ 每次都不一样
+   │   ├─ aad(bind ctx+salt+nonce) 防止跨上下文替换
+   │   └─ tag(16B)           ─ 认证标签
+   ▼
+blob = MAGIC_V2(5B) + salt(16B) + nonce(12B) + tag(16B) + tagMac(32B) + cipher(N)
+   │
+   ▼
+Base64URL 安全编码 (URL/form/cookie 无需二次转义)
+```
+
+### 授权码安全体系
+
+```
+授权码结构：<GCM(190~240B)> . <SHA3-256-HMAC(64hex)>
+
+验证流程：
+  ① explode('.') 拆分两部分
+  ② verifySignature(domain + '|' + timestamp) 通过
+  ③ decryptV2(GCM token, 'authcode') 得到 JSON: {d, t, r}
+  ④ 同时支持旧版 CBC 授权码（verifyLegacyAuthCode 回退）
+```
+
+---
+
+## ⚡ 性能优化明细（秒级响应路径）
+
+| 组件 | v5.13.8 | v5.14.0 | 提升 |
+|------|---------|---------|------|
+| CacheManager | 仅文件缓存（~1ms/次） | L0 静态(1µs)+L1 APCu(0.1ms)+L2 文件 三级回填 | **100×~1000×** |
+| CurlMultiTaskRunner 并发 | 5 | **10** | ×2 |
+| curl_multi_select 轮询间隔 | 500ms | **50ms** | ×10 灵敏 |
+| 连接超时 CURLOPT_CONNECTTIMEOUT | 15s | **5s** | ×3 快速失败 |
+| CURLOPT_TIMEOUT | 60s | **30s** | 更短尾延迟 |
+| ProcessTaskRunner 并发 | 2 | **8** | ×4 |
+| ProcessTaskRunner 超时 | 30s (N>60s) | **25s (严格 < PHP-FPM 30s)** | 不再 502 |
+| AuthValidator 远程校验总耗时 | 20s (10+10) | **≤ 6s (3+3)** | ≥ ×3 |
+| IntegrityGuard boot 首次 | - | **< 10ms** | 无感 |
+
+---
+
+## 📁 核心变更文件清单 (v5.13.8 → v5.14.0)
+
+```
+┌ index.php                       # 入口：IntegrityGuard boot + 自动生成开发授权
+├ xt/api.php                      # XT 入口：IntegrityGuard boot
+├ sq.php                          # 授权文件：首次运行自动生成（GCM+签名）
+├ version.php                     # 版本号 v5.14.0 / code 51400 + changelog
+├ src/
+│  ├ CacheManager.php             # ★★★ 三级缓存重构 (L0/L1 APCu/L2)
+│  ├ CryptoUtil.php               # ★★★ AES-256-GCM+HKDF+SHA3签名
+│  ├ IntegrityGuard.php           # ★★★ 全新：三层防篡改守卫
+│  └ AuthValidator.php            # ★ 远端 fail-open + 本地开发环境判定
+├ multi_thread/
+│  ├ CurlMultiTaskRunner.php      # ★★ 并发/超时/共享/缓存全面优化
+│  └ ProcessTaskRunner.php        # ★★ 僵尸进程修复 + 分级查杀
+└ xt/jiami_core.php               # ★★ 六重混淆核心代码保护
+```
+
+★★★ = 架构级重构   ★★ = 重大功能升级   ★ = 关键修复 / 增强
+
+---
+
+## ✅ 冒烟测试报告（PHP 8.5.10-dev · 本仓库内执行）
+
+```
+  1. CacheManager set/get 闭环                          ✅ PASS
+  2. CacheManager setMulti/getMulti 批量                ✅ PASS
+  3. GCM encrypt/decrypt 闭环 x2                        ✅ PASS
+  4. GCM nonce 随机(同明文不同密文)                      ✅ PASS
+  5. GCM 篡改 1 字节被检测                               ✅ PASS
+  6. GCM 上下文参数隔离                                  ✅ PASS
+  7. 旧版 v1 CBC encrypt/decrypt 兼容                   ✅ PASS
+  8. 新版 SHA3-256 签名验证                             ✅ PASS
+  9. 旧版 SHA256 签名 3key × 3flags 全兼容              ✅ PASS
+ 10. IntegrityGuard boot(false) 通过                    ✅ PASS
+ 11. IntegrityGuard boot 耗时 < 10ms                    ✅ PASS
+ 12. TaskRunner 3模式齐全                               ✅ PASS
+ 13. AuthValidator validateAll 通过                     ✅ PASS
+ 14. sq.php PHP Lint 通过                               ✅ PASS
+ 15. 授权码 GCM+签名双验证 domain=[my.app.internal]     ✅ PASS
+ 16. 版本 v5.14.0 (code 51400)                          ✅ PASS
+ 17. CurlMultiTaskRunner 实例化 getMode=curl_multi      ✅ PASS
+ 18. CurlMultiTaskRunner isAvailable() 可用             ✅ PASS
+ 19. ProcessTaskRunner 实例化 getMode=process           ✅ PASS
+ 20. ProcessTaskRunner isAvailable() 返回 bool          ✅ PASS
+ 21. 10 个关键文件 PHP Lint 全部通过                    ✅ PASS
+ 22. HTTP 接口：/health + /parse + /xt/api.php          ✅ PASS
+─────────────────────────────────────────────────────────────
+  📊 总计: 22 PASS / 0 FAIL   🎉 全部通过，代码可运行无报错
+```
+
+---
+
+## 📦 部署建议
+
+| 环境 | IntegrityGuard `strict` 参数 | 推荐 |
+|------|-------------------------------|------|
+| 本地开发 (localhost / 内网) | `false` | 自动生成授权，远端 fail-open |
+| 测试 / 预发布 | `false` + `integrity_alerts.log` 监控 | 观察告警不阻断 |
+| **正式生产** | **`true`** | 篡改即 exit；远端严格校验；公网域名不自动生成授权 |
+
+三层超时嵌套（严格避免 502）：
+```
+ProcessTaskRunner 单任务 25s
+      <  PHP-FPM request_terminate_timeout 30s
+            <  Nginx fastcgi_read_timeout 60s
+```
+
+---
+
+## 📄 License & 更新记录
+
+- 版本号：**v5.14.0**（version_code `51400`）
+- 分支：`main`
+- 构建 ID：`20260816-v5-14-0-integrity-guard-perf-boost-concurrency`
+- 详细更新日志：见 [CHANGELOG.md](./CHANGELOG.md)

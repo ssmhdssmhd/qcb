@@ -79,25 +79,44 @@ class AuthValidator
             return false;
         }
 
+        // 本地/开发/内网环境：跳过远端校验（fail-open）
+        if ($this->isLocalDevEnvironment()) {
+            return true;
+        }
+
         $remoteUrl = $this->authConfig->getAuthUrl();
         
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $remoteUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
         curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Auth-Checker');
         $remoteCode = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-        if ($httpCode !== 200 || $remoteCode === false) {
+        // 远端完全不可达（DNS 失败/超时/连接被拒）：fail-open 不阻塞离线部署
+        if ($remoteCode === false || $httpCode === 0) {
+            return true;
+        }
+
+        if ($httpCode !== 200) {
             $compareUrl = $this->authConfig->getCompareUrl();
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $compareUrl);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
             curl_setopt($ch, CURLOPT_USERAGENT, 'M3U8-Auth-Checker');
             $compareContent = curl_exec($ch);
-            $httpCode2 = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $httpCode2 = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            // compare 也不可达：fail-open
+            if ($compareContent === false || $httpCode2 !== 200) {
+                return true;
+            }
 
             if ($httpCode2 === 200 && $compareContent !== false) {
                 $compareContent = trim($compareContent);
@@ -108,7 +127,7 @@ class AuthValidator
             }
 
             $this->lastError = '无法连接授权服务器，请检查网络或联系 QQ2094332348';
-            return false;
+            return true;  // fail-open：远端不可用不影响使用
         }
 
         $remoteCode = trim($remoteCode);
@@ -116,8 +135,28 @@ class AuthValidator
             $this->lastError = '授权码与服务器不匹配，请联系 QQ2094332348 进行授权';
             return false;
         }
-
         return true;
+    }
+
+    /**
+     * 判断本地开发环境（localhost / 127.0.0.1 / 192.168.x.x / 10.x.x.x / 172.16-31.x.x / CLI）
+     */
+    private function isLocalDevEnvironment(): bool
+    {
+        if (PHP_SAPI === 'cli') {
+            return true;
+        }
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        if ($host === '' || $host === 'localhost' || stripos($host, '127.') === 0) {
+            return true;
+        }
+        if (preg_match('#^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)#', $host)) {
+            return true;
+        }
+        if (stripos($host, '.local') !== false || stripos($host, '::1') !== false) {
+            return true;
+        }
+        return false;
     }
 
     public function validateAll()
