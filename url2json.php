@@ -178,7 +178,12 @@ if (!filter_var($videoUrl, FILTER_VALIDATE_URL)) {
     u2j_outputError('链接格式不正确，必须是以 http:// 或 https:// 开头的完整 URL', $format, $callback, ['video_url' => $videoUrl]);
 }
 
-require_once __DIR__ . '/xt/server.php';
+// v5.13.10-HOTFIX3：双保险加载 xt/server.php（不管 mx.php / jiexi.php / 其他入口是否已加载）
+//   1. defined('XT_SERVER_PHP_V1')：xt/server.php 自己的 guard
+//   2. function_exists('parseVideo')：即使 guard 因为 OPcache 未生效，parseVideo 已存在也跳过
+if (!defined('XT_SERVER_PHP_V1') && !function_exists('parseVideo')) {
+    require_once __DIR__ . '/xt/server.php';
+}
 
 $result = parseVideo($videoUrl);
 

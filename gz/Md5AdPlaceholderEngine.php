@@ -1,4 +1,8 @@
 <?php
+// ===== v5.13.10-HOTFIX3：三重防重声明 =====
+if (defined('GZ_MD5ADPLACEHOLDERENGINE_V1')) return;
+define('GZ_MD5ADPLACEHOLDERENGINE_V1', 1);
+if (class_exists('Md5AdPlaceholderEngine', false)) return;
 /**
  * v5.11 新增：AI + MD5 非正片片段检测 + 静音黑屏占位替换引擎
  *

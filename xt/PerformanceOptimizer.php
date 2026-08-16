@@ -1,4 +1,8 @@
 <?php
+// ===== v5.13.10-HOTFIX3：三重防重声明（与 xt/server.php / jiami_core.php 函数重复 guard 配套）=====
+if (defined('XT_PERFORMANCE_OPTIMIZER_PHP_V1')) return;
+define('XT_PERFORMANCE_OPTIMIZER_PHP_V1', 1);
+if (class_exists('PerformanceOptimizer', false)) return;
 /**
  * 性能优化器 - 多接口并发 + AI 学习自动排序
  *

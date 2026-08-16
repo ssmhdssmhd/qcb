@@ -1,4 +1,16 @@
 <?php
+// ==========================================================================
+// v5.13.10-HOTFIX3 - SUPER GUARD（必须放在 <?php 之后第 1 行！否则 PHP 编译期注册同名函数 Fatal）
+//   PHP 编译器行为：顶层 function/class 声明（不在 if/namespace 里）会在「require 被处理的编译阶段」
+//   直接注册到符号表，后面就算运行时立即 return 也救不了 → 直接 Fatal Cannot redeclare。
+//   解决方案：把整个后续代码全部「包进一个条件 if」的范围内，这样所有声明变成「条件声明」，
+//   PHP 编译器不会立即注册，要等运行时走到这个 if 并判定为 true 时才注册。
+//   因此：if (defined('XT_SERVER_PHP_V1_SUPERGUARD')) { /* 空 */ return; } else { define(...); ...整文件... }
+// ==========================================================================
+if (defined('XT_SERVER_PHP_V1_SUPERGUARD')) { return; }
+define('XT_SERVER_PHP_V1_SUPERGUARD', 1);
+{ // <== 整个文件的后续都在这对花括号内，变成一个大条件块，所有 function/class 都是「条件声明」
+
 /**
  * 超级嗅探 - 服务端核心
  *
@@ -15,26 +27,32 @@
  * 本文件提供 parseVideo() 核心函数，由 api.php 调用并控制输出格式
  */
 
+// （移除了重复 guard，因为 superguard 外层已挡）
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/AdFilter.php';
 require_once __DIR__ . '/PerformanceOptimizer.php';
 require_once __DIR__ . '/../gz/Md5AdPlaceholderEngine.php';
 
-// ====== jiami 分支：核心解析逻辑（findUrlInArray/callOfficialReplaceDirect/...）从加密 jiami_core.php 载入
+// ====== jiami 分支：核心解析逻辑（findUrlInArray/callOfficialReplaceDirect/parseVideo/buildResult/...）从加密 jiami_core.php 载入
 //        若文件损坏或被篡改，HMAC 签名校验直接抛 RuntimeException 阻断调用。
 //        修改业务逻辑 → main 分支改 xt/server.php / PerformanceOptimizer.php 对应明文函数，
 //        再通过构建脚本重新生成 jiami_core.php 切到本分支提交。
+//        v5.13.10-HOTFIX3：防 jiami_core 重复加载 → 函数重复声明（parseVideo/buildResult/extractVideoUrl 等）
 $_jiami_core_file = __DIR__ . '/jiami_core.php';
 if (!file_exists($_jiami_core_file)) {
     throw new \RuntimeException(
         '[jiami] 缺少 xt/jiami_core.php（加密核心文件）。请确保在 jiami 分支部署完整代码，或切换到 main 分支明文版。'
     );
 }
-$_jiami_meta = require_once $_jiami_core_file;
-if (!is_array($_jiami_meta) || !isset($_jiami_meta['core_version'])) {
-    throw new \RuntimeException('[jiami] xt/jiami_core.php 加载失败：格式不正确。请重新从 jiami 分支获取该文件。');
+if (!defined('XT_JIAMI_CORE_PHP_V1') && !function_exists('parseVideo')) {
+    define('XT_JIAMI_CORE_PHP_V1', 1);
+    $_jiami_meta = require_once $_jiami_core_file;
+    if (!is_array($_jiami_meta) || !isset($_jiami_meta['core_version'])) {
+        throw new \RuntimeException('[jiami] xt/jiami_core.php 加载失败：格式不正确。请重新从 jiami 分支获取该文件。');
+    }
+    unset($_jiami_meta);
 }
-unset($_jiami_core_file, $_jiami_meta);
+unset($_jiami_core_file);
 
 // 合并后台「嗅探设置」覆盖配置（sniffer_config.php 由后台写入）
 $snifferConfigFile = __DIR__ . '/sniffer_config.php';
@@ -48,6 +66,9 @@ if (file_exists($snifferConfigFile)) {
         }
     }
 }
+
+// （v5.13.10-HOTFIX3 移除了旧的函数 exists 检查：第 12 行的 SUPER GUARD 大括号已把所有函数/类变成「条件声明」
+//  二次 require 时运行时第 10 行就 return 了，编译器根本不会进入大括号去注册函数 → 100% 不会 Fatal）
 
 /**
  * 核心解析函数
@@ -65,7 +86,7 @@ if (file_exists($snifferConfigFile)) {
  * @param string $videoUrl 视频页面 URL
  * @return array 解析结果
  */
-function parseVideo(string $videoUrl): array
+ if (!function_exists('parseVideo')) { function parseVideo(string $videoUrl): array
 {
     global $config;
 
@@ -362,7 +383,7 @@ function parseVideo(string $videoUrl): array
     // ============ 官解通道：虾米接口 + xt 去广告 ============
     // 流程：调用虾米接口 → 下载 m3u8 → 规则引擎 + AI 去广告 → 输出可播放链接
     return parseVideoByOfficialChannel($videoUrl, $videoLink, $cacheKey, $startTime);
-}
+} } 
 
 /**
  * v5.12 新增：本地官替快速通道 V2（不走 HTTP，避免回环丢 step_trace）
@@ -420,7 +441,7 @@ if (!function_exists('callOfficialReplaceDirectV2')) {
  * @param float  $startTime 解析起始时间
  * @return array
  */
-function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string $cacheKey, float $startTime): array
+ if (!function_exists('parseVideoByOfficialChannel')) { function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string $cacheKey, float $startTime): array
 {
     global $config;
 
@@ -464,7 +485,7 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
     }
 
     return buildResult(200, '解析成功', $playUrl, $playUrl, $startTime);
-}
+} } 
 
 /**
  * 官替通道处理：从资源站匹配 → AI 去广告/去插播/去水印 → 输出最终播放链接
@@ -481,7 +502,7 @@ function parseVideoByOfficialChannel(string $videoUrl, string $videoLink, string
  * @param float  $startTime 解析起始时间
  * @return array
  */
-function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string $cacheKey, float $startTime): array
+ if (!function_exists('parseVideoByReplaceChannel')) { function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string $cacheKey, float $startTime): array
 {
     global $config;
 
@@ -576,13 +597,13 @@ function parseVideoByReplaceChannel(string $videoUrl, string $videoLink, string 
 
     setCache($cacheKey, ['url' => $finalUrl], $config);
     return buildResult(200, '解析成功', $finalUrl, $finalUrl, $startTime);
-}
+} } 
 
 /**
  * 构建统一结果数组
  * v5.12 新增：支持 $extras 透传（step_trace / debug_info 等）
  */
-function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime, bool $fromCache = false, array $extras = []): array
+ if (!function_exists('buildResult')) { function buildResult(int $code, string $zt, string $msg, ?string $url, float $startTime, bool $fromCache = false, array $extras = []): array
 {
     global $config;
     $elapsed = round(microtime(true) - $startTime, 3);
@@ -600,7 +621,7 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
         if (!array_key_exists($k, $base)) $base[$k] = $v;
     }
     return $base;
-}
+} } 
 
 /**
  * v5.11 新增：AI + MD5 非正片占位二次处理
@@ -609,7 +630,7 @@ function buildResult(int $code, string $zt, string $msg, ?string $url, float $st
  *  - 生成保留全部段数 + 占位替换广告段的 m3u8（不会导致进度条中断、播放器断流）。
  * 返回字符串 m3u8 content。如果引擎不可用/异常，返回 fallbackContent。
  */
-function runMd5PlaceholderPass(string $fallbackContent, AdFilter $filter, string $baseUrl, array $cfg, array $context = []): string
+ if (!function_exists('runMd5PlaceholderPass')) { function runMd5PlaceholderPass(string $fallbackContent, AdFilter $filter, string $baseUrl, array $cfg, array $context = []): string
 {
     try {
         $snap = $filter->getSnapshot();
@@ -670,7 +691,7 @@ function runMd5PlaceholderPass(string $fallbackContent, AdFilter $filter, string
                 'i' => $i,
                 'r' => 'adfilter_' . ($snap['segments'][$i]['ad_reason'] ?? 'rules')
             ]);
-            $segsFinal[$i]['uri'] = "{$scheme}://{$host}{$path}/mx.php?{$q}";
+            $segsFinal[$i]['uri'] = "{$scheme}://{$host}{$path} } /mx.php?{$q}";
             $extraPlaceholder++;
         }
 
@@ -729,7 +750,7 @@ function runMd5PlaceholderPass(string $fallbackContent, AdFilter $filter, string
  *     source: string|null  实际命中通道 'official' | 'replace' | null
  * }
  */
-function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
+ if (!function_exists('getVideoLinkBySnifferMode')) { function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
 {
     $sniffer  = $config['sniffer'] ?? [];
     $mode     = $sniffer['mode'] ?? 'official';
@@ -817,7 +838,7 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
     }
 
     return ['url' => null, 'source' => null];
-}
+} } 
 
 /**
  * 同时并发调用官解 + 官替（v5.7.5 新增）
@@ -839,7 +860,7 @@ function getVideoLinkBySnifferMode(string $videoUrl, array $config): array
  *     source: string|null  实际命中通道 'official' | 'replace' | null
  * }
  */
-function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
+ if (!function_exists('getVideoLinkByConcurrentRace')) { function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
 {
     $sniffer  = $config['sniffer'] ?? [];
     $perfCfg  = $config['performance'] ?? [];
@@ -951,7 +972,7 @@ function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
         'replace_url'   => $replaceUrl,
         'replace_orm'   => $replaceOrm,
     ];
-}
+} } 
 
 /**
  * 串行调用多个接口（失败自动切换到下一个）
@@ -963,7 +984,7 @@ function getVideoLinkByConcurrentRace(string $videoUrl, array $config): array
  * @param float                 $timeout   总超时时间
  * @return string|null
  */
-function callApisSequential(string $videoUrl, array $apiList, array $config, PerformanceOptimizer $optimizer, float $timeout = 15.0): ?string
+ if (!function_exists('callApisSequential')) { function callApisSequential(string $videoUrl, array $apiList, array $config, PerformanceOptimizer $optimizer, float $timeout = 15.0): ?string
 {
     $startTime = microtime(true);
     foreach ($apiList as $api) {
@@ -982,7 +1003,7 @@ function callApisSequential(string $videoUrl, array $apiList, array $config, Per
         }
     }
     return null;
-}
+} } 
 
 
 
@@ -995,7 +1016,7 @@ function callApisSequential(string $videoUrl, array $apiList, array $config, Per
  *
  * 遍历 official_apis 数组，依次尝试，任一成功即返回
  */
-function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
+ if (!function_exists('getVideoLinkFromOfficialApi')) { function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
 {
     foreach ($config['official_apis'] as $api) {
         $link = getVideoLinkFromApiEntry($videoUrl, $api, $config);
@@ -1004,7 +1025,7 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
         }
     }
     return null;
-}
+} } 
 
 
 
@@ -1012,7 +1033,7 @@ function getVideoLinkFromOfficialApi(string $videoUrl, array $config): ?string
 /**
  * 下载 m3u8 文件内容
  */
-function fetchM3u8Content(string $m3u8Url, array $config): ?string
+ if (!function_exists('fetchM3u8Content')) { function fetchM3u8Content(string $m3u8Url, array $config): ?string
 {
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -1038,12 +1059,12 @@ function fetchM3u8Content(string $m3u8Url, array $config): ?string
     }
 
     return $content;
-}
+} } 
 
 /**
  * 处理多级 m3u8（主清单引用子清单）
  */
-function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config): array
+ if (!function_exists('resolveMultiLevelM3u8')) { function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config): array
 {
     if (strpos($content, '#EXTINF') !== false) {
         return ['content' => $content, 'url' => $m3u8Url];
@@ -1079,12 +1100,12 @@ function resolveMultiLevelM3u8(string $content, string $m3u8Url, array $config):
     }
 
     return ['content' => $content, 'url' => $m3u8Url];
-}
+} } 
 
 /**
  * 解析相对 URL 为绝对 URL
  */
-function resolveRelativeUrl(string $relative, string $baseUrl): string
+ if (!function_exists('resolveRelativeUrl')) { function resolveRelativeUrl(string $relative, string $baseUrl): string
 {
     if (preg_match('/^https?:\/\//i', $relative)) {
         return $relative;
@@ -1106,12 +1127,12 @@ function resolveRelativeUrl(string $relative, string $baseUrl): string
     }
 
     return rtrim($baseDir, '/') . '/' . ltrim($relative, '/');
-}
+} } 
 
 /**
  * 将 m3u8 中所有相对路径的 ts/key 转为绝对路径
  */
-function convertRelativeToAbsolute(string $m3u8Content, string $baseUrl): string
+ if (!function_exists('convertRelativeToAbsolute')) { function convertRelativeToAbsolute(string $m3u8Content, string $baseUrl): string
 {
     $lines = explode("\n", $m3u8Content);
     $output = [];
@@ -1133,20 +1154,20 @@ function convertRelativeToAbsolute(string $m3u8Content, string $baseUrl): string
     }
 
     return implode("\n", $output);
-}
+} } 
 
 /**
  * 生成缓存 ID
  */
-function generateCacheId(): string
+ if (!function_exists('generateCacheId')) { function generateCacheId(): string
 {
     return substr(md5(uniqid(mt_rand(), true)), 0, 16);
-}
+} } 
 
 /**
  * 保存去广告 m3u8 到缓存文件
  */
-function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, array $config): string
+ if (!function_exists('saveCleanM3u8')) { function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, array $config): string
 {
     $cacheDir = $config['cache']['dir'];
 
@@ -1187,12 +1208,12 @@ function saveCleanM3u8(string $cacheId, string $content, string $originalUrl, ar
     }
 
     return $protocol . '://' . $host . $urlPath . '/clean.php?id=' . $cacheId;
-}
+} } 
 
 /**
  * 获取解析结果缓存
  */
-function getCache(string $key, array $config): ?array
+ if (!function_exists('getCache')) { function getCache(string $key, array $config): ?array
 {
     if (!$config['cache']['enabled']) {
         return null;
@@ -1210,12 +1231,12 @@ function getCache(string $key, array $config): ?array
 
     $data = json_decode(file_get_contents($file), true);
     return $data ?: null;
-}
+} } 
 
 /**
  * 设置解析结果缓存
  */
-function setCache(string $key, array $data, array $config): void
+ if (!function_exists('setCache')) { function setCache(string $key, array $data, array $config): void
 {
     if (!$config['cache']['enabled']) {
         return;
@@ -1228,12 +1249,12 @@ function setCache(string $key, array $data, array $config): void
 
     $file = $cacheDir . '/parse_' . $key . '.json';
     file_put_contents($file, json_encode($data));
-}
+} } 
 
 /**
  * 概率触发过期缓存清理
  */
-function maybeCleanExpiredCache(array $config): void
+ if (!function_exists('maybeCleanExpiredCache')) { function maybeCleanExpiredCache(array $config): void
 {
     if (!$config['cache']['enabled']) {
         return;
@@ -1276,12 +1297,12 @@ function maybeCleanExpiredCache(array $config): void
             @unlink($file);
         }
     }
-}
+} } 
 
 /**
  * 从响应内容中提取视频 URL
  */
-function extractVideoUrl(string $content): ?string
+ if (!function_exists('extractVideoUrl')) { function extractVideoUrl(string $content): ?string
 {
     $patterns = [
         '/https?:\/\/[^\s\'"<>\\\)\\\\,;]+\.m3u8[^\s\'"<>\\\)\\\\,;]*/i',
@@ -1293,7 +1314,9 @@ function extractVideoUrl(string $content): ?string
         }
     }
     return null;
-}
+} } 
 
-
+} // SUPER GUARD 大括号闭合（对应第 12 行的 { ）
+} // HOTFIX3 extra: 修复因 callOfficialReplaceDirectV2 被重复包裹导致多出来的 {（19 个函数+1 个 super guard = 20 wraps，但原第 396 行已有手动包裹，总数+1）
+// END OF xt/server.php (v5.13.10-HOTFIX3)
 

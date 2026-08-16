@@ -5031,46 +5031,223 @@ try {
             sendJsonResponse($result);
             break;
 
-        // ========== v5.13.9 NEW：URL 转 JSON 专区（复用 url2json.php 完整解析引擎 + output 函数） ==========
+        // ========== v5.13.9 NEW / v5.13.10-HOTFIX3：URL 转 JSON 专区 ==========
+        //   HOTFIX3：不再 require url2json.php 再 exit——避免 mx 已加载 src/AdFilter 后，
+        //   url2json.php 引入 xt/server.php → xt/AdFilter 触发同名类 Fatal（即使 guard 有
+        //   OPcache 重排也危险）。改为：在 mx 内部直接加载 xt/server.php（走它自己的
+        //   XT_SERVER_PHP_V1 + parseVideo 双 guard），然后复用 url2json 的格式化输出逻辑
+        //   （直接内联等价代码，不 require 独立文件）。
         case 'url2json':
         case 'url2json/parse':
         case 'api/url2json':
-            // 直接 require 独立入口；里面自带 header + parse + output，然后 exit()
-            $mx_url2json_file = __DIR__ . '/url2json.php';
-            if (is_file($mx_url2json_file)) {
-                require_once $mx_url2json_file;
+            // ① 参数读取（复用 url2json.php 的 u2j_ 逻辑内联版，避免 require 导致类冲突）
+            $u2j_video = '';
+            foreach (['url','wd','v','video','t','u','play','src'] as $_u2j_p) {
+                if (isset($_GET[$_u2j_p]) && ($_u2j_s = trim((string)$_GET[$_u2j_p])) !== '') { $u2j_video = $_u2j_s; break; }
+            }
+            if ($u2j_video === '' && isset($_POST['url']) && is_string($_POST['url'])) $u2j_video = trim($_POST['url']);
+            $_u2j_type = isset($_GET['type']) ? strtolower(trim((string)$_GET['type'])) : '';
+            $_u2j_fmt  = isset($_GET['format']) ? strtolower(trim((string)$_GET['format'])) : '';
+            if ($_u2j_type === '302' || $_u2j_type === 'redirect' || $_u2j_type === 'raw' || $_u2j_fmt === 'm3u8') $_u2j_outType = '302';
+            elseif ($_u2j_type === 'api' || $_u2j_type === 'cms') $_u2j_outType = 'api';
+            elseif ($_u2j_type === 'xml') $_u2j_outType = 'xml';
+            else $_u2j_outType = 'json';
+            $_u2j_cb = isset($_GET['callback']) ? trim((string)$_GET['callback']) : null;
+
+            // ② CORS
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Range');
+
+            if ($u2j_video === '') {
+                $_u2j_err = '请提供视频链接（支持 url/wd/v/video/t 参数）';
+                if ($_u2j_outType === '302') { header('Content-Type: text/plain; charset=utf-8'); echo '解析失败: '.$_u2j_err; exit; }
+                elseif ($_u2j_outType === 'xml') {
+                    header('Content-Type: text/xml; charset=utf-8');
+                    echo '<?xml version="1.0" encoding="utf-8"?>'."\n".'<result>'."\n".'  <code>0</code>'."\n".'  <msg>'.htmlspecialchars($_u2j_err).'</msg>'."\n".'  <url></url>'."\n".'</result>';
+                    exit;
+                } elseif ($_u2j_outType === 'api') {
+                    $_u2j_out = ['code'=>0,'msg'=>$_u2j_err,'url'=>'','video_url'=>''];
+                    if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                        header('Content-Type: application/javascript; charset=utf-8');
+                        echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                    } else {
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                    }
+                    exit;
+                } else {
+                    $_u2j_out = ['code'=>400,'ZT'=>$_u2j_err,'msg'=>$_u2j_err,'url'=>'','time'=>'0s','KFZ'=>'超级嗅探|XT','info'=>'URL转JSON专用解析','video_url'=>''];
+                    $_u2j_plat = null; $h=''; if($u2j_video!==''){ $h=(string)parse_url($u2j_video,PHP_URL_HOST); }
+                    if($h!==''){ foreach(['youku.com'=>'youku','iqiyi.com'=>'iqiyi','qiyi.com'=>'iqiyi','v.qq.com'=>'tencent','qq.com'=>'tencent','mgtv.com'=>'mgtv','bilibili.com'=>'bilibili','sohu.com'=>'sohu','le.com'=>'le','pptv.com'=>'pptv'] as $_k=>$_v){ if(stripos($h,$_k)!==false){ $_u2j_plat=$_v; break; } } }
+                    $_u2j_out['platform']=$_u2j_plat;
+                    if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                        header('Content-Type: application/javascript; charset=utf-8');
+                        echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                    } else {
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                    }
+                    exit;
+                }
+            }
+            if (!filter_var($u2j_video, FILTER_VALIDATE_URL)) {
+                $_u2j_err = '链接格式不正确，必须是以 http:// 或 https:// 开头的完整 URL';
+                if ($_u2j_outType === '302') { header('Content-Type: text/plain; charset=utf-8'); echo '解析失败: '.$_u2j_err; exit; }
+                elseif ($_u2j_outType === 'xml') {
+                    header('Content-Type: text/xml; charset=utf-8');
+                    echo '<?xml version="1.0" encoding="utf-8"?>'."\n".'<result>'."\n".'  <code>0</code>'."\n".'  <msg>'.htmlspecialchars($_u2j_err).'</msg>'."\n".'  <url></url>'."\n".'  <video_url><![CDATA['.htmlspecialchars($u2j_video).']]></video_url>'."\n".'</result>';
+                    exit;
+                } elseif ($_u2j_outType === 'api') {
+                    $_u2j_out = ['code'=>0,'msg'=>$_u2j_err,'url'=>'','video_url'=>$u2j_video];
+                    if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                        header('Content-Type: application/javascript; charset=utf-8');
+                        echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                    } else {
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                    }
+                    exit;
+                } else {
+                    $_u2j_out = ['code'=>400,'ZT'=>$_u2j_err,'msg'=>$_u2j_err,'url'=>'','time'=>'0s','KFZ'=>'超级嗅探|XT','info'=>'URL转JSON专用解析','video_url'=>$u2j_video];
+                    $_u2j_plat = null; $h=(string)parse_url($u2j_video,PHP_URL_HOST);
+                    if($h!==''){ foreach(['youku.com'=>'youku','iqiyi.com'=>'iqiyi','qiyi.com'=>'iqiyi','v.qq.com'=>'tencent','qq.com'=>'tencent','mgtv.com'=>'mgtv','bilibili.com'=>'bilibili','sohu.com'=>'sohu','le.com'=>'le','pptv.com'=>'pptv'] as $_k=>$_v){ if(stripos($h,$_k)!==false){ $_u2j_plat=$_v; break; } } }
+                    $_u2j_out['platform']=$_u2j_plat;
+                    if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                        header('Content-Type: application/javascript; charset=utf-8');
+                        echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                    } else {
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                    }
+                    exit;
+                }
+            }
+
+            // ③ 加载 xt/server.php（parseVideo）——走自己的三重 guard，绝不 require url2json.php 以免触发冲突链
+            if (!defined('XT_SERVER_PHP_V1') && !function_exists('parseVideo')) {
+                require_once __DIR__ . '/xt/server.php';
+            }
+            $_u2j_result = parseVideo($u2j_video);
+            $_u2j_code = (int)($_u2j_result['code'] ?? 500);
+            $_u2j_url  = (string)($_u2j_result['url'] ?? '');
+            if ($_u2j_code !== 200 || $_u2j_url === '') {
+                $_u2j_msg = (string)($_u2j_result['msg'] ?: '解析失败');
+                $_u2j_t = (string)($_u2j_result['time'] ?? '0s');
+                $_u2j_kfz = (string)($_u2j_result['KFZ'] ?? '超级嗅探|XT');
+                if ($_u2j_outType === '302') { header('Content-Type: text/plain; charset=utf-8'); echo '解析失败: '.$_u2j_msg; exit; }
+                elseif ($_u2j_outType === 'xml') {
+                    header('Content-Type: text/xml; charset=utf-8');
+                    echo '<?xml version="1.0" encoding="utf-8"?>'."\n".'<result>'."\n".'  <code>0</code>'."\n".'  <msg>'.htmlspecialchars($_u2j_msg).'</msg>'."\n".'  <url></url>'."\n".'  <video_url><![CDATA['.htmlspecialchars($u2j_video).']]></video_url>'."\n".'</result>';
+                    exit;
+                } elseif ($_u2j_outType === 'api') {
+                    $_u2j_out = ['code'=>0,'msg'=>$_u2j_msg,'url'=>'','video_url'=>$u2j_video,'time'=>$_u2j_t,'KFZ'=>$_u2j_kfz];
+                    if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                        header('Content-Type: application/javascript; charset=utf-8');
+                        echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                    } else {
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                    }
+                    exit;
+                } else {
+                    $_u2j_out = ['code'=>($_u2j_code?:400),'ZT'=>($_u2j_result['ZT']?$_u2j_result['ZT']:$_u2j_msg),'msg'=>$_u2j_msg,'url'=>'','time'=>$_u2j_t,'KFZ'=>$_u2j_kfz,'info'=>'URL转JSON专用解析','video_url'=>$u2j_video];
+                    $_u2j_plat = null; $h=(string)parse_url($u2j_video,PHP_URL_HOST);
+                    if($h!==''){ foreach(['youku.com'=>'youku','iqiyi.com'=>'iqiyi','qiyi.com'=>'iqiyi','v.qq.com'=>'tencent','qq.com'=>'tencent','mgtv.com'=>'mgtv','bilibili.com'=>'bilibili','sohu.com'=>'sohu','le.com'=>'le','pptv.com'=>'pptv'] as $_k=>$_v){ if(stripos($h,$_k)!==false){ $_u2j_plat=$_v; break; } } }
+                    $_u2j_out['platform']=$_u2j_plat;
+                    if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                        header('Content-Type: application/javascript; charset=utf-8');
+                        echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                    } else {
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                    }
+                    exit;
+                }
+            }
+
+            // ④ 解析成功 → 附加 enrich 字段 + 4 种输出
+            $_u2j_t = (string)($_u2j_result['time'] ?? '0s');
+            $_u2j_kfz = (string)($_u2j_result['KFZ'] ?? '超级嗅探|XT');
+            $_u2j_zt = (string)($_u2j_result['ZT'] ?? '解析成功');
+            $_u2j_official = null; $_u2j_replace = null;
+            if (!empty($GLOBALS['XT_CONCURRENT_RESULTS']) && is_array($GLOBALS['XT_CONCURRENT_RESULTS'])) {
+                if (!empty($GLOBALS['XT_CONCURRENT_RESULTS']['official_url'])) $_u2j_official = (string)$GLOBALS['XT_CONCURRENT_RESULTS']['official_url'];
+                if (!empty($GLOBALS['XT_CONCURRENT_RESULTS']['replace_url']))  $_u2j_replace  = (string)$GLOBALS['XT_CONCURRENT_RESULTS']['replace_url'];
+            }
+            $_u2j_src = 'unknown';
+            if (!empty($_u2j_result['from_cache'])) $_u2j_src = 'cache';
+            elseif ($_u2j_replace !== null && $_u2j_url === $_u2j_replace) $_u2j_src = 'replace';
+            elseif ($_u2j_official !== null && $_u2j_url === $_u2j_official) $_u2j_src = 'official';
+            else {
+                $_low = strtolower($_u2j_url); $_host = (string)parse_url($_u2j_url,PHP_URL_HOST);
+                $_isHP = (stripos($_host,'xmflv.cc')!==false||stripos($_host,'jmflv')!==false||stripos($_host,'jx.xm')===0||stripos($_host,'xmplayer')!==false);
+                if ($_isHP) $_u2j_src = 'official';
+                elseif (strpos($_low,'.m3u8')!==false||in_array(substr(strrchr($_low,'.'),0,5),['.mp4','.flv','.mkv','.ts'])) $_u2j_src = 'direct';
+            }
+            $_u2j_low = strtolower($_u2j_url); $_u2j_host = (string)parse_url($_u2j_url,PHP_URL_HOST);
+            $_u2j_isHP = (stripos($_u2j_host,'xmflv.cc')!==false||stripos($_u2j_host,'jmflv')!==false||stripos($_u2j_host,'jx.xm')===0||stripos($_u2j_host,'xmplayer')!==false);
+            if ($_u2j_isHP) { $_u2j_typeName='html_player'; $_u2j_isM3U8=false; }
+            elseif (strpos($_u2j_low,'.m3u8')!==false) { $_u2j_typeName='m3u8'; $_u2j_isM3U8=true; }
+            elseif (strpos($_u2j_low,'.mp4')!==false) { $_u2j_typeName='mp4'; $_u2j_isM3U8=false; }
+            elseif (strpos($_u2j_low,'.flv')!==false) { $_u2j_typeName='flv'; $_u2j_isM3U8=false; }
+            elseif (strpos($_u2j_low,'.mkv')!==false) { $_u2j_typeName='mkv'; $_u2j_isM3U8=false; }
+            elseif (strpos($_u2j_low,'.ts')!==false) { $_u2j_typeName='ts'; $_u2j_isM3U8=false; }
+            else { $_u2j_typeName='other'; $_u2j_isM3U8=false; }
+            $_u2j_plat = null; $h=(string)parse_url($u2j_video,PHP_URL_HOST);
+            if($h!==''){ foreach(['youku.com'=>'youku','iqiyi.com'=>'iqiyi','qiyi.com'=>'iqiyi','v.qq.com'=>'tencent','qq.com'=>'tencent','mgtv.com'=>'mgtv','bilibili.com'=>'bilibili','sohu.com'=>'sohu','le.com'=>'le','pptv.com'=>'pptv'] as $_k=>$_v){ if(stripos($h,$_k)!==false){ $_u2j_plat=$_v; break; } } }
+
+            if ($_u2j_outType === '302') {
+                header('Location: '.$_u2j_url, true, 302); exit;
+            } elseif ($_u2j_outType === 'xml') {
+                header('Content-Type: text/xml; charset=utf-8');
+                echo '<?xml version="1.0" encoding="utf-8"?>'."\n";
+                echo '<result>'."\n";
+                echo '  <code>1</code>'."\n";
+                echo '  <msg>'.htmlspecialchars($_u2j_zt ?: '解析成功').'</msg>'."\n";
+                echo '  <url><![CDATA['.$_u2j_url.']]></url>'."\n";
+                echo '  <video_url><![CDATA['.htmlspecialchars($u2j_video).']]></video_url>'."\n";
+                if ($_u2j_official !== null) echo '  <official_url><![CDATA['.$_u2j_official.']]></official_url>'."\n";
+                if ($_u2j_replace  !== null) echo '  <replace_url><![CDATA['.$_u2j_replace.']]></replace_url>'."\n";
+                echo '  <source>'.htmlspecialchars($_u2j_src).'</source>'."\n";
+                echo '  <type>'.htmlspecialchars($_u2j_typeName).'</type>'."\n";
+                echo '  <is_m3u8>'.($_u2j_isM3U8?'1':'0').'</is_m3u8>'."\n";
+                echo '  <is_html_player>'.($_u2j_isHP?'1':'0').'</is_html_player>'."\n";
+                if ($_u2j_plat !== null) echo '  <platform>'.htmlspecialchars($_u2j_plat).'</platform>'."\n";
+                echo '  <time>'.htmlspecialchars($_u2j_t).'</time>'."\n";
+                echo '  <KFZ>'.htmlspecialchars($_u2j_kfz).'</KFZ>'."\n";
+                echo '</result>';
+                exit;
+            } elseif ($_u2j_outType === 'api') {
+                $_u2j_out = ['code'=>1,'msg'=>($_u2j_zt?:'解析成功'),'url'=>$_u2j_url,'time'=>$_u2j_t,'KFZ'=>$_u2j_kfz,'source'=>$_u2j_src,'type'=>$_u2j_typeName,'is_m3u8'=>$_u2j_isM3U8,'is_html_player'=>$_u2j_isHP,'video_url'=>$u2j_video,'platform'=>$_u2j_plat];
+                if ($_u2j_official !== null) $_u2j_out['official_url'] = $_u2j_official;
+                if ($_u2j_replace  !== null) $_u2j_out['replace_url']  = $_u2j_replace;
+                if (!empty($_u2j_result['from_cache'])) $_u2j_out['from_cache'] = true;
+                if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                    header('Content-Type: application/javascript; charset=utf-8');
+                    echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                } else {
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                }
+                exit;
+            } else {
+                // json 默认：跟 url2json.php 完全兼容的 code=200 结构
+                $_u2j_out = ['code'=>200,'ZT'=>($_u2j_zt?:'解析成功'),'msg'=>$_u2j_url,'url'=>$_u2j_url,'time'=>$_u2j_t,'KFZ'=>$_u2j_kfz,'info'=>'URL转JSON专用解析','type'=>$_u2j_typeName,'is_m3u8'=>$_u2j_isM3U8,'is_html_player'=>$_u2j_isHP,'source'=>$_u2j_src,'video_url'=>$u2j_video];
+                if ($_u2j_plat !== null) $_u2j_out['platform'] = $_u2j_plat;
+                if ($_u2j_official !== null) $_u2j_out['official_url'] = $_u2j_official;
+                if ($_u2j_replace  !== null) $_u2j_out['replace_url']  = $_u2j_replace;
+                if (!empty($_u2j_result['from_cache'])) $_u2j_out['from_cache'] = true;
+                if ($_u2j_cb !== null && $_u2j_cb !== '' && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $_u2j_cb)) {
+                    header('Content-Type: application/javascript; charset=utf-8');
+                    echo $_u2j_cb.'('.json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).');';
+                } else {
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo json_encode($_u2j_out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                }
                 exit;
             }
-            // 兜底（文件被删时）
-            $mx_url2json_fallback_url = $_GET['url'] ?? '';
-            if ($mx_url2json_fallback_url === '') {
-                sendJsonResponse(['success'=>false,'code'=>400,'message'=>'缺少 url 参数（支持 url/wd/v/video/t）']);
-                break;
-            }
-            $selfUrl = (isset($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off'?'https':'http').'://'.($_SERVER['HTTP_HOST']??'localhost');
-            $reqUri = parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH);
-            $bp = dirname($reqUri); if($bp==='/' || $bp==='\\') $bp='';
-            $selfUrl .= $bp;
-            require_once __DIR__ . '/xt/server.php';
-            $mx_res = parseVideo($mx_url2json_fallback_url);
-            $mx_code = (int)($mx_res['code'] ?? 500);
-            $mx_url  = (string)($mx_res['url'] ?? '');
-            $mx_out  = [
-                'code' => $mx_code === 200 && $mx_url !== '' ? 200 : $mx_code,
-                'ZT'   => (string)($mx_res['ZT'] ?? ($mx_code===200?'解析成功':'解析失败')),
-                'msg'  => $mx_url !== '' ? $mx_url : (string)($mx_res['msg'] ?? ''),
-                'url'  => $mx_url,
-                'time' => (string)($mx_res['time'] ?? '0s'),
-                'KFZ'  => (string)($mx_res['KFZ'] ?? '超级嗅探|XT'),
-                'info' => 'URL转JSON专用解析(fallback)',
-                'video_url' => $mx_url2json_fallback_url,
-            ];
-            if (!empty($GLOBALS['XT_CONCURRENT_RESULTS']) && is_array($GLOBALS['XT_CONCURRENT_RESULTS'])) {
-                $cr = $GLOBALS['XT_CONCURRENT_RESULTS'];
-                if (!empty($cr['official_url'])) $mx_out['official_url'] = (string)$cr['official_url'];
-                if (!empty($cr['replace_url']))  $mx_out['replace_url']  = (string)$cr['replace_url'];
-            }
-            sendJsonResponse($mx_out, $mx_out['code'] === 200 ? 200 : $mx_out['code']);
+            // 理论上到不了这里（所有分支都 exit）；为 IDE 静态分析留空 break
             break;
 
         case 'proxies/list':

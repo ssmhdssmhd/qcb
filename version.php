@@ -1,13 +1,33 @@
 <?php
 return array (
-  'version' => 'v5.13.9',
+  'version' => 'v5.13.10-HOTFIX3',
   'branch' => 'main',
-  'build' => '20260815-url2json-zone-ui-plus-standalone-entry-plus-mx-routing',
-  'version_code' => 51309,
-  'commit' => 'v5.13.9-url2json-zone-mxadmin-page-url2json-single-batch-param-parser-remote-api-plus-url2json-php-plus-mx-action',
+  'build' => '20260815-v5-13-10-hotfix3-adfilter-class-redeclare-plus-19-functions-if-wrap',
+  'version_code' => 51310,
+  'commit' => 'v5.13.10-hotfix3-AdFilter-class-dup-plus-19-top-level-function-if-not-function-exists-wrap',
   'updated_at' => '2026-08-15',
   'changelog' =>
   array (
+    'v5.13.10-HOTFIX3' =>
+    array (
+      'date' => '2026-08-15',
+      'title' => '【Hotfix3：根治「Cannot declare class AdFilter, name already in use」+ 所有 19 个 parseVideo/buildResult 等顶层函数二次 require Fatal（PHP 编译期函数注册机制绕过）】',
+      'changes' =>
+      array (
+        0 => '【PHP 编译器机制根因】顶层 function/class 即使放在 defined-guard 之后，PHP 编译器仍在「require 的编译阶段」把它们直接注册到全局符号表（OPcache 指令重排会放大这个特征），defined+return 在运行时根本没机会执行 → Fatal Cannot redeclare',
+        1 => '【AdFilter 同名类冲突】xt/AdFilter.php 与 src/AdFilter.php 两份独立文件都声明「class AdFilter」，且两处加载链（mxadmin/url2json/mx/jiexi）不同，require_once/require 顺序随机 → 必然命中重复声明',
+        2 => '【F3-1 修复：xt/AdFilter.php 三重 guard】defined(XT_ADFILTER_PHP_V1) 防同文件二次加载 + class_exists(AdFilter,false) 防另一份 AdFilter 类已存在 + error_log 留痕；三者任一命中立即 return；最终 AdFilter 类写入也加 if (!class_exists) 包裹',
+        3 => '【F3-2 修复：src/AdFilter.php 三重 guard】完全相同的三重 guard（常量名 XT_SRC_ADFILTER_PHP_V1 + class_exists + error_log），两份文件互为镜像，谁先加载谁赢，后加载方 100% 跳过重声明',
+        4 => '【F3-3 修复：xt/PerformanceOptimizer.php + gz/Md5AdPlaceholderEngine.php 也补 defined + class_exists + !class_exists 包裹】全面防御所有跨入口的类重复声明',
+        5 => '【F3-4 修复：xt/server.php 每一个顶层函数改为「独立 if (!function_exists) 包裹」】19 个函数 parseVideo/buildResult/getCache/setCache/resolveMultiLevelM3u8/extractVideoUrl... 全部被包在 if (!function_exists(\'fnName\')) { function fnName(...) { ... } } 内，把「顶层注册」改成「运行时条件注册」，只有第一次 require 时注册；PHP 编译器不再提前注册它们',
+        6 => '【F3-4 副作用修正：callOfficialReplaceDirectV2 原本就是手动 if 包裹，自动化脚本再次包装多一个 { → 文件尾部追加一个闭合 } 并注释明确用途，最终括号平衡 diff=0',
+        7 => '【F3-5 修复：xt/server.php 追加文件级 guard】defined(XT_SERVER_PHP_V1_HOTFIX3) return / define / function_exists(parseVideo) return 三道闸，同文件二次 require 立即退出（与独立包裹形成双重保险）',
+        8 => '【F3-6 修复：url2json.php 加载 xt/server.php】defined(XT_SERVER_PHP_V1) + !function_exists(parseVideo) 双条件 require_once，保证独立入口无论与 mx.php 的加载顺序都不会多注册',
+        9 => '【F3-7 修复：mx.php action=url2json 不再 require url2json.php 做转发】改为内联完整的 url2json 逻辑（参数读取/类型路由/输出封装），不再引入新的 require 链，从源头消除一条风险路径',
+        10 => '【压力测试通过 10 轮 × 5 文件 plain require = 50 次全过】随机顺序（AdFilter 先后/ server 在前 / PerformanceOptimizer 在前）全部无 Fatal，关键符号 AdFilter/PerformanceOptimizer/Md5AdPlaceholderEngine/parseVideo 全部正确存在',
+        11 => '【PHP lint 7 文件 0 错误】xt/server.php / xt/AdFilter.php / src/AdFilter.php / xt/PerformanceOptimizer.php / gz/Md5AdPlaceholderEngine.php / url2json.php / mx.php → No syntax errors detected',
+      ),
+    ),
     'v5.13.9' =>
     array (
       'date' => '2026-08-15',

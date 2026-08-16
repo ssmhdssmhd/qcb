@@ -1,4 +1,16 @@
 <?php
+// ===== v5.13.10-HOTFIX3：三重防重声明（100% 防 Fatal Cannot declare class AdFilter）=====
+//   1. 常量 guard：同文件二次 require 立即 return（不管 require_once 路径是否一致）
+//   2. class_exists：不同文件（src/AdFilter.php 先加载了同名简版）立即 return
+//   3. 先 define 再判断，避免 OPcache 重排执行顺序导致 guard 失效
+if (defined('XT_ADFILTER_PHP_V1')) return;
+define('XT_ADFILTER_PHP_V1', 1);
+if (class_exists('AdFilter', false)) {
+    if (function_exists('error_log')) {
+        @error_log('[xt/AdFilter.php:guard] AdFilter 类已存在（可能来自 src/AdFilter.php），本文件跳过加载，避免 Fatal 同名类。');
+    }
+    return;
+}
 /**
  * 广告识别与过滤引擎
  *
@@ -8,21 +20,10 @@
  *
  * 生成去广告 m3u8 文件，返回广告详情和清洁播放地址
  *
- * v5.13.10-HOTFIX：与 src/AdFilter.php 同名类冲突防护。
- *   xt/server.php 引入的是完整版 AdFilter（本文件）；src/AdFilter.php 是老版简版。
- *   两边都加上 class_exists guard，避免 mx.php 不同路由 require 顺序导致 Fatal。
- *   如果先加载了 src 简版，则此处会直接 return（不声明第二个同名类），
- *   但强烈建议在 PHP 启动时统一只加载一份——本文件作为推荐版本。
+ * v5.13.10-HOTFIX3：与 src/AdFilter.php 同名类冲突防护（三重 guard）。
+ *   本文件是核心完整版 AdFilter，xt/server.php 引入；src/AdFilter.php 是老版简版。
+ *   任何顺序加载都不得 Fatal。
  */
-
-if (class_exists('AdFilter', false)) {
-    // 已经存在简版 AdFilter。做一个软告警（不抛 Exception，避免 FPM 崩溃）：
-    // 写进 error_log 让运维知道顺序不对；但为了兼容不直接抛错。
-    if (function_exists('error_log')) {
-        @error_log('[AdFilter 冲突] 检测到已存在 AdFilter 类声明（很可能来自 src/AdFilter.php），xt/AdFilter.php 完整版被跳过（v5.13.10-HOTFIX）。建议统一 require 顺序，避免先加载 src 简版。');
-    }
-    return;
-}
 
 class AdFilter
 {
