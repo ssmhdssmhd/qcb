@@ -1,0 +1,27 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:12
+#EXT-X-MEDIA-SEQUENCE:0
+
+// === 前置广告 ===
+#EXTINF:2.000,
+https://cdn.example.com/ad/preroll0001.ts
+#EXTINF:2.500,
+https://cdn.example.com/ad/preroll0002.ts
+#EXTINF:10.000,
+https://cdn.example.com/movie/main0001.ts
+#EXTINF:10.000,
+https://cdn.example.com/movie/main0002.ts
+#EXTINF:10.000,
+https://cdn.example.com/movie/main0003.ts
+// === 中插广告 ===
+#EXTINF:3.000,
+https://cdn.example.com/gg/midroll0001.ts
+#EXTINF:10.000,
+https://cdn.example.com/movie/main0004.ts
+#EXTINF:10.000,
+https://cdn.example.com/movie/main0005.ts
+// === 后置广告 ===
+#EXTINF:2.000,
+https://cdn.example.com/ads/end0001.ts
+#EXT-X-ENDLIST

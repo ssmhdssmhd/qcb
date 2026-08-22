@@ -1,13 +1,28 @@
 <?php
 return array (
-  'version' => 'v5.13.8',
+  'version' => 'v5.13.9',
   'branch' => 'main',
-  'build' => '20260814-v5-13-8-apk-playback-optimization',
-  'version_code' => 51308,
-  'commit' => 'v5.13.8-apk-m3u8-direct-link-replace-priority-plus-xmflv-html-player-fail-doc',
-  'updated_at' => '2026-08-14',
+  'build' => '20260822-v5-13-9-modular-parse-framework',
+  'version_code' => 51309,
+  'commit' => 'v5.13.9-modular-parse-framework',
+  'updated_at' => '2026-08-22',
   'changelog' =>
   array (
+    'v5.13.9' =>
+    array (
+      'date' => '2026-08-22',
+      'title' => '【模块化重构·框架搭建】新增 parse/ 模块化解析框架（全局预算 + 统一门面 + 本地去广告），杜绝解析卡死',
+      'changes' =>
+      array (
+        0 => '【新 parse/ 模块】搭建模块化解析框架目录 parse/：config(集中配置) / Timer(全局总预算计时器) / UrlClassifier(URL类型判定) / ParseResult(归一化结果模型) / LocalM3u8Cleaner(本地去广告·轻量自包含) / ResourceFirstResolver(官方→资源站优先·预算内) / ParserFacade(统一门面) / autoload(模块自动加载)',
+        1 => '【治卡死】全局总预算 Timer：网络循环每迭代 ok()，超 25s 主预算/80s 硬上限即"快速失败+明确 message+step_trace"，官替/官解链路不再无限串行堆积',
+        2 => '【资源站优先】官方链接→ResourceFirstResolver 在预算内复用 gz/OfficialReplaceManager::resolve()→取 m3u8→LocalM3u8Cleaner 去广告/去非正片；重引擎未接入则明确快速失败，绝不挂起',
+        3 => '【不中断播放】广告/非正片（时长异常或 URL 关键词命中）→"等时长静音黑屏占位"替换，不删段，进度条/解码器不中断',
+        4 => '【可运行验证】parse/tests/fixtures/ad.m3u8 离线夹具 + parse/tests/cli_verify.php，21/21 PASS；所有新增文件 php -l 0 错误',
+        5 => '【文档】新增 docs/ARCHITECTURE(项目导图) / MIND_MAP(思维构思导图) / MAINTENANCE(维护手册) / SECONDARY_DEV(二次开发指南)；REFACTOR_PLAN 作为重构主线文档保留',
+        6 => '【兼容】旧链路 mx.php / xt / gz / pt / src 不动，parse/ 增量并行；远程更新不回退',
+      ),
+    ),
     'v5.13.8' =>
     array (
       'date' => '2026-08-14',

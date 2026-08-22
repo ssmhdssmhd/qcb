@@ -9,9 +9,43 @@
   - 加密范围：`callOfficialReplaceDirect` / `findUrlInArray` / `isSafeVideoUrl` / `extractVideoUrl` 等 Bug 修复 + 官替优先核心逻辑
   - 功能与 main 完全一致，运行时自动解密，零性能感知差异
 
-## 当前版本 v5.13.8（2026-08-14）
+## 目录（技术文档）
 
-### 🚑 Hotfix：虾米官解新地址 `https://jx.xmflv.cc/?url=&ref=` 接入 + HTML播放器类型支持 + {url}/{ref}占位符 + Cloudflare 403 兼容
+- [项目架构 / 项目导图](docs/ARCHITECTURE.md)
+- [思维构思导图](docs/MIND_MAP.md)
+- [维护 / 运维手册](docs/MAINTENANCE.md)
+- [二次开发指南](docs/SECONDARY_DEV.md)
+- [解析故障诊断与模块化重构方案](REFACTOR_PLAN.md)
+
+## 当前版本 v5.13.9（2026-08-22）
+
+### 🧩 模块化重构·框架搭建：新增 `parse/` 模块化解析框架
+
+**用户诉求**：
+> 官方平台链接（腾讯/爱奇艺/优酷/芒果TV/B站/搜狐/PPTV）与直接 M3U8 链路经常「解析不了 / 一直转圈」，
+> 官替可能有问题；希望模块化重构、避免单文件过大、优先资源站资源并去除广告/非正片。
+
+**本轮交付（可运行骨架）**：
+
+| 模块 | 说明 |
+|------|------|
+| [parse/config.php](file:///workspace/parse/config.php) | 集中配置：全局预算 / 平台清单 / 去广告策略 |
+| [parse/Timer.php](file:///workspace/parse/Timer.php) | **全局总预算计时器**（治卡死）：网络循环每迭代 `ok()`，超预算立即快速失败 |
+| [parse/UrlClassifier.php](file:///workspace/parse/UrlClassifier.php) | URL 类型判定（m3u8 / official / other） |
+| [parse/LocalM3u8Cleaner.php](file:///workspace/parse/LocalM3u8Cleaner.php) | 本地去广告/去非正片（等时长静音占位，不删段，可离线） |
+| [parse/ResourceFirstResolver.php](file:///workspace/parse/ResourceFirstResolver.php) | 官方链接→资源站优先（预算内复用官替） |
+| [parse/ParserFacade.php](file:///workspace/parse/ParserFacade.php) | 统一门面：路由 + 预算 + 归一化输出 |
+| [parse/tests/cli_verify.php](file:///workspace/parse/tests/cli_verify.php) | 离线可运行验证 **21/21 PASS** |
+
+**快速验证**：`php parse/tests/cli_verify.php`
+
+> 资源站优先主链路设计：`官方链接 → 预算内官替匹配 m3u8 → 本地去广告/去非正片 → 归一化输出`。
+> 旧链路 mx.php / xt / gz / pt / src 全部兼容并行，远程更新不回退。
+> 详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [CHANGELOG.md](CHANGELOG.md)。
+
+---
+
+### 🚑 上版：v5.13.8 虾米官解新地址 `https://jx.xmflv.cc/?url=&ref=` 接入 + HTML播放器类型支持 + {url}/{ref}占位符 + Cloudflare 403 兼容
 
 **用户诉求**：
 > 虾米解析更换为 `https://jx.xmflv.cc/?url=&ref=`（原 `114.134.184.91:9002` 已于 2026-08-14 加签名+白名单验证，未授权IP必败）。

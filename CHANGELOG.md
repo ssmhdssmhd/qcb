@@ -1,5 +1,58 @@
 # 更新日志
 
+## v5.13.9 (2026-08-22) — 模块化重构·框架搭建
+
+### 新增 parse/ 模块化解析框架（全局预算 + 统一门面 + 本地去广告），杜绝解析卡死
+
+**用户诉求**：
+> 接口对官方平台链接（腾讯/爱奇艺/优酷/芒果TV/B站/搜狐/PPTV）与直接 M3U8 链路经常「解析不了 / 一直转圈」；
+> 官替可能有问题；希望重新开发、模块化设计、重构项目，避免单文件过大，优先以资源站资源为主并去除广告/非正片。
+
+---
+
+#### 1. 根因（本次重构要解决的 4 点）
+
+| # | 根因 | 说明 |
+|---|------|------|
+| R1 | 官替 resolve 无全局超时 | 串行堆积网络请求（抓官页30s×3 → 平台API → 最多40资源站每站24s），对部分链接 100s 无响应 |
+| R2 | 强依赖外部第三方 | 虾米官解 `114.134.184.91:9002` 已加签名失效；`jx.xmflv.cc` 返回 HTML 播放器页 APK 不可播 |
+| R3 | 三链路各写各的 | 无统一门面，难定位、重复逻辑多 |
+| R4 | 资源站可播但带广告/非正片 | 去广告分散不可控、进度条跳动 |
+
+#### 2. 新增 parse/ 模块（小而专，避免巨型文件）
+
+| 文件 | 职责 |
+|------|------|
+| `parse/config.php` | 集中配置：全局预算/平台清单/去广告策略 |
+| `parse/Timer.php` | 全局总预算计时器（治卡死），网络循环每迭代 `ok()` |
+| `parse/UrlClassifier.php` | URL 类型判定（m3u8 / official / other） |
+| `parse/ParseResult.php` | 归一化解析结果模型 |
+| `parse/LocalM3u8Cleaner.php` | 本地去广告/去非正片（轻量自包含，可离线） |
+| `parse/ResourceFirstResolver.php` | 官方链接→资源站优先（预算内复用官替） |
+| `parse/ParserFacade.php` | 统一门面：路由 + 预算 + 归一化输出 |
+| `parse/autoload.php` | 模块自动加载器 |
+| `parse/tests/*` | 离线夹具 ad.m3u8 + CLI 验证 cli_verify.php |
+
+#### 3. 资源站优先链路
+
+```
+官方链接 → ResourceFirstResolver（预算内）→ OfficialReplaceManager::resolve()
+        → 取 m3u8 → LocalM3u8Cleaner（关键词+时长 → 等时长静音占位，不删段）
+        → ParseResult 归一化 { code,url,official_url,replace_url,title,episode,channel,step_trace,elapsed }
+```
+
+#### 4. 验证
+
+- `php parse/tests/cli_verify.php` → **21/21 PASS**，退出码 0。
+- 所有新增文件 `php -l` 0 错误。
+- 旧链路 mx.php / xt / gz / pt / src 不动；`parse/` 增量并行，远程更新不回退。
+
+#### 5. 新增文档
+
+`docs/ARCHITECTURE(项目导图)` / `docs/MIND_MAP(思维构思导图)` / `docs/MAINTENANCE(维护手册)` / `docs/SECONDARY_DEV(二次开发指南)`；`REFACTOR_PLAN` 作为重构主线文档保留。
+
+---
+
 ## v5.13.3 (2026-08-14) — Hotfix
 
 ### 虾米官解替换为新地址 https://jx.xmflv.cc/?url=&ref= + 新增 HTML播放器接口类型 + {url}/{ref}/{origin}/{ts}/{t} 占位符 + Cloudflare WAF 403 兼容
