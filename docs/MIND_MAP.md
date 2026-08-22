@@ -52,19 +52,43 @@ M3U8 去广告系统 —— 让「任何链接」都能无广告、无非正片�
 ## 四、落地顺序（里程碑）
 
 ```
-M1 快速止血 ──→ 全局预算 Timer + 旧 resolve 预算钩子
+M1 快速止血 ──→ 全局预算 Timer + 旧 resolve 预算钩子 ✅
 M2 门面骨架 ──→ parse/config + Timer + UrlClassifier + ParseResult + ParserFacade ✅
 M3 去广告引擎 ──→ LocalM3u8Cleaner（可离线跑）✅
-M4 官替接入 ──→ ResourceFirstResolver（预算内复用 resolve）
+M4 官替接入 ──→ ResourceFirstResolver（预算内复用 resolve）✅
 M5 验证 ──→ fixtures + cli_verify.php ✅（21/21）
-M6 文档 ──→ ARCHITECTURE / MIND_MAP / MAINTENANCE / SECONDARY_DEV / CHANGELOG（本轮）
-M7 接线 ──→ 在 mx.php moxi 接入 ParserFacade（后续）
+M6 文档 ──→ ARCHITECTURE / MIND_MAP / MAINTENANCE / SECONDARY_DEV / CHANGELOG ✅
+M7 接线 ──→ moxi/parse 链路接入 ParserFacade + 资源站优先（预算内）✅
+M8 整体重构 ──→ 解析核心迁入 handlers/ + mx.php 瘦身为路由层 + UpdateManager 保护 ✅
 ```
 
-> ✅ = 本轮已完成
+> ✅ = 已完成
 
-## 五、验收标准
+## 五、整体重构（v5.14.0）思考脉络
 
-- 语法：所有新增文件 `php -l` 0 错误 ✅
+```
+问题：mx.php 6116 行巨型文件 → 维护难、单文件过大影响解析速度效率
+│
+├── R5 单文件过大 → 解析核心与路由/管理混杂，改一处风险波及全站
+├── R6 远程更新会覆盖本地重构成果 → 辛辛苦苦重构被 update 回退
+├── R7 三链路（官解/官替/直链）各写各的 → 无统一入口，前端难切换
+│
+方案：
+├── ① 瘦路由（治 R5）
+│      mx.php 只留路由 + 管理类 action；解析类 action 全部迁出
+├── ② handlers/ 模块（治 R5）
+│      HandlerDispatcher(分发) → *Handler(action 处理) → helpers(工具)
+│      新 action 只需在 MAP 注册 + 写一个 handler，不碰 mx.php
+├── ③ 远程更新保护（治 R6）
+│      UpdateManager 孤儿清理/覆盖复制跳过 handlers/ parse/ docs/ 及本地文档
+└── ④ 统一链路（治 R7）
+       parse/parse/info/jx/jx/info → ParseHandler → MoxiHandler / ParserFacade
+       官方→资源站优先（预算内）→ 本地去广告；输出兼容旧字段，前端无感
+```
+
+## 六、验收标准
+
+- 语法：全项目 PHP 文件 `php -l` 0 错误 ✅
 - 离线：`php parse/tests/cli_verify.php` 21/21 通过 ✅
-- 兼容：旧入口 + API 契约不回退；`parse/` 可被远程更新保留
+- 冒烟：`php -S 127.0.0.1:8899 router.php`，version/parse/moxi/mxjx/xiami_jx/skip 全部正确路由，moxi 24s 预算内返回不卡死 ✅
+- 兼容：旧入口 + API 契约不回退；`handlers/` `parse/` `docs/` 可被远程更新保留 ✅

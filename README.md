@@ -17,15 +17,49 @@
 - [二次开发指南](docs/SECONDARY_DEV.md)
 - [解析故障诊断与模块化重构方案](REFACTOR_PLAN.md)
 
-## 当前版本 v5.13.9（2026-08-22）
+## 当前版本 v5.14.0（2026-08-22）
 
-### 🧩 模块化重构·框架搭建：新增 `parse/` 模块化解析框架
+### ♻️ 整体重构：解析核心迁入 `handlers/` 模块 + mx.php 瘦身为路由层
+
+**用户诉求**：
+> 官方平台链接（腾讯/爱奇艺/优酷/芒果TV/B站/搜狐/PPTV）与直接 M3U8 链路经常「解析不了 / 一直转圈 / 卡死」，
+> 官替可能有问题；希望重新开发、模块化设计、重构项目，避免单文件过大影响解析速度与效率，优先资源站资源并去除广告/非正片。
+
+**本轮交付（整体重构落地）**：
+
+| 模块 | 说明 |
+|------|------|
+| [handlers/](file:///workspace/handlers) | **解析核心模块**：HandlersContext(依赖注入) / BaseHandler(基类) / HandlerDispatcher(分发器) + 各 action handler + helpers |
+| [handlers/HandlerDispatcher.php](file:///workspace/handlers/HandlerDispatcher.php) | 解析 action 分发器：moxi / mxjx / mxjx/info / mxjx/deep / xiami_jx / skip / parse / jx 统一路由 |
+| [handlers/ParseHandler.php](file:///workspace/handlers/ParseHandler.php) | 统一解析入口（parse / parse/info / jx / jx/info） |
+| [handlers/MoxiHandler.php](file:///workspace/handlers/MoxiHandler.php) | 沫兮解析：官方→资源站优先（预算内）+ 直接 M3U8 去广告 |
+| [handlers/MxjxHandler.php](file:///workspace/handlers/MxjxHandler.php) | 去广告 M3U8 输出（缓存 / 增强规则 / 深度 MD5） |
+| [mx.php](file:///workspace/mx.php) | **瘦身为路由层**：6116 行 → 4358 行，仅保留路由 + 管理类 action |
+| [parse/](file:///workspace/parse) | 解析框架：Timer(全局预算) / UrlClassifier / ParseResult / LocalM3u8Cleaner / ResourceFirstResolver / ParserFacade |
+| [src/UpdateManager.php](file:///workspace/src/UpdateManager.php) | 远程更新保护：handlers/ parse/ docs/ 及本地文档不被覆盖 |
+
+**治卡死（核心修复）**：
+- [OfficialReplaceManager.php](file:///workspace/gz/OfficialReplaceManager.php#L144-L150) `resolve()` 内置 **25s 全局硬截止**（parse/Timer），抓官页/每站搜索/每个关键词/Pt 引擎前都校验预算，超预算立即 504 快速失败 + step_trace。
+- `httpGet()` 感知剩余预算：自动收缩单次超时、剩余预算紧张时停止重试；串行兜底搜索逐站校验，超预算停止返回已有结果。
+
+**快速验证**：
+```bash
+php parse/tests/cli_verify.php   # 21/21 PASS（离线）
+php -S 127.0.0.1:8899 router.php # 本地接口冒烟
+```
+
+> 解析核心已迁入 handlers/，mx.php 仅做路由；远程更新不会回退本地重构成果。
+> 详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [CHANGELOG.md](CHANGELOG.md)。
+
+---
+
+### 🧩 上版：v5.13.9 模块化重构·框架搭建（新增 `parse/` 模块化解析框架）
 
 **用户诉求**：
 > 官方平台链接（腾讯/爱奇艺/优酷/芒果TV/B站/搜狐/PPTV）与直接 M3U8 链路经常「解析不了 / 一直转圈」，
 > 官替可能有问题；希望模块化重构、避免单文件过大、优先资源站资源并去除广告/非正片。
 
-**本轮交付（可运行骨架）**：
+**交付（可运行骨架）**：
 
 | 模块 | 说明 |
 |------|------|
@@ -37,11 +71,7 @@
 | [parse/ParserFacade.php](file:///workspace/parse/ParserFacade.php) | 统一门面：路由 + 预算 + 归一化输出 |
 | [parse/tests/cli_verify.php](file:///workspace/parse/tests/cli_verify.php) | 离线可运行验证 **21/21 PASS** |
 
-**快速验证**：`php parse/tests/cli_verify.php`
-
 > 资源站优先主链路设计：`官方链接 → 预算内官替匹配 m3u8 → 本地去广告/去非正片 → 归一化输出`。
-> 旧链路 mx.php / xt / gz / pt / src 全部兼容并行，远程更新不回退。
-> 详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 

@@ -17,6 +17,8 @@ class OfficialReplaceManager {
     private $useProxyOnFirstTry = true;
     /** @var array step_trace: 每一步解析过程，用于前后端排错 */
     private $stepTrace = [];
+    /** @var Timer|null 全局总预算计时器（治卡死 v5.14.0） */
+    private $budgetTimer = null;
 
     public function __construct() {
         $this->configFile = __DIR__ . '/official_replace_config.php';
@@ -143,6 +145,8 @@ class OfficialReplaceManager {
         $this->resetStepTrace();
         $tStart = microtime(true);
         $this->pushStep('start', '启动官替解析', 'info', "URL: {$url}", ['url' => $url]);
+        // 全局总预算（硬截止）：整条官替链路最坏不超过 $budgetSec 秒，绝不卡死
+        $this->newBudgetTimer(25.0);
 
         try {
             if (empty($url)) {
@@ -267,6 +271,11 @@ class OfficialReplaceManager {
                 ],
                 (microtime(true) - $t) * 1000);
 
+            // 预算检查：获取官方页面信息可能已耗时较长
+            if (!$this->budgetOk()) {
+                return $this->budgetTimeoutResult('获取官方页面信息');
+            }
+
             $searchKeywords = $this->buildSearchKeywords($videoInfo, $platform);
             $this->pushStep('build_keywords', '④ 生成搜索关键词', 'ok',
                 '共 ' . count($searchKeywords) . ' 个搜索词，优先使用分剧名/第X集组合',
@@ -278,6 +287,10 @@ class OfficialReplaceManager {
             $tSearch = microtime(true);
             foreach ($searchKeywords as $ki => $keyword) {
                 if (empty($keyword)) continue;
+                // 预算检查：每次资源站搜索前都校验，避免多关键词串行搜索拖死整条链路
+                if (!$this->budgetOk()) {
+                    return $this->budgetTimeoutResult('资源站搜索');
+                }
                 $t1 = microtime(true);
                 $result = $this->searchInSites($keyword);
                 $videoCount = empty($result['videos']) ? 0 : count($result['videos']);
@@ -330,6 +343,11 @@ class OfficialReplaceManager {
                 ];
             }
 
+            // 预算检查：搜索阶段结束后再次校验
+            if (!$this->budgetOk()) {
+                return $this->budgetTimeoutResult('资源站搜索');
+            }
+
             $t = microtime(true);
             $aiMatchResult = $this->aiSmartMatch($videoInfo, $searchResult['videos']);
             $bestMatch = $aiMatchResult['best_match'] ?? null;
@@ -345,6 +363,9 @@ class OfficialReplaceManager {
             // pt 引擎增强匹配
             if (!$bestMatch || ($bestMatch['score'] ?? 0) < 60) {
                 try {
+                    if (!$this->budgetOk()) {
+                        return $this->budgetTimeoutResult('Pt 引擎增强匹配');
+                    }
                     $ptManager = PtManager::getInstance();
                     $ptResult = $ptManager->resolve($url, $videoInfo, $searchResult['videos']);
                     if (!empty($ptResult['matches'])) {
@@ -637,6 +658,57 @@ class OfficialReplaceManager {
     /** 取出 step_trace 数组快照 */
     public function getStepTrace() {
         return $this->stepTrace;
+    }
+
+    /**
+     * 创建全局总预算计时器（预算秒，<=0 视为无限）
+     * 调用点：resolve() 开头，保证整条官替链路有硬截止，绝不卡死。
+     * @param float $budgetSec
+     * @return Timer|object|null
+     */
+    private function newBudgetTimer($budgetSec = 25.0) {
+        $timerFile = dirname(__DIR__) . '/parse/Timer.php';
+        if (!class_exists('Timer', false) && file_exists($timerFile)) {
+            require_once $timerFile;
+        }
+        if (class_exists('Timer', false)) {
+            $this->budgetTimer = new Timer($budgetSec);
+        } else {
+            $this->budgetTimer = null; // 无 Timer 时降级为不限制
+        }
+        return $this->budgetTimer;
+    }
+
+    /** 预算仍充足？（无计时器时恒 true） */
+    private function budgetOk() {
+        if ($this->budgetTimer === null) return true;
+        if (!method_exists($this->budgetTimer, 'ok')) return true;
+        return $this->budgetTimer->ok();
+    }
+
+    /** 剩余预算（秒，无计时器返回 null） */
+    private function budgetRemaining() {
+        if ($this->budgetTimer === null || !method_exists($this->budgetTimer, 'remaining')) return null;
+        return $this->budgetTimer->remaining();
+    }
+
+    /** 预算超时快速失败结果（带 step_trace，调用方直接 return） */
+    private function budgetTimeoutResult($stage = '') {
+        $msg = $stage ? "解析超时：{$stage} 超出全局预算" : '解析超时：超出全局预算';
+        $elapsed = 0.0;
+        if ($this->budgetTimer !== null && method_exists($this->budgetTimer, 'timeoutResult')) {
+            $r = $this->budgetTimer->timeoutResult($msg);
+            $elapsed = round($r['elapsed'] ?? 0, 3);
+        }
+        $this->pushStep('budget', '⑨ 全局预算', 'fail', $msg, ['elapsed' => $elapsed]);
+        return [
+            'success' => false,
+            'code' => 504,
+            'message' => $msg,
+            'timed_out' => true,
+            'elapsed' => $elapsed,
+            'step_trace' => $this->getStepTrace(),
+        ];
     }
 
     private function buildSearchKeywords($videoInfo, $platform) {
@@ -3111,6 +3183,11 @@ class OfficialReplaceManager {
 
         if (!$hasMultiThread || empty($allVideos)) {
             foreach ($sites as $site) {
+                // 预算检查：串行兜底搜索每站前校验，超预算立即停止并返回已有结果
+                if (!$this->budgetOk()) {
+                    $failedSites[] = ['site' => $site['name'] ?? '', 'error' => '全局预算耗尽'];
+                    break;
+                }
                 $apiUrl = $site['api_url'] ?? '';
                 if (empty($apiUrl)) continue;
                 $siteName = $site['name'];
@@ -3611,6 +3688,14 @@ class OfficialReplaceManager {
     }
 
     private function httpGet($url, $timeout = 30, $retry = 3) {
+        // 全局预算感知：存在总预算计时器时，单请求超时不超过剩余预算，且超时前不再重试
+        $remaining = $this->budgetRemaining();
+        if ($remaining !== null && $remaining > 0) {
+            if ($remaining < (float)$timeout * 1.5) {
+                $timeout = max(1.0, min((float)$timeout, $remaining));
+                $retry = 0;
+            }
+        }
         $lastError = '';
         $userAgents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

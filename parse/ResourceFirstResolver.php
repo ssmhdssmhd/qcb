@@ -3,11 +3,11 @@
  * ResourceFirstResolver —— 官方链接 → 资源站优先解析（带全局预算）
  *
  * 策略：官方视频页 → 经「官替」通道在资源站搜索匹配 → 得到可直接播放的 m3u8
- *       → 再交给 LocalM3u8Cleaner 去广告/去非正片。
+ *       → 可选再交给 LocalM3u8Cleaner 去广告/去非正片（skip_clean=true 时跳过，
+ *         由 mxjx 在播放时消费占位）。
  *
- * 框架第一版：在预算内尝试复用现有 OfficialReplaceManager::resolve()；
- * 若该重引擎尚未加载/不可用，则返回明确的“未接入”快速失败 + step_trace，
- * 保证链路绝不卡死、绝无未捕获异常。
+ * 任一步骤超预算/异常都返回“快速失败 + 明确 message + step_trace”，绝不卡死。
+ * 支持注入外部已配置好代理/DB 的 OfficialReplaceManager 实例（orm）。
  *
  * @package parse
  * @since   5.13.9
@@ -20,16 +20,21 @@ class ResourceFirstResolver {
     /** @var Timer|null */
     protected $timer;
 
-    public function __construct(array $cfg = [], Timer $timer = null) {
+    /** @var object|null 注入的官替管理器实例 */
+    protected $orm;
+
+    public function __construct(array $cfg = [], Timer $timer = null, $orm = null) {
         $this->cfg = $cfg;
         $this->timer = $timer;
+        $this->orm = $orm;
     }
 
     /**
      * @param string $url
+     * @param array  $opts { skip_clean?:bool }
      * @return ParseResult
      */
-    public function resolve($url) {
+    public function resolve($url, array $opts = []) {
         $timer = $this->timer ?: new Timer((float)($this->cfg['global_budget'] ?? 25.0));
         $trace = [];
         $trace[] = 'resource_first:start url=' . $url;
@@ -38,10 +43,20 @@ class ResourceFirstResolver {
             return ParseResult::fail(409, '官方替换通道已停用', ['channel' => 'official_replace', 'step_trace' => $trace]);
         }
 
-        // 尝试复用重型官替引擎
-        if (class_exists('OfficialReplaceManager')) {
+        $orm = $this->orm;
+        $useInjected = $orm !== null;
+
+        // 尝试复用重型官替引擎（优先注入实例，其次自建）
+        if ($useInjected || class_exists('OfficialReplaceManager')) {
             try {
-                $orm = new OfficialReplaceManager();
+                if (!$useInjected) {
+                    $orm = new OfficialReplaceManager();
+                }
+                // 为重型引擎注入内部预算（治卡死），取官替通道预算
+                $attemptBudget = (float)($this->cfg['official_replace']['attempt_budget'] ?? 22.0);
+                if (method_exists($orm, 'setBudget')) {
+                    $orm->setBudget($attemptBudget);
+                }
                 $result = $orm->resolve($url);
                 $trace[] = 'resource_first:orm.resolve done=' . ($result['success'] ? 'true' : 'false');
                 if (!empty($result['step_trace'])) {
@@ -49,9 +64,14 @@ class ResourceFirstResolver {
                 }
                 if (!empty($result['success']) && !empty($result['m3u8_url'])) {
                     $m3u8Url = $result['m3u8_url'];
-                    // 再去广告
-                    $cleaner = new LocalM3u8Cleaner($this->cfg);
-                    $clean = $cleaner->clean($m3u8Url, ['url' => $url, 'self' => $ctxSelf ?? '']);
+                    $cleanStats = [];
+                    if (empty($opts['skip_clean'])) {
+                        // 再去广告（预览用，失败不阻塞）
+                        $cleaner = new LocalM3u8Cleaner($this->cfg);
+                        $clean = $cleaner->clean($m3u8Url, ['url' => $url, 'self' => $opts['self'] ?? '']);
+                        $cleanStats = $clean['success'] ? $clean['stats'] : [];
+                        $trace[] = 'resource_first:local_clean done=' . ($clean['success'] ? 'true' : 'false');
+                    }
                     return new ParseResult([
                         'success'      => true,
                         'code'         => 200,
@@ -62,7 +82,7 @@ class ResourceFirstResolver {
                         'episode'      => $result['target_episode'] ?? ($result['episode'] ?? ''),
                         'channel'      => 'official_replace',
                         'step_trace'   => $trace,
-                        'clean_stats'  => $clean['success'] ? $clean['stats'] : [],
+                        'clean_stats'  => $cleanStats,
                         'elapsed'      => round($timer->elapsed(), 3),
                     ]);
                 }

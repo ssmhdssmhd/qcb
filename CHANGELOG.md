@@ -1,5 +1,62 @@
 # 更新日志
 
+## v5.14.0 (2026-08-22) — 整体重构：解析核心迁入 handlers/ 模块 + mx.php 瘦身为路由层
+
+### 目标
+> 承接 v5.13.9 框架搭建，完成「整体重构」：把解析核心从 6116 行巨型 mx.php 中迁出，避免单文件过大影响解析速度与效率；
+> 官替链路加全局预算硬截止，彻底解决官方平台链接/直接 M3U8 链路「解析不了 / 一直转圈 / 卡死」问题。
+
+---
+
+#### 1. 架构调整：mx.php 瘦身为路由层，解析核心迁入 handlers/
+
+```
+请求 → mx.php（瘦路由：加载 handlers/parse → HandlerDispatcher::dispatch）
+        ├─ 命中解析类 action → handlers/*Handler（输出并 exit）
+        │     moxi/moxi/api → MoxiHandler
+        │     mxjx → MxjxHandler   mxjx/info → MxjxInfoHandler   mxjx/deep → MxjxDeepHandler
+        │     xiami_jx/xiami_jx/info → XiamiJxHandler
+        │     skip → SkipHandler
+        │     parse/parse/parse/info/jx/jx/info → ParseHandler
+        └─ 未命中 → 继续原 switch（analyze/rules/sites/update/auth/official_replace/db/proxy… 管理类）
+```
+
+| 变更 | 说明 |
+|------|------|
+| 新增 `handlers/` | HandlersContext(依赖注入) / BaseHandler(基类) / HandlerDispatcher(分发器) + 各 action handler + helpers |
+| 新增 `parse/` | v5.13.9 已建：Timer(全局预算) / UrlClassifier / ParseResult / LocalM3u8Cleaner / ResourceFirstResolver / ParserFacade |
+| mx.php 瘦身 | 6116 行 → 4358 行；删除已迁移的 `parse_internal_xiami` / `parse_internal_moxi` / `parse_internal_unified` 死代码 |
+| 前端无感 | 所有对外 JSON 字段/HTTP 行为保持不变 |
+
+#### 2. 治卡死：官替全局预算硬截止
+
+- `OfficialReplaceManager::resolve()` 内置 25s 全局硬截止（`parse/Timer`），绝不无限串行等待。
+- 关键校验点：抓官方页面后 / 每个搜索关键词前 / 搜索阶段结束 / Pt 引擎前。
+- `httpGet()` 感知剩余预算：自动收缩单次超时、剩余预算紧张时停止重试。
+- `searchSitesConcurrent()` 串行兜底逐站校验，超预算立即停止并返回已有结果。
+- 超预算返回 504 快速失败 + `step_trace`，便于前后端排错。
+
+#### 3. 统一解析链路
+
+```
+官方链接 → ParseHandler/MoxiHandler → ParserFacade(force_channel=official_replace)
+        → ResourceFirstResolver（预算内）→ 资源站 m3u8 → mxjx 去广告
+直接 M3U8 → 本地标题/集数提取（可选资源站标题匹配）→ mxjx 去广告
+```
+
+#### 4. 远程更新保护
+
+`UpdateManager` 孤儿清理 + 覆盖复制均跳过 `handlers/` `parse/` `docs/` 及 `REFACTOR_PLAN.md` `CHANGELOG.md`，
+本地重构成果不会被远程更新回退。
+
+#### 5. 验证结果
+
+- 全项目 PHP 文件 `php -l` 0 错误。
+- `parse/tests/cli_verify.php` 21/21 PASS（Timer 预算 / UrlClassifier / LocalM3u8Cleaner / ParserFacade）。
+- 本地 `php -S` 冒烟：version / parse / info / moxi（v.qq.com 在 ~24s 预算内返回，不再卡死）/ mxjx / mxjx/info / mxjx/deep / xiami_jx / skip 全部正确路由。
+
+---
+
 ## v5.13.9 (2026-08-22) — 模块化重构·框架搭建
 
 ### 新增 parse/ 模块化解析框架（全局预算 + 统一门面 + 本地去广告），杜绝解析卡死

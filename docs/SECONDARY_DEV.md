@@ -15,15 +15,38 @@ php parse/tests/cli_verify.php          # 期望 21/21 PASS, 退出码 0
 ## 二、目录结构速览
 
 ```
-parse/  新·模块化解析框架（HTTP 无关、可 CLI 跑）
-src/    基础引擎
-gz/     官替/规则/去广告高级引擎
-xt/     官解嗅探
-pt/     平台适配
-db/     数据访问
+handlers/  v5.14.0 解析核心模块（action 处理器，HTTP 层）
+parse/     模块化解析框架（HTTP 无关、可 CLI 跑）
+src/       基础引擎
+gz/        官替/规则/去广告高级引擎
+xt/        官解嗅探
+pt/        平台适配
+db/        数据访问
 ```
 
 ## 三、最常用扩展姿势
+
+### 3.0 新增一个 HTTP action（v5.14.0 推荐方式）
+
+1. 在 `handlers/` 新建 `XxxHandler.php`，继承 `BaseHandler`，实现 `handle()`。
+2. 在 `handlers/HandlerDispatcher.php` 的 `MAP` 注册 action → handler 类名。
+3. 如用到解析框架，注入 `HandlersContext`（rootDir / db / config），内部可调 `ParserFacade` / 官替。
+4. 在 `handlers/autoload.php` 登记 `require_once`。
+
+```php
+class XxxHandler extends BaseHandler {
+    public function handle() {
+        $url = $this->param('url', '');
+        if (empty($url)) {
+            $this->jsonOut(['success' => false, 'code' => 400, 'message' => '缺少 url'], 400);
+        }
+        $result = $this->ctx->facade->parse($url, 'parse'); // 复用统一门面
+        $this->jsonOut($result);
+    }
+}
+```
+
+> 原则：`mx.php` 只做路由 + 管理类 action，新增解析逻辑一律写 handler，避免再次膨胀。
 
 ### 3.1 新增一个「解析通道 / 处理器」
 

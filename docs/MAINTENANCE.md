@@ -22,7 +22,8 @@ done
 
 | 目录 | 职责 | 改动注意 |
 |------|------|----------|
-| `parse/` | 新·模块化解析框架 | 新增逻辑优先放这，保持小而专 |
+| `handlers/` | 解析核心模块（v5.14.0） | 新增解析 action 写这里 + 注册到 `HandlerDispatcher::MAP`，**勿再改 mx.php** |
+| `parse/` | 模块化解析框架 | 新增逻辑优先放这，保持小而专 |
 | `src/` | 基础引擎（解析/过滤/缓存） | 改动需跑分析回归 |
 | `gz/` | 官替 / 规则 / MD5 占位 | `OfficialReplaceManager.php` 已达 160KB+，**勿再堆积**，新逻辑提取新类 |
 | `xt/` | 官解嗅探 | 依赖第三方，注意超时与降级 |
@@ -43,8 +44,10 @@ done
 ## 四、版本与更新
 
 - 每次改动：升 `version.php` 版本、在 `CHANGELOG.md` 顶部追加章节、`README.md` 同步。
-- 远程更新（`update.php`）：只覆盖仓库既有文件清单。新增文件（如 `parse/*`）可安全保留；
+- 远程更新（`update.php`）：只覆盖仓库既有文件清单。新增文件（如 `parse/*` `handlers/*` `docs/*`）可安全保留；
   对旧文件的改动应尽量收敛为“预算钩子”等最小面，并在 CHANGELOG 留痕，便于升级合并。
+- v5.14.0 起 `UpdateManager` 已保护 `handlers/ parse/ docs/` 及 `REFACTOR_PLAN.md / CHANGELOG.md`：
+  孤儿清理与覆盖复制均跳过，本地重构成果不会被远程更新回退。
 - 自动维护：`gx.php` 提供 all/check/migrate/official_refresh/site_check 等调度任务。
 
 ## 五、性能与体量规范

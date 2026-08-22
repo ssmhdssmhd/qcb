@@ -1,13 +1,27 @@
 <?php
 return array (
-  'version' => 'v5.13.9',
+  'version' => 'v5.14.0',
   'branch' => 'main',
-  'build' => '20260822-v5-13-9-modular-parse-framework',
-  'version_code' => 51309,
-  'commit' => 'v5.13.9-modular-parse-framework',
+  'build' => '20260822-v5-14-0-overall-refactor-handlers',
+  'version_code' => 51400,
+  'commit' => 'v5.14.0-overall-refactor-handlers',
   'updated_at' => '2026-08-22',
   'changelog' =>
   array (
+    'v5.14.0' =>
+    array (
+      'date' => '2026-08-22',
+      'title' => '【整体重构 v5.14.0】解析核心迁入 handlers/ 模块、mx.php 瘦身为路由层、官替全局预算硬截止、远程更新保护本地模块',
+      'changes' =>
+      array (
+        0 => '【新 handlers/ 模块】解析核心 action 全部迁出 mx.php：HandlersContext(依赖注入) / BaseHandler(基类) / HandlerDispatcher(分发器) / ParseHandler(统一解析) / MoxiHandler(沫兮) / MxjxHandler(去广告) / MxjxInfoHandler / MxjxDeepHandler / XiamiJxHandler / SkipHandler + helpers(SelfUrl/M3u8Url/TitleExtractor)',
+        1 => '【mx.php 瘦身】6116 行 → 4358 行：删除已迁移的 parse_internal_xiami / parse_internal_moxi / parse_internal_unified 三个死代码函数；mx.php 仅保留路由 + 管理类 action（analyze/rules/sites/update/auth/official_replace/db/proxy…）',
+        2 => '【治卡死·官替全局预算】OfficialReplaceManager::resolve() 内置 25s 全局硬截止（parse/Timer）：抓官页/每站搜索/每个关键词/Pt 引擎前都校验预算，超预算立即 504 快速失败 + step_trace；httpGet 感知剩余预算自动收缩超时并停止重试；串行兜底搜索逐站校验，超预算停止返回已有结果',
+        3 => '【统一解析链路】moxi/parse/parse/info/jx 等统一走 ParseHandler + MoxiHandler，官方链接→资源站优先（ParserFacade→ResourceFirstResolver，带预算），直接 M3U8→本地标题/集数提取 + 去广告；输出兼容旧字段，前端无感',
+        4 => '【远程更新保护】UpdateManager 的孤儿清理与覆盖复制均跳过 handlers/ parse/ docs/ 及 REFACTOR_PLAN.md / CHANGELOG.md，本地重构成果不会被远程更新回退',
+        5 => '【验证】全项目 PHP 文件 php -l 0 错误；parse/tests/cli_verify.php 21/21 PASS；本地 php -S 冒烟：version / parse / moxi(24s 预算内返回，不卡死) / mxjx / mxjx/info / mxjx/deep / xiami_jx / skip 全部正确路由',
+      ),
+    ),
     'v5.13.9' =>
     array (
       'date' => '2026-08-22',

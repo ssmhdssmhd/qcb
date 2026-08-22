@@ -879,6 +879,12 @@ class UpdateManager
             '/^gz\/player_config\.php$/',
             '/^gz\/official_replace_config\.php$/',
             '/^gz\/official_sites_config\.php$/',
+            // v5.14.0 整体重构：handlers/parse/docs 为本地自定义模块，远程更新不得清理
+            '/^handlers\//',
+            '/^parse\//',
+            '/^docs\//',
+            '/^REFACTOR_PLAN\.md$/',
+            '/^CHANGELOG\.md$/',
         ];
         $systemFiles = [
             '.user.ini',
@@ -1018,9 +1024,16 @@ class UpdateManager
             'official_sites_config.php',
         ];
         $excludePatterns = ['/^rules_.*\.php$/'];
+        // v5.14.0 整体重构：以下本地自定义目录/文件不被远程更新覆盖
+        $protectedLocalDirs = ['handlers', 'parse', 'docs', 'backups', '.trae-html-share-packages'];
+        $protectedLocalFiles = [
+            'REFACTOR_PLAN.md',
+            'CHANGELOG.md',
+        ];
         while (($file = readdir($dir)) !== false) {
             if ($file === '.' || $file === '..') continue;
             if (in_array($file, $excludeFiles)) continue;
+            if (in_array($file, $protectedLocalDirs) || in_array($file, $protectedLocalFiles)) continue;
             $isExcluded = false;
             foreach ($excludePatterns as $pattern) {
                 if (preg_match($pattern, $file)) {

@@ -39,7 +39,8 @@ class ParserFacade {
      * 统一的解析入口。
      *
      * @param string $url
-     * @param array  $opts { type?:string, self_url?:string, force_channel?:string }
+     * @param array  $opts { type?:string, self_url?:string, force_channel?:string,
+     *                       orm?:object, skip_clean?:bool }
      * @return ParseResult
      */
     public function parse($url, array $opts = []) {
@@ -61,7 +62,7 @@ class ParserFacade {
             if ($force === 'm3u8_clean' || $info['type'] === 'm3u8' || $info['type'] === 'other') {
                 $result = $this->dispatchM3u8($url);
             } elseif ($force === 'official_replace' || $info['type'] === 'official') {
-                $result = $this->dispatchOfficial($url);
+                $result = $this->dispatchOfficial($url, $opts);
             } else {
                 $result = ParseResult::fail(400, '无法识别的 URL 类型', ['channel' => 'error', 'debug' => $info]);
             }
@@ -100,9 +101,9 @@ class ParserFacade {
     }
 
     /** 官方链接 → 资源站优先 */
-    protected function dispatchOfficial($url) {
-        $resolver = new ResourceFirstResolver($this->cfg, $this->timer);
-        return $resolver->resolve($url);
+    protected function dispatchOfficial($url, array $opts = []) {
+        $resolver = new ResourceFirstResolver($this->cfg, $this->timer, $opts['orm'] ?? null);
+        return $resolver->resolve($url, ['skip_clean' => !empty($opts['skip_clean']), 'self' => $opts['self'] ?? '']);
     }
 
     /** 极简标题猜测 */
