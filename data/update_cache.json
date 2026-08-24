@@ -1,12 +1,371 @@
 {
-    "last_update": null,
-    "last_speed_test": null,
-    "best_node_id": null,
-    "best_node_name": null,
-    "best_response_time_ms": null,
+    "last_update": "2026-08-25 01:26:38",
+    "last_speed_test": "2026-08-25 01:29:47",
+    "best_node_id": 4,
+    "best_node_name": "gh.con.sh 加速",
+    "best_response_time_ms": 838.08,
     "best_error_rate": null,
-    "speed_test_results": [],
-    "update_results": [],
-    "history": [],
-    "version": "1.2.0"
+    "speed_test_results": [
+        {
+            "node_id": 4,
+            "node_name": "gh.con.sh 加速",
+            "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592570_2959",
+            "http_code": 200,
+            "success": true,
+            "response_time_ms": 838.08,
+            "connect_time_ms": 0.08,
+            "download_size": 48,
+            "speed_bps": 56.67,
+            "error_type": "none",
+            "error": "",
+            "retry_count": 3,
+            "success_count": 3,
+            "all_attempts": [
+                {
+                    "node_id": 4,
+                    "node_name": "gh.con.sh 加速",
+                    "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592568_3427",
+                    "http_code": 200,
+                    "success": true,
+                    "response_time_ms": 830.27,
+                    "connect_time_ms": 0.08,
+                    "download_size": 48,
+                    "speed_bps": 57,
+                    "error_type": "unknown",
+                    "error": ""
+                },
+                {
+                    "node_id": 4,
+                    "node_name": "gh.con.sh 加速",
+                    "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592569_9059",
+                    "http_code": 200,
+                    "success": true,
+                    "response_time_ms": 848.19,
+                    "connect_time_ms": 0.1,
+                    "download_size": 48,
+                    "speed_bps": 56,
+                    "error_type": "unknown",
+                    "error": ""
+                },
+                {
+                    "node_id": 4,
+                    "node_name": "gh.con.sh 加速",
+                    "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592570_2959",
+                    "http_code": 200,
+                    "success": true,
+                    "response_time_ms": 838.08,
+                    "connect_time_ms": 0.08,
+                    "download_size": 48,
+                    "speed_bps": 57,
+                    "error_type": "unknown",
+                    "error": ""
+                }
+            ],
+            "tested_at": "2026-08-25 01:29:31"
+        },
+        {
+            "node_id": 1,
+            "node_name": "jsDelivr CDN",
+            "url": "https:\/\/cdn.jsdelivr.net\/gh\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb@KF2\/config.php?_t=1787592560_2859",
+            "http_code": 404,
+            "success": false,
+            "response_time_ms": 304.45,
+            "connect_time_ms": 0.09,
+            "download_size": 0,
+            "speed_bps": 0,
+            "error_type": "client_error",
+            "error": "",
+            "retry_count": 3,
+            "success_count": 0,
+            "all_attempts": [
+                {
+                    "node_id": 1,
+                    "node_name": "jsDelivr CDN",
+                    "url": "https:\/\/cdn.jsdelivr.net\/gh\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb@KF2\/config.php?_t=1787592558_2757",
+                    "http_code": 404,
+                    "success": false,
+                    "response_time_ms": 1007.03,
+                    "connect_time_ms": 0.08,
+                    "download_size": 72,
+                    "speed_bps": 71,
+                    "error_type": "client_error",
+                    "error": ""
+                },
+                {
+                    "node_id": 1,
+                    "node_name": "jsDelivr CDN",
+                    "url": "https:\/\/cdn.jsdelivr.net\/gh\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb@KF2\/config.php?_t=1787592559_7838",
+                    "http_code": 404,
+                    "success": false,
+                    "response_time_ms": 306.99,
+                    "connect_time_ms": 0.1,
+                    "download_size": 72,
+                    "speed_bps": 234,
+                    "error_type": "client_error",
+                    "error": ""
+                },
+                {
+                    "node_id": 1,
+                    "node_name": "jsDelivr CDN",
+                    "url": "https:\/\/cdn.jsdelivr.net\/gh\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb@KF2\/config.php?_t=1787592560_2859",
+                    "http_code": 404,
+                    "success": false,
+                    "response_time_ms": 304.45,
+                    "connect_time_ms": 0.09,
+                    "download_size": 72,
+                    "speed_bps": 236,
+                    "error_type": "client_error",
+                    "error": ""
+                }
+            ],
+            "tested_at": "2026-08-25 01:29:20"
+        },
+        {
+            "node_id": 2,
+            "node_name": "raw.githubusercontent.com",
+            "url": "https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592561_1280",
+            "http_code": 404,
+            "success": false,
+            "response_time_ms": 316.57,
+            "connect_time_ms": 0.08,
+            "download_size": 0,
+            "speed_bps": 0,
+            "error_type": "client_error",
+            "error": "",
+            "retry_count": 3,
+            "success_count": 0,
+            "all_attempts": [
+                {
+                    "node_id": 2,
+                    "node_name": "raw.githubusercontent.com",
+                    "url": "https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592560_5070",
+                    "http_code": 404,
+                    "success": false,
+                    "response_time_ms": 625.12,
+                    "connect_time_ms": 0.09,
+                    "download_size": 14,
+                    "speed_bps": 22,
+                    "error_type": "client_error",
+                    "error": ""
+                },
+                {
+                    "node_id": 2,
+                    "node_name": "raw.githubusercontent.com",
+                    "url": "https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592561_8762",
+                    "http_code": 404,
+                    "success": false,
+                    "response_time_ms": 306.06,
+                    "connect_time_ms": 0.09,
+                    "download_size": 14,
+                    "speed_bps": 45,
+                    "error_type": "client_error",
+                    "error": ""
+                },
+                {
+                    "node_id": 2,
+                    "node_name": "raw.githubusercontent.com",
+                    "url": "https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592561_1280",
+                    "http_code": 404,
+                    "success": false,
+                    "response_time_ms": 316.57,
+                    "connect_time_ms": 0.08,
+                    "download_size": 14,
+                    "speed_bps": 44,
+                    "error_type": "client_error",
+                    "error": ""
+                }
+            ],
+            "tested_at": "2026-08-25 01:29:22"
+        },
+        {
+            "node_id": 3,
+            "node_name": "ghproxy.com 加速",
+            "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592567_1122",
+            "http_code": 0,
+            "success": false,
+            "response_time_ms": 357.66,
+            "connect_time_ms": 0.09,
+            "download_size": 0,
+            "speed_bps": 0,
+            "error_type": "connection_refused",
+            "error": "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to ghproxy.com:443 ",
+            "retry_count": 3,
+            "success_count": 0,
+            "all_attempts": [
+                {
+                    "node_id": 3,
+                    "node_name": "ghproxy.com 加速",
+                    "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592562_5459",
+                    "http_code": 0,
+                    "success": false,
+                    "response_time_ms": 5002.15,
+                    "connect_time_ms": 0.08,
+                    "download_size": 0,
+                    "speed_bps": 0,
+                    "error_type": "connection_refused",
+                    "error": "SSL connection timeout"
+                },
+                {
+                    "node_id": 3,
+                    "node_name": "ghproxy.com 加速",
+                    "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592567_7967",
+                    "http_code": 0,
+                    "success": false,
+                    "response_time_ms": 186.05,
+                    "connect_time_ms": 0.09,
+                    "download_size": 0,
+                    "speed_bps": 0,
+                    "error_type": "connection_refused",
+                    "error": "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to ghproxy.com:443 "
+                },
+                {
+                    "node_id": 3,
+                    "node_name": "ghproxy.com 加速",
+                    "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592567_1122",
+                    "http_code": 0,
+                    "success": false,
+                    "response_time_ms": 357.66,
+                    "connect_time_ms": 0.09,
+                    "download_size": 0,
+                    "speed_bps": 0,
+                    "error_type": "connection_refused",
+                    "error": "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to ghproxy.com:443 "
+                }
+            ],
+            "tested_at": "2026-08-25 01:29:28"
+        },
+        {
+            "node_id": 5,
+            "node_name": "mirror.ghproxy.com",
+            "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592582_5474",
+            "http_code": 0,
+            "success": false,
+            "response_time_ms": 5002.33,
+            "connect_time_ms": 0.11,
+            "download_size": 0,
+            "speed_bps": 0,
+            "error_type": "connection_refused",
+            "error": "SSL connection timeout",
+            "retry_count": 3,
+            "success_count": 0,
+            "all_attempts": [
+                {
+                    "node_id": 5,
+                    "node_name": "mirror.ghproxy.com",
+                    "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592571_5500",
+                    "http_code": 0,
+                    "success": false,
+                    "response_time_ms": 5002.03,
+                    "connect_time_ms": 0.1,
+                    "download_size": 0,
+                    "speed_bps": 0,
+                    "error_type": "connection_refused",
+                    "error": "SSL connection timeout"
+                },
+                {
+                    "node_id": 5,
+                    "node_name": "mirror.ghproxy.com",
+                    "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592576_2682",
+                    "http_code": 0,
+                    "success": false,
+                    "response_time_ms": 5002.78,
+                    "connect_time_ms": 0.13,
+                    "download_size": 0,
+                    "speed_bps": 0,
+                    "error_type": "connection_refused",
+                    "error": "SSL connection timeout"
+                },
+                {
+                    "node_id": 5,
+                    "node_name": "mirror.ghproxy.com",
+                    "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/ssmhdssmhd\/qcb\/ssmhdssmhd\/qcb\/KF2\/config.php?_t=1787592582_5474",
+                    "http_code": 0,
+                    "success": false,
+                    "response_time_ms": 5002.33,
+                    "connect_time_ms": 0.11,
+                    "download_size": 0,
+                    "speed_bps": 0,
+                    "error_type": "connection_refused",
+                    "error": "SSL connection timeout"
+                }
+            ],
+            "tested_at": "2026-08-25 01:29:47"
+        }
+    ],
+    "update_results": [
+        {
+            "path": "config.php",
+            "success": true,
+            "node_used": "gh.con.sh 加速",
+            "response_time_ms": 959.77,
+            "content": "Suspent due to abuse report.\r\n\r\n@ 2024 gh.con.sh",
+            "http_code": 200,
+            "error": ""
+        },
+        {
+            "path": "version.php",
+            "success": true,
+            "node_used": "gh.con.sh 加速",
+            "response_time_ms": 815.11,
+            "content": "Suspent due to abuse report.\r\n\r\n@ 2024 gh.con.sh",
+            "http_code": 200,
+            "error": ""
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-08-25 01:25:53",
+            "best_node": "gh.con.sh 加速",
+            "best_time_ms": 891.84,
+            "success_count": 1,
+            "total_count": 5
+        },
+        {
+            "time": "2026-08-25 01:26:36",
+            "best_node": "gh.con.sh 加速",
+            "best_time_ms": 816.5,
+            "success_count": 1,
+            "total_count": 5
+        },
+        {
+            "time": "2026-08-25 01:26:59",
+            "best_node": "gh.con.sh 加速",
+            "best_time_ms": 1075.79,
+            "success_count": 1,
+            "total_count": 5
+        },
+        {
+            "time": "2026-08-25 01:27:23",
+            "best_node": "gh.con.sh 加速",
+            "best_time_ms": 1039.05,
+            "success_count": 1,
+            "total_count": 5
+        },
+        {
+            "time": "2026-08-25 01:28:32",
+            "best_node": "gh.con.sh 加速",
+            "best_time_ms": 868.03,
+            "success_count": 1,
+            "total_count": 5
+        },
+        {
+            "time": "2026-08-25 01:29:47",
+            "best_node": "gh.con.sh 加速",
+            "best_time_ms": 838.08,
+            "success_count": 1,
+            "total_count": 5
+        }
+    ],
+    "version": "1.2.0",
+    "node_stats_4": {
+        "success": 3,
+        "fail": 0,
+        "consecutive_fail": 0
+    },
+    "update_summary": {
+        "total_files": 2,
+        "success_count": 2,
+        "fail_count": 0,
+        "checked_at": "2026-08-25 01:26:38"
+    }
 }
