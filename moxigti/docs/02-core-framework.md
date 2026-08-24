@@ -13,20 +13,20 @@
 ```mermaid
 stateDiagram-v2
     [*] --> P1: 初始化 v.0.0.1 (minor=0)
-    P1: patch = 1..100</br>(minor=0)
+    P1: patch = 1..100<br>(minor=0)
 
-    P1 --> P1: bump() 且 patch < 100</br>patch + 1
+    P1 --> P1: bump() 且 patch < 100<br>patch + 1
 
-    P1 --> M10: patch == 100</br>进一位 minor+1, patch=0
-    M10: v.0.1.0 (过渡位)</br>minor=1, patch=0
+    P1 --> M10: patch == 100<br>进一位 minor+1, patch=0
+    M10: v.0.1.0 (过渡位)<br>minor=1, patch=0
 
-    M10 --> P2: bump()</br>patch = 1
+    M10 --> P2: bump()<br>patch = 1
 
-    P2: patch = 1..100</br>(minor=1)
+    P2: patch = 1..100<br>(minor=1)
 
-    P2 --> P2: bump() 且 patch < 100</br>patch + 1
+    P2 --> P2: bump() 且 patch < 100<br>patch + 1
 
-    P2 --> M20: patch == 100</br>minOr+1, patch=0
+    P2 --> M20: patch == 100<br>minor+1, patch=0
     M20: v.0.2.0 (过渡位)
 
     P1 --> [*]
@@ -35,16 +35,16 @@ stateDiagram-v2
     M20 --> [*]
 ```
 
-## 图三 · 核心算法(bump()) 伪代码
+## 图 · 核心算法(bump()) 伪代码
 
 ```mermaid
 flowchart TD
     A["bump(reason)"] --> B{"patch == 100 ?"}
     B -- 否 --> C["patch += 1"]
     B -- 是 --> D["minor += 1 ; patch = 0"]
-    C --> E["生成变更记录</br>(from, to, at, reason)"]
+    C --> E["生成变更记录<br>(from, to, at, reason)"]
     D --> E
-    E --> F["写入 this.log"]
+    E --> F["写入 $this->log"]
     F --> G["返回变更记录"]
 ```
 
