@@ -1,0 +1,82 @@
+[
+    {
+        "id": 1,
+        "name": "jsDelivr CDN",
+        "url": "https:\/\/cdn.jsdelivr.net\/gh\/{owner}\/{repo}@{branch}\/{path}",
+        "type": "cdn",
+        "enabled": true,
+        "priority": 1,
+        "note": "全球 CDN 加速，自动选择最近节点",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 2,
+        "name": "raw.githubusercontent.com",
+        "url": "https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "direct",
+        "enabled": true,
+        "priority": 2,
+        "note": "GitHub 官方原始地址",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 3,
+        "name": "ghproxy.com 加速",
+        "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "proxy",
+        "enabled": true,
+        "priority": 3,
+        "note": "国内加速代理",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 4,
+        "name": "gh.con.sh 加速",
+        "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "proxy",
+        "enabled": true,
+        "priority": 4,
+        "note": "GitHub 镜像加速",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 5,
+        "name": "mirror.ghproxy.com",
+        "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "proxy",
+        "enabled": true,
+        "priority": 5,
+        "note": "备用镜像加速",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 6,
+        "name": "raw.kgithub.com",
+        "url": "https:\/\/raw.kgithub.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "proxy",
+        "enabled": false,
+        "priority": 6,
+        "note": "KGitHub 加速",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 7,
+        "name": "gh-proxy.com",
+        "url": "https:\/\/gh-proxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "proxy",
+        "enabled": false,
+        "priority": 7,
+        "note": "GH Proxy 加速",
+        "created_at": "2026-08-25 00:48:10"
+    },
+    {
+        "id": 8,
+        "name": "ghps.cc 加速",
+        "url": "https:\/\/ghps.cc\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "type": "proxy",
+        "enabled": false,
+        "priority": 8,
+        "note": "GHPS 加速",
+        "created_at": "2026-08-25 00:48:10"
+    }
+]
