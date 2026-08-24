@@ -5,9 +5,9 @@
         "url": "https:\/\/cdn.jsdelivr.net\/gh\/{owner}\/{repo}@{branch}\/{path}",
         "type": "cdn",
         "enabled": true,
-        "priority": 1,
+        "priority": 10,
         "note": "全球 CDN 加速，自动选择最近节点",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 2,
@@ -15,9 +15,9 @@
         "url": "https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "direct",
         "enabled": true,
-        "priority": 2,
+        "priority": 20,
         "note": "GitHub 官方原始地址",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 3,
@@ -25,9 +25,9 @@
         "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "proxy",
         "enabled": true,
-        "priority": 3,
+        "priority": 30,
         "note": "国内加速代理",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 4,
@@ -35,9 +35,9 @@
         "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "proxy",
         "enabled": true,
-        "priority": 4,
+        "priority": 40,
         "note": "GitHub 镜像加速",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 5,
@@ -45,9 +45,9 @@
         "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "proxy",
         "enabled": true,
-        "priority": 5,
+        "priority": 50,
         "note": "备用镜像加速",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 6,
@@ -55,9 +55,9 @@
         "url": "https:\/\/raw.kgithub.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "proxy",
         "enabled": false,
-        "priority": 6,
+        "priority": 60,
         "note": "KGitHub 加速",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 7,
@@ -65,9 +65,9 @@
         "url": "https:\/\/gh-proxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "proxy",
         "enabled": false,
-        "priority": 7,
+        "priority": 70,
         "note": "GH Proxy 加速",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     },
     {
         "id": 8,
@@ -75,8 +75,8 @@
         "url": "https:\/\/ghps.cc\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
         "type": "proxy",
         "enabled": false,
-        "priority": 8,
+        "priority": 80,
         "note": "GHPS 加速",
-        "created_at": "2026-08-25 00:48:10"
+        "created_at": "2026-08-25 00:55:10"
     }
 ]

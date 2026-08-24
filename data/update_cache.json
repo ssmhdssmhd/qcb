@@ -4,6 +4,9 @@
     "best_site_id": null,
     "best_site_name": null,
     "best_response_time_ms": null,
+    "best_error_rate": null,
+    "speed_test_results": [],
     "update_results": [],
-    "version": "1.0.0"
+    "history": [],
+    "version": "1.1.0"
 }

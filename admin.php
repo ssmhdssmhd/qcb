@@ -60,13 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'speed_test_all':
-                $results = $siteManager->testAllSites();
-                $best = $siteManager->getBestSite($results);
-                $updateManager->getCache();
+                $result = $updateManager->speedTest();
+                $status = $updateManager->getUpdateStatus();
                 echo json_encode([
                     'success' => true,
-                    'best_site' => $best,
-                    'results' => $results
+                    'best_site' => $result['best_site'],
+                    'results' => $result['results'],
+                    'smart_ranking' => $status['smart_ranking']
                 ]);
                 break;
 
@@ -269,9 +269,14 @@ $status = $updateManager->getUpdateStatus();
             </table>
         </div>
 
-        <div class="card" id="speed-test-result" style="display: none;">
-            <h2>⚡ 测速结果</h2>
+            <div class="card" id="speed-test-result" style="display: none;">
+            <h2>⚡ 测速结果 <span style="font-size: 12px; color: #888; font-weight: normal;">（每站3轮测试，取中位数）</span></h2>
             <div id="speed-test-content"></div>
+        </div>
+
+        <div class="card" id="smart-ranking" style="display: none;">
+            <h2>🧠 智能评分排行 <span style="font-size: 12px; color: #888; font-weight: normal;">（基于历史成功率和连续失败惩罚）</span></h2>
+            <div id="smart-ranking-content"></div>
         </div>
     </div>
 
@@ -536,48 +541,79 @@ function toggleSite(id) {
 }
 
 function testSite(id) {
-    showToast('正在测速...', 'info');
+    showToast('正在测速（3轮）...', 'info');
     callApi({ action: 'test_site', id }).then(r => {
         const el = document.getElementById('speed-test-result');
         el.style.display = 'block';
         const d = r.data;
         const speedBar = d.success ? (d.response_time_ms < 500 ? 'speed-fast' : d.response_time_ms < 2000 ? 'speed-medium' : 'speed-slow') : '';
+        const errorLabel = {
+            'none': '',
+            'timeout': '⏱ 超时',
+            'connect_timeout': '🔌 连接超时',
+            'dns_failure': '🌐 DNS 失败',
+            'connection_refused': '🚫 连接被拒',
+            'ssl_error': '🔒 SSL 错误',
+            'network_error': '📡 网络错误',
+            'client_error': '⚠️ 客户端错误',
+            'server_error': '☠️ 服务端错误'
+        };
+        const label = errorLabel[d.error_type] || d.error_type;
+        let attemptsHtml = '';
+        if (d.all_attempts && d.all_attempts.length > 1) {
+            attemptsHtml = '<details style="margin-top: 10px;"><summary style="cursor: pointer; color: #1e3c72; font-size: 13px;">查看 ' + d.retry_count + ' 轮测试详情</summary><div style="margin-top: 8px; padding-left: 10px; border-left: 2px solid #e0e0e0;">';
+            d.all_attempts.forEach((a, i) => {
+                attemptsHtml += `<div style="font-size: 12px; color: #666; margin: 2px 0;">第${i+1}轮: ${a.success ? '✓' : '✗'} ${a.response_time_ms}ms ${a.error_type && a.error_type !== 'none' ? '(' + (errorLabel[a.error_type] || a.error_type) + ')' : ''}</div>`;
+            });
+            attemptsHtml += '</div></details>';
+        }
         document.getElementById('speed-test-content').innerHTML = `
-            <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+            <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; flex-wrap: wrap;">
                 <span class="status ${d.success ? 'status-success' : 'status-failed'}">${d.success ? '✓ 成功' : '✗ 失败'}</span>
                 <strong>${d.site_name}</strong>
-                <span>响应时间: <strong>${d.response_time_ms}</strong> ms</span>
-                <span>下载: <strong>${d.download_size}</strong> bytes</span>
+                <span>中位数: <strong>${d.response_time_ms}</strong> ms</span>
+                <span>成功次数: <strong>${d.success_count}/${d.retry_count}</strong></span>
                 <span>速度: <strong>${d.speed_bps}</strong> B/s</span>
-                <span class="speed-bar ${speedBar}" style="width: ${Math.min(100, d.success ? 1000 / d.response_time_ms * 100 : 5)}%"></span>
+                ${label ? '<span class="status status-failed">' + label + '</span>' : ''}
+                <span class="speed-bar ${speedBar}" style="width: ${Math.min(100, d.success ? 1000 / Math.max(1, d.response_time_ms) * 100 : 5)}%"></span>
             </div>
-            ${d.error ? `<div style="color: #dc3545; margin-top: 10px;">错误: ${d.error}</div>` : ''}
+            ${d.error ? `<div style="color: #dc3545; margin-top: 10px;">错误详情: ${d.error}</div>` : ''}
+            ${attemptsHtml}
         `;
         showToast(d.success ? '测速完成' : '测速失败', d.success ? 'success' : 'error');
     });
 }
 
 function runSpeedTest() {
-    showToast('正在测速所有资源站...', 'info');
+    showToast('正在测速所有资源站（3轮/站）...', 'info');
     const btn = document.getElementById('btn-speed-test');
     if (btn) btn.innerHTML = '<span class="loading"></span> 测速中...';
     
     callApi({ action: 'speed_test_all' }).then(r => {
         const el = document.getElementById('speed-test-result');
         el.style.display = 'block';
-        let html = '<table><thead><tr><th>站点</th><th>状态</th><th>响应时间(ms)</th><th>速度(B/s)</th><th>评级</th></tr></thead><tbody>';
+        const errorLabel = {
+            'none': '-', 'timeout': '⏱超时', 'connect_timeout': '🔌连接超时',
+            'dns_failure': '🌐DNS失败', 'connection_refused': '🚫连接被拒',
+            'ssl_error': '🔒SSL错误', 'network_error': '📡网络错误',
+            'client_error': '⚠️客户端错误', 'server_error': '☠️服务端错误'
+        };
+        let html = '<table><thead><tr><th>站点</th><th>状态</th><th>中位数(ms)</th><th>成功/轮数</th><th>速度(B/s)</th><th>错误类型</th><th>评级</th></tr></thead><tbody>';
         r.results.forEach(r => {
             const statusClass = r.success ? 'status-success' : 'status-failed';
+            const errorTag = r.error_type && r.error_type !== 'none' ? errorLabel[r.error_type] || r.error_type : '-';
             const rating = !r.success ? '<span class="status status-failed">失败</span>' :
                 r.response_time_ms < 500 ? '<span class="status status-fastest">🚀 极快</span>' :
                 r.response_time_ms < 1000 ? '<span class="status status-success">⚡ 快</span>' :
                 r.response_time_ms < 3000 ? '<span class="status status-pending">⏱ 一般</span>' :
                 '<span class="status status-failed">🐢 慢</span>';
             html += `<tr>
-                <td>${r.site_name} ${r.site_id === (r.best_site?.site_id) ? '' : ''}</td>
+                <td>${r.site_name}</td>
                 <td><span class="status ${statusClass}">${r.success ? '✓' : '✗'}</span></td>
                 <td>${r.response_time_ms}</td>
+                <td>${r.success_count}/${r.retry_count}</td>
                 <td>${r.success ? r.speed_bps : '-'}</td>
+                <td>${errorTag}</td>
                 <td>${rating}</td>
             </tr>`;
         });
@@ -585,10 +621,29 @@ function runSpeedTest() {
         if (r.best_site) {
             html += `<div style="margin-top: 15px; padding: 15px; background: #d4edda; border-radius: 8px;">
                 <strong>🏆 最优站点: ${r.best_site.site_name}</strong>
-                <span style="float: right;">响应时间: ${r.best_site.response_time_ms} ms</span>
+                <span style="float: right;">中位数响应时间: ${r.best_site.response_time_ms} ms</span>
             </div>`;
         }
         document.getElementById('speed-test-content').innerHTML = html;
+
+        if (r.smart_ranking && r.smart_ranking.length > 0) {
+            const srEl = document.getElementById('smart-ranking');
+            srEl.style.display = 'block';
+            let srHtml = '<table><thead><tr><th>排名</th><th>站点</th><th>评分</th><th>成功率</th><th>连续失败</th><th>总请求</th></tr></thead><tbody>';
+            r.smart_ranking.forEach((s, i) => {
+                const rankColor = i === 0 ? '#ff6b6b' : i === 1 ? '#ffa502' : i === 2 ? '#ffd43b' : '#666';
+                srHtml += `<tr>
+                    <td><strong style="color: ${rankColor};">#${i+1}</strong></td>
+                    <td>${s.site.name}</td>
+                    <td><strong>${s.score.toFixed(1)}</strong></td>
+                    <td>${s.success_rate}%</td>
+                    <td>${s.consecutive_fail}</td>
+                    <td>${s.total_requests}</td>
+                </tr>`;
+            });
+            srHtml += '</tbody></table>';
+            document.getElementById('smart-ranking-content').innerHTML = srHtml;
+        }
         
         if (btn) btn.innerHTML = '⚡ 一键测速';
         updateStats();
