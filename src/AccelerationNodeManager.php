@@ -2,29 +2,29 @@
 
 require_once __DIR__ . '/../config.php';
 
-class ResourceSiteManager
+class AccelerationNodeManager
 {
-    private string $sitesFile;
-    private array $sites = [];
+    private string $nodesFile;
+    private array $nodes = [];
 
     public function __construct()
     {
-        $this->sitesFile = SITES_FILE;
-        $this->loadSites();
+        $this->nodesFile = NODES_FILE;
+        $this->loadNodes();
     }
 
-    private function loadSites(): void
+    private function loadNodes(): void
     {
-        if (!file_exists($this->sitesFile)) {
-            $this->sites = $this->getDefaultSites();
-            $this->saveSites();
+        if (!file_exists($this->nodesFile)) {
+            $this->nodes = $this->getDefaultNodes();
+            $this->saveNodes();
             return;
         }
-        $data = file_get_contents($this->sitesFile);
-        $this->sites = json_decode($data, true) ?: $this->getDefaultSites();
+        $data = file_get_contents($this->nodesFile);
+        $this->nodes = json_decode($data, true) ?: $this->getDefaultNodes();
     }
 
-    private function getDefaultSites(): array
+    private function getDefaultNodes(): array
     {
         return [
             [
@@ -110,41 +110,41 @@ class ResourceSiteManager
         ];
     }
 
-    private function saveSites(): void
+    private function saveNodes(): void
     {
-        $dir = dirname($this->sitesFile);
+        $dir = dirname($this->nodesFile);
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
-        file_put_contents($this->sitesFile, json_encode($this->sites, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        file_put_contents($this->nodesFile, json_encode($this->nodes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
 
-    public function getAllSites(): array
+    public function getAllNodes(): array
     {
-        return $this->sites;
+        return $this->nodes;
     }
 
-    public function getEnabledSites(): array
+    public function getEnabledNodes(): array
     {
-        $enabled = array_filter($this->sites, fn($s) => $s['enabled'] === true);
+        $enabled = array_filter($this->nodes, fn($n) => $n['enabled'] === true);
         usort($enabled, fn($a, $b) => $a['priority'] <=> $b['priority']);
         return $enabled;
     }
 
-    public function getSiteById(int $id): ?array
+    public function getNodeById(int $id): ?array
     {
-        foreach ($this->sites as $site) {
-            if ($site['id'] === $id) {
-                return $site;
+        foreach ($this->nodes as $node) {
+            if ($node['id'] === $id) {
+                return $node;
             }
         }
         return null;
     }
 
-    public function addSite(array $data): array
+    public function addNode(array $data): array
     {
-        $newId = max(1, (int)end($this->sites)['id'] + 1);
-        $newSite = [
+        $newId = max(1, (int)end($this->nodes)['id'] + 1);
+        $newNode = [
             'id' => $newId,
             'name' => $data['name'],
             'url' => $data['url'],
@@ -154,60 +154,60 @@ class ResourceSiteManager
             'note' => $data['note'] ?? '',
             'created_at' => date('Y-m-d H:i:s')
         ];
-        $this->sites[] = $newSite;
-        $this->saveSites();
-        return $newSite;
+        $this->nodes[] = $newNode;
+        $this->saveNodes();
+        return $newNode;
     }
 
-    public function updateSite(int $id, array $data): ?array
+    public function updateNode(int $id, array $data): ?array
     {
-        foreach ($this->sites as &$site) {
-            if ($site['id'] === $id) {
+        foreach ($this->nodes as &$node) {
+            if ($node['id'] === $id) {
                 $allowedFields = ['name', 'url', 'type', 'enabled', 'priority', 'note'];
                 foreach ($allowedFields as $field) {
                     if (isset($data[$field])) {
                         if ($field === 'enabled') {
-                            $site[$field] = !empty($data[$field]);
+                            $node[$field] = !empty($data[$field]);
                         } elseif ($field === 'priority') {
-                            $site[$field] = intval($data[$field]);
+                            $node[$field] = intval($data[$field]);
                         } else {
-                            $site[$field] = $data[$field];
+                            $node[$field] = $data[$field];
                         }
                     }
                 }
-                $this->saveSites();
-                return $site;
+                $this->saveNodes();
+                return $node;
             }
         }
         return null;
     }
 
-    public function deleteSite(int $id): bool
+    public function deleteNode(int $id): bool
     {
-        $count = count($this->sites);
-        $this->sites = array_values(array_filter($this->sites, fn($s) => $s['id'] !== $id));
-        if (count($this->sites) < $count) {
-            $this->saveSites();
+        $count = count($this->nodes);
+        $this->nodes = array_values(array_filter($this->nodes, fn($n) => $n['id'] !== $id));
+        if (count($this->nodes) < $count) {
+            $this->saveNodes();
             return true;
         }
         return false;
     }
 
-    public function toggleSite(int $id): ?array
+    public function toggleNode(int $id): ?array
     {
-        foreach ($this->sites as &$site) {
-            if ($site['id'] === $id) {
-                $site['enabled'] = !$site['enabled'];
-                $this->saveSites();
-                return $site;
+        foreach ($this->nodes as &$node) {
+            if ($node['id'] === $id) {
+                $node['enabled'] = !$node['enabled'];
+                $this->saveNodes();
+                return $node;
             }
         }
         return null;
     }
 
-    public function buildUrl(array $site, string $owner, string $repo, string $branch, string $path, bool $antiCache = true): string
+    public function buildUrl(array $node, string $owner, string $repo, string $branch, string $path, bool $antiCache = true): string
     {
-        $url = $site['url'];
+        $url = $node['url'];
         $url = str_replace('{owner}', $owner, $url);
         $url = str_replace('{repo}', $repo, $url);
         $url = str_replace('{branch}', $branch, $url);
@@ -261,9 +261,9 @@ class ResourceSiteManager
         return ($values[$count / 2 - 1] + $values[$count / 2]) / 2;
     }
 
-    public function testSiteOnce(array $site, string $owner, string $repo, string $branch, string $path, bool $antiCache = true): array
+    public function testNodeOnce(array $node, string $owner, string $repo, string $branch, string $path, bool $antiCache = true): array
     {
-        $url = $this->buildUrl($site, $owner, $repo, $branch, $path, $antiCache);
+        $url = $this->buildUrl($node, $owner, $repo, $branch, $path, $antiCache);
 
         $startTime = microtime(true);
         $ch = curl_init();
@@ -293,8 +293,8 @@ class ResourceSiteManager
         $errorType = $this->classifyError($httpCode, $error, $totalTime, $connectTime);
 
         return [
-            'site_id' => $site['id'],
-            'site_name' => $site['name'],
+            'node_id' => $node['id'],
+            'node_name' => $node['name'],
             'url' => $url,
             'http_code' => $httpCode,
             'success' => $httpCode === 200,
@@ -307,7 +307,7 @@ class ResourceSiteManager
         ];
     }
 
-    public function testSite(array $site, string $owner = '', string $repo = '', string $branch = DEFAULT_GITHUB_BRANCH, string $testPath = 'config.php'): array
+    public function testNode(array $node, string $owner = '', string $repo = '', string $branch = DEFAULT_GITHUB_BRANCH, string $testPath = 'config.php'): array
     {
         if (empty($owner)) {
             $owner = DEFAULT_GITHUB_REPO;
@@ -322,7 +322,7 @@ class ResourceSiteManager
         $lastResult = null;
 
         for ($i = 0; $i < 3; $i++) {
-            $r = $this->testSiteOnce($site, $owner, $repo, $branch, $testPath, true);
+            $r = $this->testNodeOnce($node, $owner, $repo, $branch, $testPath, true);
             $lastResult = $r;
             $results[] = $r;
             if ($r['success']) {
@@ -363,8 +363,8 @@ class ResourceSiteManager
         $errorMsg = $finalSuccess ? '' : ($lastResult ? $lastResult['error'] : '');
 
         return [
-            'site_id' => $site['id'],
-            'site_name' => $site['name'],
+            'node_id' => $node['id'],
+            'node_name' => $node['name'],
             'url' => $lastResult['url'] ?? '',
             'http_code' => $finalSuccess ? ($lastSuccessResult['http_code'] ?? 200) : ($lastResult['http_code'] ?? 0),
             'success' => $finalSuccess,
@@ -381,7 +381,7 @@ class ResourceSiteManager
         ];
     }
 
-    public function testAllSites(string $owner = '', string $repo = '', string $branch = DEFAULT_GITHUB_BRANCH): array
+    public function testAllNodes(string $owner = '', string $repo = '', string $branch = DEFAULT_GITHUB_BRANCH): array
     {
         if (empty($owner)) {
             $owner = DEFAULT_GITHUB_REPO;
@@ -390,10 +390,10 @@ class ResourceSiteManager
             $repo = DEFAULT_GITHUB_REPO;
         }
 
-        $enabledSites = $this->getEnabledSites();
+        $enabledNodes = $this->getEnabledNodes();
         $results = [];
-        foreach ($enabledSites as $site) {
-            $results[] = $this->testSite($site, $owner, $repo, $branch);
+        foreach ($enabledNodes as $node) {
+            $results[] = $this->testNode($node, $owner, $repo, $branch);
         }
 
         $successResults = array_filter($results, fn($r) => $r['success']);
@@ -405,7 +405,7 @@ class ResourceSiteManager
         return array_merge(array_values($successResults), array_values($failResults));
     }
 
-    public function getBestSite(array $testResults): ?array
+    public function getBestNode(array $testResults): ?array
     {
         foreach ($testResults as $result) {
             if ($result['success']) {

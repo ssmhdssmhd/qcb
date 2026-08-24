@@ -1,7 +1,7 @@
 <?php
 
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/src/ResourceSiteManager.php';
+require_once __DIR__ . '/src/AccelerationNodeManager.php';
 require_once __DIR__ . '/src/UpdateManager.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? 'status';
 
-$siteManager = new ResourceSiteManager();
+$nodeManager = new AccelerationNodeManager();
 $updateManager = new UpdateManager();
 
 try {
@@ -35,54 +35,58 @@ try {
             ], JSON_UNESCAPED_UNICODE);
             break;
 
+        case 'nodes':
         case 'sites':
-            $sites = $siteManager->getAllSites();
+            $nodes = $nodeManager->getAllNodes();
             echo json_encode([
                 'success' => true,
-                'data' => $sites,
-                'total' => count($sites),
-                'enabled' => count(array_filter($sites, fn($s) => $s['enabled']))
+                'data' => $nodes,
+                'total' => count($nodes),
+                'enabled' => count(array_filter($nodes, fn($n) => $n['enabled']))
             ], JSON_UNESCAPED_UNICODE);
             break;
 
+        case 'enabled_nodes':
         case 'enabled_sites':
-            $sites = $siteManager->getEnabledSites();
+            $nodes = $nodeManager->getEnabledNodes();
             echo json_encode([
                 'success' => true,
-                'data' => array_values($sites),
-                'total' => count($sites)
+                'data' => array_values($nodes),
+                'total' => count($nodes)
             ], JSON_UNESCAPED_UNICODE);
             break;
 
+        case 'node':
         case 'site':
             $id = intval($_GET['id'] ?? 0);
-            $site = $siteManager->getSiteById($id);
-            if ($site) {
-                echo json_encode(['success' => true, 'data' => $site], JSON_UNESCAPED_UNICODE);
+            $node = $nodeManager->getNodeById($id);
+            if ($node) {
+                echo json_encode(['success' => true, 'data' => $node], JSON_UNESCAPED_UNICODE);
             } else {
-                echo json_encode(['success' => false, 'error' => '站点不存在'], JSON_UNESCAPED_UNICODE);
+                echo json_encode(['success' => false, 'error' => '节点不存在'], JSON_UNESCAPED_UNICODE);
             }
             break;
 
         case 'speed_test':
-            $results = $siteManager->testAllSites();
-            $best = $siteManager->getBestSite($results);
+            $result = $nodeManager->testAllNodes();
+            $best = $nodeManager->getBestNode($result);
             echo json_encode([
                 'success' => true,
-                'best_site' => $best,
-                'results' => $results,
+                'best_node' => $best,
+                'results' => $result,
                 'tested_at' => date('Y-m-d H:i:s')
             ], JSON_UNESCAPED_UNICODE);
             break;
 
+        case 'test_node':
         case 'test_site':
             $id = intval($_GET['id'] ?? 0);
-            $site = $siteManager->getSiteById($id);
-            if ($site) {
-                $result = $siteManager->testSite($site);
+            $node = $nodeManager->getNodeById($id);
+            if ($node) {
+                $result = $nodeManager->testNode($node);
                 echo json_encode(['success' => true, 'data' => $result], JSON_UNESCAPED_UNICODE);
             } else {
-                echo json_encode(['success' => false, 'error' => '站点不存在'], JSON_UNESCAPED_UNICODE);
+                echo json_encode(['success' => false, 'error' => '节点不存在'], JSON_UNESCAPED_UNICODE);
             }
             break;
 
@@ -99,7 +103,7 @@ try {
                 'data' => $result['success'] ? [
                     'path' => $path,
                     'content' => $result['data'],
-                    'site_used' => $result['site_name'] ?? null,
+                    'node_used' => $result['node_name'] ?? null,
                     'response_time_ms' => $result['response_time_ms'] ?? null,
                     'http_code' => $result['http_code'] ?? null
                 ] : null,
@@ -127,13 +131,13 @@ try {
         case 'build_url':
             $id = intval($_GET['id'] ?? 0);
             $path = $_GET['path'] ?? '';
-            $site = $siteManager->getSiteById($id);
-            if ($site) {
+            $node = $nodeManager->getNodeById($id);
+            if ($node) {
                 $repoInfo = $updateManager->getRepoInfo();
-                $url = $siteManager->buildUrl($site, $repoInfo['owner'], $repoInfo['repo'], $repoInfo['branch'], $path);
-                echo json_encode(['success' => true, 'url' => $url, 'site' => $site['name']], JSON_UNESCAPED_UNICODE);
+                $url = $nodeManager->buildUrl($node, $repoInfo['owner'], $repoInfo['repo'], $repoInfo['branch'], $path);
+                echo json_encode(['success' => true, 'url' => $url, 'node' => $node['name']], JSON_UNESCAPED_UNICODE);
             } else {
-                echo json_encode(['success' => false, 'error' => '站点不存在'], JSON_UNESCAPED_UNICODE);
+                echo json_encode(['success' => false, 'error' => '节点不存在'], JSON_UNESCAPED_UNICODE);
             }
             break;
 
@@ -146,7 +150,7 @@ try {
                 $results[] = [
                     'path' => $path,
                     'success' => $result['success'],
-                    'site_used' => $result['site_name'] ?? null,
+                    'node_used' => $result['node_name'] ?? null,
                     'response_time_ms' => $result['response_time_ms'] ?? null,
                     'content' => $result['success'] ? $result['data'] : null,
                     'error' => $result['error'] ?? null
@@ -166,7 +170,7 @@ try {
                 'app' => APP_NAME,
                 'version' => APP_VERSION,
                 'time' => date('c'),
-                'site_manager' => class_exists('ResourceSiteManager'),
+                'node_manager' => class_exists('AccelerationNodeManager'),
                 'update_manager' => class_exists('UpdateManager'),
                 'cache_writable' => is_writable(DATA_DIR)
             ], JSON_UNESCAPED_UNICODE);
@@ -177,8 +181,8 @@ try {
                 'success' => false,
                 'error' => '未知操作',
                 'available_actions' => [
-                    'status', 'sites', 'enabled_sites', 'site', 'speed_test',
-                    'test_site', 'check_update', 'fetch_file', 'fetch_config',
+                    'status', 'nodes', 'enabled_nodes', 'node', 'speed_test',
+                    'test_node', 'check_update', 'fetch_file', 'fetch_config',
                     'update_status', 'repo_info', 'build_url', 'multi_fetch', 'health'
                 ]
             ], JSON_UNESCAPED_UNICODE);

@@ -1,9 +1,9 @@
 <?php
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/src/ResourceSiteManager.php';
+require_once __DIR__ . '/src/AccelerationNodeManager.php';
 require_once __DIR__ . '/src/UpdateManager.php';
 
-$siteManager = new ResourceSiteManager();
+$nodeManager = new AccelerationNodeManager();
 $updateManager = new UpdateManager();
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -15,8 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     try {
         switch ($action) {
-            case 'add_site':
-                $site = $siteManager->addSite([
+            case 'add_node':
+                $node = $nodeManager->addNode([
                     'name' => $_POST['name'] ?? '',
                     'url' => $_POST['url'] ?? '',
                     'type' => $_POST['type'] ?? 'custom',
@@ -24,11 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'priority' => intval($_POST['priority'] ?? 100),
                     'note' => $_POST['note'] ?? ''
                 ]);
-                echo json_encode(['success' => true, 'data' => $site]);
+                echo json_encode(['success' => true, 'data' => $node]);
                 break;
 
-            case 'update_site':
-                $site = $siteManager->updateSite(intval($_POST['id']), [
+            case 'update_node':
+                $node = $nodeManager->updateNode(intval($_POST['id']), [
                     'name' => $_POST['name'] ?? '',
                     'url' => $_POST['url'] ?? '',
                     'type' => $_POST['type'] ?? 'custom',
@@ -36,26 +36,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'priority' => intval($_POST['priority'] ?? 100),
                     'note' => $_POST['note'] ?? ''
                 ]);
-                echo json_encode(['success' => $site !== null, 'data' => $site]);
+                echo json_encode(['success' => $node !== null, 'data' => $node]);
                 break;
 
-            case 'delete_site':
-                $success = $siteManager->deleteSite(intval($_POST['id']));
+            case 'delete_node':
+                $success = $nodeManager->deleteNode(intval($_POST['id']));
                 echo json_encode(['success' => $success]);
                 break;
 
-            case 'toggle_site':
-                $site = $siteManager->toggleSite(intval($_POST['id']));
-                echo json_encode(['success' => $site !== null, 'data' => $site]);
+            case 'toggle_node':
+                $node = $nodeManager->toggleNode(intval($_POST['id']));
+                echo json_encode(['success' => $node !== null, 'data' => $node]);
                 break;
 
-            case 'test_site':
-                $site = $siteManager->getSiteById(intval($_POST['id']));
-                if ($site) {
-                    $testResult = $siteManager->testSite($site);
+            case 'test_node':
+                $node = $nodeManager->getNodeById(intval($_POST['id']));
+                if ($node) {
+                    $testResult = $nodeManager->testNode($node);
                     echo json_encode(['success' => true, 'data' => $testResult]);
                 } else {
-                    echo json_encode(['success' => false, 'error' => '站点不存在']);
+                    echo json_encode(['success' => false, 'error' => '节点不存在']);
                 }
                 break;
 
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $status = $updateManager->getUpdateStatus();
                 echo json_encode([
                     'success' => true,
-                    'best_site' => $result['best_site'],
+                    'best_node' => $result['best_node'],
                     'results' => $result['results'],
                     'smart_ranking' => $status['smart_ranking']
                 ]);
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-$sites = $siteManager->getAllSites();
+$nodes = $nodeManager->getAllNodes();
 $status = $updateManager->getUpdateStatus();
 ?>
 <!DOCTYPE html>
@@ -102,7 +102,7 @@ $status = $updateManager->getUpdateStatus();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo APP_NAME; ?> v<?php echo APP_VERSION; ?> - 后台管理</title>
+    <title>QCB 在线更新系统</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; }
@@ -188,21 +188,21 @@ $status = $updateManager->getUpdateStatus();
 <div class="container">
     <div class="header">
         <h1>🚀 <?php echo APP_NAME; ?> <span class="badge">v<?php echo APP_VERSION; ?></span></h1>
-        <div class="subtitle">资源站管理 & 在线更新系统 | 仓库: <?php echo DEFAULT_GITHUB_REPO; ?> | 分支: <?php echo DEFAULT_GITHUB_BRANCH; ?></div>
+        <div class="subtitle">加速节点管理 & 在线更新系统 | 仓库: <?php echo DEFAULT_GITHUB_REPO; ?> | 分支: <?php echo DEFAULT_GITHUB_BRANCH; ?></div>
     </div>
 
     <div class="stats">
         <div class="stat-card">
-            <div class="value" id="stat-total"><?php echo count($sites); ?></div>
-            <div class="label">资源站总数</div>
+            <div class="value" id="stat-total"><?php echo count($nodes); ?></div>
+            <div class="label">加速节点总数</div>
         </div>
         <div class="stat-card">
-            <div class="value" id="stat-enabled"><?php echo count(array_filter($sites, fn($s) => $s['enabled'])); ?></div>
+            <div class="value" id="stat-enabled"><?php echo count(array_filter($nodes, fn($n) => $n['enabled'])); ?></div>
             <div class="label">已启用</div>
         </div>
         <div class="stat-card">
-            <div class="value" id="stat-best-site">-</div>
-            <div class="label">最优站点</div>
+            <div class="value" id="stat-best-node">-</div>
+            <div class="label">最优节点</div>
         </div>
         <div class="stat-card">
             <div class="value" id="stat-last-update">-</div>
@@ -211,20 +211,20 @@ $status = $updateManager->getUpdateStatus();
     </div>
 
     <div class="tabs">
-        <button class="tab active" data-tab="sites">📡 资源站管理</button>
+        <button class="tab active" data-tab="nodes">📡 加速节点管理</button>
         <button class="tab" data-tab="update">🔄 在线更新</button>
         <button class="tab" data-tab="api">🌐 API 接口</button>
         <button class="tab" data-tab="log">📋 更新日志</button>
     </div>
 
-    <!-- 资源站管理 -->
-    <div class="tab-content active" id="tab-sites">
+    <!-- 加速节点管理 -->
+    <div class="tab-content active" id="tab-nodes">
         <div class="card">
-            <h2>📡 资源站列表</h2>
+            <h2>📡 加速节点列表</h2>
             <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="openAddModal()">➕ 添加资源站</button>
+                <button class="btn btn-primary" onclick="openAddNodeModal()">➕ 添加加速节点</button>
                 <button class="btn btn-warning" onclick="runSpeedTest()" id="btn-speed-test">⚡ 一键测速</button>
-                <button class="btn btn-secondary" onclick="refreshSites()">🔄 刷新</button>
+                <button class="btn btn-secondary" onclick="refreshNodes()">🔄 刷新</button>
             </div>
             <table>
                 <thead>
@@ -239,28 +239,28 @@ $status = $updateManager->getUpdateStatus();
                         <th>操作</th>
                     </tr>
                 </thead>
-                <tbody id="sites-table-body">
-                    <?php foreach ($sites as $site): ?>
-                    <tr id="site-row-<?php echo $site['id']; ?>">
-                        <td><?php echo $site['id']; ?></td>
-                        <td><?php echo htmlspecialchars($site['name']); ?></td>
-                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($site['url']); ?>">
-                            <code><?php echo htmlspecialchars($site['url']); ?></code>
+                <tbody id="nodes-table-body">
+                    <?php foreach ($nodes as $node): ?>
+                    <tr id="node-row-<?php echo $node['id']; ?>">
+                        <td><?php echo $node['id']; ?></td>
+                        <td><?php echo htmlspecialchars($node['name']); ?></td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($node['url']); ?>">
+                            <code><?php echo htmlspecialchars($node['url']); ?></code>
                         </td>
-                        <td><span class="badge badge-type"><?php echo $site['type']; ?></span></td>
+                        <td><span class="badge badge-type"><?php echo $node['type']; ?></span></td>
                         <td>
-                            <span class="status <?php echo $site['enabled'] ? 'status-enabled' : 'status-disabled'; ?>">
-                                <?php echo $site['enabled'] ? '启用' : '禁用'; ?>
+                            <span class="status <?php echo $node['enabled'] ? 'status-enabled' : 'status-disabled'; ?>">
+                                <?php echo $node['enabled'] ? '启用' : '禁用'; ?>
                             </span>
                         </td>
-                        <td><span class="priority-badge"><?php echo $site['priority']; ?></span></td>
-                        <td><?php echo htmlspecialchars($site['note']); ?></td>
+                        <td><span class="priority-badge"><?php echo $node['priority']; ?></span></td>
+                        <td><?php echo htmlspecialchars($node['note']); ?></td>
                         <td>
                             <div class="action-btns">
-                                <button class="btn btn-sm btn-secondary" onclick="testSite(<?php echo $site['id']; ?>)">⚡测速</button>
-                                <button class="btn btn-sm btn-warning" onclick="openEditModal(<?php echo $site['id']; ?>)">✏️编辑</button>
-                                <button class="btn btn-sm btn-secondary" onclick="toggleSite(<?php echo $site['id']; ?>)"><?php echo $site['enabled'] ? '禁用' : '启用'; ?></button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteSite(<?php echo $site['id']; ?>)">🗑️删除</button>
+                                <button class="btn btn-sm btn-secondary" onclick="testNode(<?php echo $node['id']; ?>)">⚡测速</button>
+                                <button class="btn btn-sm btn-warning" onclick="openEditNodeModal(<?php echo $node['id']; ?>)">✏️编辑</button>
+                                <button class="btn btn-sm btn-secondary" onclick="toggleNode(<?php echo $node['id']; ?>)"><?php echo $node['enabled'] ? '禁用' : '启用'; ?></button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteNode(<?php echo $node['id']; ?>)">🗑️删除</button>
                             </div>
                         </td>
                     </tr>
@@ -270,7 +270,7 @@ $status = $updateManager->getUpdateStatus();
         </div>
 
             <div class="card" id="speed-test-result" style="display: none;">
-            <h2>⚡ 测速结果 <span style="font-size: 12px; color: #888; font-weight: normal;">（每站3轮测试，取中位数）</span></h2>
+            <h2>⚡ 测速结果 <span style="font-size: 12px; color: #888; font-weight: normal;">（每节点3轮测试，取中位数）</span></h2>
             <div id="speed-test-content"></div>
         </div>
 
@@ -284,14 +284,14 @@ $status = $updateManager->getUpdateStatus();
     <div class="tab-content" id="tab-update">
         <div class="card">
             <h2>🔄 在线更新</h2>
-            <p style="color: #666; margin-bottom: 15px;">从 GitHub 仓库 <?php echo DEFAULT_GITHUB_REPO; ?> 分支 <?php echo DEFAULT_GITHUB_BRANCH; ?> 拉取最新代码，自动选择最优加速站</p>
+            <p style="color: #666; margin-bottom: 15px;">从 GitHub 仓库 <?php echo DEFAULT_GITHUB_REPO; ?> 分支 <?php echo DEFAULT_GITHUB_BRANCH; ?> 拉取最新代码，自动选择最优加速节点</p>
             <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
                 <button class="btn btn-success" onclick="checkUpdate()" id="btn-check-update">🔍 检查更新</button>
                 <button class="btn btn-primary" onclick="runSpeedTest()">⚡ 重新测速</button>
                 <button class="btn btn-warning" onclick="fetchFilePrompt()">📥 获取指定文件</button>
             </div>
             <div id="update-status" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                <div id="current-best-site">当前最优站点: <span class="status status-pending">未测速</span></div>
+                <div id="current-best-node">当前最优节点: <span class="status status-pending">未测速</span></div>
                 <div id="current-last-test">上次测速: -</div>
                 <div id="current-last-update">最后更新: -</div>
             </div>
@@ -313,11 +313,11 @@ $status = $updateManager->getUpdateStatus();
             <div class="api-url" onclick="copyToClipboard(this.textContent)"><?php echo (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/api.php?action=status'; ?></div>
             <p><button class="btn btn-sm btn-primary" onclick="testApi('status')">测试接口</button></p>
 
-            <h3>2. 获取所有资源站</h3>
-            <div class="api-url" onclick="copyToClipboard(this.textContent)"><?php echo (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/api.php?action=sites'; ?></div>
-            <p><button class="btn btn-sm btn-primary" onclick="testApi('sites')">测试接口</button></p>
+            <h3>2. 获取所有加速节点</h3>
+            <div class="api-url" onclick="copyToClipboard(this.textContent)"><?php echo (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/api.php?action=nodes'; ?></div>
+            <p><button class="btn btn-sm btn-primary" onclick="testApi('nodes')">测试接口</button></p>
 
-            <h3>3. 测速所有站点</h3>
+            <h3>3. 测速所有节点</h3>
             <div class="api-url" onclick="copyToClipboard(this.textContent)"><?php echo (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/api.php?action=speed_test'; ?></div>
             <p><button class="btn btn-sm btn-primary" onclick="testApi('speed_test')">测试接口</button></p>
 
@@ -343,12 +343,12 @@ $status = $updateManager->getUpdateStatus();
                     <h3>最近测速记录</h3>
                     <table>
                         <thead>
-                            <tr><th>站点</th><th>状态</th><th>响应时间(ms)</th><th>速度</th><th>时间</th></tr>
+                            <tr><th>节点</th><th>状态</th><th>响应时间(ms)</th><th>速度</th><th>时间</th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($status['cache']['speed_test_results'] as $test): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($test['site_name']); ?></td>
+                                <td><?php echo htmlspecialchars($test['node_name']); ?></td>
                                 <td><span class="status <?php echo $test['success'] ? 'status-success' : 'status-failed'; ?>"><?php echo $test['success'] ? '✓ 成功' : '✗ 失败'; ?></span></td>
                                 <td><?php echo $test['response_time_ms']; ?></td>
                                 <td><?php echo $test['speed_bps']; ?> B/s</td>
@@ -363,14 +363,14 @@ $status = $updateManager->getUpdateStatus();
                     <h3>最近更新记录</h3>
                     <table>
                         <thead>
-                            <tr><th>文件</th><th>状态</th><th>使用站点</th><th>响应时间(ms)</th></tr>
+                            <tr><th>文件</th><th>状态</th><th>使用节点</th><th>响应时间(ms)</th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($status['cache']['update_results'] as $result): ?>
                             <tr>
                                 <td><code><?php echo htmlspecialchars($result['path']); ?></code></td>
                                 <td><span class="status <?php echo $result['success'] ? 'status-success' : 'status-failed'; ?>"><?php echo $result['success'] ? '✓ 成功' : '✗ 失败'; ?></span></td>
-                                <td><?php echo htmlspecialchars($result['site_used'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($result['node_used'] ?? '-'); ?></td>
                                 <td><?php echo $result['response_time_ms'] ?? '-'; ?></td>
                             </tr>
                             <?php endforeach; ?>
@@ -390,23 +390,23 @@ $status = $updateManager->getUpdateStatus();
 </div>
 
 <!-- 编辑/添加模态框 -->
-<div class="modal-overlay" id="site-modal">
+<div class="modal-overlay" id="node-modal">
     <div class="modal">
-        <h3 id="modal-title">添加资源站</h3>
-        <form id="site-form" onsubmit="return saveSite(event)">
-            <input type="hidden" id="site-id">
+        <h3 id="modal-title">添加加速节点</h3>
+        <form id="node-form" onsubmit="return saveNode(event)">
+            <input type="hidden" id="node-id">
             <div class="form-group">
                 <label>名称 *</label>
-                <input type="text" id="site-name" required>
+                <input type="text" id="node-name" required>
             </div>
             <div class="form-group">
                 <label>URL 模板 *</label>
-                <input type="text" id="site-url" required placeholder="https://example.com/{owner}/{repo}/{branch}/{path}">
+                <input type="text" id="node-url" required placeholder="https://example.com/{owner}/{repo}/{branch}/{path}">
                 <small style="color: #888;">可用变量: {owner}, {repo}, {branch}, {path}</small>
             </div>
             <div class="form-group">
                 <label>类型</label>
-                <select id="site-type">
+                <select id="node-type">
                     <option value="cdn">CDN 加速</option>
                     <option value="proxy">代理加速</option>
                     <option value="direct">直连</option>
@@ -415,15 +415,15 @@ $status = $updateManager->getUpdateStatus();
             </div>
             <div class="form-group">
                 <label>优先级</label>
-                <input type="number" id="site-priority" value="100" min="0" max="999">
+                <input type="number" id="node-priority" value="100" min="0" max="999">
             </div>
             <div class="form-group">
                 <label>备注</label>
-                <textarea id="site-note"></textarea>
+                <textarea id="node-note"></textarea>
             </div>
             <div class="form-group form-check">
-                <input type="checkbox" id="site-enabled" checked>
-                <label for="site-enabled" style="margin: 0;">启用此站点</label>
+                <input type="checkbox" id="node-enabled" checked>
+                <label for="node-enabled" style="margin: 0;">启用此节点</label>
             </div>
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                 <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -457,7 +457,6 @@ function callApi(data) {
     }).then(r => r.json());
 }
 
-// Tab 切换
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -467,57 +466,56 @@ document.querySelectorAll('.tab').forEach(tab => {
     });
 });
 
-// 资源站管理
-function refreshSites() {
+function refreshNodes() {
     location.reload();
 }
 
-function openAddModal() {
-    document.getElementById('modal-title').textContent = '添加资源站';
-    document.getElementById('site-form').reset();
-    document.getElementById('site-id').value = '';
-    document.getElementById('site-enabled').checked = true;
-    document.getElementById('site-priority').value = '100';
-    document.getElementById('site-modal').classList.add('active');
+function openAddNodeModal() {
+    document.getElementById('modal-title').textContent = '添加加速节点';
+    document.getElementById('node-form').reset();
+    document.getElementById('node-id').value = '';
+    document.getElementById('node-enabled').checked = true;
+    document.getElementById('node-priority').value = '100';
+    document.getElementById('node-modal').classList.add('active');
 }
 
-function openEditModal(id) {
-    const row = document.getElementById('site-row-' + id);
+function openEditNodeModal(id) {
+    const row = document.getElementById('node-row-' + id);
     const cells = row.querySelectorAll('td');
-    document.getElementById('modal-title').textContent = '编辑资源站 #' + id;
-    document.getElementById('site-id').value = id;
-    document.getElementById('site-name').value = cells[1].textContent.trim();
-    document.getElementById('site-url').value = cells[2].textContent.trim();
-    document.getElementById('site-type').value = cells[3].textContent.trim();
-    document.getElementById('site-priority').value = cells[5].textContent.trim().replace(/\D/g, '');
-    document.getElementById('site-note').value = cells[6].textContent.trim();
-    document.getElementById('site-enabled').checked = cells[4].textContent.trim() === '启用';
-    document.getElementById('site-modal').classList.add('active');
+    document.getElementById('modal-title').textContent = '编辑加速节点 #' + id;
+    document.getElementById('node-id').value = id;
+    document.getElementById('node-name').value = cells[1].textContent.trim();
+    document.getElementById('node-url').value = cells[2].textContent.trim();
+    document.getElementById('node-type').value = cells[3].textContent.trim();
+    document.getElementById('node-priority').value = cells[5].textContent.trim().replace(/\D/g, '');
+    document.getElementById('node-note').value = cells[6].textContent.trim();
+    document.getElementById('node-enabled').checked = cells[4].textContent.trim() === '启用';
+    document.getElementById('node-modal').classList.add('active');
 }
 
 function closeModal() {
-    document.getElementById('site-modal').classList.remove('active');
+    document.getElementById('node-modal').classList.remove('active');
 }
 
-function saveSite(e) {
+function saveNode(e) {
     e.preventDefault();
-    const id = document.getElementById('site-id').value;
-    const action = id ? 'update_site' : 'add_site';
+    const id = document.getElementById('node-id').value;
+    const action = id ? 'update_node' : 'add_node';
     const data = {
         action,
         id: id || undefined,
-        name: document.getElementById('site-name').value,
-        url: document.getElementById('site-url').value,
-        type: document.getElementById('site-type').value,
-        priority: document.getElementById('site-priority').value,
-        note: document.getElementById('site-note').value,
-        enabled: document.getElementById('site-enabled').checked ? '1' : ''
+        name: document.getElementById('node-name').value,
+        url: document.getElementById('node-url').value,
+        type: document.getElementById('node-type').value,
+        priority: document.getElementById('node-priority').value,
+        note: document.getElementById('node-note').value,
+        enabled: document.getElementById('node-enabled').checked ? '1' : ''
     };
     callApi(data).then(r => {
         if (r.success) {
             showToast(id ? '更新成功' : '添加成功');
             closeModal();
-            refreshSites();
+            refreshNodes();
         } else {
             showToast(r.error || '操作失败', 'error');
         }
@@ -525,24 +523,24 @@ function saveSite(e) {
     return false;
 }
 
-function deleteSite(id) {
-    if (!confirm('确定删除此资源站？')) return;
-    callApi({ action: 'delete_site', id }).then(r => {
-        if (r.success) { showToast('删除成功'); refreshSites(); }
+function deleteNode(id) {
+    if (!confirm('确定删除此加速节点？')) return;
+    callApi({ action: 'delete_node', id }).then(r => {
+        if (r.success) { showToast('删除成功'); refreshNodes(); }
         else showToast('删除失败', 'error');
     });
 }
 
-function toggleSite(id) {
-    callApi({ action: 'toggle_site', id }).then(r => {
+function toggleNode(id) {
+    callApi({ action: 'toggle_node', id }).then(r => {
         if (r.success) showToast(r.data.enabled ? '已启用' : '已禁用');
-        refreshSites();
+        refreshNodes();
     });
 }
 
-function testSite(id) {
+function testNode(id) {
     showToast('正在测速（3轮）...', 'info');
-    callApi({ action: 'test_site', id }).then(r => {
+    callApi({ action: 'test_node', id }).then(r => {
         const el = document.getElementById('speed-test-result');
         el.style.display = 'block';
         const d = r.data;
@@ -570,7 +568,7 @@ function testSite(id) {
         document.getElementById('speed-test-content').innerHTML = `
             <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; flex-wrap: wrap;">
                 <span class="status ${d.success ? 'status-success' : 'status-failed'}">${d.success ? '✓ 成功' : '✗ 失败'}</span>
-                <strong>${d.site_name}</strong>
+                <strong>${d.node_name}</strong>
                 <span>中位数: <strong>${d.response_time_ms}</strong> ms</span>
                 <span>成功次数: <strong>${d.success_count}/${d.retry_count}</strong></span>
                 <span>速度: <strong>${d.speed_bps}</strong> B/s</span>
@@ -585,7 +583,7 @@ function testSite(id) {
 }
 
 function runSpeedTest() {
-    showToast('正在测速所有资源站（3轮/站）...', 'info');
+    showToast('正在测速所有加速节点（3轮/节点）...', 'info');
     const btn = document.getElementById('btn-speed-test');
     if (btn) btn.innerHTML = '<span class="loading"></span> 测速中...';
     
@@ -598,7 +596,7 @@ function runSpeedTest() {
             'ssl_error': '🔒SSL错误', 'network_error': '📡网络错误',
             'client_error': '⚠️客户端错误', 'server_error': '☠️服务端错误'
         };
-        let html = '<table><thead><tr><th>站点</th><th>状态</th><th>中位数(ms)</th><th>成功/轮数</th><th>速度(B/s)</th><th>错误类型</th><th>评级</th></tr></thead><tbody>';
+        let html = '<table><thead><tr><th>节点</th><th>状态</th><th>中位数(ms)</th><th>成功/轮数</th><th>速度(B/s)</th><th>错误类型</th><th>评级</th></tr></thead><tbody>';
         r.results.forEach(r => {
             const statusClass = r.success ? 'status-success' : 'status-failed';
             const errorTag = r.error_type && r.error_type !== 'none' ? errorLabel[r.error_type] || r.error_type : '-';
@@ -608,7 +606,7 @@ function runSpeedTest() {
                 r.response_time_ms < 3000 ? '<span class="status status-pending">⏱ 一般</span>' :
                 '<span class="status status-failed">🐢 慢</span>';
             html += `<tr>
-                <td>${r.site_name}</td>
+                <td>${r.node_name}</td>
                 <td><span class="status ${statusClass}">${r.success ? '✓' : '✗'}</span></td>
                 <td>${r.response_time_ms}</td>
                 <td>${r.success_count}/${r.retry_count}</td>
@@ -618,10 +616,10 @@ function runSpeedTest() {
             </tr>`;
         });
         html += '</tbody></table>';
-        if (r.best_site) {
+        if (r.best_node) {
             html += `<div style="margin-top: 15px; padding: 15px; background: #d4edda; border-radius: 8px;">
-                <strong>🏆 最优站点: ${r.best_site.site_name}</strong>
-                <span style="float: right;">中位数响应时间: ${r.best_site.response_time_ms} ms</span>
+                <strong>🏆 最优节点: ${r.best_node.node_name}</strong>
+                <span style="float: right;">中位数响应时间: ${r.best_node.response_time_ms} ms</span>
             </div>`;
         }
         document.getElementById('speed-test-content').innerHTML = html;
@@ -629,12 +627,12 @@ function runSpeedTest() {
         if (r.smart_ranking && r.smart_ranking.length > 0) {
             const srEl = document.getElementById('smart-ranking');
             srEl.style.display = 'block';
-            let srHtml = '<table><thead><tr><th>排名</th><th>站点</th><th>评分</th><th>成功率</th><th>连续失败</th><th>总请求</th></tr></thead><tbody>';
+            let srHtml = '<table><thead><tr><th>排名</th><th>节点</th><th>评分</th><th>成功率</th><th>连续失败</th><th>总请求</th></tr></thead><tbody>';
             r.smart_ranking.forEach((s, i) => {
                 const rankColor = i === 0 ? '#ff6b6b' : i === 1 ? '#ffa502' : i === 2 ? '#ffd43b' : '#666';
                 srHtml += `<tr>
                     <td><strong style="color: ${rankColor};">#${i+1}</strong></td>
-                    <td>${s.site.name}</td>
+                    <td>${s.node.name}</td>
                     <td><strong>${s.score.toFixed(1)}</strong></td>
                     <td>${s.success_rate}%</td>
                     <td>${s.consecutive_fail}</td>
@@ -667,18 +665,18 @@ function checkUpdate() {
             <span style="float: right; color: #888;">${d.checked_at}</span>
         </div>`;
         
-        if (d.speed_test?.best_site) {
+        if (d.speed_test?.best_node) {
             html += `<div style="padding: 10px; background: #d4edda; border-radius: 8px; margin-bottom: 15px;">
-                最优站点: <strong>${d.speed_test.best_site.site_name}</strong> (${d.speed_test.best_site.response_time_ms} ms)
+                最优节点: <strong>${d.speed_test.best_node.node_name}</strong> (${d.speed_test.best_node.response_time_ms} ms)
             </div>`;
         }
         
-        html += '<h3>文件检查结果</h3><table><thead><tr><th>文件</th><th>状态</th><th>使用站点</th><th>响应时间(ms)</th></tr></thead><tbody>';
+        html += '<h3>文件检查结果</h3><table><thead><tr><th>文件</th><th>状态</th><th>使用节点</th><th>响应时间(ms)</th></tr></thead><tbody>';
         d.files.forEach(f => {
             html += `<tr>
                 <td><code>${f.path}</code></td>
                 <td><span class="status ${f.success ? 'status-success' : 'status-failed'}">${f.success ? '✓' : '✗'}</span></td>
-                <td>${f.site_used || '-'}</td>
+                <td>${f.node_used || '-'}</td>
                 <td>${f.response_time_ms || '-'}</td>
             </tr>`;
         });
@@ -709,7 +707,7 @@ function fetchFilePrompt() {
         if (r.success) {
             let html = `<div style="padding: 10px; background: #d4edda; border-radius: 8px; margin-bottom: 15px;">
                 <span class="status status-success">✓ 获取成功</span>
-                使用站点: <strong>${r.data.site_used}</strong>
+                使用节点: <strong>${r.data.node_name}</strong>
                 响应时间: <strong>${r.data.response_time_ms} ms</strong>
             </div>`;
             html += '<h3>文件内容</h3><pre class="json-view">' + escapeHtml(r.data.data || '') + '</pre>';
@@ -730,9 +728,9 @@ function escapeHtml(text) {
 function updateStats() {
     callApi({ action: 'get_status' }).then(r => {
         const d = r.data;
-        document.getElementById('stat-total').textContent = d.site_count;
-        document.getElementById('stat-enabled').textContent = d.enabled_site_count;
-        document.getElementById('stat-best-site').textContent = d.cache.best_site_name || '-';
+        document.getElementById('stat-total').textContent = d.node_count;
+        document.getElementById('stat-enabled').textContent = d.enabled_node_count;
+        document.getElementById('stat-best-node').textContent = d.cache.best_node_name || '-';
         document.getElementById('stat-last-update').textContent = d.cache.last_update || '-';
     });
 }
@@ -740,8 +738,8 @@ function updateStats() {
 function updateStatusDisplay() {
     callApi({ action: 'get_status' }).then(r => {
         const d = r.data;
-        document.getElementById('current-best-site').innerHTML = '当前最优站点: ' + 
-            (d.cache.best_site_name ? `<span class="status status-success">${d.cache.best_site_name}</span>` : '<span class="status status-pending">未测速</span>');
+        document.getElementById('current-best-node').innerHTML = '当前最优节点: ' + 
+            (d.cache.best_node_name ? `<span class="status status-success">${d.cache.best_node_name}</span>` : '<span class="status status-pending">未测速</span>');
         document.getElementById('current-last-test').textContent = '上次测速: ' + (d.cache.last_speed_test || '-');
         document.getElementById('current-last-update').textContent = '最后更新: ' + (d.cache.last_update || '-');
     });
@@ -759,7 +757,6 @@ function testApi(action) {
         });
 }
 
-// 初始化
 updateStats();
 updateStatusDisplay();
 </script>

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/src/ResourceSiteManager.php';
+require_once __DIR__ . '/src/AccelerationNodeManager.php';
 require_once __DIR__ . '/src/UpdateManager.php';
 
 $action = $_GET['action'] ?? '';

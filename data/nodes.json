@@ -2,7 +2,7 @@
     {
         "id": 1,
         "name": "jsDelivr CDN",
-        "url": "https:\/\/cdn.jsdelivr.net\/gh\/{owner}\/{repo}@{branch}\/{path}",
+        "url": "https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
         "type": "cdn",
         "enabled": true,
         "priority": 10,
@@ -12,7 +12,7 @@
     {
         "id": 2,
         "name": "raw.githubusercontent.com",
-        "url": "https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
         "type": "direct",
         "enabled": true,
         "priority": 20,
@@ -22,7 +22,7 @@
     {
         "id": 3,
         "name": "ghproxy.com 加速",
-        "url": "https:\/\/ghproxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://ghproxy.com/https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
         "type": "proxy",
         "enabled": true,
         "priority": 30,
@@ -32,7 +32,7 @@
     {
         "id": 4,
         "name": "gh.con.sh 加速",
-        "url": "https:\/\/gh.con.sh\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://gh.con.sh/https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
         "type": "proxy",
         "enabled": true,
         "priority": 40,
@@ -42,7 +42,7 @@
     {
         "id": 5,
         "name": "mirror.ghproxy.com",
-        "url": "https:\/\/mirror.ghproxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://mirror.ghproxy.com/https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
         "type": "proxy",
         "enabled": true,
         "priority": 50,
@@ -52,7 +52,7 @@
     {
         "id": 6,
         "name": "raw.kgithub.com",
-        "url": "https:\/\/raw.kgithub.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://raw.kgithub.com/{owner}/{repo}/{branch}/{path}",
         "type": "proxy",
         "enabled": false,
         "priority": 60,
@@ -62,7 +62,7 @@
     {
         "id": 7,
         "name": "gh-proxy.com",
-        "url": "https:\/\/gh-proxy.com\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
         "type": "proxy",
         "enabled": false,
         "priority": 70,
@@ -72,7 +72,7 @@
     {
         "id": 8,
         "name": "ghps.cc 加速",
-        "url": "https:\/\/ghps.cc\/https:\/\/raw.githubusercontent.com\/{owner}\/{repo}\/{branch}\/{path}",
+        "url": "https://ghps.cc/https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
         "type": "proxy",
         "enabled": false,
         "priority": 80,
