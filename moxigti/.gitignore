@@ -1,0 +1,4 @@
+node_modules/
+# 运行时自动生成的版本状态，不应纳入版本管理
+.version.json
+*.log

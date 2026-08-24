@@ -1,0 +1,27 @@
+{
+  "name": "moxigti",
+  "version": "0.0.1",
+  "description": "沫兮官替 (MoxiGTI) - 基于100进制patch进位的Node版本管理框架",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "moxigti": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js current",
+    "bump": "node src/index.js bump",
+    "current": "node src/index.js current",
+    "history": "node src/index.js history",
+    "test": "node --test"
+  },
+  "keywords": [
+    "version",
+    "semver",
+    "version-manager",
+    "moxigti"
+  ],
+  "license": "MIT"
+}
